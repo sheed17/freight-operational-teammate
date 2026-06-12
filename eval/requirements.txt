@@ -1,0 +1,8 @@
+# Stage 1 eval harness — standalone. Install with: pip install -r eval/requirements.txt
+pydantic>=2.7
+instructor>=1.5
+anthropic>=0.39
+pymupdf>=1.24
+pyyaml>=6.0
+rich>=13.0
+pytest>=8.0  # for the harness's own regression tests (eval/tests)

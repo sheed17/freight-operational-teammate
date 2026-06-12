@@ -1,0 +1,46 @@
+{
+  "invoice_001.pdf": {
+    "invoice_number": "INV-2024-8847",
+    "carrier_name": "Swift Transport LLC",
+    "load_or_pro_number": "L-449821",
+    "linehaul_amount": 1150.0,
+    "fuel_surcharge": 87.5,
+    "accessorials": [
+      {
+        "name": "detention",
+        "amount": 150.0
+      }
+    ],
+    "total_amount": 1387.5,
+    "invoice_date": "2024-03-15"
+  },
+  "invoice_002.pdf": {
+    "invoice_number": "84729-A",
+    "carrier_name": "Midwest Freight Inc",
+    "load_or_pro_number": "PRO-9921044",
+    "linehaul_amount": 2200.0,
+    "fuel_surcharge": 330.0,
+    "accessorials": [],
+    "total_amount": 2530.0,
+    "invoice_date": "2024-03-18"
+  },
+  "invoice_003.pdf": {
+    "invoice_number": "RB-7781",
+    "carrier_name": "Lone Star Carriers",
+    "load_or_pro_number": "L-44982",
+    "linehaul_amount": 1875.0,
+    "fuel_surcharge": 281.25,
+    "accessorials": [
+      {
+        "name": "lumper",
+        "amount": 95.0
+      },
+      {
+        "name": "detention",
+        "amount": 120.0
+      }
+    ],
+    "total_amount": 2371.25,
+    "invoice_date": "2024-03-20"
+  }
+}

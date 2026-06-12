@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+*.sqlite3
+data/active_workspace/
+data/inbox/
+data/synthetic_corpus/
+data/template_sources/downloaded/
+.pytest_cache/
+eval/results/
+eval/golden_set/.previews/
+*.egg-info/
+dist/
+build/
+.DS_Store

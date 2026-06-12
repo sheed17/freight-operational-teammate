@@ -1,0 +1,32 @@
+doc_type: carrier_invoice
+description: "Carrier's freight bill requesting payment for a delivered load"
+fields:
+  - {name: invoice_number,   type: string,  required: true,  description: "Carrier's invoice/freight bill number"}
+  - {name: carrier_name,     type: string,  required: true,  description: "Name of the carrier company billing for the load"}
+  - {name: load_or_pro,      type: string,  required: true,  description: "Load number or PRO number — the key to match against the rate con"}
+  - {name: linehaul_amount,  type: decimal, required: true,  description: "Base linehaul/freight charge for moving the load"}
+  - {name: fuel_surcharge,   type: decimal, required: false, description: "Fuel surcharge (flat dollar amount; capture the dollars even if shown as a %)"}
+  - {name: accessorials,     type: list,    required: false, description: "Each accessorial charge (detention, lumper, layover, etc.) with its name and amount"}
+  - {name: total_amount,     type: decimal, required: true,  description: "Total amount due on the invoice"}
+  - {name: invoice_date,     type: date,    required: true,  description: "Date the invoice was issued (ISO YYYY-MM-DD)"}
+extraction_prompt: >
+  This is a carrier (freight) invoice / freight bill. Extract the invoice number, carrier name,
+  the load or PRO number, the linehaul amount, the fuel surcharge (as a flat dollar amount; if it
+  is shown only as a percentage, capture the resulting dollar figure), each accessorial charge
+  (detention, lumper, layover, TONU, etc.) with its name and dollar amount, the total amount due,
+  and the invoice date. Money values are US dollars — report them as plain numbers without the
+  dollar sign or thousands separators. Report a calibrated confidence between 0 and 1 for every
+  field based on how clearly it is stated on the document. If a field is genuinely absent, set its
+  value to null and its confidence to 0.
+reconciliation_rules:
+  - {match_key: "load_or_pro"}
+  - "invoice.linehaul_amount == ratecon.linehaul (tolerance 0)"
+  - "invoice.fuel_surcharge == ratecon.fuel_surcharge"
+  - "each invoice.accessorial must exist in ratecon OR be backed by a receipt/BOL timestamp"
+  - "invoice.total == sum(line items)"
+  - {flag_variance_threshold: 0.00}
+confidence_threshold: 0.85
+entry_mapping:
+  load_or_pro:    "TMS.load_number"
+  total_amount:   "TMS.payable_amount"
+  invoice_number: "TMS.carrier_invoice_ref"

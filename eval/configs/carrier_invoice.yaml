@@ -1,0 +1,80 @@
+doc_type: carrier_invoice
+description: "Carrier freight bill requesting payment for a delivered load"
+
+fields:
+  - name: invoice_number
+    type: string
+    required: true
+    description: "The invoice or bill number (may be labeled Invoice #, Bill #, Ref)"
+  - name: carrier_name
+    type: string
+    required: true
+    description: "The name of the trucking company or carrier"
+  - name: load_or_pro_number
+    type: string
+    required: true
+    description: >
+      The load or PRO reference number linking this invoice to a specific shipment.
+      May be labeled: Load #, PRO, PRO #, Reference #, Shipment ID, Order #, BOL #.
+      This is the KEY field — extract it carefully.
+  - name: linehaul_amount
+    type: decimal
+    required: true
+    description: >
+      The base transportation charge (not including fuel or extras).
+      May be labeled: Linehaul, Base Rate, Freight Charge, Transportation, Rate, or
+      simply be the largest line item amount.
+  - name: fuel_surcharge
+    type: decimal
+    required: false
+    description: >
+      Fuel surcharge amount. May be a flat dollar amount or a percentage applied to
+      linehaul. If percentage, calculate the dollar amount. May be labeled FSC, Fuel,
+      Fuel Surcharge, or Fuel Adj. If not present, return 0.00.
+  - name: accessorials
+    type: list
+    required: false
+    description: >
+      Any additional charges beyond linehaul and fuel. Common types: detention,
+      lumper, TONU (Truck Ordered Not Used), layover, stop-off, residential delivery,
+      liftgate, redelivery. Each has a name and dollar amount. Return empty list if none.
+  - name: total_amount
+    type: decimal
+    required: true
+    description: >
+      The total amount due on this invoice. May be labeled: Total, Amount Due,
+      Balance Due, Total Due, Invoice Total. Should equal linehaul + fuel + accessorials.
+  - name: invoice_date
+    type: date
+    required: true
+    description: "The invoice date. Return in YYYY-MM-DD format."
+
+extraction_prompt: >
+  You are extracting structured data from a carrier (freight) invoice. These invoices
+  come from trucking companies and request payment for completed freight loads.
+
+  IMPORTANT CONTEXT:
+  - Carrier invoices vary widely in format — every trucking company uses a different layout.
+  - The same field may be labeled differently on every invoice.
+  - Some invoices are scanned/photographed and may have slight distortion.
+  - Focus on finding the actual values, not matching exact label text.
+
+  YOUR TASK: Extract every field defined in the schema with maximum accuracy.
+
+  KEY FIELDS TO PRIORITIZE:
+  1. load_or_pro_number — this links the invoice to a load. Look everywhere on the
+     document (header, body, reference section). It may look like: L-449821, PRO 9921044,
+     REF# 77291-B, or a plain number in a reference section.
+  2. linehaul_amount — the base transportation charge, usually the largest single line item.
+  3. total_amount — the final amount due, usually at the bottom right.
+
+  FOR EACH FIELD: report the exact value AND a confidence score from 0.0 to 1.0 where:
+  - 0.9-1.0 = clearly labeled, unambiguous value
+  - 0.7-0.89 = found with reasonable certainty but label was non-standard
+  - 0.5-0.69 = best guess, label was unclear or value was ambiguous
+  - below 0.5 = could not locate reliably — return null for the value
+
+  BE HONEST about confidence. Do not report high confidence on guesses.
+  If a field is genuinely not present, return null (not zero, not empty string).
+
+confidence_threshold: 0.85

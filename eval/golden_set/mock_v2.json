@@ -1,0 +1,113 @@
+{
+  "invoice_001.pdf": {
+    "invoice_number": {
+      "value": "INV-2024-8847",
+      "confidence": 0.97
+    },
+    "carrier_name": {
+      "value": "Swift Transport LLC",
+      "confidence": 0.96
+    },
+    "load_or_pro_number": {
+      "value": "L-449821",
+      "confidence": 0.95
+    },
+    "linehaul_amount": {
+      "value": 1150.0,
+      "confidence": 0.96
+    },
+    "fuel_surcharge": {
+      "value": 87.5,
+      "confidence": 0.93
+    },
+    "accessorials": [
+      {
+        "name": "detention",
+        "amount": 150.0,
+        "confidence": 0.9
+      }
+    ],
+    "total_amount": {
+      "value": 1387.5,
+      "confidence": 0.95
+    },
+    "invoice_date": {
+      "value": "2024-03-15",
+      "confidence": 0.97
+    }
+  },
+  "invoice_002.pdf": {
+    "invoice_number": {
+      "value": "84729-A",
+      "confidence": 0.96
+    },
+    "carrier_name": {
+      "value": "Midwest Freight",
+      "confidence": 0.92
+    },
+    "load_or_pro_number": {
+      "value": "PRO-9921044",
+      "confidence": 0.93
+    },
+    "linehaul_amount": {
+      "value": 2200.0,
+      "confidence": 0.94
+    },
+    "fuel_surcharge": {
+      "value": null,
+      "confidence": 0.3,
+      "extraction_note": "could not locate FSC reliably"
+    },
+    "accessorials": [],
+    "total_amount": {
+      "value": 2530.0,
+      "confidence": 0.94
+    },
+    "invoice_date": {
+      "value": "2024-03-18",
+      "confidence": 0.97
+    }
+  },
+  "invoice_003.pdf": {
+    "invoice_number": {
+      "value": "RB-7781",
+      "confidence": 0.95
+    },
+    "carrier_name": {
+      "value": "Lone Star Carriers",
+      "confidence": 0.94
+    },
+    "load_or_pro_number": {
+      "value": "L-44982",
+      "confidence": 0.92
+    },
+    "linehaul_amount": {
+      "value": 1875.0,
+      "confidence": 0.9
+    },
+    "fuel_surcharge": {
+      "value": 281.25,
+      "confidence": 0.8
+    },
+    "accessorials": [
+      {
+        "name": "lumper",
+        "amount": 95.0,
+        "confidence": 0.88
+      },
+      {
+        "name": "detention",
+        "amount": 120.0,
+        "confidence": 0.86
+      }
+    ],
+    "total_amount": {
+      "value": 2371.25,
+      "confidence": 0.93
+    },
+    "invoice_date": {
+      "value": "2024-03-20",
+      "confidence": 0.96
+    }
+  }
+}

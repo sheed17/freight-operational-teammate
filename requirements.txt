@@ -1,0 +1,10 @@
+# Phase 1 dependencies — install with: pip install -r requirements.txt
+pydantic>=2.7
+instructor>=1.5
+anthropic>=0.39
+openai>=1.40
+pymupdf>=1.24
+pyyaml>=6.0
+python-dotenv>=1.0
+reportlab>=4.0
+pillow>=10.0

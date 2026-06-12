@@ -1,0 +1,61 @@
+{
+  "policy": "Use public blank/sample/template PDFs for layout reference only. Replace all business data with synthetic data.",
+  "downloaded": [
+    {
+      "id": "montana_short_form_bol",
+      "doc_type": "bill_of_lading",
+      "title": "Bill of Lading Short Form Template",
+      "url": "https://agr.mt.gov/_docs/marketing-docs/sellingtoretail/Bill_of_Lading_Template.pdf",
+      "usage": "blank/template layout reference",
+      "notes": "Public government-hosted short-form BOL template.",
+      "local_path": "data/template_sources/downloaded/montana_short_form_bol.pdf",
+      "bytes": 197275,
+      "sha256": "9927d2013af840511e5b9830e91970d5da1839dcf69000f0e86166b13234a839"
+    },
+    {
+      "id": "smartroutes_basic_pod",
+      "doc_type": "proof_of_delivery",
+      "title": "Basic Proof of Delivery Template",
+      "url": "https://smartroutes.io/docs/basic-proof-of-delivery-template.pdf",
+      "usage": "blank/template layout reference",
+      "notes": "Public proof-of-delivery sample/template.",
+      "local_path": "data/template_sources/downloaded/smartroutes_basic_pod.pdf",
+      "bytes": 68160,
+      "sha256": "96d9a07e6df7f4cbc4fbe17601e77437015e94ba54a2525a63fda88cb46defb6"
+    },
+    {
+      "id": "first_choice_blank_bol",
+      "doc_type": "bill_of_lading",
+      "title": "Blank Bill of Lading",
+      "url": "https://firstchoicetransportation.net/wp-content/uploads/2021/10/Blank-BOL.pdf",
+      "usage": "blank/template layout reference",
+      "notes": "Public blank GS1-style BOL form.",
+      "local_path": "data/template_sources/downloaded/first_choice_blank_bol.pdf",
+      "bytes": 171458,
+      "sha256": "f7ff076e9792f05456cdda009b9b764a613a5297e54327f9104d31b630a0f47d"
+    },
+    {
+      "id": "cocodoc_load_confirmation_template",
+      "doc_type": "rate_confirmation",
+      "title": "Load Confirmation Sheet Template",
+      "url": "https://cdn.cocodoc.com/cocodoc-form-pdf/pdf/328217501--load-confirmation-template-excel-.pdf",
+      "usage": "sample/template layout reference",
+      "notes": "Public rate-confirmation/load-tender style template; use layout only.",
+      "local_path": "data/template_sources/downloaded/cocodoc_load_confirmation_template.pdf",
+      "bytes": 15316,
+      "sha256": "d1896d8342336ebc3505a1bb359c902867f5a06d69394e3fcf7a336e6c45995e"
+    },
+    {
+      "id": "load1_lumper_instructions",
+      "doc_type": "lumper_receipt_context",
+      "title": "Lumper Receipt Instructions",
+      "url": "https://load1.com/wp-content/uploads/2023/03/Lumper-Receipt-Instructions-.pdf",
+      "usage": "process/context reference",
+      "notes": "Public driver instructions showing lumper receipt workflow expectations.",
+      "local_path": "data/template_sources/downloaded/load1_lumper_instructions.pdf",
+      "bytes": 36212,
+      "sha256": "c7f4964763e4ca0db6ca1e90bcf9295d2a3d37b1e71d3dd32477714d9101dd4d"
+    }
+  ],
+  "failures": []
+}

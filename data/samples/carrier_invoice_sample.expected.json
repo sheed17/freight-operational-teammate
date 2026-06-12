@@ -1,0 +1,19 @@
+{
+  "invoice_number": "TRK-2024-88913",
+  "carrier_name": "Sunbelt Freight Carriers LLC",
+  "load_or_pro": "LD-559210",
+  "linehaul_amount": "1250.00",
+  "fuel_surcharge": "187.50",
+  "accessorials": [
+    {
+      "name": "detention",
+      "amount": "120.00"
+    },
+    {
+      "name": "lumper",
+      "amount": "85.00"
+    }
+  ],
+  "total_amount": "1642.50",
+  "invoice_date": "2024-11-18"
+}
