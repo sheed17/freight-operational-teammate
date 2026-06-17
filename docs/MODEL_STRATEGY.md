@@ -53,6 +53,29 @@ For this repo today:
 - OpenAI challenger: configure `EXTRACTION_PROVIDER=openai` and `OPENAI_MODEL` only after the
   OpenAI extraction path is evaluated against the same corpus.
 
+## Current OpenAI Direction
+
+As of the current OpenAI model docs, the newer OpenAI frontier family supports text, image input,
+tool use, and computer use. The relevant candidates for Neyma are:
+
+- Strong extraction / hard screen reasoning challenger: `gpt-5.5`.
+- Practical browser-agent and lower-cost challenger: `gpt-5.4-mini`.
+
+Do **not** choose an older mini model just because it sounds cheap. For freight PDFs and TMS
+screens, wrong confidence is more expensive than model spend. If OpenAI is used, the default
+policy should be:
+
+```text
+freight document extraction gate: gpt-5.5 or strongest eval-clearing model
+browser-use read-only navigation: gpt-5.4-mini after mock-TMS evals pass
+browser-use write preparation: strongest eval-clearing browser model until trust gates pass
+money/reconciliation decisions: deterministic Python only
+```
+
+Browser agents are allowed to observe screens, locate fields, draft planned actions, and execute
+approved low-level UI steps. They are not allowed to decide payable amounts, approve variances, or
+mark money work done. The workflow state machine and readback verification own those decisions.
+
 Do not fine-tune yet. First use better prompts, schemas, rendering, document-type routing,
 client config, and deterministic validation. Fine-tuning only becomes attractive after we have
 hundreds or thousands of labeled examples and can prove it beats prompting/retrieval/config on

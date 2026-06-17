@@ -37,14 +37,30 @@ class ChargeLine(BaseModel):
 
 class FreightLoadForReconciliation(BaseModel):
     load_id: str
+    pro_number: str | None = None
+    bol_number: str | None = None
+    manifest_number: str | None = None
     invoice_number: str
     carrier: str
+    carrier_mc: str | None = None
+    customer: str | None = None
+    shipper: str | None = None
+    consignee: str | None = None
+    origin: str | None = None
+    destination: str | None = None
+    equipment: str | None = None
+    commodity: str | None = None
+    pickup_date: str | None = None
+    delivery_date: str | None = None
     rate_linehaul: Decimal
     rate_fuel: Decimal
     invoice_linehaul: Decimal
     invoice_fuel: Decimal
     rate_accessorials: list[ChargeLine] = Field(default_factory=list)
     invoice_accessorials: list[ChargeLine] = Field(default_factory=list)
+    scenario: str | None = None
+    expected_outcome: str | None = None
+    variance_reasons: list[str] = Field(default_factory=list)
     documents: dict[str, str] = Field(default_factory=dict)
 
     @classmethod

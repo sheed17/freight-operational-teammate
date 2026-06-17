@@ -3,7 +3,8 @@
 This protocol defines how Neyma should be built with two roles:
 
 1. **Implementing Agent** — writes code, runs commands, builds features.
-2. **Principal Architect Supervisor** — audits direction, production readiness, safety,
+2. **Phase Code Reviewer** — reviews code, tests, docs, generated outputs, and phase evidence.
+3. **Principal Architect Supervisor** — audits direction, production readiness, safety,
    design-partner fit, and real-product alignment.
 
 The point is to avoid relying on repeated prompting. Future build sessions should start from
@@ -25,6 +26,30 @@ It should evaluate every meaningful change against:
 The supervisor should be skeptical, practical, and freight-workflow aware. Its job is not to
 make the builder feel good. Its job is to protect the path to a design-partner pilot and later
 production.
+
+## Phase Code Reviewer Role
+
+The phase code reviewer is the senior engineering audit layer between implementation and the
+principal architect verdict.
+
+It should review:
+
+- Changed code and adjacent code paths.
+- Tests/evals for the changed behavior.
+- Generated artifacts such as review payload JSON or workflow DB outputs.
+- Docs that claim current status.
+- Phase gates and verification commands.
+
+Its Codex prompt is:
+
+- `.codex/agents/phase-code-reviewer.md`
+
+Its Claude prompt is:
+
+- `.claude/agents/phase-code-reviewer.md`
+
+The reviewer reports findings and a recommended verdict to the Principal Architect Supervisor.
+It does not replace the supervisor; it gives the supervisor code-level evidence.
 
 ## What The Supervisor Checks
 
@@ -80,14 +105,22 @@ For non-trivial implementation work:
 2. Implementing Agent states the concrete build target and gate.
 3. Implementing Agent builds the smallest useful slice.
 4. Implementing Agent runs tests/evals.
-5. Principal Architect Supervisor reviews:
+5. Phase Code Reviewer reviews:
+   - changed code
+   - tests/evals
+   - generated outputs
+   - docs/status claims
+   - phase gate evidence
+6. Implementing Agent fixes code-review findings.
+7. Principal Architect Supervisor reviews:
    - code
    - tests/evals
    - architecture fit
    - design-partner readiness
    - production safety
-6. Implementing Agent fixes supervisor findings.
-7. Supervisor gives final verdict.
+   - phase code reviewer handoff
+8. Implementing Agent fixes supervisor findings.
+9. Supervisor gives final verdict.
 
 ## Supervisor Verdicts
 
@@ -153,3 +186,30 @@ real carrier invoice packet
 
 Only after that should Neyma move toward live supervised operation, TMS read, and eventually
 approved TMS write.
+
+## End-Of-Phase Review Packet
+
+At the end of each phase or meaningful build slice, produce a short review packet:
+
+```text
+phase_claim:
+  what changed
+
+files_changed:
+  key files
+
+verification:
+  commands run and pass/fail
+
+generated_outputs:
+  reports, payloads, DB outputs, screenshots, or rendered pages
+
+known_limits:
+  what is still mocked, placeholder, or not production evidence
+
+phase_code_reviewer_verdict:
+  findings and recommended verdict
+
+principal_architect_verdict:
+  final verdict and next slice
+```

@@ -160,12 +160,47 @@ terminal or review states, and records audit events for receive, extract, reconc
 Generate human-review payloads for workflow cases that require supervision:
 
 ```bash
-.venv/bin/python scripts/run_review.py --record-audit --text
+.venv/bin/python scripts/run_review.py --record-audit --text --age-hours 48
+.venv/bin/python scripts/generate_packet_pages.py
+.venv/bin/python scripts/apply_review_action.py 3 APPROVE_EXPECTED_AMOUNT --amount 3334.50
+.venv/bin/python scripts/generate_follow_up_draft.py 3 APPROVE_EXPECTED_AMOUNT --record-audit
+.venv/bin/python scripts/generate_daily_summary.py --text
 ```
 
 This writes `data/active_workspace/review_payloads.json`, prints plain-text review cards, and
-records idempotent review-payload audit events. These payloads are channel-neutral so Slack,
-Teams, and email adapters can render them later without changing the workflow core.
+records idempotent review-payload audit events. These payloads include evidence links, packet
+detail URLs, money-specific action labels, aging/routing metadata, and found-money fields. They
+are channel-neutral so Slack, Teams, and email adapters can render them later without changing the
+workflow core. The packet page generator writes `data/active_workspace/site` with local evidence
+pages for dogfood review. The action command applies a local dogfood human decision to workflow
+state and audit events. The follow-up command prepares a short/direct carrier email draft behind
+a send gate and records the draft audit event. The summary command produces the daily dogfood
+summary with aging and found-money counters.
+
+## Inbound Email Packets And Ingestion (Stage 2)
+
+Real freight packets arrive as email threads with PDF attachments that trickle in over time,
+sometimes with the wrong attachment, an unrelated document, or a missing POD. To prove we extract
+the *right* documents, the corpus emits a synthetic inbound-email layer with hidden truth:
+
+```bash
+.venv/bin/python scripts/generate_email_corpus.py
+.venv/bin/python scripts/run_ingestion.py --text
+```
+
+`generate_email_corpus.py` writes real `.eml` emails (with the actual PDF bytes attached) under
+`data/synthetic_corpus/email_packets/inbound/`, plus `email_packets/ground_truth/email_packets.json`
+giving the true doc type and true linked load for every attachment. Scenarios stress each "right
+document" risk: `single_email_complete`, `trickle_pod_later`, `extra_unrelated_attachment`,
+`wrong_load_attachment`, `missing_pod`, and `forwarded_thread`.
+
+`run_ingestion.py` parses each `.eml`, classifies attachments (confidence + reason), links them to a
+known load, and scores against the hidden truth: packet-link accuracy, doc-type accuracy, noise
+rejection, and missing-document detection. The load linker is the safety mechanism — a wrong-load or
+unrelated attachment fails to link and is flagged extraneous, so it cannot contaminate the packet.
+The deterministic V0 classifies on filename/subject signals (optimistic on clean synthetic
+filenames); a vision/content classifier slots in behind the same `DocClassification` contract to
+raise accuracy on messy real-world filenames without changing the linker.
 
 ## Why Dirty Variants Matter
 

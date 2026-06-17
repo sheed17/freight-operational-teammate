@@ -286,13 +286,26 @@ Adapter rules:
 - Domain allowlist and timeouts.
 - Verify-by-readback before marking complete.
 
-Browser-use agents are implementation options for these adapters. Keep the role names separate
-from the implementation:
+Production browser-use agents should use [`browser-use/browser-use`](https://github.com/browser-use/browser-use)
+behind Neyma's adapter boundary. Keep the role names separate from the implementation:
 
-- `tms_read_adapter` may be an API client, browser-use agent, or fixture.
-- `tms_write_adapter` may be an API client, browser-use agent, or stub.
+- `tms_read_adapter` may be an API client, `browser-use/browser-use` agent, Playwright/mock
+  adapter, or fixture.
+- `tms_write_adapter` may be an API client, `browser-use/browser-use` agent, Playwright/mock
+  adapter, or stub.
 - `email_adapter` may use Gmail/IMAP/API.
 - `review_adapter` may use Slack, Teams, or email.
+
+Playwright remains the cheap local verification layer for generated mock TMS and deterministic
+selector/readback tests. `browser-use/browser-use` is the intended production browser-agent
+implementation when Neyma needs to operate a customer's browser/TMS like a human. It still must
+run behind Neyma's state machine, tool permission registry, domain allowlist, approval gates,
+timeouts, action trace, and verify-by-readback rules.
+
+Reference systems such as AscendTMS are useful for learning freight UI patterns and making the
+mock TMS more realistic. They are not the assumed production target. Production browser-use agents
+operate inside each customer's actual systems with a customer-specific screen map, allowlist,
+session policy, permission gates, and readback contract.
 
 Adapter calls should be wrapped as tools only through the permission model above. Browser tools
 need extra controls:
@@ -320,9 +333,11 @@ Build the adapters in this order:
 
 ```text
 MockTMSAdapter
-→ BrowserTMSAdapter against mock TMS
-→ optional sandbox/demo TMS adapter
-→ first design partner TMS adapter
+→ Playwright/local BrowserTMSAdapter against mock TMS
+→ browser-use/browser-use adapter against mock TMS
+→ optional reference/sandbox TMS screen mapping
+→ customer-specific screen map for the design partner's actual system
+→ first design partner browser/API TMS adapter
 → additional TMS adapters only when customer demand requires them
 ```
 

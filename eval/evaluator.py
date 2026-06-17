@@ -297,6 +297,17 @@ class Bucket:
 
 
 @dataclass
+class ConfidenceStat:
+    threshold: float
+    n: int = 0
+    correct: int = 0
+
+    @property
+    def accuracy(self) -> float:
+        return self.correct / self.n if self.n else 0.0
+
+
+@dataclass
 class EvalReport:
     docs_processed: int = 0
     extraction_failures: list[str] = field(default_factory=list)
@@ -304,6 +315,7 @@ class EvalReport:
     overall_correct: int = 0
     field_stats: dict[str, FieldStat] = field(default_factory=dict)
     buckets: list[Bucket] = field(default_factory=list)
+    high_confidence: ConfidenceStat = field(default_factory=lambda: ConfidenceStat(HIGH_CONF))
     overconfidence: list[dict] = field(default_factory=list)
     failure_modes: dict[str, dict[str, int]] = field(default_factory=dict)  # category -> {field: count}
     doc_results: list[dict] = field(default_factory=list)
@@ -325,16 +337,18 @@ class EvalReport:
         return [o for o in self.overconfidence if o["field"] in REQUIRED_FIELDS]
 
     def high_conf_bucket(self) -> Bucket | None:
-        # The single >= 0.85 bucket is the top bucket (0.90-1.00) plus the slice of
-        # 0.85; we report calibration via the standard buckets and gate on >=0.85.
+        # Deprecated compatibility helper. The production gate uses ``high_confidence`` because
+        # HIGH_CONF=0.85 cuts across the displayed 0.70-0.89 calibration bucket.
         return next((b for b in self.buckets if b.lo >= 0.90), None)
 
     def production_ready(self) -> bool:
         req_ok = all(self.required_field_pass().values()) if self.required_field_pass() else False
         overall_ok = self.overall_accuracy >= GATE_OVERALL_ACCURACY
         overconf_ok = len(self.dangerous_overconfidence()) == 0
-        top = self.high_conf_bucket()
-        calib_ok = (top is None) or (top.n == 0) or (top.accuracy >= GATE_HIGH_CONF_BUCKET_ACCURACY)
+        calib_ok = (
+            self.high_confidence.n == 0
+            or self.high_confidence.accuracy >= GATE_HIGH_CONF_BUCKET_ACCURACY
+        )
         return req_ok and overall_ok and overconf_ok and calib_ok
 
     def to_dict(self) -> dict:
@@ -349,6 +363,11 @@ class EvalReport:
                 for k, v in self.field_stats.items()
             },
             "buckets": [{"label": b.label, "n": b.n, "accuracy": round(b.accuracy, 4)} for b in self.buckets],
+            "high_confidence": {
+                "threshold": self.high_confidence.threshold,
+                "n": self.high_confidence.n,
+                "accuracy": round(self.high_confidence.accuracy, 4),
+            },
             "overconfidence": self.overconfidence,
             "failure_modes": self.failure_modes,
             "production_ready": self.production_ready(),
@@ -400,6 +419,9 @@ def evaluate(results: list[ExtractionResult], ground_truth: dict, config: DocCon
                         b = _bucket_for(report.buckets, ip.confidence)
                         b.n += 1
                         b.correct += int(ip.correct)
+                        if ip.confidence >= HIGH_CONF:
+                            report.high_confidence.n += 1
+                            report.high_confidence.correct += int(ip.correct)
                     doc_scores.append(fs)
                 else:
                     fs = score_scalar(result.filename, spec.type, spec.name, data.get(spec.name), truth.get(spec.name))
@@ -408,6 +430,9 @@ def evaluate(results: list[ExtractionResult], ground_truth: dict, config: DocCon
                         b = _bucket_for(report.buckets, fs.confidence)
                         b.n += 1
                         b.correct += int(fs.outcome == CORRECT)
+                        if fs.confidence >= HIGH_CONF:
+                            report.high_confidence.n += 1
+                            report.high_confidence.correct += int(fs.outcome == CORRECT)
                         if fs.confidence >= HIGH_CONF and fs.outcome != CORRECT:
                             report.overconfidence.append({
                                 "filename": result.filename, "field": fs.field,

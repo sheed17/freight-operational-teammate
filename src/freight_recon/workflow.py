@@ -132,6 +132,14 @@ class WorkflowStore:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(run_id) REFERENCES workflow_runs(id)
             );
+
+            CREATE TABLE IF NOT EXISTS security_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             """
         )
         self.conn.commit()
@@ -291,6 +299,24 @@ class WorkflowStore:
         )
         self.conn.commit()
 
+    def add_security_event(
+        self,
+        event_type: str,
+        *,
+        actor: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Record an audit event that cannot safely be tied to a trusted workflow run."""
+        self.conn.execute(
+            """
+            INSERT INTO security_events (
+                event_type, actor, payload_json, created_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (event_type, actor, json.dumps(payload, sort_keys=True), utc_now()),
+        )
+        self.conn.commit()
+
     def audit_events(self, run_id: int | None = None) -> list[dict[str, Any]]:
         if run_id is None:
             rows = self.conn.execute("SELECT * FROM audit_events ORDER BY id").fetchall()
@@ -306,6 +332,22 @@ class WorkflowStore:
                 "actor": row["actor"],
                 "from_state": row["from_state"],
                 "to_state": row["to_state"],
+                "payload": json.loads(row["payload_json"]),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def security_events(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute("SELECT * FROM security_events ORDER BY id").fetchall()
+        return [
+            {
+                "id": row["id"],
+                "run_id": None,
+                "event_type": row["event_type"],
+                "actor": row["actor"],
+                "from_state": None,
+                "to_state": None,
                 "payload": json.loads(row["payload_json"]),
                 "created_at": row["created_at"],
             }

@@ -241,6 +241,10 @@ Before telling a design partner Neyma is ready for pilot deployment:
 When the design partner data arrives, use [When Design Partner Data Arrives](WHEN_DESIGN_PARTNER_DATA_ARRIVES.md)
 as the execution plan for the build.
 
+For deployment packaging, use [Design Partner Deployment Package](DESIGN_PARTNER_DEPLOYMENT_PACKAGE.md).
+It contains the config template, secrets checklist, deployment commands, success metrics,
+rollback plan, and customer-system screen-mapping workflow.
+
 ## First Call Script
 
 ```text

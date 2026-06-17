@@ -10,7 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation, ReconciliationOutcome  # noqa: E402
 from freight_recon.review import (  # noqa: E402
+    DogfoodClientProfile,
     ReviewAction,
+    ReviewRoute,
     ReviewSeverity,
     build_review_payload,
     record_review_payload,
@@ -49,6 +51,12 @@ def test_review_payload_for_variance_has_human_actions(tmp_path):
     assert ReviewAction.APPROVE in payload.actions
     assert ReviewAction.DISPUTE in payload.actions
     assert any(field.status == "unauthorized" for field in payload.fields)
+    assert payload.packet_detail_url.endswith(f"/{run.id}")
+    assert any(link.document_type == "carrier_invoice" for link in payload.evidence_links)
+    assert any(link.document_type == "rate_confirmation" for link in payload.evidence_links)
+    assert payload.found_money.flagged_amount == "300.00"
+    assert payload.routing.route == ReviewRoute.IMMEDIATE_PING
+    assert any("Approve $3334.50 and dispute $300.00 detention" == option.label for option in payload.action_options)
     assert payload.audit_context["no_autonomous_tms_write"] is True
     store.close()
 
@@ -63,6 +71,11 @@ def test_review_payload_for_duplicate_blocks_approval_default(tmp_path):
     assert payload is not None
     assert payload.outcome == ReconciliationOutcome.DUPLICATE
     assert payload.actions == [ReviewAction.MARK_DUPLICATE, ReviewAction.DISPUTE]
+    assert [option.label for option in payload.action_options] == [
+        "Mark duplicate",
+        "Dispute duplicate invoice",
+    ]
+    assert all(option.code != ReviewAction.APPROVE for option in payload.action_options)
     assert any(field.status == "duplicate" for field in payload.fields)
     store.close()
 
@@ -89,7 +102,9 @@ def test_text_review_renderer_is_channel_safe(tmp_path):
 
     assert "Load: LD-560008" in text
     assert "Actions:" in text
-    assert "REQUEST_BACKUP" in text
+    assert "Request backup from carrier" in text
+    assert "Packet:" in text
+    assert "Evidence:" in text
     store.close()
 
 
@@ -109,4 +124,59 @@ def test_record_review_payload_is_idempotent(tmp_path):
         if event["event_type"] == "review_payload_created"
     ]
     assert len(events) == 1
+    store.close()
+
+
+def test_record_review_payload_records_new_revision_when_action_amount_changes(tmp_path):
+    _, loads, store = _run_generated_workflow(tmp_path, count=8)
+    load_by_id = {load.load_id: load for load in loads}
+    run = next(run for run in store.list_runs() if run.load_id == "LD-560003")
+    payload = build_review_payload(run, load_by_id[run.load_id])
+    assert payload is not None
+
+    changed_options = list(payload.action_options)
+    changed_options[0] = changed_options[0].model_copy(update={"amount": "3335.50"})
+    changed_payload = payload.model_copy(update={"action_options": changed_options})
+
+    record_review_payload(store, payload)
+    record_review_payload(store, changed_payload)
+
+    events = [
+        event
+        for event in store.audit_events(run.id)
+        if event["event_type"] == "review_payload_created"
+    ]
+    assert len(events) == 2
+    assert events[0]["payload"]["payload_key"] != events[1]["payload"]["payload_key"]
+    store.close()
+
+
+def test_missing_pod_routes_to_ping_and_aging_escalates(tmp_path):
+    _, loads, store = _run_generated_workflow(tmp_path, count=8)
+    load_by_id = {load.load_id: load for load in loads}
+    run = next(run for run in store.list_runs() if run.load_id == "LD-560008")
+
+    payload = build_review_payload(run, load_by_id[run.load_id], age_hours=72)
+
+    assert payload is not None
+    assert payload.routing.route == ReviewRoute.IMMEDIATE_PING
+    assert payload.routing.ping is True
+    assert payload.aging.is_overdue is True
+    assert payload.aging.next_escalation == "direct re-ping now"
+    store.close()
+
+
+def test_dogfood_profile_can_tune_variance_routing(tmp_path):
+    _, loads, store = _run_generated_workflow(tmp_path, count=4)
+    load_by_id = {load.load_id: load for load in loads}
+    run = next(run for run in store.list_runs() if run.load_id == "LD-560003")
+    client = DogfoodClientProfile(critical_variance_threshold="500.00", medium_variance_threshold="25.00")
+
+    payload = build_review_payload(run, load_by_id[run.load_id], client=client)
+
+    assert payload is not None
+    assert payload.severity == ReviewSeverity.WARNING
+    assert payload.routing.route == ReviewRoute.CHANNEL_POST
+    assert payload.client.company_name == "Neyma Test Freight LLC"
+    assert payload.client.operator_role == "owner/operator"
     store.close()

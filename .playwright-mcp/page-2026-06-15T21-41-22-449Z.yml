@@ -1,0 +1,141 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - paragraph [ref=e4]: Neyma Test Freight LLC · owner/operator
+      - heading "LD-560003 · INV-2026003" [level=1] [ref=e5]
+    - generic [ref=e6]: CRITICAL
+  - main [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - paragraph [ref=e10]: Carrier
+        - paragraph [ref=e11]: Summit Valley Trucking
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: Outcome
+        - paragraph [ref=e14]: VARIANCE
+      - generic [ref=e15]:
+        - paragraph [ref=e16]: Route
+        - paragraph [ref=e17]: IMMEDIATE_PING
+      - generic [ref=e18]:
+        - paragraph [ref=e19]: Flagged
+        - paragraph [ref=e20]: $300.00
+      - generic [ref=e21]:
+        - paragraph [ref=e22]: Age
+        - paragraph [ref=e23]: 48h, overdue
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - heading "Decision Needed" [level=2] [ref=e26]
+        - paragraph [ref=e27]: Invoice values do not match the rate/load record. Human approval is required.
+        - list [ref=e28]:
+          - listitem [ref=e29]: "unauthorized accessorial: detention 300.00 not on rate confirmation"
+      - generic [ref=e30]:
+        - heading "Actions" [level=2] [ref=e31]
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - strong [ref=e34]: Approve $3334.50 and dispute $300.00 detention
+            - text: Approves expected payable amount and drafts a carrier dispute.
+          - generic [ref=e35]:
+            - strong [ref=e36]: Approve full $3634.50
+            - text: Approves the carrier invoice as billed.
+          - generic [ref=e37]:
+            - strong [ref=e38]: Edit fields
+            - text: Opens the packet detail page for correction before decision.
+    - generic [ref=e39]:
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - heading "Carrier Invoice" [level=2] [ref=e42]
+          - link "Open PDF" [ref=e43] [cursor=pointer]:
+            - /url: /evidence/LD-560003/carrier_invoice.pdf
+        - iframe [ref=e44]:
+          
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - heading "Rate Confirmation" [level=2] [ref=e47]
+          - link "Open PDF" [ref=e48] [cursor=pointer]:
+            - /url: /evidence/LD-560003/rate_confirmation.pdf
+        - iframe [ref=e49]:
+          
+    - generic [ref=e50]:
+      - generic [ref=e51]:
+        - heading "Reconciliation Math" [level=2] [ref=e52]
+        - table [ref=e53]:
+          - rowgroup [ref=e54]:
+            - row "Expected payable $3334.50" [ref=e55]:
+              - rowheader "Expected payable" [ref=e56]
+              - cell "$3334.50" [ref=e57]
+            - row "Invoice total $3634.50" [ref=e58]:
+              - rowheader "Invoice total" [ref=e59]
+              - cell "$3634.50" [ref=e60]
+            - row "Difference $300.00" [ref=e61]:
+              - rowheader "Difference" [ref=e62]
+              - cell "$300.00" [ref=e63]
+      - generic [ref=e64]:
+        - heading "Extracted Fields" [level=2] [ref=e65]
+        - table [ref=e66]:
+          - rowgroup [ref=e67]:
+            - row "Field Invoice Expected Status" [ref=e68]:
+              - columnheader "Field" [ref=e69]
+              - columnheader "Invoice" [ref=e70]
+              - columnheader "Expected" [ref=e71]
+              - columnheader "Status" [ref=e72]
+          - rowgroup [ref=e73]:
+            - row "linehaul 2925.00 2925.00 match" [ref=e74]:
+              - cell "linehaul" [ref=e75]
+              - cell "2925.00" [ref=e76]
+              - cell "2925.00" [ref=e77]
+              - cell "match" [ref=e78]
+            - row "fuel 409.50 409.50 match" [ref=e79]:
+              - cell "fuel" [ref=e80]
+              - cell "409.50" [ref=e81]
+              - cell "409.50" [ref=e82]
+              - cell "match" [ref=e83]
+            - row "detention 300.00 unauthorized" [ref=e84]:
+              - cell "detention" [ref=e85]
+              - cell "300.00" [ref=e86]
+              - cell [ref=e87]
+              - cell "unauthorized" [ref=e88]
+    - generic [ref=e89]:
+      - heading "Evidence" [level=2] [ref=e90]
+      - generic [ref=e91]:
+        - link "Bol" [ref=e92] [cursor=pointer]:
+          - /url: /evidence/LD-560003/bol.pdf
+        - link "Bol Dirty" [ref=e93] [cursor=pointer]:
+          - /url: /evidence/LD-560003/bol_dirty.pdf
+        - link "Carrier Invoice" [ref=e94] [cursor=pointer]:
+          - /url: /evidence/LD-560003/carrier_invoice.pdf
+        - link "Carrier Invoice Dirty" [ref=e95] [cursor=pointer]:
+          - /url: /evidence/LD-560003/carrier_invoice_dirty.pdf
+        - link "Pod" [ref=e96] [cursor=pointer]:
+          - /url: /evidence/LD-560003/pod.pdf
+        - link "Pod Dirty" [ref=e97] [cursor=pointer]:
+          - /url: /evidence/LD-560003/pod_dirty.pdf
+        - link "Rate Confirmation" [ref=e98] [cursor=pointer]:
+          - /url: /evidence/LD-560003/rate_confirmation.pdf
+        - link "Rate Confirmation Dirty" [ref=e99] [cursor=pointer]:
+          - /url: /evidence/LD-560003/rate_confirmation_dirty.pdf
+    - generic [ref=e100]:
+      - generic [ref=e101]:
+        - heading "Draft Follow-Up" [level=2] [ref=e102]
+        - generic [ref=e103]: "Subject: Invoice INV-2026003 variance on load LD-560003 Please review invoice INV-2026003. Our records show an expected payable of $3334.50, but the invoice totals $3634.50. Reason: unauthorized accessorial: detention 300.00 not on rate confirmation Please send revised invoice or backup for the variance."
+      - generic [ref=e104]:
+        - heading "Audit History" [level=2] [ref=e105]
+        - list [ref=e106]:
+          - listitem [ref=e107]:
+            - strong [ref=e108]: document_received
+            - text: · 2026-06-15T21:40:34.742586+00:00
+            - text: system
+          - listitem [ref=e109]:
+            - strong [ref=e110]: extraction_recorded
+            - text: · 2026-06-15T21:40:34.743106+00:00
+            - text: EXTRACTED
+          - listitem [ref=e111]:
+            - strong [ref=e112]: reconciliation_completed
+            - text: · 2026-06-15T21:40:34.743986+00:00
+            - text: RECONCILED
+          - listitem [ref=e113]:
+            - strong [ref=e114]: route_after_reconciliation
+            - text: · 2026-06-15T21:40:34.744816+00:00
+            - text: NEEDS_REVIEW
+          - listitem [ref=e115]:
+            - strong [ref=e116]: review_payload_created
+            - text: · 2026-06-15T21:40:34.909045+00:00
+            - text: system

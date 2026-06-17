@@ -128,9 +128,23 @@ Verification:
 **Goal:** Move from one PDF to freight email/PDF packets for the first teammate family:
 Document & Data Entry.
 
+Current V0:
+
+- `src/freight_recon/email_corpus.py` + `scripts/generate_email_corpus.py` — synthetic inbound-email
+  corpus: real `.eml` emails with attached PDF bytes plus a hidden-truth manifest (true doc type +
+  true linked load per attachment), across complete / trickle / extra-unrelated / wrong-load /
+  missing-POD / forwarded-thread scenarios.
+- `src/freight_recon/ingestion.py` + `scripts/run_ingestion.py` — parse `.eml` → classify each
+  attachment (confidence + reason) → link to a known load (load id / invoice / PRO / BOL) → assemble
+  a typed packet with delivered/missing required docs, extraneous-attachment flags, and
+  `needs_human`. The load linker is the safety mechanism: a wrong-load or unrelated attachment fails
+  to link and is flagged, never contaminating the packet. Scored against hidden truth (link
+  accuracy, doc-type accuracy, noise rejection, missing-doc detection). Deterministic, no model
+  spend; a vision classifier slots in behind the `DocClassification` contract later.
+
 Build:
 
-- Email/PDF attachment ingestion from local fixtures first.
+- Email/PDF attachment ingestion from local fixtures first. **V0 built (local `.eml`).**
 - Document classifier for invoice, POD, BOL, lumper receipt, accessorial backup, rate con,
   fuel receipt, manifest, customer invoice draft inputs, carrier packet docs, and unknown.
 - Per-document-type extraction configs.
@@ -240,23 +254,81 @@ Current command:
 Next implementation slice:
 
 - Add the tool permission registry.
-- Add Slack/Teams/email adapter delivery and signed webhook handling.
-- Add human action intake to move review decisions into workflow transitions.
+- Move tool gating into workflow execution paths before real outbound messages or browser actions.
 
 ## Stage 5 — Human Review Teammate
 
 **Goal:** Let the customer supervise the agent in their normal channel.
 
-Current V0:
+Current V2:
 
 - `src/freight_recon/review.py`
 - `scripts/run_review.py`
+- `configs/clients/neyma_test_freight.yaml`
 - Pydantic review payloads with severity, reasons, fields, actions, source documents, and audit
   context.
+- Evidence links, packet detail URL, money-specific action labels, aging metadata, severity
+  routing, and found-money fields.
+- Dogfood client defaults: Neyma Test Freight LLC, Rasheed as owner/operator, short/direct
+  carrier follow-up tone, local packet/evidence URLs.
 - Plain-text fallback renderer for CLI/email-style review.
 - Idempotent `review_payload_created` audit events.
 - Synthetic corpus review tests for variance, duplicate, missing POD, missing backup, and matched
   no-review cases.
+- Packet detail page V0: `src/freight_recon/packet_page.py` and
+  `scripts/generate_packet_pages.py` generate local evidence pages under
+  `data/active_workspace/site`.
+- Review action intake V0: `src/freight_recon/review_actions.py` and
+  `scripts/apply_review_action.py` apply local approve/edit/dispute/request-backup/duplicate
+  decisions to workflow state and audit events.
+- Follow-up drafts V0: `src/freight_recon/follow_up.py` and
+  `scripts/generate_follow_up_draft.py` create short/direct carrier dispute, backup-request, and
+  duplicate-check drafts behind a `PENDING_APPROVAL` send gate.
+- Daily summary V0: `src/freight_recon/summary.py` and `scripts/generate_daily_summary.py`
+  generate auto-cleared, needs-review, duplicate, missing-backup, oldest/largest unresolved,
+  and flagged/recovered money counters.
+- Mock TMS UI/data V0: `src/freight_recon/mock_tms.py` and `scripts/generate_mock_tms.py`
+  generate a local source-of-truth surface modeled on common freight TMS modules: load board,
+  dispatch navigation, carrier payables, load detail tabs, accounting, documents, and notes.
+- Mock TMS read adapter V0: `src/freight_recon/tms_adapter.py` and
+  `scripts/read_mock_tms.py` parse the local mock TMS HTML into typed load/payable readback
+  models with local-root allowlisting and fail-closed validation.
+- Browser-shaped mock TMS readback V0: `BrowserMockTmsReadAdapter` reads through a stable
+  selector/page contract for Playwright/browser-use implementations, with fake-page regression
+  tests and live Playwright MCP verification against the generated local mock TMS.
+- Production browser-agent direction: use
+  [`browser-use/browser-use`](https://github.com/browser-use/browser-use) behind Neyma's adapter,
+  permission, audit, and readback boundaries when operating customer TMS screens like a human.
+- Browser Use adapter V0: optional `browser-use[core]==0.13.1` dependency, lazy native runner,
+  read-only `BrowserUseTmsAdapter` for mock TMS, strict JSON output validation, permission gate,
+  allowlisted base URL, and CLI wrapper.
+- Tool permission registry V0: `src/freight_recon/tool_permissions.py` and
+  `scripts/check_tool_permission.py` define workflow-state tool access, risk tiers, approval
+  requirements, outbound/TMS-write feature gates, and auditable allow/block decisions.
+- Delivery adapter V0 with signed action intake: `src/freight_recon/delivery.py`,
+  `scripts/deliver_review.py`, and `scripts/submit_signed_action.py`. Renders review payloads into
+  channel-neutral `DeliveryMessage`s (evidence links, packet URL, exact money buttons, aging,
+  routing/severity, found-money) carrying HMAC-signed, expiring, single-use action tokens. Intake
+  verifies the signature, rejects tampered/expired tokens, is idempotent on duplicate action ids,
+  applies the action through `apply_review_action` (workflow state cannot be bypassed), mutates the
+  message state text, triggers the send-gated follow-up draft, and audits every step.
+  Persisted/audited/local-rendered messages redact tokens to fingerprints; raw tokens are only for
+  live outbound buttons or explicit `--show-tokens` local testing. Production signing fails closed
+  unless a real delivery secret is configured.
+- Slack + email transports V0: `src/freight_recon/slack_adapter.py` renders Block Kit, verifies the
+  Slack `v0` request signature (HMAC + 5-minute replay window), and feeds the button token into the
+  signed intake; `src/freight_recon/email_adapter.py` renders multipart review emails with signed
+  action links and writes to a gated local outbox. Two independent HMAC layers (channel request +
+  Neyma action token). Real workspace posting / SMTP send is not wired yet.
+- Delivery dispatch V0: `src/freight_recon/delivery_dispatch.py` and `scripts/dispatch_review.py`
+  route review messages through per-customer Slack/email config in `DRY_RUN`, `LOCAL_OUTBOX`, or
+  `LIVE` mode. Dispatch attempts are audited, token-bearing payloads are redacted in logs/artifacts,
+  live Slack posting is blocked unless outbound is enabled and tool permissions allow it, and live
+  SMTP email remains blocked until a gated SMTP transport exists.
+- Mock TMS realism: `src/freight_recon/mock_tms.py` now models carrier authority (MC#/USDOT#/SCAC),
+  AP settlement/voucher status (PENDING/APPROVED/ON_HOLD/SHORT_PAY/PAID), payment terms, fuel basis,
+  accessorial authorization terms, and a required-document checklist — additive, preserving the
+  read-adapter selector and payable-queue contract.
 
 Build:
 
@@ -282,25 +354,58 @@ Verification:
 Current command:
 
 ```bash
-.venv/bin/python scripts/run_review.py --record-audit --text
+.venv/bin/python scripts/run_review.py --record-audit --text --age-hours 48
+.venv/bin/python scripts/generate_packet_pages.py
+.venv/bin/python scripts/apply_review_action.py 3 APPROVE_EXPECTED_AMOUNT --amount 3334.50
+.venv/bin/python scripts/generate_follow_up_draft.py 3 APPROVE_EXPECTED_AMOUNT --record-audit
+.venv/bin/python scripts/generate_daily_summary.py --text
+.venv/bin/python scripts/generate_mock_tms.py
+.venv/bin/python scripts/read_mock_tms.py LD-560003
+.venv/bin/python scripts/read_mock_tms.py LD-560003 --payable
+.venv/bin/python -m pytest eval/tests/test_browser_tms_adapter.py -q
+.venv/bin/python -m pytest eval/tests/test_browser_use_adapter.py -q
+.venv/bin/python scripts/read_tms_browser_use.py --help
+.venv/bin/python scripts/check_tool_permission.py read_tms_load NEEDS_REVIEW
+.venv/bin/python scripts/deliver_review.py --text
+.venv/bin/python scripts/dispatch_review.py --mode DRY_RUN --allow-local-dev-secret --text
+.venv/bin/python scripts/submit_signed_action.py "<signed-token>"
+.venv/bin/python scripts/run_dogfood_pilot.py --text
 ```
 
 Next implementation slice:
 
-- Add a tool permission registry so review-message creation/send tools are allowed only from
-  review-appropriate states.
-- Add review action intake: approve, edit, dispute, request backup, mark duplicate.
-- Then add Slack/Teams/email adapter delivery.
+- Run the internal one-week simulated pilot over the signed delivery + dispatch flow, then wire the
+  real Slack app/callback endpoint and decide whether email stays local-outbox or gets a gated SMTP
+  transport.
 
 ## Stage 6 — TMS Read Adapter
 
 **Goal:** Pull source-of-truth load/rate data from the customer's system.
 
+Current V1:
+
+- `src/freight_recon/tms_adapter.py`
+- `scripts/read_mock_tms.py`
+- Read-only `MockTmsReadAdapter` for generated local mock TMS HTML.
+- Typed `TmsLoadReadback` and `TmsPayableReadback`.
+- Local-root path allowlist, load id validation, missing-field failures, and no writes.
+- `BrowserMockTmsReadAdapter` for Playwright/browser-use-style page readback through stable
+  selectors.
+- Browser adapter tests cover allowlisted navigation, field readback, payable queue readback, and
+  unsafe URL/load blocking.
+- Live Playwright MCP verification has read `LD-560003` from the local mock TMS payables queue and
+  load detail page.
+- Production browser agent implementation target is `browser-use/browser-use`; Playwright remains
+  the cheap deterministic local verification layer.
+- Optional `browser-use[core]==0.13.1` extra is wired through `BrowserUseTmsAdapter`; tests use a
+  fake runner so normal CI does not need a browser session or LLM key.
+
 Build:
 
 - Adapter interface: API first where available, browser session where necessary.
-- Mock TMS.
-- Browser automation against mock TMS before any real TMS.
+- Mock TMS. **Built for local dogfood.**
+- Browser automation against mock TMS before any real TMS. **Playwright readback and Browser Use
+  adapter skeleton built for local dogfood.**
 - Optional sandbox/free/demo TMS only after mock TMS passes.
 - Session-based browser profile.
 - Domain allowlist and timeout controls.
@@ -319,9 +424,34 @@ Verification:
 - Session-expired tests.
 - Readback schema validation.
 
+## Safety Layer — Tool Permission Registry
+
+**Goal:** Ensure workflow state controls every tool before outbound messages or TMS write paths.
+
+Current V0:
+
+- `src/freight_recon/tool_permissions.py`
+- `scripts/check_tool_permission.py`
+- Registry entries for SOP retrieval, prior corrections, email summarization, carrier follow-up
+  draft/send, TMS read, TMS payable preparation/upload/submit, and TMS payable verification.
+- Blocks unknown tools, wrong workflow states, missing human approval, disabled outbound email,
+  and disabled TMS write.
+- Records allow/block decisions into the workflow audit log.
+
 ## Stage 7 — TMS Write Adapter
 
 **Goal:** Execute approved actions only after review and verify the result.
+
+Current V0 (mock TMS):
+
+- `src/freight_recon/tms_write.py` + `scripts/enter_tms_payable.py` — enter an APPROVED payable into
+  a mock TMS ledger with confirm-before-submit, verify-by-readback, per-action idempotency, and an
+  action trace. Driver advances APPROVED → READY_FOR_ENTRY → ENTERING → ENTERED → DONE only on a
+  verified readback; duplicate-payable → FAILED, session-expired → WAITING_FOR_SESSION,
+  readback-mismatch → FAILED. Each step is gated by the tool permission registry (prepare/submit
+  require explicit human approval + `tms_write_enabled`) and audited. Deterministic Python owns the
+  money; this only enters an already-approved amount. The browser-use execution layer ("operate the
+  TMS screen like a human") implements this same interface against a real/sandbox TMS later.
 
 Build:
 

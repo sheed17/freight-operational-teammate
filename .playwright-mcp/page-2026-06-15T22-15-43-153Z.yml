@@ -1,0 +1,202 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - strong [ref=e4]: Neyma Test Freight LLC
+      - text: Brokerage Operations
+    - navigation "Top navigation" [ref=e5]:
+      - link "Loads" [ref=e6] [cursor=pointer]:
+        - /url: index.html
+      - link "Payables" [ref=e7] [cursor=pointer]:
+        - /url: payables.html
+      - link "Data" [ref=e8] [cursor=pointer]:
+        - /url: data.json
+  - generic [ref=e9]:
+    - complementary "TMS modules" [ref=e10]:
+      - link "Load Management" [ref=e11] [cursor=pointer]:
+        - /url: index.html
+      - generic [ref=e12]: Dispatch Board
+      - generic [ref=e13]: Tracking
+      - generic [ref=e14]: Documents
+      - link "Carrier Payables" [ref=e15] [cursor=pointer]:
+        - /url: payables.html
+      - generic [ref=e16]: Customer Billing
+      - generic [ref=e17]: Carriers
+      - generic [ref=e18]: Reports
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - paragraph [ref=e22]: Accounting
+        - heading "Carrier Payables" [level=1] [ref=e23]
+        - paragraph [ref=e24]: Queue for invoice review, backup requests, disputes, and approved entries.
+      - region "Payables controls" [ref=e25]:
+        - textbox "Search payables" [ref=e26]:
+          - /placeholder: Search invoice, load, carrier
+        - button "Approve Selected" [ref=e27]
+        - button "Export" [ref=e28]
+      - table "Carrier payable queue" [ref=e29]:
+        - rowgroup [ref=e30]:
+          - row "Invoice Load Carrier Expected Billed Status Action" [ref=e31]:
+            - columnheader [ref=e32]
+            - columnheader "Invoice" [ref=e33]
+            - columnheader "Load" [ref=e34]
+            - columnheader "Carrier" [ref=e35]
+            - columnheader "Expected" [ref=e36]
+            - columnheader "Billed" [ref=e37]
+            - columnheader "Status" [ref=e38]
+            - columnheader "Action" [ref=e39]
+        - rowgroup [ref=e40]:
+          - row "Select LD-560003 INV-2026003 LD-560003 Summit Valley Trucking $3334.50 $3634.50 NEEDS_REVIEW Review" [ref=e41]:
+            - cell "Select LD-560003" [ref=e42]:
+              - checkbox "Select LD-560003" [ref=e43]
+            - cell "INV-2026003" [ref=e44]:
+              - link "INV-2026003" [ref=e45] [cursor=pointer]:
+                - /url: loads/LD-560003.html
+            - cell "LD-560003" [ref=e46]
+            - cell "Summit Valley Trucking" [ref=e47]
+            - cell "$3334.50" [ref=e48]
+            - cell "$3634.50" [ref=e49]
+            - cell "NEEDS_REVIEW" [ref=e50]
+            - cell "Review" [ref=e51]:
+              - button "Review" [ref=e52]
+          - row "Select LD-560004 INV-2026004 LD-560004 Great Lakes Drayage Co $4172.00 $4297.00 NEEDS_REVIEW Review" [ref=e53]:
+            - cell "Select LD-560004" [ref=e54]:
+              - checkbox "Select LD-560004" [ref=e55]
+            - cell "INV-2026004" [ref=e56]:
+              - link "INV-2026004" [ref=e57] [cursor=pointer]:
+                - /url: loads/LD-560004.html
+            - cell "LD-560004" [ref=e58]
+            - cell "Great Lakes Drayage Co" [ref=e59]
+            - cell "$4172.00" [ref=e60]
+            - cell "$4297.00" [ref=e61]
+            - cell "NEEDS_REVIEW" [ref=e62]
+            - cell "Review" [ref=e63]:
+              - button "Review" [ref=e64]
+          - row "Select LD-560005 INV-2026005 LD-560005 Prairie Line Carriers Inc $4147.00 $4347.00 NEEDS_REVIEW Review" [ref=e65]:
+            - cell "Select LD-560005" [ref=e66]:
+              - checkbox "Select LD-560005" [ref=e67]
+            - cell "INV-2026005" [ref=e68]:
+              - link "INV-2026005" [ref=e69] [cursor=pointer]:
+                - /url: loads/LD-560005.html
+            - cell "LD-560005" [ref=e70]
+            - cell "Prairie Line Carriers Inc" [ref=e71]
+            - cell "$4147.00" [ref=e72]
+            - cell "$4347.00" [ref=e73]
+            - cell "NEEDS_REVIEW" [ref=e74]
+            - cell "Review" [ref=e75]:
+              - button "Review" [ref=e76]
+          - row "Select LD-560006 INV-2026006 LD-560006 Cactus Trail Freight LLC $4347.00 $4347.00 NEEDS_REVIEW Review" [ref=e77]:
+            - cell "Select LD-560006" [ref=e78]:
+              - checkbox "Select LD-560006" [ref=e79]
+            - cell "INV-2026006" [ref=e80]:
+              - link "INV-2026006" [ref=e81] [cursor=pointer]:
+                - /url: loads/LD-560006.html
+            - cell "LD-560006" [ref=e82]
+            - cell "Cactus Trail Freight LLC" [ref=e83]
+            - cell "$4347.00" [ref=e84]
+            - cell "$4347.00" [ref=e85]
+            - cell "NEEDS_REVIEW" [ref=e86]
+            - cell "Review" [ref=e87]:
+              - button "Review" [ref=e88]
+          - row "Select LD-560007 INV-2026006 LD-560007 Cactus Trail Freight LLC $4172.00 $4347.00 NEEDS_REVIEW Review" [ref=e89]:
+            - cell "Select LD-560007" [ref=e90]:
+              - checkbox "Select LD-560007" [ref=e91]
+            - cell "INV-2026006" [ref=e92]:
+              - link "INV-2026006" [ref=e93] [cursor=pointer]:
+                - /url: loads/LD-560007.html
+            - cell "LD-560007" [ref=e94]
+            - cell "Cactus Trail Freight LLC" [ref=e95]
+            - cell "$4172.00" [ref=e96]
+            - cell "$4347.00" [ref=e97]
+            - cell "NEEDS_REVIEW" [ref=e98]
+            - cell "Review" [ref=e99]:
+              - button "Review" [ref=e100]
+          - row "Select LD-560008 INV-2026008 LD-560008 Iron Horse Logistics LLC $4176.00 $4176.00 NEEDS_REVIEW Review" [ref=e101]:
+            - cell "Select LD-560008" [ref=e102]:
+              - checkbox "Select LD-560008" [ref=e103]
+            - cell "INV-2026008" [ref=e104]:
+              - link "INV-2026008" [ref=e105] [cursor=pointer]:
+                - /url: loads/LD-560008.html
+            - cell "LD-560008" [ref=e106]
+            - cell "Iron Horse Logistics LLC" [ref=e107]
+            - cell "$4176.00" [ref=e108]
+            - cell "$4176.00" [ref=e109]
+            - cell "NEEDS_REVIEW" [ref=e110]
+            - cell "Review" [ref=e111]:
+              - button "Review" [ref=e112]
+          - row "Select LD-560012 INV-2026012 LD-560012 Cactus Trail Freight LLC $2240.00 $2540.00 NEEDS_REVIEW Review" [ref=e113]:
+            - cell "Select LD-560012" [ref=e114]:
+              - checkbox "Select LD-560012" [ref=e115]
+            - cell "INV-2026012" [ref=e116]:
+              - link "INV-2026012" [ref=e117] [cursor=pointer]:
+                - /url: loads/LD-560012.html
+            - cell "LD-560012" [ref=e118]
+            - cell "Cactus Trail Freight LLC" [ref=e119]
+            - cell "$2240.00" [ref=e120]
+            - cell "$2540.00" [ref=e121]
+            - cell "NEEDS_REVIEW" [ref=e122]
+            - cell "Review" [ref=e123]:
+              - button "Review" [ref=e124]
+          - row "Select LD-560013 INV-2026013 LD-560013 Iron Horse Logistics LLC $2832.00 $2957.00 NEEDS_REVIEW Review" [ref=e125]:
+            - cell "Select LD-560013" [ref=e126]:
+              - checkbox "Select LD-560013" [ref=e127]
+            - cell "INV-2026013" [ref=e128]:
+              - link "INV-2026013" [ref=e129] [cursor=pointer]:
+                - /url: loads/LD-560013.html
+            - cell "LD-560013" [ref=e130]
+            - cell "Iron Horse Logistics LLC" [ref=e131]
+            - cell "$2832.00" [ref=e132]
+            - cell "$2957.00" [ref=e133]
+            - cell "NEEDS_REVIEW" [ref=e134]
+            - cell "Review" [ref=e135]:
+              - button "Review" [ref=e136]
+          - row "Select LD-560014 INV-2026014 LD-560014 Summit Valley Trucking $4159.50 $4359.50 NEEDS_REVIEW Review" [ref=e137]:
+            - cell "Select LD-560014" [ref=e138]:
+              - checkbox "Select LD-560014" [ref=e139]
+            - cell "INV-2026014" [ref=e140]:
+              - link "INV-2026014" [ref=e141] [cursor=pointer]:
+                - /url: loads/LD-560014.html
+            - cell "LD-560014" [ref=e142]
+            - cell "Summit Valley Trucking" [ref=e143]
+            - cell "$4159.50" [ref=e144]
+            - cell "$4359.50" [ref=e145]
+            - cell "NEEDS_REVIEW" [ref=e146]
+            - cell "Review" [ref=e147]:
+              - button "Review" [ref=e148]
+          - row "Select LD-560015 INV-2026015 LD-560015 Summit Valley Trucking $1771.00 $1771.00 NEEDS_REVIEW Review" [ref=e149]:
+            - cell "Select LD-560015" [ref=e150]:
+              - checkbox "Select LD-560015" [ref=e151]
+            - cell "INV-2026015" [ref=e152]:
+              - link "INV-2026015" [ref=e153] [cursor=pointer]:
+                - /url: loads/LD-560015.html
+            - cell "LD-560015" [ref=e154]
+            - cell "Summit Valley Trucking" [ref=e155]
+            - cell "$1771.00" [ref=e156]
+            - cell "$1771.00" [ref=e157]
+            - cell "NEEDS_REVIEW" [ref=e158]
+            - cell "Review" [ref=e159]:
+              - button "Review" [ref=e160]
+          - row "Select LD-560016 INV-2026015 LD-560016 Summit Valley Trucking $1596.00 $1771.00 NEEDS_REVIEW Review" [ref=e161]:
+            - cell "Select LD-560016" [ref=e162]:
+              - checkbox "Select LD-560016" [ref=e163]
+            - cell "INV-2026015" [ref=e164]:
+              - link "INV-2026015" [ref=e165] [cursor=pointer]:
+                - /url: loads/LD-560016.html
+            - cell "LD-560016" [ref=e166]
+            - cell "Summit Valley Trucking" [ref=e167]
+            - cell "$1596.00" [ref=e168]
+            - cell "$1771.00" [ref=e169]
+            - cell "NEEDS_REVIEW" [ref=e170]
+            - cell "Review" [ref=e171]:
+              - button "Review" [ref=e172]
+          - row "Select LD-560017 INV-2026017 LD-560017 Blue Ridge Transport LLC $3857.00 $3857.00 NEEDS_REVIEW Review" [ref=e173]:
+            - cell "Select LD-560017" [ref=e174]:
+              - checkbox "Select LD-560017" [ref=e175]
+            - cell "INV-2026017" [ref=e176]:
+              - link "INV-2026017" [ref=e177] [cursor=pointer]:
+                - /url: loads/LD-560017.html
+            - cell "LD-560017" [ref=e178]
+            - cell "Blue Ridge Transport LLC" [ref=e179]
+            - cell "$3857.00" [ref=e180]
+            - cell "$3857.00" [ref=e181]
+            - cell "NEEDS_REVIEW" [ref=e182]
+            - cell "Review" [ref=e183]:
+              - button "Review" [ref=e184]

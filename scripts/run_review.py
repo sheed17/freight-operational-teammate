@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="JSON output path")
     parser.add_argument("--record-audit", action="store_true", help="Record review payload audit events")
     parser.add_argument("--text", action="store_true", help="Print plain-text review cards")
+    parser.add_argument("--age-hours", type=int, default=0, help="Simulated unresolved age for review items")
     args = parser.parse_args()
 
     corpus = Path(args.corpus)
@@ -41,7 +42,7 @@ def main() -> int:
             load = loads.get(run.load_id)
             if not load:
                 raise RuntimeError(f"load context not found for workflow run {run.id}: {run.load_id}")
-            payload = build_review_payload(run, load)
+            payload = build_review_payload(run, load, age_hours=args.age_hours)
             if payload is None:
                 continue
             if args.record_audit:

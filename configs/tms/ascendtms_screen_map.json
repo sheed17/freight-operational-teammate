@@ -1,0 +1,366 @@
+{
+  "tms_name": "AscendTMS",
+  "environment": "reference_trial_sandbox",
+  "source": "reference_ui_mixed_live_observation_and_seed_pending_deeper_screen_mapping",
+  "default_automation_mode": "READ_ONLY",
+  "allowed_domains": ["ascendtms.com"],
+  "prohibited_global_actions": [
+    "submit payment",
+    "send email",
+    "invite user",
+    "change billing",
+    "delete record",
+    "dispatch real load",
+    "upload real customer document"
+  ],
+  "screens": [
+    {
+      "screen_id": "organization_settings",
+      "name": "Organization Settings",
+      "url_pattern": "https://ascendtms.com/settings/org*",
+      "navigation_path": ["Settings", "Organization"],
+      "purpose": "Read company profile fields and confirm sandbox organization identity.",
+      "risk": "LOW",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "left navigation Settings",
+        "breadcrumb Settings > Organization",
+        "Name of Organization input",
+        "Upload your company logo button"
+      ],
+      "fields": [
+        {
+          "name": "organization_name",
+          "label": "Name of Organization",
+          "selector_hint": "input near label Name of Organization",
+          "required_for_read": true
+        },
+        {
+          "name": "address",
+          "label": "Address",
+          "selector_hint": "input near label Address",
+          "required_for_read": false
+        },
+        {
+          "name": "business_type",
+          "label": "Business Type",
+          "selector_hint": "dropdown near label Business Type",
+          "required_for_read": false
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read visible values", "navigate back to home"],
+        "forbidden_actions": ["save organization changes", "upload logo", "change billing", "invite user"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "trial account prompts for setup",
+        "save button appears while fields are dirty",
+        "session expires",
+        "screen layout differs by account type"
+      ],
+      "mock_tms_alignment": "Use this screen to guide mock TMS global navigation and company identity, not payable logic.",
+      "observation_status": "OBSERVED",
+      "observation_evidence": [
+        "Computer Use observed URL ascendtms.com/settings/org",
+        "Observed heading: Edit Yellow Carriers Ltd.",
+        "Observed fields: Name of Organization, Address, City/State/Postal, Telephone, Fax, Email, Website, Business Type, Employer Identification Number, Docket Number, USDOT Number, SCAC Code",
+        "Observed buttons: Upload your company logo, Enable/Disable Freight Broker Features, Enable/Disable Carrier Features, Save"
+      ]
+    },
+    {
+      "screen_id": "load_board",
+      "name": "Load Board / Loads Search",
+      "url_pattern": "https://ascendtms.com/*loads*",
+      "navigation_path": ["Loads", "View Loads"],
+      "purpose": "Find a load by load id, PRO, customer, carrier, or invoice context before reading detail.",
+      "risk": "LOW",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "left navigation Loads",
+        "Loads submenu: View Loads",
+        "Loads submenu: Search Loads",
+        "Loads submenu: Build a Load",
+        "Loads submenu: AscendAI Load",
+        "Loads submenu: Load Templates",
+        "Loads submenu: Search Load Boards"
+      ],
+      "fields": [
+        {
+          "name": "load_id",
+          "label": "Load ID",
+          "selector_hint": "loads table load/reference column",
+          "required_for_read": true
+        },
+        {
+          "name": "customer",
+          "label": "Customer",
+          "selector_hint": "loads table customer column",
+          "required_for_read": false
+        },
+        {
+          "name": "carrier",
+          "label": "Carrier",
+          "selector_hint": "loads table carrier column",
+          "required_for_read": false
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "selector_hint": "loads table status column",
+          "required_for_read": false
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["search fake sandbox load", "open load detail", "read table values"],
+        "forbidden_actions": ["create real load", "dispatch load", "delete load", "send rate confirmation"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "load not found",
+        "multiple matching rows",
+        "search filters hide closed loads",
+        "session expires"
+      ],
+      "mock_tms_alignment": "Mirror with mock TMS index.html load table and stable load-id links.",
+      "observation_status": "NAV_OBSERVED",
+      "observation_evidence": [
+        "Computer Use observed sidebar link Loads -> ascendtms.com/loads",
+        "Observed Loads submenu routes: View Loads -> /loads, Search Loads -> /loads/search, Build a Load -> /loads/new, AscendAI Load, Load Templates -> /loads/new, Search Load Boards -> /loads/search/boards"
+      ]
+    },
+    {
+      "screen_id": "load_detail",
+      "name": "Load Detail",
+      "url_pattern": "https://ascendtms.com/*load*/*",
+      "navigation_path": ["Loads", "Open load row"],
+      "purpose": "Read shipment, carrier, customer, rate, document, and payable context for reconciliation.",
+      "risk": "LOW",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "load detail header",
+        "carrier/customer panels",
+        "rate or charges section",
+        "documents tab",
+        "notes/activity tab"
+      ],
+      "fields": [
+        {
+          "name": "load_id",
+          "label": "Load ID",
+          "selector_hint": "load detail header/reference",
+          "required_for_read": true
+        },
+        {
+          "name": "carrier",
+          "label": "Carrier",
+          "selector_hint": "carrier panel",
+          "required_for_read": true
+        },
+        {
+          "name": "customer",
+          "label": "Customer",
+          "selector_hint": "customer panel",
+          "required_for_read": true
+        },
+        {
+          "name": "rate_total",
+          "label": "Carrier Rate / Pay",
+          "selector_hint": "rate or carrier pay section",
+          "required_for_read": true
+        },
+        {
+          "name": "documents_present",
+          "label": "Documents",
+          "selector_hint": "documents tab rows",
+          "required_for_read": false
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read visible values", "open documents tab", "open notes tab"],
+        "forbidden_actions": ["save load changes", "dispatch load", "send documents", "upload document", "submit payable"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "rate labels differ by brokerage vs carrier mode",
+        "documents are lazy-loaded",
+        "closed loads hidden behind filters",
+        "session expires"
+      ],
+      "mock_tms_alignment": "Mirror with mock load detail pages and data-tms-field selectors.",
+      "observation_status": "SEED_PENDING_OBSERVATION",
+      "observation_evidence": []
+    },
+    {
+      "screen_id": "document_management",
+      "name": "Document Management",
+      "url_pattern": "https://ascendtms.com/*doc*",
+      "navigation_path": ["Doc Management"],
+      "purpose": "Read which supporting documents exist for a load and where uploads would eventually attach.",
+      "risk": "MEDIUM",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "left navigation Doc Management",
+        "document list/table",
+        "document type label",
+        "upload button"
+      ],
+      "fields": [
+        {
+          "name": "document_type",
+          "label": "Document Type",
+          "selector_hint": "document list type column",
+          "required_for_read": true
+        },
+        {
+          "name": "linked_load",
+          "label": "Load",
+          "selector_hint": "document list load/reference column",
+          "required_for_read": true
+        },
+        {
+          "name": "uploaded_at",
+          "label": "Uploaded",
+          "selector_hint": "document list uploaded date column",
+          "required_for_read": false
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read document rows", "open existing fake document preview"],
+        "forbidden_actions": ["upload document", "delete document", "send document", "rename document"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "document preview opens in a new tab",
+        "upload button near read-only controls",
+        "generic filenames hide document type",
+        "session expires"
+      ],
+      "mock_tms_alignment": "Mirror with mock load detail document rows and required-document checklist.",
+      "observation_status": "NAV_OBSERVED",
+      "observation_evidence": [
+        "Computer Use observed sidebar link Doc Management -> ascendtms.com/doc_management"
+      ]
+    },
+    {
+      "screen_id": "carrier_profile",
+      "name": "Carrier Profile",
+      "url_pattern": "https://ascendtms.com/*carrier*",
+      "navigation_path": ["Carriers"],
+      "purpose": "Read carrier identity, authority, contact, payment terms, and document quirks.",
+      "risk": "LOW",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "left navigation Carriers",
+        "carrier search",
+        "carrier profile header",
+        "authority fields"
+      ],
+      "fields": [
+        {
+          "name": "carrier_name",
+          "label": "Carrier Name",
+          "selector_hint": "carrier profile header",
+          "required_for_read": true
+        },
+        {
+          "name": "mc_number",
+          "label": "MC Number",
+          "selector_hint": "authority field MC",
+          "required_for_read": false
+        },
+        {
+          "name": "dot_number",
+          "label": "USDOT",
+          "selector_hint": "authority field DOT/USDOT",
+          "required_for_read": false
+        },
+        {
+          "name": "payment_terms",
+          "label": "Payment Terms",
+          "selector_hint": "payment or accounting section",
+          "required_for_read": false
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["search fake carrier", "read carrier values", "open carrier load history"],
+        "forbidden_actions": ["create carrier", "edit carrier", "change payment terms", "send carrier email"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "authority fields missing on trial account",
+        "carrier name duplicates",
+        "payment terms hidden under accounting tab",
+        "session expires"
+      ],
+      "mock_tms_alignment": "Mirror with MC/USDOT/SCAC and payment terms in mock TMS records.",
+      "observation_status": "NAV_OBSERVED",
+      "observation_evidence": [
+        "Computer Use observed sidebar link Carriers -> ascendtms.com/carriers"
+      ]
+    },
+    {
+      "screen_id": "accounting_payables",
+      "name": "Accounting / Carrier Payables",
+      "url_pattern": "https://ascendtms.com/*accounting*",
+      "navigation_path": ["Accounting"],
+      "purpose": "Read payable status, settlement/voucher status, invoice amount, expected amount, and duplicate warnings.",
+      "risk": "HIGH",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "left navigation Accounting",
+        "carrier payables queue",
+        "payable status",
+        "settlement or voucher reference"
+      ],
+      "fields": [
+        {
+          "name": "load_id",
+          "label": "Load ID",
+          "selector_hint": "payables table load/reference column",
+          "required_for_read": true
+        },
+        {
+          "name": "invoice_number",
+          "label": "Invoice Number",
+          "selector_hint": "payables table invoice column",
+          "required_for_read": true
+        },
+        {
+          "name": "billed_amount",
+          "label": "Billed Amount",
+          "selector_hint": "payables amount column",
+          "required_for_read": true
+        },
+        {
+          "name": "payable_status",
+          "label": "Payable Status",
+          "selector_hint": "payables status column",
+          "required_for_read": true
+        }
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read payable rows", "open fake payable detail"],
+        "forbidden_actions": ["approve payable", "submit payable", "pay carrier", "export payment file", "change amount"],
+        "human_confirmation_point": null,
+        "readback_verification_point": null
+      },
+      "failure_modes": [
+        "approve/pay buttons adjacent to read-only rows",
+        "paid items leave active queue",
+        "duplicate invoice warning appears modal",
+        "session expires"
+      ],
+      "mock_tms_alignment": "Mirror with payables.html queue, payable status, and ledger/archive distinction.",
+      "observation_status": "NAV_OBSERVED",
+      "observation_evidence": [
+        "Computer Use observed sidebar link Accounting -> ascendtms.com/accounting"
+      ]
+    }
+  ]
+}

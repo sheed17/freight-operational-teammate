@@ -1,0 +1,65 @@
+client_id: rasheed_first_design_partner
+company_name: Neyma Test Freight LLC
+simulation_role: first_supervised_design_partner
+
+operator:
+  name: Rasheed
+  role: owner/operator and controller/payables reviewer
+
+review:
+  primary_channel: slack
+  follow_up_tone: short_and_direct
+  packet_base_url: http://localhost:8000/packets
+  evidence_base_url: http://localhost:8000/evidence
+  thresholds:
+    critical_variance_amount: 100.00
+    medium_variance_amount: 25.00
+
+tms:
+  mode: mock_first
+  system_name: mock_tms_with_customer_system_mapping_later
+  browser_automation_allowed_against: mock_tms_only
+  live_write_enabled: false
+  tms_write_enabled: false
+  credentials_storage: none
+  session_policy: human_established_session_only
+  screen_map_path: configs/tms/rasheed_first_design_partner_screen_map.json
+
+pilot:
+  scope: carrier_invoice_reconciliation
+  supervised: true
+  live_sends_enabled: false
+  autonomous_tms_write_enabled: false
+  input_mode: synthetic_email_corpus
+  review_mode: slack_first
+  carrier_email_send_mode: draft_only_send_gate
+  success_metrics:
+    - email_ingestion_packet_link_accuracy
+    - email_ingestion_doc_type_accuracy
+    - slack_review_messages_created
+    - signed_action_applied
+    - callback_action_applied
+    - mock_tms_readback_verified
+    - mock_tms_write_verified
+    - no_real_tms_write
+
+delivery:
+  default_channel: slack
+  action_token_secret_env: NEYMA_DELIVERY_SECRET_RASHEED_FIRST
+  slack:
+    enabled: true
+    outbound_enabled: false
+    signing_secret_env: NEYMA_SLACK_SIGNING_SECRET_RASHEED_FIRST
+    bot_token_env: NEYMA_SLACK_BOT_TOKEN_RASHEED_FIRST
+    default_channel_id: C0BB8KG21J8
+    routing:
+      IMMEDIATE_PING: C0BB8KG21J8
+      CHANNEL_POST: C0BB8KG21J8
+      DIGEST_ONLY: C08M7N494M1
+  email:
+    enabled: true
+    sender: neyma@neyma-test-freight.test
+    to:
+      - rasheed@neyma-test-freight.test
+    action_base_url: http://localhost:8000/email/action
+    outbound_enabled: false

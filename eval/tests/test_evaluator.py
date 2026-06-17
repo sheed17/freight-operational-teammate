@@ -242,3 +242,40 @@ def test_buckets_partition_all_asserted_predictions(results_from_mock, mock_v1, 
     # every bucket's correct count never exceeds its n
     assert all(b.correct <= b.n for b in report.buckets)
     assert total_in_buckets > 0
+
+
+def test_high_confidence_gate_counts_predictions_between_085_and_090(config):
+    from extraction import ExtractionResult
+
+    result = ExtractionResult(
+        "one.pdf",
+        "OK",
+        data={
+            "invoice_number": {"value": "INV-1", "confidence": 0.91},
+            "carrier_name": {"value": "Carrier", "confidence": 0.91},
+            "load_or_pro_number": {"value": "WRONG", "confidence": 0.88},
+            "linehaul_amount": {"value": 100.0, "confidence": 0.91},
+            "fuel_surcharge": {"value": 0.0, "confidence": 0.91},
+            "accessorials": [],
+            "total_amount": {"value": 100.0, "confidence": 0.91},
+            "invoice_date": {"value": "2026-01-01", "confidence": 0.91},
+        },
+    )
+    truth = {
+        "one.pdf": {
+            "invoice_number": "INV-1",
+            "carrier_name": "Carrier",
+            "load_or_pro_number": "PRO-1",
+            "linehaul_amount": 100.0,
+            "fuel_surcharge": 0.0,
+            "accessorials": [],
+            "total_amount": 100.0,
+            "invoice_date": "2026-01-01",
+        }
+    }
+
+    report = evaluate([result], truth, config)
+
+    assert report.high_confidence.n == 7
+    assert report.high_confidence.correct == 6
+    assert any(item["field"] == "load_or_pro_number" for item in report.overconfidence)

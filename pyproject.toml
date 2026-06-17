@@ -19,6 +19,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+browser-agent = [
+    "browser-use[core]==0.13.1",
+]
 
 [build-system]
 requires = ["hatchling"]
