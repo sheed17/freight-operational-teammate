@@ -23,6 +23,7 @@ Read these before major planning or architecture work:
 - `docs/FIRST_DESIGN_PARTNER_RASHEED.md`
 - `docs/WHEN_DESIGN_PARTNER_DATA_ARRIVES.md`
 - `docs/BUILD_SUPERVISION_PROTOCOL.md`
+- `docs/OWNER_OPERATOR_READINESS.md`
 - `docs/SYNTHETIC_CORPUS.md`
 - `docs/MODEL_STRATEGY.md`
 - `docs/INTERNAL_DOGFOOD_PILOT.md`
@@ -36,8 +37,8 @@ ground.
 
 Stage 1 extraction still needs a real/client-approved document validation gate before live
 production claims, but core development should continue through the operational workflow spine.
-The next product slice is the internal one-week simulated pilot, then live Slack/Teams/email
-transport integration on top of the signed action intake, then design-partner deployment planning.
+The next product slice is the internal one-week simulated pilot, then live Slack transport
+integration on top of the signed action intake, then design-partner deployment planning.
 
 Built now:
 
@@ -89,9 +90,9 @@ Built now:
   Slack request signature (`v0` HMAC + 5-minute replay window), and feeds the button's signed token
   back into the signed action intake. Two independent HMAC layers (Slack request + Neyma action
   token). Offline-testable; real workspace posting stays behind an unexercised transport.
-- Email transport (`email_adapter.py`): renders a multipart (text + HTML) review email whose
-  buttons are signed action links, applies a clicked link through the same intake, and writes to a
-  gated local outbox (no real SMTP, no stored mail credentials).
+- Email transport (`email_adapter.py`): retained for local/dev review artifacts and callback-link
+  testing. Product review cards go to Slack only; email's real product role is inbound document
+  ingestion plus carrier-facing follow-up behind a separate send gate.
 - Mock TMS realism pass: carrier authority identifiers (MC#/USDOT#/SCAC), AP settlement/voucher
   concepts (settlement number, settlement status PENDING/APPROVED/ON_HOLD/SHORT_PAY/PAID, payment
   terms Quick Pay/Standard/Factored), fuel-surcharge basis, accessorial authorization terms
@@ -104,10 +105,10 @@ Built now:
   builds live transports per customer. Onboarding is a config + secrets runbook
   (`docs/CHANNEL_ONBOARDING.md`), not a code change.
 - Delivery dispatch layer (`delivery_dispatch.py` / `scripts/dispatch_review.py`) routes signed
-  review messages through customer Slack/email config in `DRY_RUN`, `LOCAL_OUTBOX`, or `LIVE` mode.
+  review messages through customer Slack config in `DRY_RUN`, `LOCAL_OUTBOX`, or `LIVE` mode.
   Every attempt is audited, token-bearing payloads are redacted in artifacts, and live Slack posting
   is blocked unless outbound is enabled, bot token resolves, and workflow-state tool permissions
-  allow the post. Live SMTP email is still not wired.
+  allow the post. Live user-review email is blocked by product contract.
 - Local signed-action callback bridge (`action_callback.py` /
   `scripts/run_action_callback_server.py`) for dogfood link-click testing. It serves
   `/email/action?token=...` and `POST /actions/signed` locally, applies actions only through
@@ -121,12 +122,12 @@ Built now:
 - Supervised design-partner deployment package: `docs/DESIGN_PARTNER_DEPLOYMENT_PACKAGE.md`,
   `configs/clients/design_partner_template.yaml`, `design_partner_package.py`, and
   `scripts/verify_design_partner_package.py`. The verifier requires a green internal pilot ledger
-  and safe defaults: live sends off, Slack/email outbound off, TMS writes off, human-established
+  and safe defaults: live sends off, Slack outbound off, user-review email off, TMS writes off, human-established
   TMS session policy, and env-var-only secrets.
 - Rasheed first-design-partner runner: `configs/clients/rasheed_first_design_partner.yaml`,
   `docs/FIRST_DESIGN_PARTNER_RASHEED.md`, `first_design_partner.py`,
   `scripts/verify_first_design_partner_slack.py`, and `scripts/run_first_design_partner.py`.
-  Default mode uses synthetic email ingestion, Slack-shaped local dispatch, local email outbox,
+  Default mode uses synthetic email ingestion, Slack-shaped local dispatch, local review artifacts,
   signed action callback, daily summaries, audits, and mock TMS verification. Live Slack requires
   explicit `LIVE_SLACK` mode plus real Slack/action-token env vars and a green Slack preflight.
   Carrier sends and real TMS writes stay disabled.
@@ -143,6 +144,22 @@ Built now:
   extraneous and routed to a human. Low-confidence / unlinked / extraneous / missing-required all set
   `needs_human`. Scored against hidden truth (link accuracy, doc-type accuracy, noise rejection,
   missing-doc detection). Deterministic, no model spend.
+- Phase A mailbox intake V0 (`mailbox_intake.py` / `scripts/run_mailbox_intake.py`): watches a
+  controlled local inbox directory of real `.eml` files, preserves raw source emails, dedupes by
+  SHA-256 and `Message-ID`, records sender/subject/date/thread/attachments/load hints, and
+  reassembles all preserved messages for each touched load through the existing packet ingestion
+  pipeline. This is the local dogfood version of "the agent sits in the inbox." It never sends email
+  and does not make money decisions; real Gmail/IMAP/API watchers should feed the same contract
+  later.
+- Mailbox-to-workflow orchestration (`mailbox_workflow.py` /
+  `scripts/run_mailbox_workflow.py`): takes local inbound `.eml` intake through durable workflow
+  runs, deterministic reconciliation, packet-ingestion safety flags, review payload creation, and
+  signed Slack-shaped delivery artifacts. Idempotency is load/invoice packet scoped so trickle-in
+  emails update the same operational run instead of creating duplicate money work. Packet flags such
+  as missing POD or extraneous/wrong-load attachments force human review even when the dollars
+  match. Unlinked/ambiguous inbound emails become reviewable workflow items instead of silently
+  staying in storage. Review evidence is based on the mailbox packet that actually arrived, not only
+  on source-of-truth fixture documents. Raw action tokens are redacted in reports/audits by default.
 - Stage 7 TMS write path V0 (`tms_write.py` / `scripts/enter_tms_payable.py`): enters an
   already-approved carrier payable into a mock TMS ledger with **confirm-before-submit** (prepare
   writes nothing; submit refuses without confirmation), **verify-by-readback** (a run only reaches
@@ -154,9 +171,10 @@ Built now:
   `FAILED`). Deterministic Python still owns the money; this only enters an approved amount. No
   stored credentials.
 - Dogfood pilot orchestration now runs the synthetic inbound-email corpus, packet ingestion scoring,
-  review/action flow, mock TMS readback, and a mock-only TMS payable ledger-entry drill in one
-  report. The write drill is local auto-confirmed after a signed action and verifies against the
-  mock ledger, not against a real TMS or browser UI.
+  mailbox-to-workflow processing, review/action flow, mock TMS readback, and a mock-only TMS payable
+  ledger-entry drill in one report. The operational runs now come from the local inbox path instead
+  of a parallel corpus-file workflow. The write drill is local auto-confirmed after a signed action
+  and verifies against the mock ledger, not against a real TMS or browser UI.
 - AscendTMS reference mapping plan is documented. It is a realism reference for TMS screen concepts
   and browser-agent read-only exploration, not the assumed production integration and not a
   live-write target.
@@ -167,12 +185,13 @@ Built now:
 
 Not built yet:
 
-- Mailbox watcher / live email thread ingestion (the V0 ingests local `.eml` fixtures).
+- Real Gmail/IMAP/API mailbox watcher and live email thread ingestion (local controlled mailbox
+  intake over `.eml` is built).
 - Vision/content-based document classifier (V0 classifies on filename/subject signals).
 - Real/sandbox TMS **write** via the browser-use execution layer (the mock-TMS write path with
   confirm-before-submit / readback / idempotency is built; browser-use operates the screen later).
 - POD, BOL, lumper, accessorial-backup, rate-con, and carrier-packet extraction schemas.
-- Real Slack workspace posting / SMTP send (live network egress) on top of the signed transports.
+- Real Slack workspace posting on top of the signed transports.
 - Actual design-partner deployment execution using a real partner config, partner docs, and partner
   review channel.
 - Customer-specific screen maps and read-only browser-use exploration against the customer's actual
@@ -219,6 +238,8 @@ Generate the realistic synthetic freight corpus:
 ```bash
 .venv/bin/python scripts/generate_realistic_corpus.py --loads 18 --seed 42
 .venv/bin/python eval/run_corpus_eval.py --mock-from-truth
+.venv/bin/python scripts/run_mailbox_intake.py --text
+.venv/bin/python scripts/run_mailbox_workflow.py --text
 .venv/bin/python scripts/run_reconciliation.py
 .venv/bin/python scripts/run_workflow.py --reset
 .venv/bin/python scripts/run_review.py --record-audit --age-hours 48
@@ -335,5 +356,11 @@ architect verdict:
 - `.codex/agents/phase-code-reviewer.md`
 - `.claude/agents/phase-code-reviewer.md`
 
-The phase code reviewer checks code/tests/docs/generated outputs and hands findings back to the
-principal architect supervisor.
+Then run the owner-operator reviewer before the principal architect verdict:
+
+- `.codex/agents/owner-operator-reviewer.md`
+- `.claude/agents/owner-operator-reviewer.md`
+
+The phase code reviewer checks code/tests/docs/generated outputs. The owner-operator reviewer
+checks whether the slice would actually help a freight owner/controller in supervised daily
+operations. Both hand findings back to the principal architect supervisor.

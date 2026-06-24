@@ -196,33 +196,49 @@ def extract_document(
     except Exception as exc:  # noqa: BLE001
         return ExtractionResult(filename, "FAILED", error=f"render error: {exc}", model=model)
 
+    # Provider-aware, mirroring the runtime extractor. EVAL_MODEL still wins (bakeoffs); otherwise
+    # OpenAI uses OPENAI_MODEL and Anthropic uses the resolved default.
+    provider = os.getenv("EXTRACTION_PROVIDER", "anthropic").lower()
+    if provider == "openai" and not os.getenv("EVAL_MODEL"):
+        model = os.getenv("OPENAI_MODEL", "gpt-4o")
+
     try:
         import instructor
-        from anthropic import Anthropic
 
-        client = instructor.from_anthropic(Anthropic())
         response_model = build_extraction_model(config)
+        prompt = _build_prompt(config)
+        encoded = [base64.standard_b64encode(png).decode("ascii") for png in pages]
 
-        content: list[dict] = [{"type": "text", "text": _build_prompt(config)}]
-        for png in pages:
-            content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": base64.standard_b64encode(png).decode("ascii"),
-                    },
-                }
+        if provider == "openai":
+            from openai import OpenAI
+
+            client = instructor.from_openai(OpenAI())
+            content: list[dict] = [{"type": "text", "text": prompt}]
+            for data in encoded:
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}})
+            obj = client.chat.completions.create(
+                model=model,
+                max_tokens=2048,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": content},
+                ],
+                response_model=response_model,
             )
+        else:
+            from anthropic import Anthropic
 
-        obj = client.chat.completions.create(
-            model=model,
-            max_tokens=2048,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content}],
-            response_model=response_model,
-        )
+            client = instructor.from_anthropic(Anthropic())
+            content = [{"type": "text", "text": prompt}]
+            for data in encoded:
+                content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}})
+            obj = client.chat.completions.create(
+                model=model,
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": content}],
+                response_model=response_model,
+            )
     except Exception as exc:  # noqa: BLE001 — surface as FAILED, never crash the loop
         return ExtractionResult(
             filename, "FAILED", error=f"{type(exc).__name__}: {exc}", pages=len(pages), model=model

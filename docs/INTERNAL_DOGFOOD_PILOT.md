@@ -35,7 +35,7 @@ Company: Neyma Test Freight LLC
 Team size: 12 employees
 Role in pilot: small freight brokerage / trucking operation
 Workflow owner: Rasheed acting as controller / payables reviewer
-Primary channel: local Slack/Teams/email simulator first, real Slack later
+Primary channel: local Slack-shaped simulator first, real Slack later
 TMS: mock TMS first, browser/API adapter later
 Invoice volume: 50-150 invoice packets/week simulated
 ```
@@ -73,8 +73,9 @@ The current local pilot runner should prove the operational loop in one command:
 ```text
 synthetic freight email corpus
 → inbound .eml ingestion and packet/link scoring
+→ local mailbox-to-workflow processing
 → invoice/rate/load reconciliation
-→ review cards and packet pages
+→ Slack-shaped review cards and packet pages
 → signed action intake
 → local callback bridge for email/action-link clicks
 → follow-up draft behind send gate
@@ -82,6 +83,20 @@ synthetic freight email corpus
 → mock-only payable entry drill
 → daily summary
 ```
+
+The pilot's operational workflow runs must come from the mailbox path. Standalone ingestion
+scoring is still useful gate evidence, but it is not the source of review cards or delivery
+messages.
+
+The multi-day ledger must fail closed unless each day proves:
+
+- mailbox messages were scanned and packet runs were created;
+- mailbox review and delivery counts match the operational workflow output;
+- missing required docs, extraneous/wrong-load docs, and duplicate invoices became reviewable;
+- the request-backup loop was exercised;
+- generated delivery artifacts, including mailbox workflow reports, contain only redacted action
+  token fingerprints;
+- mock TMS write verification remains mock-only with no real TMS write.
 
 ## TMS Simulation Strategy
 
@@ -205,8 +220,13 @@ Dispute
 
 ## Minimal Packet Detail Page
 
-Slack/Teams/email is the notification and quick-action layer. The packet detail page is the
+Slack is the notification and quick-action layer. The packet detail page is the
 evidence canvas.
+
+The generated `site/operator/index.html` page is a local-only dogfood inspection index. It helps
+Rasheed inspect mailbox counts, safety cases, review cards, signed-message summaries, and artifact
+links after a pilot run. It is not a customer-facing dashboard and should not become the routine
+operator surface.
 
 The first packet page should show:
 
@@ -336,7 +356,7 @@ Neyma is ready to show a design partner only after the internal pilot proves:
 9. Browser-read/readback tests against mock TMS. **Built.**
 10. Browser-use/browser-use adapter skeleton against mock TMS. **Built.**
 11. Tool permission registry. **Built.**
-12. Channel-neutral Slack/Teams/email delivery adapter with signed action intake. **Built.**
+12. Channel-neutral Slack-first delivery adapter with signed action intake. **Built.**
     Renders review payloads into channel-neutral messages with HMAC-signed, expiring, single-use
     action tokens; verifies the signature, applies the action through the existing review action
     intake (workflow state cannot be bypassed), mutates the message state text, triggers the
@@ -344,12 +364,12 @@ Neyma is ready to show a design partner only after the internal pilot proves:
     fingerprints, and the dogfood runner advances review state through signed actions rather than
     a direct local mutation path.
 12a. Slack transport (Block Kit + `v0` request-signature verification + interactive intake) and
-    email transport (multipart MIME + signed action links + gated local outbox). **Built.** Both
-    sit on the signed intake; real workspace posting / SMTP send is not wired yet.
+    local email-link artifact support (multipart MIME + signed action links + gated local outbox).
+    **Built.** Both sit on the signed intake; real Slack workspace posting is gated.
 12b. Mock TMS realism pass: MC#/USDOT#/SCAC, settlement number and AP voucher status
     (PENDING/APPROVED/ON_HOLD/SHORT_PAY/PAID), payment terms, fuel basis, accessorial terms, and a
     required-document checklist. **Built** (additive; read-adapter contract preserved).
-12c. Delivery dispatch layer for Slack/email route selection, `DRY_RUN`/`LOCAL_OUTBOX`/`LIVE`
+12c. Delivery dispatch layer for Slack route selection, `DRY_RUN`/`LOCAL_OUTBOX`/`LIVE`
     modes, audited dispatch attempts, token-redacted artifacts, and live Slack outbound gating.
     **Built.**
 12d. Local signed-action callback server for dogfood link-click testing. **Built.** Serves

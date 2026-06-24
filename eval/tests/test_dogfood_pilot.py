@@ -1,6 +1,7 @@
 """Tests for the local internal dogfood pilot runner."""
 
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -22,6 +23,15 @@ def test_dogfood_pilot_runner_writes_core_artifacts(tmp_path):
     assert report["email_ingestion"]["packet_link_accuracy"] == 1.0
     assert report["email_ingestion"]["doc_type_accuracy"] == 1.0
     assert report["email_ingestion"]["noise_rejection_rate"] == 1.0
+    assert report["mailbox_workflow"]["scanned"] >= 8
+    assert report["mailbox_workflow"]["new_messages"] >= 8
+    assert report["mailbox_workflow"]["packet_runs"] == 8
+    assert report["mailbox_workflow"]["workflow_runs_touched"] == 8
+    assert report["mailbox_workflow"]["review_payloads"] == report["review_payloads"]
+    assert report["mailbox_workflow"]["delivery_messages"] == report["delivery_messages"]
+    assert report["mailbox_safety"]["missing_required_reviews"] >= 1
+    assert report["mailbox_safety"]["extraneous_reviews"] >= 1
+    assert report["mailbox_safety"]["duplicate_reviews"] >= 1
     assert report["signed_action_applied"] is True
     assert report["secondary_signed_action_applied"] is True
     assert report["local_callback_action_applied"] is True
@@ -46,6 +56,9 @@ def test_dogfood_pilot_runner_writes_core_artifacts(tmp_path):
     assert report["sample_tms_write_drill"]["ledger_readback"]["amount"] == "3334.50"
     assert report["sample_tms_write_drill"]["post_entry_readback"]["payable"] is None
     assert Path(report["artifacts"]["email_ingestion"]).is_relative_to(workspace)
+    assert Path(report["artifacts"]["mailbox_workflow"]).is_relative_to(workspace)
+    assert Path(report["artifacts"]["mailbox_state"]).is_relative_to(workspace)
+    assert Path(report["artifacts"]["operator_console"]).is_relative_to(workspace)
     assert Path(report["artifacts"]["packet_site"]).is_relative_to(workspace)
     assert (workspace / "synthetic_corpus" / "ground_truth" / "carrier_invoice_extraction.json").exists()
     assert "Approved expected amount $3334.50 by Rasheed" in report["signed_action_mutation"]
@@ -56,6 +69,22 @@ def test_dogfood_pilot_runner_writes_core_artifacts(tmp_path):
     assert "Month to date:" in report["daily_summary_text"]
     messages = json.loads(Path(report["artifacts"]["delivery_messages"]).read_text(encoding="utf-8"))
     assert messages[0]["actions"][0]["signed_token"].startswith("redacted:")
+    mailbox_report = json.loads(Path(report["artifacts"]["mailbox_workflow"]).read_text(encoding="utf-8"))
+    assert mailbox_report["delivery_messages"][0]["actions"][0]["signed_token"].startswith("redacted:")
+    operator_html = Path(report["artifacts"]["operator_console"]).read_text(encoding="utf-8")
+    assert "Dogfood Operator Console" in operator_html
+    assert "Mailbox Workflow" in operator_html
+    assert "Safety Cases" in operator_html
+    assert "Open packet" in operator_html
+    assert "signed_token" not in operator_html
+    assert "token=" not in operator_html
+    assert "eyJ" not in operator_html
+    operator_path = Path(report["artifacts"]["operator_console"])
+    for href in re.findall(r'href="([^"]+)"', operator_html):
+        if href.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        target = (operator_path.parent / href).resolve()
+        assert target.exists(), f"operator console link does not resolve: {href}"
     for artifact in report["artifacts"].values():
         if artifact is not None:
             assert Path(artifact).exists()

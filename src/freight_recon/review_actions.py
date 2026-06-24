@@ -50,7 +50,7 @@ class ReviewActionResult(BaseModel):
 def apply_review_action(store: WorkflowStore, request: ReviewActionRequest) -> ReviewActionResult:
     """Apply one human review action to a workflow run.
 
-    This is the local dogfood action intake. Slack/Teams/email adapters should call this after
+    This is the local dogfood action intake. Slack/Teams adapters should call this after
     signature verification instead of mutating workflow state directly.
     """
     run = store.get_run(request.run_id)

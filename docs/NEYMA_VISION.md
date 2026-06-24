@@ -40,7 +40,8 @@ customer's existing workspace:
 - Reads email threads and attachments.
 - Uses APIs where available.
 - Uses bounded browser/session agents where APIs are unavailable.
-- Notifies and asks for approval through Slack, Teams, or email.
+- Asks humans for approval through Slack as the headless UI.
+- Uses outbound email only for carrier-facing follow-ups after approval.
 - Writes back only approved actions after verification.
 - Sends summaries, exceptions, and requests for help in the channels the team already checks.
 
@@ -137,7 +138,8 @@ admin:
 3. **Structured data everywhere.** Documents, emails, decisions, and actions become typed records.
 4. **Deterministic money logic.** LLMs read and draft; Python rules compare money and state.
 5. **Human control by default.** Humans approve consequential actions until real data proves trust.
-6. **Operate where the customer already works.** Email, Slack/Teams, TMS, portals, and PDFs.
+6. **Operate where the customer already works.** Email for inbound documents, Slack for human
+   review, TMS/portals/PDFs for execution and evidence.
    Do not require a dashboard for the core workflow unless one becomes necessary later.
 7. **State controls tools.** The agent only gets access to tools appropriate for the current
    workflow state, customer permissions, and approval level.

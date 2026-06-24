@@ -1,12 +1,12 @@
 """Channel-neutral delivery adapter with signed action intake.
 
 This module renders typed :class:`~freight_recon.review.ReviewPayload` cards into
-channel-neutral deliverable messages (Slack/Teams/email later) and accepts human actions
+channel-neutral deliverable messages (Slack now; other headless UIs later) and accepts human actions
 back through signed, expiring, single-use action tokens.
 
 Design rules for this slice:
 
-- It stays channel-neutral. Slack/Teams/email transports come later and should only render
+- It stays channel-neutral. Slack/Teams transports should only render
   :class:`DeliveryMessage` and post back :class:`SignedActionToken` strings. The workflow core
   must not learn about channel-specific blocks/buttons.
 - Action intake never mutates workflow state directly. It verifies the signature, then calls the
@@ -112,7 +112,7 @@ class DeliveryActionButton(BaseModel):
 
 
 class DeliveryMessage(BaseModel):
-    """A channel-neutral review message ready to render into Slack/Teams/email/CLI."""
+    """A channel-neutral review message ready to render into Slack/Teams/CLI."""
 
     run_id: int
     channel: DeliveryChannel = DeliveryChannel.LOCAL
@@ -297,7 +297,7 @@ def record_delivery_message(store: WorkflowStore, message: DeliveryMessage) -> N
 
 
 def render_delivery_message(message: DeliveryMessage) -> str:
-    """Render a compact plain-text view for CLI/email fallback."""
+    """Render a compact plain-text view for CLI/local artifacts."""
     lines = [
         message.title,
         f"State: {message.status_banner}",

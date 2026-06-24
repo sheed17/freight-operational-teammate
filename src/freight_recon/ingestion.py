@@ -27,6 +27,7 @@ import email
 import hashlib
 import re
 from email.message import EmailMessage as MimeMessage
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -66,6 +67,11 @@ class ParsedEmail(BaseModel):
     message_id: str | None = None
     from_addr: str | None = None
     to_addr: str | None = None
+    date_header: str | None = None
+    email_timestamp: str | None = None
+    in_reply_to: str | None = None
+    references: list[str] = Field(default_factory=list)
+    thread_key: str | None = None
     subject: str = ""
     attachments: list[ParsedAttachment] = Field(default_factory=list)
 
@@ -118,8 +124,10 @@ class LoadIndex:
 
 def parse_eml(source: str | Path) -> ParsedEmail:
     """Parse a .eml file (path) or raw MIME string into a typed :class:`ParsedEmail`."""
-    raw = Path(source).read_text(encoding="utf-8") if _looks_like_path(source) else str(source)
-    mime: MimeMessage = email.message_from_string(raw)
+    if _looks_like_path(source):
+        mime: MimeMessage = email.message_from_bytes(Path(source).read_bytes())
+    else:
+        mime = email.message_from_string(str(source))
     attachments: list[ParsedAttachment] = []
     for part in mime.walk():
         if part.get_content_disposition() != "attachment":
@@ -137,6 +145,11 @@ def parse_eml(source: str | Path) -> ParsedEmail:
         message_id=mime.get("Message-ID"),
         from_addr=mime.get("From"),
         to_addr=mime.get("To"),
+        date_header=mime.get("Date"),
+        email_timestamp=_parse_email_timestamp(mime.get("Date")),
+        in_reply_to=mime.get("In-Reply-To"),
+        references=_split_message_id_header(mime.get("References")),
+        thread_key=_thread_key(mime),
         subject=mime.get("Subject", ""),
         attachments=attachments,
     )
@@ -334,3 +347,36 @@ def _looks_like_path(source: str | Path) -> bool:
     if isinstance(source, Path):
         return True
     return "\n" not in source and source.lower().endswith(".eml")
+
+
+def _parse_email_timestamp(date_header: str | None) -> str | None:
+    if not date_header:
+        return None
+    try:
+        parsed = parsedate_to_datetime(date_header)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    return parsed.isoformat()
+
+
+def _split_message_id_header(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return re.findall(r"<[^>]+>", value)
+
+
+def _thread_key(mime: MimeMessage) -> str | None:
+    references = _split_message_id_header(mime.get("References"))
+    if references:
+        return references[0]
+    in_reply_to = mime.get("In-Reply-To")
+    if in_reply_to:
+        ids = _split_message_id_header(in_reply_to)
+        return ids[0] if ids else in_reply_to.strip()
+    message_id = mime.get("Message-ID")
+    if message_id:
+        return message_id.strip()
+    subject = mime.get("Subject", "")
+    if subject:
+        return f"subject:{re.sub(r'^(re|fwd?):\\s*', '', subject.strip().lower())}"
+    return None

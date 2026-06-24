@@ -46,6 +46,8 @@ Use [When Design Partner Data Arrives](WHEN_DESIGN_PARTNER_DATA_ARRIVES.md) once
 provides real docs and workflow details.
 Use [Build Supervision Protocol](BUILD_SUPERVISION_PROTOCOL.md) for implementation/review flow
 so every build slice is checked by a principal-architect lens before being called done.
+Use [Owner-Operator Readiness](OWNER_OPERATOR_READINESS.md) so every build slice is also judged
+against whether it would help a real freight owner/controller in supervised daily operations.
 Use [Synthetic Freight Corpus](SYNTHETIC_CORPUS.md) when real partner documents are unavailable;
 the goal is realistic public-template structure plus fully synthetic data and hidden truth.
 Use [Internal Dogfood Pilot](INTERNAL_DOGFOOD_PILOT.md) before any real design-partner
@@ -141,10 +143,26 @@ Current V0:
   to link and is flagged, never contaminating the packet. Scored against hidden truth (link
   accuracy, doc-type accuracy, noise rejection, missing-doc detection). Deterministic, no model
   spend; a vision classifier slots in behind the `DocClassification` contract later.
+- `src/freight_recon/mailbox_intake.py` + `scripts/run_mailbox_intake.py` — controlled mailbox
+  intake V0 for Phase A owner-readiness. It watches a local inbound directory of real `.eml` files,
+  preserves raw messages, dedupes by content hash and `Message-ID`, records sender/subject/date/
+  thread/attachment/load-hint metadata, and reprocesses all preserved messages for each touched
+  load through the existing packet ingestion pipeline. This proves the "agent waits in the inbox"
+  shape without Gmail/IMAP secrets; real mailbox transports should feed the same contract later.
+- `src/freight_recon/mailbox_workflow.py` + `scripts/run_mailbox_workflow.py` — mailbox-to-workflow
+  orchestration V0. It turns local inbound packet runs into durable workflow runs, deterministic
+  reconciliation outcomes, human review payloads, and signed Slack-shaped delivery messages. Packet
+  ingestion findings are first-class safety signals: missing POD, extraneous attachments, and
+  wrong-load/noise flags force review even if the dollar reconciliation is clean. Unlinked inbound
+  emails become review items, and review evidence points at the mailbox packet that actually
+  arrived.
 
 Build:
 
 - Email/PDF attachment ingestion from local fixtures first. **V0 built (local `.eml`).**
+- Controlled mailbox intake that preserves/dedupes/reprocesses inbound `.eml`. **V0 built.**
+- Mailbox-to-workflow bridge that creates/updates packet-scoped workflow runs and review delivery
+  artifacts. **V0 built.**
 - Document classifier for invoice, POD, BOL, lumper receipt, accessorial backup, rate con,
   fuel receipt, manifest, customer invoice draft inputs, carrier packet docs, and unknown.
 - Per-document-type extraction configs.
@@ -160,6 +178,10 @@ Verification:
 - Fixture packet tests.
 - Eval report by document type.
 - Unknown-document safe handling.
+- Mailbox intake tests for new messages, duplicates, trickle-in packet updates, and CLI smoke.
+- Mailbox workflow tests for review/delivery creation, retry idempotency, packet-flag review
+  routing, requested-backup refresh, duplicate stability, unlinked-email surfacing, mailbox evidence
+  links, token redaction, and CLI smoke.
 
 ## Stage 3 — Deterministic Reconciliation Engine
 
@@ -315,16 +337,17 @@ Current V2:
   Persisted/audited/local-rendered messages redact tokens to fingerprints; raw tokens are only for
   live outbound buttons or explicit `--show-tokens` local testing. Production signing fails closed
   unless a real delivery secret is configured.
-- Slack + email transports V0: `src/freight_recon/slack_adapter.py` renders Block Kit, verifies the
+- Slack transport V0 plus local email-link fixture support: `src/freight_recon/slack_adapter.py` renders Block Kit, verifies the
   Slack `v0` request signature (HMAC + 5-minute replay window), and feeds the button token into the
-  signed intake; `src/freight_recon/email_adapter.py` renders multipart review emails with signed
-  action links and writes to a gated local outbox. Two independent HMAC layers (channel request +
-  Neyma action token). Real workspace posting / SMTP send is not wired yet.
+  signed intake; `src/freight_recon/email_adapter.py` is retained for local/dev review artifacts and
+  callback-link tests. Product review goes to Slack; carrier-facing email follow-up is a separate
+  send-gated workflow. Two independent HMAC layers (Slack request + Neyma action token). Real
+  workspace posting is gated.
 - Delivery dispatch V0: `src/freight_recon/delivery_dispatch.py` and `scripts/dispatch_review.py`
-  route review messages through per-customer Slack/email config in `DRY_RUN`, `LOCAL_OUTBOX`, or
+  route review messages through per-customer Slack config in `DRY_RUN`, `LOCAL_OUTBOX`, or
   `LIVE` mode. Dispatch attempts are audited, token-bearing payloads are redacted in logs/artifacts,
   live Slack posting is blocked unless outbound is enabled and tool permissions allow it, and live
-  SMTP email remains blocked until a gated SMTP transport exists.
+  user-review email is blocked by product contract.
 - Mock TMS realism: `src/freight_recon/mock_tms.py` now models carrier authority (MC#/USDOT#/SCAC),
   AP settlement/voucher status (PENDING/APPROVED/ON_HOLD/SHORT_PAY/PAID), payment terms, fuel basis,
   accessorial authorization terms, and a required-document checklist — additive, preserving the
@@ -332,7 +355,7 @@ Current V2:
 
 Build:
 
-- Slack first, email fallback later.
+- Slack is the headless review UI; no user review email fallback.
 - Review cards for extraction confidence, reconciliation variance, missing docs, and duplicates.
 - Approve, edit, dispute, request docs, and mark not relevant.
 - Signed webhook verification.
@@ -375,8 +398,8 @@ Current command:
 Next implementation slice:
 
 - Run the internal one-week simulated pilot over the signed delivery + dispatch flow, then wire the
-  real Slack app/callback endpoint and decide whether email stays local-outbox or gets a gated SMTP
-  transport.
+  real Slack app/callback endpoint. Add carrier-facing email send only through its own follow-up
+  gate, not as a user review channel.
 
 ## Stage 6 — TMS Read Adapter
 
@@ -491,6 +514,7 @@ Exit gate:
 - One real customer workflow runs for one week under supervision.
 - Every unhappy path lands in a safe state.
 - Customer says the workflow saves time or catches errors.
+- Owner-operator reviewer says the workflow is useful enough for daily supervised use.
 
 Verification:
 

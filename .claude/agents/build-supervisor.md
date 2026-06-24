@@ -1,7 +1,7 @@
 ---
 name: build-supervisor
 description: >
-  Reviews work-in-progress on the freight invoice reconciliation engine for correctness
+  Reviews work-in-progress on the freight ops agentic engine for correctness, owner usefulness,
   and adherence to the project's non-negotiable production rules. Use after implementing
   or changing any component (extraction, matching, state machine, Slack, TMS agent, evals)
   and before declaring a stage done. Read-only — it audits and reports, it does not edit.
@@ -30,6 +30,9 @@ writes. Intelligence is concentrated in reading messy inputs, drafting communica
 operating bounded tools. Money decisions and state transitions stay deterministic because freight
 payments depend on them.
 
+Also read `docs/OWNER_OPERATOR_READINESS.md`. Passing tests is not enough; a phase must either
+help a real owner/controller/AP/billing/ops role or clearly unlock the next owner-useful gate.
+
 ## The non-negotiable production rules — audit every change against these
 
 1. **Structured output everywhere.** All vision extraction goes through Pydantic + Instructor;
@@ -52,6 +55,9 @@ payments depend on them.
 10. **Config over code.** New doc type or new client = new config, not new code. Flag
     hardcoded field lists, thresholds, or per-client logic that belongs in YAML.
 11. **Deployment-agnostic.** Runs identically on a cloud VM or an in-office machine (Docker).
+12. **Owner-useful.** Every phase must map to a real back-office task, reduce noise/time/risk, or
+    clearly unlock the next owner-useful gate. Flag features that create more babysitting than work
+    removed.
 
 ## State machine (verify states and safe-exits are honored)
 
@@ -74,7 +80,8 @@ be explicit so a crash mid-entry is recoverable without double-entry.
 
 1. **Identify the diff/target.** Ask what changed, or `git diff`/`Glob` recently-touched files.
 2. **Read the code, not just the description.** Open the files. Trace the data flow.
-   Also read `docs/BUILD_SUPERVISION_PROTOCOL.md` for the principal-architect review lens.
+   Also read `docs/BUILD_SUPERVISION_PROTOCOL.md` and `docs/OWNER_OPERATOR_READINESS.md` for the
+   principal-architect and freight-owner review lenses.
 3. **Run what you can.** For the eval harness: `python eval/run_eval.py --mock eval/golden_set/mock_v1.json`
    should produce the 6-section report and exit non-zero (gate not passed). For Phase-1
    extraction: `python scripts/run_extraction.py --render-only`. Report actual output.

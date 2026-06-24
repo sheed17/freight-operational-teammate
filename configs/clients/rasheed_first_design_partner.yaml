@@ -56,10 +56,22 @@ delivery:
       IMMEDIATE_PING: C0BB8KG21J8
       CHANNEL_POST: C0BB8KG21J8
       DIGEST_ONLY: C08M7N494M1
+  # Slack is the headless UI: review/approval/evidence go to Slack ONLY. Email is NOT a review
+  # channel for the user. Email's real role is inbound intake (the agent lives in the inbox and
+  # ingests documents) plus carrier-facing follow-ups — both separate from this delivery block.
   email:
-    enabled: true
-    sender: neyma@neyma-test-freight.test
+    enabled: false                 # do not send review cards to the user's email
+    sender: no-review-email@neyma.local
     to:
-      - rasheed@neyma-test-freight.test
+      - rasheed@neyma.local        # local/dev artifact only if this channel is ever re-enabled
     action_base_url: http://localhost:8000/email/action
     outbound_enabled: false
+
+carrier_follow_up_email:
+  mode: draft_only_send_gate
+  purpose: carrier-facing dispute and missing-backup emails only
+  live_send_enabled: false
+  from_env: NEYMA_CARRIER_FOLLOW_UP_FROM
+  smtp_host_env: NEYMA_CARRIER_FOLLOW_UP_SMTP_HOST
+  smtp_user_env: NEYMA_CARRIER_FOLLOW_UP_SMTP_USERNAME
+  smtp_password_env: NEYMA_CARRIER_FOLLOW_UP_SMTP_PASSWORD

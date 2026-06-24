@@ -23,11 +23,38 @@ The primary interface should be the customer's existing workspace, not a new por
 ```text
 email/PDF/TMS/portal input
 → Neyma works in the background
-→ Slack/Teams/email exception or approval request
+→ Slack exception or approval request
 → human approves/edits/disputes in-channel
 → Neyma executes approved action by API/browser where appropriate
 → Neyma verifies and posts completion summary
 ```
+
+## Channel Roles (canonical)
+
+Neyma lives **inside** the customer's existing systems (the Ventus pattern). Each channel has one
+distinct role; do not conflate them:
+
+- **Email = where the agent lives and waits (inbound only).** Carrier invoices, PODs, accessorial
+  backup, and "all the information" arrive by email. Neyma sits in the inbox, ingests every document
+  (classify → extract → link to load), and processes it. Email is the agent's inbound workspace —
+  it is **not** a place Neyma notifies the user. (Outbound email is reserved for *carrier-facing*
+  follow-ups — dispute / backup-request emails — never for user review notifications.)
+- **Slack = the headless UI.** There is no dashboard; Slack is the user's entire window into the
+  system. Review/approval/evidence happen here and **only** here — review cards with money-specific
+  buttons and evidence links; clicking applies the decision through the signed action intake.
+- **Browser-use agent = execution.** Once the user approves in Slack, the agent operates the
+  customer's TMS screen like a human, behind the adapter boundary — read-only first, then gated
+  write (confirm-before-submit + verify-by-readback).
+
+The canonical operator loop is therefore:
+
+```text
+agent lives in EMAIL (ingest every inbound doc: classify + extract + link) → deterministic reconciliation
+→ surface only what needs a human to SLACK (the headless UI) → user approves
+→ browser-use EXECUTES in the TMS → verify-by-readback → audit → done
+```
+
+Review notifications go to Slack only. The user is never emailed a review card.
 
 ## Orchestration And Tooling Stack
 
@@ -261,9 +288,9 @@ Corrections become:
 Default surfaces:
 
 - Slack messages and interactive webhooks.
-- Email approvals or reply-based workflows when Slack is not available.
 - Daily summaries.
 - Escalation messages for missing documents, failed sessions, and uncertain matches.
+- Carrier-facing follow-up drafts/sends only after an approved dispute or backup request.
 
 A web dashboard is optional later for admin, audit search, or configuration. It is not the core
 operator experience.
@@ -272,7 +299,7 @@ operator experience.
 
 Adapters execute approved actions:
 
-- Slack/email messages.
+- Slack messages.
 - TMS read.
 - TMS write.
 - Document upload.
@@ -293,8 +320,10 @@ behind Neyma's adapter boundary. Keep the role names separate from the implement
   adapter, or fixture.
 - `tms_write_adapter` may be an API client, `browser-use/browser-use` agent, Playwright/mock
   adapter, or stub.
-- `email_adapter` may use Gmail/IMAP/API.
-- `review_adapter` may use Slack, Teams, or email.
+- `email_adapter` ingests inbound mailbox threads and supports carrier-facing follow-up sends behind
+  a separate gate.
+- `review_adapter` uses Slack for human review. Teams can be considered later as another headless UI;
+  email is not a human review surface.
 
 Playwright remains the cheap local verification layer for generated mock TMS and deterministic
 selector/readback tests. `browser-use/browser-use` is the intended production browser-agent

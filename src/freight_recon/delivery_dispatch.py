@@ -1,8 +1,12 @@
-"""Dispatch review messages through configured customer channels.
+"""Dispatch human review messages through configured customer channels.
 
 This module is the production-shaped bridge between channel-neutral review messages and real
 transports. It does not decide money or workflow state. It only routes, gates, renders, and audits
-delivery attempts so Slack/email setup can become a config + secrets operation.
+delivery attempts.
+
+Product contract: Slack is the human review surface. Email artifacts here are local/dev review
+fixtures only; carrier-facing follow-up email belongs to the follow-up/send-gate path, not this
+user-review dispatcher.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from .channels import (
     slack_channel_for_route,
 )
 from .delivery import DeliveryMessage, redact_delivery_message
-from .email_adapter import EmailOutbox, EmailSender, SmtpEmailSender, build_email_message
+from .email_adapter import EmailOutbox, EmailSender, build_email_message
 from .slack_adapter import render_slack_message
 from .tool_permissions import ToolContext, evaluate_tool_permission, record_tool_permission_decision
 from .workflow import WorkflowState, WorkflowStore
@@ -110,7 +114,7 @@ def dispatch_delivery_message(
     mode: DispatchMode = DispatchMode.DRY_RUN,
     slack_poster: SlackPoster | None = None,
     email_outbox_dir: str | Path | None = None,
-    email_sender: EmailSender | None = None,
+    email_transport: EmailSender | None = None,
     actor: str = "system",
 ) -> list[DispatchAttempt]:
     """Route one delivery message through enabled channels and audit every attempt."""
@@ -136,7 +140,7 @@ def dispatch_delivery_message(
                 env=env or {},
                 mode=mode,
                 email_outbox_dir=email_outbox_dir,
-                email_sender=email_sender,
+                email_transport=email_transport,
                 actor=actor,
             )
         )
@@ -258,7 +262,7 @@ def _dispatch_email(
     env: Mapping[str, str],
     mode: DispatchMode,
     email_outbox_dir: str | Path | None,
-    email_sender: EmailSender | None,
+    email_transport: EmailSender | None,
     actor: str,
 ) -> list[DispatchAttempt]:
     assert config.email is not None
@@ -332,8 +336,9 @@ def _dispatch_email(
             )
             continue
 
-        # LIVE: gated SMTP send. Requires the tool-permission decision (outbound_enabled +
-        # workflow-state), then a configured/resolvable SMTP transport.
+        # LIVE review email is intentionally blocked. Slack is the human UI; email is inbound
+        # intake plus carrier-facing follow-up. Keep the local outbox path for deterministic tests
+        # and legacy artifacts, but never send user review cards over SMTP from this dispatcher.
         decision = _evaluate_outbound_tool(
             store,
             message,
@@ -341,23 +346,12 @@ def _dispatch_email(
             outbound_enabled=config.email.outbound_enabled,
             actor=actor,
         )
-        if not decision.allowed:
-            attempts.append(_email_attempt(store, message, recipient, DispatchStatus.BLOCKED, decision.reason, safe_payload, actor))
-            continue
-        sender = email_sender or _build_smtp_sender(config.email, env)
-        if sender is None:
-            attempts.append(
-                _email_attempt(
-                    store, message, recipient, DispatchStatus.BLOCKED,
-                    "SMTP transport not configured (set smtp_host + smtp_*_env, and provide the secrets)",
-                    safe_payload, actor,
-                )
-            )
-            continue
-        result = sender.send(email)
-        status = DispatchStatus.SENT if result.ok else DispatchStatus.FAILED
-        note = "sent via SMTP" if result.ok else f"SMTP send failed: {result.error}"
-        attempts.append(_email_attempt(store, message, recipient, status, note, safe_payload, actor))
+        note = (
+            "review email live send disabled by product contract; use Slack for human review"
+            if decision.allowed
+            else decision.reason
+        )
+        attempts.append(_email_attempt(store, message, recipient, DispatchStatus.BLOCKED, note, safe_payload, actor))
     return attempts
 
 
@@ -373,26 +367,6 @@ def _email_attempt(store, message, recipient, status, note, payload, actor) -> D
             payload=payload,
         ),
         actor=actor,
-    )
-
-
-def _build_smtp_sender(email_config, env: Mapping[str, str]) -> EmailSender | None:
-    """Build an SMTP sender from config + env, or None if host/credentials are not available."""
-    if not email_config.smtp_host:
-        return None
-    username = env.get(email_config.smtp_user_env) if email_config.smtp_user_env else None
-    password = env.get(email_config.smtp_password_env) if email_config.smtp_password_env else None
-    # If a username env is declared but unset, treat SMTP as not configured (fail closed → BLOCKED).
-    if email_config.smtp_user_env and not username:
-        return None
-    if email_config.smtp_password_env and not password:
-        return None
-    return SmtpEmailSender(
-        host=email_config.smtp_host,
-        port=email_config.smtp_port,
-        username=username,
-        password=password,
-        starttls=email_config.smtp_starttls,
     )
 
 

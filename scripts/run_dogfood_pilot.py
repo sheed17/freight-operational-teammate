@@ -15,23 +15,22 @@ from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.action_callback import handle_signed_action_callback  # noqa: E402
 from freight_recon.delivery import (  # noqa: E402
     DeliverySigner,
-    build_delivery_message,
-    record_delivery_message,
     render_delivery_message,
     redact_delivery_message,
     submit_signed_action,
 )
 from freight_recon.email_corpus import build_email_corpus  # noqa: E402
 from freight_recon.ingestion import ingest_eml_paths  # noqa: E402
+from freight_recon.mailbox_workflow import run_mailbox_workflow  # noqa: E402
 from freight_recon.mock_tms import build_mock_tms_site  # noqa: E402
+from freight_recon.operator_console import build_operator_console  # noqa: E402
 from freight_recon.packet_page import build_packet_site  # noqa: E402
-from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
 from freight_recon.review_actions import ReviewDecision  # noqa: E402
 from freight_recon.summary import build_daily_summary, render_daily_summary  # noqa: E402
 from freight_recon.tms_adapter import MockTmsReadAdapter, TmsAdapterError  # noqa: E402
 from freight_recon.tms_write import ChargeLine, MockTmsWriteLedger, enter_approved_payable  # noqa: E402
 from freight_recon.tool_permissions import ToolContext, evaluate_tool_permission  # noqa: E402
-from freight_recon.workflow import WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
+from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +54,10 @@ def run_pilot(
     action_result_path = workspace / "dogfood_action_result.json"
     follow_up_path = workspace / "follow_up_draft.json"
     delivery_messages_path = workspace / "delivery_messages.json"
+    mailbox_workflow_path = workspace / "mailbox_workflow_report.json"
+    mailbox_dir = workspace / "mailbox"
+    inbox_dir = mailbox_dir / "inbound"
+    mailbox_state_path = mailbox_dir / "mailbox_state.json"
     signed_action_path = workspace / "signed_action_outcome.json"
     callback_action_path = workspace / "callback_action_response.json"
     email_ingestion_path = workspace / "email_ingestion_summary.json"
@@ -70,6 +73,8 @@ def run_pilot(
             action_result_path,
             follow_up_path,
             delivery_messages_path,
+            mailbox_workflow_path,
+            mailbox_state_path,
             signed_action_path,
             callback_action_path,
             email_ingestion_path,
@@ -77,7 +82,7 @@ def run_pilot(
             tms_write_ledger_path,
             report_path,
         ],
-        directories=[corpus, site],
+        directories=[corpus, site, mailbox_dir],
     )
 
     generate(corpus, loads_count, seed)
@@ -90,34 +95,37 @@ def run_pilot(
         seed=seed,
     )
     email_ingestion_path.write_text(json.dumps(email_ingestion, indent=2), encoding="utf-8")
-    store = WorkflowStore(db_path)
-    payloads = []
-    try:
-        seen: set[tuple[str, str]] = set()
-        for load in loads:
-            run = process_load_packet(
-                store,
-                load,
-                primary_document_path=corpus / load.documents["carrier_invoice"],
-                seen_invoice_keys=seen,
-            )
-            payload = build_review_payload(run, load, age_hours=age_hours)
-            if payload:
-                record_review_payload(store, payload)
-                payloads.append(payload)
+    _copy_email_corpus_to_inbox(Path(email_ingestion["output_dir"]), inbox_dir)
+    signer = DeliverySigner.from_env(allow_local_dev=True)
+    mailbox_workflow = run_mailbox_workflow(
+        inbox_dir=inbox_dir,
+        preserve_dir=mailbox_dir,
+        mailbox_state_path=mailbox_state_path,
+        workflow_db_path=db_path,
+        loads=loads,
+        signer=signer,
+        actor="Rasheed",
+        age_hours=age_hours,
+        redact_tokens=False,
+    )
+    mailbox_workflow_report = mailbox_workflow.model_copy(
+        update={
+            "delivery_messages": [
+                redact_delivery_message(message) for message in mailbox_workflow.delivery_messages
+            ]
+        }
+    )
+    mailbox_workflow_path.write_text(mailbox_workflow_report.model_dump_json(indent=2), encoding="utf-8")
 
+    store = WorkflowStore(db_path)
+    payloads = mailbox_workflow.review_payloads
+    delivery_messages = mailbox_workflow.delivery_messages
+    try:
         review_payloads_path.write_text(
             json.dumps([payload.model_dump(mode="json") for payload in payloads], indent=2),
             encoding="utf-8",
         )
 
-        # Render channel-neutral delivery messages with signed action tokens for every review item.
-        signer = DeliverySigner.from_env(allow_local_dev=True)
-        delivery_messages = []
-        for payload in payloads:
-            message = build_delivery_message(payload, signer, actor="Rasheed")
-            record_delivery_message(store, message)
-            delivery_messages.append(message)
         delivery_messages_path.write_text(
             json.dumps(
                 [redact_delivery_message(message).model_dump(mode="json") for message in delivery_messages],
@@ -261,6 +269,17 @@ def run_pilot(
             "review_payloads": len(payloads),
             "delivery_messages": len(delivery_messages),
             "email_ingestion": email_ingestion["summary"],
+            "mailbox_workflow": {
+                "scanned": mailbox_workflow.mailbox.scanned,
+                "new_messages": len(mailbox_workflow.mailbox.new_messages),
+                "duplicates": len(mailbox_workflow.mailbox.duplicates),
+                "packet_runs": len(mailbox_workflow.mailbox.packet_runs),
+                "unlinked_messages": len(mailbox_workflow.mailbox.unlinked_messages),
+                "workflow_runs_touched": mailbox_workflow.workflow_runs,
+                "review_payloads": mailbox_workflow.reviews_created,
+                "delivery_messages": mailbox_workflow.deliveries_created,
+            },
+            "mailbox_safety": _mailbox_safety_summary(mailbox_workflow.packet_results),
             "signed_action_applied": signed_action_outcome is not None,
             "secondary_signed_action_applied": backup_signed_action_outcome is True,
             "local_callback_action_applied": callback_action_response is not None
@@ -279,8 +298,11 @@ def run_pilot(
             "artifacts": {
                 "workflow_db": str(db_path),
                 "email_ingestion": str(email_ingestion_path),
+                "mailbox_workflow": str(mailbox_workflow_path),
+                "mailbox_state": str(mailbox_state_path),
                 "review_payloads": str(review_payloads_path),
                 "packet_site": str(site),
+                "operator_console": str(site / "operator" / "index.html"),
                 "mock_tms": str(mock_tms_site),
                 "tms_write_drill": str(tms_write_path) if tms_write_drill else None,
                 "daily_summary": str(daily_summary_path),
@@ -306,6 +328,17 @@ def run_pilot(
             "next_slice": "Customer-system screen mapping and live-channel callback server, still supervised",
         }
         report["artifacts"]["pilot_report"] = str(report_path)
+        build_operator_console(
+            output_dir=site,
+            report=report,
+            payloads=payloads,
+            delivery_messages=[redact_delivery_message(message) for message in delivery_messages],
+            run_states={
+                payload.run_id: store.get_run(payload.run_id).state.value
+                for payload in payloads
+                if store.get_run(payload.run_id) is not None
+            },
+        )
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         return report
     finally:
@@ -394,6 +427,29 @@ def _reset_paths(*, files: list[Path], directories: list[Path]) -> None:
     for path in directories:
         if path.exists():
             shutil.rmtree(path)
+
+
+def _copy_email_corpus_to_inbox(email_corpus_dir: Path, inbox_dir: Path) -> None:
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    for eml_path in sorted(email_corpus_dir.rglob("*.eml")):
+        shutil.copy2(eml_path, inbox_dir / eml_path.name)
+
+
+def _mailbox_safety_summary(packet_results) -> dict:
+    return {
+        "missing_required_reviews": sum(
+            1 for item in packet_results if item.missing_required and item.review_created
+        ),
+        "extraneous_reviews": sum(
+            1 for item in packet_results if item.extraneous_attachments > 0 and item.review_created
+        ),
+        "duplicate_reviews": sum(
+            1 for item in packet_results if item.outcome == "DUPLICATE" and item.review_created
+        ),
+        "unlinked_reviews": sum(
+            1 for item in packet_results if item.load_id == "UNLINKED" and item.review_created
+        ),
+    }
 
 
 def _run_email_ingestion_drill(

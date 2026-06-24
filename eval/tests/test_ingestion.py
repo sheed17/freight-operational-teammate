@@ -102,6 +102,33 @@ def test_parse_eml_extracts_pdf_attachments(tmp_path):
     parsed = parse_eml(packet.emails[0].eml_path)
     assert parsed.attachments
     assert all(a.sha256 and a.size_bytes > 0 for a in parsed.attachments)
+    assert parsed.date_header
+    assert parsed.email_timestamp
+    assert parsed.thread_key == parsed.message_id
+
+
+def test_parse_eml_preserves_reply_thread_metadata():
+    raw = "\n".join(
+        [
+            "Message-ID: <reply-2@carrier.test>",
+            "From: carrier@example.test",
+            "To: billing@neyma.test",
+            "Subject: Re: Invoice INV-2026001 / Load LD-560001",
+            "Date: Tue, 16 Jun 2026 14:05:00 -0500",
+            "In-Reply-To: <root-1@carrier.test>",
+            "References: <root-1@carrier.test> <middle-1@carrier.test>",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "POD attached.",
+        ]
+    )
+    parsed = parse_eml(raw)
+
+    assert parsed.email_timestamp == "2026-06-16T14:05:00-05:00"
+    assert parsed.in_reply_to == "<root-1@carrier.test>"
+    assert parsed.references == ["<root-1@carrier.test>", "<middle-1@carrier.test>"]
+    assert parsed.thread_key == "<root-1@carrier.test>"
 
 
 def test_complete_packet_links_and_has_no_missing(tmp_path):

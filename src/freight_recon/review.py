@@ -1,7 +1,7 @@
 """Human review payloads for supervised freight workflow decisions.
 
-This module is channel-agnostic on purpose. Slack, Teams, and email adapters should render these
-typed payloads later; the workflow core should not know about channel-specific blocks/buttons.
+This module is channel-agnostic on purpose. Slack renders these typed payloads for human review;
+the workflow core should not know about channel-specific blocks/buttons.
 """
 
 from __future__ import annotations
@@ -189,7 +189,7 @@ def record_review_payload(store: WorkflowStore, payload: ReviewPayload) -> None:
 
 
 def render_text_review(payload: ReviewPayload) -> str:
-    """Render a compact plain-text review message for CLI/email fallback."""
+    """Render a compact plain-text review message for CLI/local artifacts."""
     lines = [
         payload.title,
         f"Load: {payload.load_id}",

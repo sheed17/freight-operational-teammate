@@ -35,8 +35,8 @@ def test_first_design_partner_local_outbox_proves_operator_loop(tmp_path):
     assert report["pilot"]["local_callback_action_applied"] is True
     assert report["pilot"]["tms_readback_verified"] is True
     assert report["pilot"]["mock_tms_write_verified"] is True
-    assert report["dispatch"]["statuses"] == {"OUTBOXED": 12}
-    assert report["dispatch"]["channels"] == {"slack": 6, "email": 6}
+    assert report["dispatch"]["statuses"] == {"OUTBOXED": 6}
+    assert report["dispatch"]["channels"] == {"slack": 6}
     assert Path(report["artifacts"]["operator_report"]).exists()
     assert Path(report["artifacts"]["dispatch_attempts"]).exists()
 
@@ -98,7 +98,9 @@ def test_cli_local_outbox_smoke(tmp_path):
     assert '"real_tms_write_enabled": false' in result.stdout
 
 
-def test_first_partner_slack_preflight_blocks_placeholders_and_missing_env():
+def test_first_partner_slack_preflight_blocks_on_missing_env():
+    # With no secrets in the environment the preflight must fail closed, regardless of the
+    # (now real) channel IDs configured for this design partner.
     result = verify_first_partner_slack(ROOT / "configs" / "clients" / "rasheed_first_design_partner.yaml", env={})
 
     assert result.ready is False
@@ -106,7 +108,9 @@ def test_first_partner_slack_preflight_blocks_placeholders_and_missing_env():
     assert "action_token_secret_present" in failed
     assert "slack_signing_secret_present" in failed
     assert "slack_bot_token_present" in failed
-    assert "slack_channel_ids_replaced" in failed
+    # Real channel IDs are configured for this partner, so this check is no longer the blocker;
+    # the fail-closed guard is the missing secrets plus the gated outbound flag.
+    assert "slack_channel_ids_replaced" not in failed
     assert "email_outbound_disabled" not in failed
     assert "real_tms_write_disabled" not in failed
 

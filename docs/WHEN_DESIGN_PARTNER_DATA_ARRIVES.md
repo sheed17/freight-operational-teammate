@@ -13,7 +13,7 @@ Required:
 - 20-50 closed-load carrier invoice PDFs.
 - Matching rate confirmations or load/payable export data.
 - Permission to use the documents for testing and configuration.
-- Review channel preference: Slack, Teams, or email.
+- Slack workspace/channel for supervised review.
 - Agreement that the first pilot is supervised with no autonomous TMS write.
 
 Strongly preferred:
@@ -36,7 +36,7 @@ The partner-facing behavior should be:
 invoice/email/PDF arrives
 → Neyma extracts structured fields
 → Neyma compares against rate/load data
-→ Neyma posts matched/variance/missing-backup/duplicate/failed result to review channel
+→ Neyma posts matched/variance/missing-backup/duplicate/failed result to Slack
 → human approves/edits/disputes/requests backup
 → Neyma logs correction and outcome
 ```
@@ -154,14 +154,14 @@ Gate:
 - Every invoice gets a durable state and audit trail.
 - Duplicate document does not create duplicate payable work.
 
-## Step 5 — Human Review Channel
+## Step 5 — Slack Human Review
 
 Tasks:
 
 - Generate partner-facing review messages.
-- Start with Slack if available; email if not.
-- Include clear reason, extracted fields, expected fields, confidence, and action buttons or
-  reply instructions.
+- Use Slack for human review and approvals.
+- Include clear reason, extracted fields, expected fields, confidence, evidence links, and action
+  buttons.
 
 Actions:
 
@@ -175,7 +175,7 @@ Expected repo work:
 
 - Add `src/freight_recon/review/`.
 - Add message rendering tests.
-- Add Slack/email adapter only after review format is stable.
+- Add/live-test Slack adapter only after review format is stable.
 - If using LLM tools for drafting, validate inputs/outputs with Pydantic and log every tool call.
 
 Gate:

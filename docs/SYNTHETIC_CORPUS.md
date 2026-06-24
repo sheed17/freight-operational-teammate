@@ -170,8 +170,8 @@ Generate human-review payloads for workflow cases that require supervision:
 This writes `data/active_workspace/review_payloads.json`, prints plain-text review cards, and
 records idempotent review-payload audit events. These payloads include evidence links, packet
 detail URLs, money-specific action labels, aging/routing metadata, and found-money fields. They
-are channel-neutral so Slack, Teams, and email adapters can render them later without changing the
-workflow core. The packet page generator writes `data/active_workspace/site` with local evidence
+are channel-neutral so Slack can render them without changing the workflow core. The packet page
+generator writes `data/active_workspace/site` with local evidence
 pages for dogfood review. The action command applies a local dogfood human decision to workflow
 state and audit events. The follow-up command prepares a short/direct carrier email draft behind
 a send gate and records the draft audit event. The summary command produces the daily dogfood
@@ -236,4 +236,4 @@ This gives the extraction system a more realistic failure surface.
 7. Add a fixture runner that evaluates clean vs dirty extraction accuracy separately.
 8. Add reconciliation scenario tests that consume `loads_and_scenarios.json`.
 9. Add human-review payload fixtures from workflow outcomes.
-10. Add Slack/Teams/email adapter fixture delivery for review payloads.
+10. Add Slack adapter fixture delivery for review payloads.

@@ -1,14 +1,14 @@
-"""Email transport for the channel-neutral delivery adapter.
+"""Local/dev email-link transport for the channel-neutral delivery adapter.
 
 Renders a :class:`~freight_recon.delivery.DeliveryMessage` into a multipart (plain-text + HTML)
-review email whose action buttons are **signed action links**, and accepts a clicked link back into
-the signed action intake. As with the Slack transport, all business logic stays in
+review artifact whose action buttons are **signed action links**, and accepts a clicked link back
+into the signed action intake. As with the Slack transport, all business logic stays in
 ``delivery.submit_signed_action`` and the workflow state machine.
 
 The signed Neyma token in each link is the credential: it is HMAC-signed, expiring, and single-use,
-so a leaked link cannot be replayed after it is used or after it expires. Sending is gated: emails
-are written to a local outbox and never delivered over real SMTP in this slice (no autonomous send,
-no stored mail credentials).
+so a leaked link cannot be replayed after it is used or after it expires. Product user review goes
+to Slack only; these artifacts are written to a local outbox for tests/dogfood and are not used as
+a live user-notification channel.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def build_email_message(
     action_base_url: str = DEFAULT_ACTION_BASE_URL,
     sender: str = DEFAULT_FROM_ADDRESS,
 ) -> EmailMessageModel:
-    """Render a delivery message into a review email with signed action links."""
+    """Render a delivery message into a local/dev review email artifact with signed action links."""
     actions = [
         EmailAction(
             label=button.label,
@@ -124,10 +124,10 @@ class EmailSender(Protocol):
 
 
 class SmtpEmailSender:
-    """Send review emails over SMTP with STARTTLS. Credentials are passed in, never stored.
+    """Send email over SMTP with STARTTLS. Credentials are passed in, never stored.
 
-    The dispatcher resolves the username/password from environment-variable names declared in the
-    customer's config and constructs this per send; nothing is persisted to disk or audit.
+    This class is intentionally injectable. It should be used by a carrier-facing follow-up send
+    gate, not for human review cards.
     """
 
     def __init__(

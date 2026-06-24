@@ -84,6 +84,22 @@ def evaluate_pilot_day(*, day: int, workspace: Path, report: dict[str, Any]) -> 
         "email_ingestion_linking_clean": _metric_at_least(report, ("email_ingestion", "packet_link_accuracy"), 1.0),
         "email_ingestion_doc_type_clean": _metric_at_least(report, ("email_ingestion", "doc_type_accuracy"), 1.0),
         "noise_rejection_clean": _metric_at_least(report, ("email_ingestion", "noise_rejection_rate"), 1.0),
+        "mailbox_messages_scanned": int((report.get("mailbox_workflow") or {}).get("scanned") or 0) > 0,
+        "mailbox_packets_created": int((report.get("mailbox_workflow") or {}).get("packet_runs") or 0) > 0,
+        "mailbox_reviews_match_delivery": _mailbox_reviews_match_delivery(report),
+        "mailbox_workflow_artifact_written": _artifact_exists(artifacts.get("mailbox_workflow")),
+        "mailbox_safety_missing_docs_reviewed": _metric_at_least(
+            report, ("mailbox_safety", "missing_required_reviews"), 1.0
+        ),
+        "mailbox_safety_extraneous_reviewed": _metric_at_least(
+            report, ("mailbox_safety", "extraneous_reviews"), 1.0
+        ),
+        "mailbox_safety_duplicates_reviewed": _metric_at_least(
+            report, ("mailbox_safety", "duplicate_reviews"), 1.0
+        ),
+        "mailbox_request_backup_loop_exercised": (
+            int((report.get("workflow_states") or {}).get("REQUESTED_BACKUP") or 0) > 0
+        ),
         "review_messages_created": int(report.get("delivery_messages") or 0) > 0,
         "packet_pages_created": int(report.get("packet_pages") or 0) > 0,
         "signed_money_action_applied": bool(report.get("signed_action_applied")),
@@ -91,7 +107,10 @@ def evaluate_pilot_day(*, day: int, workspace: Path, report: dict[str, Any]) -> 
         "tms_readback_verified": bool(report.get("tms_readback_verified")),
         "mock_tms_write_verified": bool(report.get("mock_tms_write_verified")),
         "no_real_tms_write": _no_real_tms_write(report),
-        "tokens_redacted": _delivery_tokens_redacted(artifacts.get("delivery_messages")),
+        "tokens_redacted": _tokens_redacted_in_artifacts(
+            artifacts.get("delivery_messages"),
+            artifacts.get("mailbox_workflow"),
+        ),
         "callback_artifact_written": _artifact_exists(artifacts.get("callback_action_response")),
         "daily_summary_written": _artifact_exists(artifacts.get("daily_summary")),
     }
@@ -100,6 +119,8 @@ def evaluate_pilot_day(*, day: int, workspace: Path, report: dict[str, Any]) -> 
         "loads_generated": report.get("loads_generated"),
         "review_payloads": report.get("review_payloads"),
         "delivery_messages": report.get("delivery_messages"),
+        "mailbox_workflow": report.get("mailbox_workflow", {}),
+        "mailbox_safety": report.get("mailbox_safety", {}),
         "workflow_states": report.get("workflow_states", {}),
         "found_money_line_present": "Month to date:" in (report.get("daily_summary_text") or ""),
     }
@@ -186,6 +207,21 @@ def _no_real_tms_write(report: dict[str, Any]) -> bool:
     return bool(drill) and drill.get("mode") == "mock_only" and drill.get("real_tms_write") is False
 
 
+def _mailbox_reviews_match_delivery(report: dict[str, Any]) -> bool:
+    mailbox = report.get("mailbox_workflow") or {}
+    try:
+        return (
+            int(mailbox.get("review_payloads") or 0) == int(report.get("review_payloads") or 0)
+            and int(mailbox.get("delivery_messages") or 0) == int(report.get("delivery_messages") or 0)
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _tokens_redacted_in_artifacts(*paths: str | None) -> bool:
+    return all(_delivery_tokens_redacted(path) for path in paths if path)
+
+
 def _artifact_exists(path: str | None) -> bool:
     return bool(path) and Path(path).exists()
 
@@ -194,14 +230,20 @@ def _delivery_tokens_redacted(path: str | None) -> bool:
     if not path or not Path(path).exists():
         return False
     try:
-        messages = json.loads(Path(path).read_text(encoding="utf-8"))
+        artifact = json.loads(Path(path).read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return False
-    if not isinstance(messages, list) or not messages:
-        return False
-    for message in messages:
-        for action in message.get("actions", []):
-            token = action.get("signed_token", "")
-            if token and not token.startswith("redacted:"):
-                return False
-    return True
+    tokens = list(_signed_tokens(artifact))
+    return bool(tokens) and all(token.startswith("redacted:") for token in tokens)
+
+
+def _signed_tokens(value: Any):
+    if isinstance(value, dict):
+        token = value.get("signed_token")
+        if isinstance(token, str) and token:
+            yield token
+        for child in value.values():
+            yield from _signed_tokens(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _signed_tokens(child)

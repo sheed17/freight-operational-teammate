@@ -1,12 +1,13 @@
-# Customer Channel Onboarding Runbook
+# Customer Slack Onboarding Runbook
 
-Integrating a new customer's Slack and/or email is a **repeatable config-and-secrets runbook**, not
-a code change. The transports (`slack_adapter`, `email_adapter`) and the signed action intake are
-fixed; per-customer wiring lives entirely in the customer's client config plus environment secrets.
+Integrating a new customer's Slack review workspace is a **repeatable config-and-secrets runbook**,
+not a code change. Slack is Neyma's headless UI for human review. Email has a different product
+role: inbound mailbox ingestion plus carrier-facing follow-up after approval, not user review
+notifications.
 
 Secrets are referenced by **environment-variable name** only — values never live in the repo.
-Signed action tokens are bearer credentials. They may appear in live Slack buttons or email action
-links, but normal logs, audits, and generated artifacts must store only redacted token fingerprints.
+Signed action tokens are bearer credentials. They may appear in live Slack buttons, but normal logs,
+audits, and generated artifacts must store only redacted token fingerprints.
 
 ## One-time per customer
 
@@ -29,17 +30,18 @@ links, but normal logs, audits, and generated artifacts must store only redacted
          CHANNEL_POST: C0XXXXX       # medium → team channel
          DIGEST_ONLY: C0YYYYY        # low → digest channel
      email:
-       enabled: true
-       sender: neyma@acme-freight.example
-       to: [controller@acme-freight.example]
-       action_base_url: https://app.neyma.example/email/action
-       outbound_enabled: false       # flip on only when the gated SMTP transport is wired
+       enabled: false                # user review email is not a product channel
+       sender: no-review-email@neyma.local
+       to: [local-artifact@neyma.local]
+       action_base_url: http://localhost:8000/email/action
+       outbound_enabled: false
    ```
 
 2. **Provision the secrets** in the deployment environment (never in the repo):
    - `action_token_secret_env` — a strong random HMAC secret for signing action tokens.
    - Slack: `signing_secret_env` (Slack app signing secret), `bot_token_env` (`xoxb-…` bot token).
-   - Email: an optional `from_env` if the sender address is itself a secret/per-env value.
+   - Carrier email secrets, when added later, belong to the carrier-follow-up send gate, not the
+     human review delivery block.
 
 3. **Preflight** — confirm the config is well-formed and every named secret resolves, without
    sending anything:
@@ -82,9 +84,10 @@ It serves:
 ```text
 GET  /email/action?token=<signed-token>
 POST /actions/signed {"token": "<signed-token>"}
+POST /slack/actions (Slack-signed interactivity callback)
 ```
 
-This is a local-only bridge for testing link clicks and webhook-shaped callbacks. It does not send
+This is a local-only bridge for testing link clicks and Slack-shaped callbacks. It does not send
 email, post to Slack, store credentials, or bypass workflow state; accepted actions still flow
 through `delivery.submit_signed_action` and `apply_review_action`. Production must use a deployment
 secret and an externally hosted callback endpoint behind the same intake. The fixed local dogfood
@@ -96,31 +99,31 @@ secret is fail-closed to loopback hosts only; do not expose it on `0.0.0.0` or a
 from freight_recon.channels import load_delivery_config, build_channel_adapters
 
 config = load_delivery_config("configs/clients/acme_freight.yaml")
-adapters = build_channel_adapters(store, config)   # {ChannelType.SLACK: ..., ChannelType.EMAIL: ...}
+adapters = build_channel_adapters(store, config)   # {ChannelType.SLACK: ...}
 ```
 
 `build_channel_adapters` builds only the channels whose secrets resolve, with the customer's
-action-token signer. Posting to a real workspace / sending real email stays behind the
-`outbound_enabled` flag and the tool-permission registry.
+action-token signer. Posting to a real workspace stays behind the `outbound_enabled` flag and the
+tool-permission registry.
 
 Use `delivery_dispatch.dispatch_delivery_message` as the send boundary. Supported modes:
 
 - `DRY_RUN` — route and audit only; no Slack API call, no email file.
-- `LOCAL_OUTBOX` — render local email `.eml` artifacts intentionally; Slack stays local.
+- `LOCAL_OUTBOX` — render local review artifacts intentionally; Slack stays local.
 - `LIVE` — Slack may call `chat.postMessage` only when `slack.outbound_enabled: true`, the bot
-  token resolves, and workflow-state tool permission allows the post. SMTP email send is still not
-  wired; live email remains blocked until a gated SMTP transport is added.
+  token resolves, and workflow-state tool permission allows the post. User review email remains
+  blocked by product contract.
 
-The dispatcher currently broadcasts to every enabled configured channel. `default_channel` is the
-preferred primary channel for future fallback behavior, not an exclusive routing selector yet.
+Keep the email review channel disabled in customer configs. Carrier-facing email is a separate
+workflow behind its own send gate.
 
 ## Safety invariants (unchanged per customer)
 
-- Two independent HMAC layers: the channel request signature (Slack `v0` / email link is the token
-  itself) and the Neyma action token (expiring, single-use).
+- Two independent HMAC layers for Slack: the channel request signature (`v0`) and the Neyma action
+  token (expiring, single-use).
 - Every action routes through `delivery.submit_signed_action` → `apply_review_action` → the
   workflow state machine. A channel can never bypass workflow state or decide money.
 - No customer credentials are stored; only env-var names live in config.
 - Production signing fails closed when the action-token secret is missing. Local dogfood scripts
   may opt into the fixed local secret explicitly; channel onboarding must not.
-- Outbound send is off by default and gated.
+- Outbound Slack post, carrier email send, and TMS write are off by default and gated.

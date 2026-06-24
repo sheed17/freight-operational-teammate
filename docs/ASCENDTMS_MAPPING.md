@@ -9,7 +9,7 @@ browser-use agents remain customer-system specific.
 
 Neyma's product direction is existing-system operation. The customer should not have to live in a
 new dashboard for routine work; Neyma should read email/PDF packets, coordinate review in Slack,
-Teams, or email, and operate the customer's TMS/accounting screens when approved.
+and operate the customer's TMS/accounting screens when approved.
 
 AscendTMS gives the project a real freight UI reference before a design partner:
 

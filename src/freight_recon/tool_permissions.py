@@ -113,7 +113,7 @@ TOOL_REGISTRY: dict[str, ToolPermission] = {
         risk=ToolRisk.MEDIUM,
         requires_outbound_enabled=True,
         audit_event="tool_send_review_email",
-        description="Send a human review email to configured recipients.",
+        description="Legacy/local review-email gate; product user review email is blocked.",
     ),
     "read_tms_load": ToolPermission(
         name="read_tms_load",

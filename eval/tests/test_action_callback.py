@@ -218,7 +218,14 @@ def test_http_callback_rejects_malformed_content_length(tmp_path):
                 + b"Content-Length: nope\r\n"
                 + b"\r\n"
             )
-            raw = sock.recv(4096).decode("utf-8")
+            sock.shutdown(socket.SHUT_WR)
+            chunks = []
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            raw = b"".join(chunks).decode("utf-8")
     finally:
         server.shutdown()
         server.server_close()

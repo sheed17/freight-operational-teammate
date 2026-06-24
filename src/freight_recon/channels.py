@@ -1,6 +1,6 @@
 """Repeatable, multi-tenant channel integration for delivery transports.
 
-This is the layer that makes onboarding a customer's Slack/email seamless and repeatable: each
+This is the layer that makes onboarding a customer's Slack review workspace seamless and repeatable: each
 customer carries a ``delivery:`` block in ``configs/clients/<customer>.yaml`` that names *which*
 channels are on, how to route by severity, and — crucially — the **environment variable names** that
 hold the secrets. Secrets never live in the repo or the config; only their names do.
@@ -13,8 +13,9 @@ Onboarding a customer becomes a runbook, not a code change:
    well-formed and every named secret resolves, without sending anything.
 4. Build live adapters with ``build_channel_adapters`` once outbound is enabled and gated.
 
-The transports themselves (``slack_adapter`` / ``email_adapter``) are unchanged; this module only
-wires per-customer configuration and secret resolution into them.
+The email channel remains available for local/dev artifacts and backward-compatible tests, but
+product user review should be Slack-only. Carrier-facing email follow-up belongs to the separate
+follow-up send gate.
 """
 
 from __future__ import annotations
@@ -62,7 +63,8 @@ class EmailChannelConfig(BaseModel):
     action_base_url: str = DEFAULT_ACTION_BASE_URL
     outbound_enabled: bool = False
     outbox_dir: str | None = None
-    # SMTP transport (live send). Credentials are referenced by env-var NAME only; never stored.
+    # Legacy/local review-email fields. User-review SMTP send is blocked in delivery_dispatch;
+    # carrier-facing email should use a separate follow-up send gate.
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user_env: str | None = None

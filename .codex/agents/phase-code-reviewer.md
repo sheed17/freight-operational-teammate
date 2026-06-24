@@ -45,7 +45,7 @@ For every phase, check:
 - Are docs updated so future sessions understand the actual current state?
 - Are tests/evals meaningful for the changed behavior?
 
-For Review/Slack/email work, additionally check:
+For review/Slack/action-intake work, additionally check:
 
 - Every card has one-click evidence access.
 - Packet detail URLs exist or are explicitly placeholders for the next slice.

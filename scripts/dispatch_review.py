@@ -1,4 +1,4 @@
-"""Dispatch review payloads through configured Slack/email channels."""
+"""Dispatch review payloads through configured Slack review channels."""
 
 from __future__ import annotations
 

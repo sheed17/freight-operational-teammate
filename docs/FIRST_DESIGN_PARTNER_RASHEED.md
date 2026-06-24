@@ -10,7 +10,7 @@ as a real freight operations teammate while keeping external risk low.
    .venv/bin/python scripts/run_first_design_partner.py --dispatch-mode LOCAL_OUTBOX --text
    ```
 
-   This proves synthetic email ingestion, Slack-shaped review messages, local email outbox,
+   This proves synthetic email ingestion, Slack-shaped review messages, local review artifacts,
    signed actions, callback handling, daily summaries, audit logs, and mock TMS verification.
 
 2. **Connect Slack first**
@@ -37,12 +37,12 @@ as a real freight operations teammate while keeping external risk low.
    .venv/bin/python scripts/run_first_design_partner.py --dispatch-mode LIVE_SLACK --text
    ```
 
-   Live Slack mode posts only to Slack. Email remains disabled for live sending.
+   Live Slack mode posts review cards only to Slack. Email is not a user review channel.
 
 3. **Controlled email ingestion second**
 
    Use a test inbox or alias. The first email step is ingestion only: synthetic carrier emails and
-   attachments flow into Neyma. Carrier outbound stays draft-only behind the send gate.
+   attachments flow into Neyma. Carrier-facing outbound stays draft-only behind the send gate.
 
 4. **Real TMS read-only mapping third**
 
@@ -52,7 +52,8 @@ as a real freight operations teammate while keeping external risk low.
 
 - Carrier sends: disabled.
 - Real TMS write: disabled.
-- Email SMTP send: not wired.
+- User review email: disabled by product contract.
+- Carrier-facing email send: draft-only until a separate send gate is enabled.
 - Slack live posting: only with `--dispatch-mode LIVE_SLACK` and real Slack env vars.
 - TMS session: human-established only.
 - Mock TMS write drill: allowed only as local verification and labeled mock-only.
@@ -63,7 +64,7 @@ The first-design-partner run is green when:
 
 - Synthetic email ingestion scores cleanly.
 - Slack review attempts are created.
-- Email outbox artifacts are created locally.
+- Local review artifacts are created when running local modes.
 - Signed action and callback action both apply.
 - Daily summary exists.
 - Audit events exist.

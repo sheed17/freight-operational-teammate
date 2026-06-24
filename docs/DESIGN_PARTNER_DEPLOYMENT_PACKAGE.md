@@ -22,9 +22,9 @@ carrier invoice/email/PDF
 -> classify/link packet
 -> extract required invoice fields
 -> reconcile against rate confirmation or load/payable export
--> post review message to Slack/email/local outbox
+-> post review message to Slack
 -> human approves, disputes, requests backup, edits, or marks duplicate
--> Neyma drafts follow-up behind a send gate
+-> Neyma drafts carrier follow-up behind a send gate when needed
 -> Neyma records decision and daily summary
 ```
 
@@ -32,7 +32,8 @@ Out of scope for the first design-partner pilot:
 
 - Autonomous TMS writes.
 - Real payment execution.
-- Ungated carrier emails.
+- User review emails. Slack is the human review UI.
+- Ungated carrier-facing emails.
 - Claims of production extraction readiness before partner-document eval passes.
 - Browser automation beyond read-only customer-system mapping.
 
@@ -153,7 +154,7 @@ Rollback steps:
 
 1. Stop the Neyma process.
 2. Disable channel outbound flags.
-3. Revoke Slack/email secrets if exposed.
+3. Revoke Slack secrets and any carrier-email secrets if exposed.
 4. Preserve workflow DB and audit logs.
 5. Export unresolved packets for manual review.
 6. Record incident notes and add regression tests before resuming.
@@ -163,7 +164,7 @@ Rollback steps:
 Go to supervised design-partner pilot only when:
 
 - Internal 7-day dogfood ledger is green.
-- Partner config verifies and keeps live sends/writes disabled.
+- Partner config verifies and keeps carrier sends/writes disabled.
 - Partner data-use permission is recorded.
 - Historical partner eval passes required gates.
 - Review messages include evidence links and exact money actions.

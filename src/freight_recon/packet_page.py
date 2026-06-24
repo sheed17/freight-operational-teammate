@@ -41,12 +41,15 @@ def build_packet_site(
         run = store.get_run(payload.run_id)
         if run is None:
             raise ValueError(f"workflow run not found for payload: {payload.run_id}")
-        load = loads[payload.load_id]
-        _copy_evidence(output_dir, corpus_dir, load)
         packet_dir = output_dir / "packets" / str(payload.run_id)
         packet_dir.mkdir(parents=True, exist_ok=True)
         page = packet_dir / "index.html"
-        page.write_text(_render_packet_page(run, load, payload, store.audit_events(run.id)), encoding="utf-8")
+        load = loads.get(payload.load_id)
+        if load is None:
+            page.write_text(_render_unlinked_packet_page(run, payload, store.audit_events(run.id)), encoding="utf-8")
+        else:
+            _copy_evidence(output_dir, corpus_dir, load)
+            page.write_text(_render_packet_page(run, load, payload, store.audit_events(run.id)), encoding="utf-8")
         results.append(
             PacketPageResult(
                 run_id=payload.run_id,
@@ -78,7 +81,7 @@ def _render_packet_page(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escape(payload.load_id)} Packet</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="../../styles.css">
 </head>
 <body>
   <header class="topbar">
@@ -199,12 +202,66 @@ def _write_index(path: Path, pages: list[PacketPageResult]) -> None:
 </head>
 <body>
   <header class="topbar"><div><p class="eyebrow">Neyma Test Freight LLC</p><h1>Packet Detail Pages</h1></div></header>
-  <main class="page"><section><h2>Needs Review</h2><ul class="index-list">{links}</ul></section></main>
+  <main class="page">
+    <section><h2>Operator Console</h2><p><a href="operator/">Open dogfood operator console</a></p></section>
+    <section><h2>Needs Review</h2><ul class="index-list">{links}</ul></section>
+  </main>
 </body>
 </html>
 """,
         encoding="utf-8",
     )
+
+
+def _render_unlinked_packet_page(
+    run: WorkflowRun,
+    payload: ReviewPayload,
+    audit_events: list[dict],
+) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unlinked Packet</title>
+  <link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">{escape(payload.client.company_name)} · unlinked inbox work</p>
+      <h1>{escape(payload.title)}</h1>
+    </div>
+    <div class="status {payload.severity.value.lower()}">{escape(payload.severity.value)}</div>
+  </header>
+  <main class="page">
+    <section class="reason-row">
+      <div>
+        <h2>Decision Needed</h2>
+        <p>{escape(payload.summary)}</p>
+        {_reason_list(payload.reasons)}
+      </div>
+      <div>
+        <h2>Workflow State</h2>
+        <table><tbody>
+          <tr><th>Run</th><td>{run.id}</td></tr>
+          <tr><th>State</th><td>{escape(run.state.value)}</td></tr>
+          <tr><th>Sender</th><td>{escape(payload.carrier)}</td></tr>
+        </tbody></table>
+      </div>
+    </section>
+    <section>
+      <h2>Received Evidence</h2>
+      <div class="evidence-list">{_payload_evidence_links(payload)}</div>
+    </section>
+    <section>
+      <h2>Audit History</h2>
+      <ol class="audit">{_audit_items(audit_events)}</ol>
+    </section>
+  </main>
+</body>
+</html>
+"""
 
 
 def _write_css(path: Path) -> None:
@@ -241,6 +298,10 @@ pre { white-space: pre-wrap; margin: 0; background: #f6f7f9; border: 1px solid #
 .audit { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
 .audit li { padding-bottom: 8px; border-bottom: 1px solid #edf0f3; }
 .index-list { font-size: 16px; display: grid; gap: 10px; }
+.operator-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.operator-card { border: 1px solid #d8dee6; border-radius: 8px; padding: 14px; display: grid; gap: 8px; background: #fafbfc; }
+.operator-card h3 { margin: 0; font-size: 16px; line-height: 1.25; }
+.operator-card p { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 900px) { .summary-band, .reason-row, .grid-two, .documents { grid-template-columns: 1fr; } .documents iframe { height: 480px; } }
 """,
         encoding="utf-8",
@@ -259,13 +320,20 @@ def _copy_evidence(output_dir: Path, corpus_dir: Path, load: FreightLoadForRecon
 def _site_doc_path(load: FreightLoadForReconciliation, doc_type: str) -> str:
     if doc_type not in load.documents:
         return "about:blank"
-    return f"/evidence/{load.load_id}/{doc_type}.pdf"
+    return f"../../evidence/{load.load_id}/{doc_type}.pdf"
 
 
 def _evidence_links(load: FreightLoadForReconciliation) -> str:
     return "\n".join(
-        f'<a href="/evidence/{escape(load.load_id)}/{escape(doc_type)}.pdf" target="_blank">{escape(doc_type.replace("_", " ").title())}</a>'
+        f'<a href="../../evidence/{escape(load.load_id)}/{escape(doc_type)}.pdf" target="_blank">{escape(doc_type.replace("_", " ").title())}</a>'
         for doc_type in sorted(load.documents)
+    )
+
+
+def _payload_evidence_links(payload: ReviewPayload) -> str:
+    return "\n".join(
+        f'<a href="{escape(link.path)}" target="_blank">{escape(link.label)}</a>'
+        for link in payload.evidence_links
     )
 
 

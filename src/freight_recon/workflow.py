@@ -14,9 +14,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from .reconciliation import FreightLoadForReconciliation, ReconciliationResult, reconcile_load
+from .extraction_bridge import apply_extraction_to_load
+from .reconciliation import (
+    FreightLoadForReconciliation,
+    ReconciliationOutcome,
+    ReconciliationResult,
+    reconcile_load,
+)
 
 
 class WorkflowState(str, Enum):
@@ -50,6 +56,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
         WorkflowState.APPROVED,
         WorkflowState.DISPUTED,
         WorkflowState.REQUESTED_BACKUP,
+        WorkflowState.DONE,
         WorkflowState.FAILED,
     },
     WorkflowState.APPROVED: {WorkflowState.READY_FOR_ENTRY, WorkflowState.DONE},
@@ -271,6 +278,63 @@ class WorkflowStore:
             payload={"outcome": result.outcome.value, "reasons": result.reasons},
         )
 
+    def refresh_reconciliation(self, run_id: int, result: ReconciliationResult) -> WorkflowRun:
+        """Update a review run after new packet evidence arrives.
+
+        This is for inbox trickle-in cases: a missing POD or backup can arrive after the initial
+        review card. If deterministic reconciliation is now clean, the run can close to ``DONE``;
+        otherwise the run remains in human review with updated outcome/reasons and an audit event.
+        """
+        run = self.get_run(run_id)
+        if run is None:
+            raise WorkflowError(f"workflow run not found: {run_id}")
+        if run.state not in {WorkflowState.NEEDS_REVIEW, WorkflowState.REQUESTED_BACKUP}:
+            raise WorkflowError(
+                "reconciliation refresh requires NEEDS_REVIEW or REQUESTED_BACKUP, "
+                f"got {run.state.value}"
+            )
+
+        self.conn.execute(
+            """
+            UPDATE workflow_runs
+            SET invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                result.invoice_number,
+                result.carrier,
+                result.outcome.value,
+                "; ".join(result.reasons),
+                utc_now(),
+                run_id,
+            ),
+        )
+        self.conn.commit()
+        self.add_audit_event(
+            run_id,
+            "reconciliation_refreshed",
+            actor="system",
+            payload=result.model_dump(mode="json"),
+        )
+        next_state = self.review_state_for_result(result)
+        if next_state == WorkflowState.DONE:
+            return self.transition(
+                run_id,
+                WorkflowState.DONE,
+                event_type="route_after_reconciliation_refresh",
+                payload={"outcome": result.outcome.value, "reasons": result.reasons},
+            )
+        if run.state == WorkflowState.REQUESTED_BACKUP and next_state == WorkflowState.NEEDS_REVIEW:
+            return self.transition(
+                run_id,
+                WorkflowState.NEEDS_REVIEW,
+                event_type="route_after_reconciliation_refresh",
+                payload={"outcome": result.outcome.value, "reasons": result.reasons},
+            )
+        updated = self.get_run(run_id)
+        assert updated is not None
+        return updated
+
     def add_audit_event(
         self,
         run_id: int,
@@ -382,8 +446,18 @@ def process_load_packet(
     *,
     primary_document_path: str | Path,
     seen_invoice_keys: set[tuple[str, str]] | None = None,
+    extractor: Callable[[str | Path], Any] | None = None,
+    confidence_threshold: float = 0.85,
 ) -> WorkflowRun:
-    """Run one synthetic load packet through receive -> extract -> reconcile -> route."""
+    """Run one load packet through receive -> extract -> reconcile -> route.
+
+    When ``extractor`` is ``None`` (the default), the invoice side is taken from the synthetic
+    ground-truth ``load`` — fast, deterministic, no API (used by tests and the local dogfood spine).
+    When an extractor is injected, the carrier-invoice PDF is read by real vision extraction and the
+    *extracted* invoice side is reconciled against the source-of-truth rate side. Deterministic
+    Python still owns the money decision; low-confidence required fields or a load-link mismatch
+    force human review (they never auto-clear).
+    """
     doc_hash = sha256_file(primary_document_path)
     run = store.receive_document(
         load.load_id,
@@ -394,13 +468,63 @@ def process_load_packet(
     if run.state in TERMINAL_STATES or run.state == WorkflowState.NEEDS_REVIEW:
         return run
 
+    if extractor is None:
+        run = store.mark_extracted(
+            run.id,
+            {
+                "invoice_number": load.invoice_number,
+                "carrier": load.carrier,
+                "source": "synthetic_ground_truth",
+            },
+        )
+        result = reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
+        return store.mark_reconciled(run.id, result)
+
+    extraction = extractor(primary_document_path)
+    if getattr(extraction, "extraction", None) is None:
+        # Extraction failed — route to a human, never guess, never crash.
+        run = store.mark_extracted(
+            run.id,
+            {"source": "vision_extraction", "model": getattr(extraction, "model", None),
+             "error": getattr(extraction, "error", "extraction returned no result")},
+        )
+        result = ReconciliationResult(
+            load_id=load.load_id,
+            invoice_number=load.invoice_number or "",
+            carrier=load.carrier,
+            outcome=ReconciliationOutcome.NEEDS_REVIEW,
+            reasons=[f"extraction failed: {getattr(extraction, 'error', 'no result')}"],
+            needs_human_review=True,
+        )
+        return store.mark_reconciled(run.id, result)
+
+    recon_load, low_confidence, link_ok = apply_extraction_to_load(
+        load, extraction.extraction, confidence_threshold=confidence_threshold
+    )
     run = store.mark_extracted(
         run.id,
         {
-            "invoice_number": load.invoice_number,
-            "carrier": load.carrier,
-            "source": "synthetic_ground_truth",
+            "invoice_number": recon_load.invoice_number,
+            "carrier": recon_load.carrier,
+            "source": "vision_extraction",
+            "model": getattr(extraction, "model", None),
+            "low_confidence_required": low_confidence,
+            "link_ok": link_ok,
         },
     )
-    result = reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
+    result = reconcile_load(recon_load, seen_invoice_keys=seen_invoice_keys)
+    if low_confidence or not link_ok:
+        # The confidence gate: a low-confidence read or a wrong load link never auto-clears.
+        reasons = list(result.reasons)
+        if low_confidence:
+            reasons.append(f"low-confidence extraction on required field(s): {', '.join(low_confidence)}")
+        if not link_ok:
+            reasons.append("extracted load/PRO does not match the linked load id")
+        result = result.model_copy(
+            update={
+                "outcome": ReconciliationOutcome.NEEDS_REVIEW,
+                "reasons": reasons,
+                "needs_human_review": True,
+            }
+        )
     return store.mark_reconciled(run.id, result)

@@ -1,4 +1,4 @@
-"""Tests for configured Slack/email delivery dispatch."""
+"""Tests for configured Slack delivery dispatch and local email artifacts."""
 
 import json
 from pathlib import Path
@@ -33,7 +33,14 @@ class FakeSlackPoster:
         return SlackPostResult(ok=True, channel=channel, ts="1718500000.000100")
 
 
-def _config(*, slack_outbound=False, email_outbound=False, recipients=None, sender="neyma@test.example", from_env=None) -> DeliveryConfig:
+def _config(
+    *,
+    slack_outbound=False,
+    email_outbound=False,
+    recipients=None,
+    sender="neyma@test.example",
+    from_env=None,
+) -> DeliveryConfig:
     email_block = {
         "enabled": True,
         "to": recipients or ["controller@test.example"],
@@ -216,3 +223,17 @@ def test_dispatch_cli_requires_secret_or_explicit_local_flag():
     assert blocked.returncode != 0
     assert "Missing action-token secret" in blocked.stderr
     assert "--allow-local-dev-secret" in blocked.stderr
+
+
+def test_live_review_email_blocked_even_when_gated(tmp_path):
+    store, message = _message(tmp_path)
+    try:
+        attempts = dispatch_delivery_message(
+            store, message, _config(email_outbound=True),
+            mode=DispatchMode.LIVE, env={},
+        )
+        email = [a for a in attempts if a.channel.value == "email"]
+        assert email and email[0].status == DispatchStatus.BLOCKED
+        assert "use Slack for human review" in email[0].note
+    finally:
+        store.close()
