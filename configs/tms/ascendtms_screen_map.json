@@ -3,7 +3,7 @@
   "environment": "reference_trial_sandbox",
   "source": "reference_ui_mixed_live_observation_and_seed_pending_deeper_screen_mapping",
   "default_automation_mode": "READ_ONLY",
-  "allowed_domains": ["ascendtms.com"],
+  "allowed_domains": ["ascendtms.com", "*.ascendtms.com"],
   "prohibited_global_actions": [
     "submit payment",
     "send email",

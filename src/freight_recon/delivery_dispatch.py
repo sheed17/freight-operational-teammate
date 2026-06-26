@@ -105,6 +105,77 @@ class SlackApiPoster:
         )
 
 
+def latest_slack_card_target(store: WorkflowStore, run_id: int) -> tuple[str, str] | None:
+    """The (channel, ts) of the most recent Slack review card SENT for this run, from the audit trail.
+
+    This is what lets execution status post as a threaded reply under the card the human approved.
+    """
+    for event in reversed(store.audit_events(run_id)):
+        if event.get("event_type") != "delivery_dispatch_attempted":
+            continue
+        payload = event.get("payload", {})
+        if (
+            payload.get("channel") == ChannelType.SLACK.value
+            and payload.get("status") == DispatchStatus.SENT.value
+            and payload.get("external_id")
+            and payload.get("destination")
+        ):
+            return payload["destination"], payload["external_id"]
+    return None
+
+
+_EXECUTION_PHASE_EMOJI = {
+    "ENTERING": ":hourglass_flowing_sand:",
+    "ENTERED": ":inbox_tray:",
+    "VERIFIED": ":white_check_mark:",
+    "DONE": ":checkered_flag:",
+    "FAILED": ":rotating_light:",
+    "WAITING_FOR_SESSION": ":lock:",
+}
+
+
+def slack_thread_status_poster(
+    store: WorkflowStore,
+    config: DeliveryConfig,
+    *,
+    env: Mapping[str, str],
+    poster: SlackPoster | None = None,
+    actor: str = "system",
+):
+    """Return an ``on_status`` callback that posts each TMS execution status as a threaded reply under
+    the run's Slack review card, so the human watches the payable land where they approved it.
+
+    Best-effort and audited: a missing card target, missing token, or transport error is recorded as
+    an audit event, never raised — the gated write path stays authoritative.
+    """
+    resolved_poster = poster
+    if resolved_poster is None and config.slack is not None:
+        token = env.get(config.slack.bot_token_env or "")
+        resolved_poster = SlackApiPoster(token) if token else None
+
+    def _on_status(update) -> None:
+        target = latest_slack_card_target(store, update.run_id)
+        if target is None or resolved_poster is None:
+            store.add_audit_event(
+                update.run_id,
+                "execution_status_post_skipped",
+                actor=actor,
+                payload={"phase": update.phase.value, "reason": "no_card_target" if target is None else "no_poster"},
+            )
+            return
+        channel, ts = target
+        emoji = _EXECUTION_PHASE_EMOJI.get(update.phase.value, ":information_source:")
+        result = resolved_poster.post_message(channel=channel, payload={"thread_ts": ts, "text": f"{emoji} {update.message}"})
+        store.add_audit_event(
+            update.run_id,
+            "execution_status_posted",
+            actor=actor,
+            payload={"phase": update.phase.value, "ok": result.ok, "thread_ts": ts, "error": result.error},
+        )
+
+    return _on_status
+
+
 def dispatch_delivery_message(
     store: WorkflowStore,
     message: DeliveryMessage,

@@ -10,7 +10,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from freight_recon.review import build_review_payload, record_review_payload, render_text_review  # noqa: E402
+from freight_recon.review import (  # noqa: E402
+    build_review_payload,
+    record_review_payload,
+    render_text_review,
+    review_load_for_run,
+)
 from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 from run_workflow import DEFAULT_CORPUS, DEFAULT_DB, load_synthetic_loads  # noqa: E402
 
@@ -42,7 +47,8 @@ def main() -> int:
             load = loads.get(run.load_id)
             if not load:
                 raise RuntimeError(f"load context not found for workflow run {run.id}: {run.load_id}")
-            payload = build_review_payload(run, load, age_hours=args.age_hours)
+            review_load = review_load_for_run(store, run, load)
+            payload = build_review_payload(run, review_load, age_hours=args.age_hours)
             if payload is None:
                 continue
             if args.record_audit:

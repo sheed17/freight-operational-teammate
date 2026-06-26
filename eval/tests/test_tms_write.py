@@ -47,6 +47,69 @@ def _ledger(tmp_path, fail_modes=frozenset()):
     return MockTmsWriteLedger(tmp_path / "ledger.json", fail_modes=fail_modes)
 
 
+def test_execution_status_updates_emitted_in_order_to_done(tmp_path):
+    # The gated write emits channel-neutral status so a transport (Slack thread) can narrate it.
+    store, run_id = _approved_run(tmp_path)
+    updates: list = []
+    enter_approved_payable(store, _ledger(tmp_path), run_id, amount=_AMOUNT, on_status=updates.append)
+    assert [u.phase.value for u in updates] == ["ENTERING", "ENTERED", "VERIFIED", "DONE"]
+    assert next(u for u in updates if u.phase.value == "ENTERED").external_ref  # carries the PV ref
+    assert updates[-1].amount == _AMOUNT and updates[-1].load_id == "LD-560003"
+
+
+def test_execution_status_emits_failed_on_readback_mismatch(tmp_path):
+    store, run_id = _approved_run(tmp_path)
+    updates: list = []
+    enter_approved_payable(
+        store, _ledger(tmp_path, fail_modes=frozenset({"readback_mismatch"})), run_id, amount=_AMOUNT, on_status=updates.append
+    )
+    # A mismatch must surface as a FAILED status, never VERIFIED/DONE.
+    phases = [u.phase.value for u in updates]
+    assert phases[-1] == "FAILED"
+    assert "VERIFIED" not in phases and "DONE" not in phases
+
+
+def test_status_sink_failure_never_breaks_the_money_path(tmp_path):
+    store, run_id = _approved_run(tmp_path)
+
+    def _boom(_update):
+        raise RuntimeError("slack down")
+
+    # A failing status sink must not break or alter the gated write.
+    outcome = enter_approved_payable(store, _ledger(tmp_path), run_id, amount=_AMOUNT, on_status=_boom)
+    assert outcome.final_state == WorkflowState.DONE and outcome.verified is True
+    store.close()
+
+
+def test_entry_refused_when_no_human_approval_recorded(tmp_path):
+    # APPROVED via a direct transition with no review_approved_* event → binding fails closed.
+    corpus = tmp_path / "corpus"
+    generate(corpus, 8, seed=42)
+    raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
+    loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
+    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    seen: set[tuple[str, str]] = set()
+    for load in loads:
+        process_load_packet(store, load, primary_document_path=corpus / load.documents["carrier_invoice"], seen_invoice_keys=seen)
+    run = next(r for r in store.list_runs() if r.load_id == "LD-560003")
+    store.transition(run.id, WorkflowState.APPROVED, actor="system", event_type="forced_approve_no_amount")
+    with pytest.raises(WorkflowError, match="no human-approved amount recorded"):
+        enter_approved_payable(store, _ledger(tmp_path), run.id, amount=_AMOUNT)
+    assert _ledger(tmp_path).get_payable("LD-560003") is None
+    store.close()
+
+
+def test_entry_amount_must_match_human_approved_amount(tmp_path):
+    # The run was approved at _AMOUNT; trying to enter anything else is refused before any write.
+    store, run_id = _approved_run(tmp_path)
+    ledger = _ledger(tmp_path)
+    with pytest.raises(WorkflowError, match="does not match the human-approved amount"):
+        enter_approved_payable(store, ledger, run_id, amount="9999.00")
+    assert ledger.get_payable("LD-560003") is None  # nothing entered
+    assert store.get_run(run_id).state == WorkflowState.APPROVED  # state untouched
+    store.close()
+
+
 def test_happy_path_enters_and_verifies_to_done(tmp_path):
     store, run_id = _approved_run(tmp_path)
     ledger = _ledger(tmp_path)

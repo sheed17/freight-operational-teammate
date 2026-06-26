@@ -18,6 +18,7 @@ from run_workflow import DEFAULT_CORPUS, DEFAULT_DB, load_synthetic_loads  # noq
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SITE = ROOT / "data" / "active_workspace" / "site"
+DEFAULT_MAILBOX_PRESERVE_DIR = ROOT / "data" / "active_workspace" / "mailbox"
 
 
 def main() -> int:
@@ -26,11 +27,26 @@ def main() -> int:
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite workflow DB path")
     parser.add_argument("--payloads", default=str(DEFAULT_REVIEW_PAYLOADS), help="Review payload JSON")
     parser.add_argument("--site", default=str(DEFAULT_SITE), help="Output static site directory")
+    parser.add_argument(
+        "--mailbox-preserve-dir",
+        default=None,
+        help=(
+            "Optional preserved mailbox directory; defaults to the active workspace mailbox when present. "
+            "When set, packet pages link exact received attachments."
+        ),
+    )
     args = parser.parse_args()
 
     corpus = Path(args.corpus)
     payload_path = Path(args.payloads)
     site = Path(args.site)
+    mailbox_preserve_dir = (
+        Path(args.mailbox_preserve_dir)
+        if args.mailbox_preserve_dir
+        else DEFAULT_MAILBOX_PRESERVE_DIR
+        if DEFAULT_MAILBOX_PRESERVE_DIR.exists()
+        else None
+    )
     loads = {load.load_id: load for load in load_synthetic_loads(corpus)}
     payloads = [
         ReviewPayload.model_validate(item)
@@ -44,6 +60,7 @@ def main() -> int:
             store=store,
             loads=loads,
             payloads=payloads,
+            mailbox_preserve_dir=mailbox_preserve_dir,
         )
     finally:
         store.close()

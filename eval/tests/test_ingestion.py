@@ -63,6 +63,41 @@ def test_link_attachment_links_via_bol_number(tmp_path):
     assert "BOL" in reason and conf >= 0.85
 
 
+def test_parse_eml_uses_attachment_text_extractor_for_generic_pdf_linking(tmp_path):
+    loads, _ = _corpus(tmp_path, count=8)
+    load = loads[2]
+    raw = "\n".join(
+        [
+            "Message-ID: <generic-pdf@carrier.test>",
+            "From: carrier@example.test",
+            "To: billing@neyma.test",
+            "Subject: docs attached",
+            "MIME-Version: 1.0",
+            "Content-Type: multipart/mixed; boundary=x",
+            "",
+            "--x",
+            "Content-Type: text/plain",
+            "",
+            "Docs attached.",
+            "--x",
+            "Content-Type: application/pdf",
+            "Content-Disposition: attachment; filename=\"pod_dirty.pdf\"",
+            "Content-Transfer-Encoding: base64",
+            "",
+            "JVBERi0xLjQKJUVPRgo=",
+            "--x--",
+            "",
+        ]
+    )
+
+    parsed = parse_eml(raw, attachment_text_extractor=lambda _payload, _filename, _type: f"POD for {load.load_id}")
+    ingested = ingest_emails([parsed], loads)
+
+    assert ingested.packet_load_id == load.load_id
+    assert ingested.attachments[0].linked_load_id == load.load_id
+    assert ingested.attachments[0].belongs_to_packet is True
+
+
 def test_generic_filename_under_packet_subject_is_not_attributed(tmp_path):
     """The contamination path: a generic-named foreign doc under a packet-load subject must NOT
     be treated as belonging just because the subject names the load."""

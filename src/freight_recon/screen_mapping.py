@@ -8,6 +8,8 @@ how any eventual write would be verified. They are configuration artifacts, not 
 from __future__ import annotations
 
 import json
+import fnmatch
+import re
 from enum import Enum
 from pathlib import Path
 
@@ -134,6 +136,48 @@ class ObservationSummary(BaseModel):
     blocked_for_real_adapter: list[str]
 
 
+class ScreenFieldObservation(BaseModel):
+    name: str
+    label_seen: str
+    value_seen: str | None = None
+    selector_evidence: str | None = None
+    required_for_read_confirmed: bool = False
+
+
+class ScreenObservation(BaseModel):
+    """A single read-only observation captured from a real/reference TMS screen.
+
+    This is intentionally evidence-shaped. It lets a human/browser-use session record what was seen,
+    then promote only the matching screen metadata in the catalog. It must never carry secrets,
+    cookies, credentials, or proposed writes.
+    """
+
+    screen_id: str
+    observed_url: str
+    status: ObservationStatus
+    observed_at: str
+    observer: str = "codex"
+    title: str | None = None
+    navigation_path_seen: list[str] = Field(default_factory=list)
+    stable_selectors_seen: list[str] = Field(default_factory=list)
+    field_observations: list[ScreenFieldObservation] = Field(default_factory=list)
+    action_controls_seen: list[str] = Field(default_factory=list)
+    forbidden_controls_seen: list[str] = Field(default_factory=list)
+    screenshot_path: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enforce_observation_contract(self) -> "ScreenObservation":
+        if self.status == ObservationStatus.SEED_PENDING_OBSERVATION:
+            raise ValueError("observations may only record NAV_OBSERVED or OBSERVED evidence")
+        if self.status == ObservationStatus.OBSERVED:
+            if not self.stable_selectors_seen:
+                raise ValueError("OBSERVED screen evidence requires stable_selectors_seen")
+            if not self.field_observations:
+                raise ValueError("OBSERVED screen evidence requires field_observations")
+        return self
+
+
 def load_screen_map_catalog(path: str | Path) -> TmsScreenMapCatalog:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return TmsScreenMapCatalog.model_validate(data)
@@ -182,3 +226,117 @@ def summarize_observation(catalog: TmsScreenMapCatalog) -> ObservationSummary:
         adapter_ready_read_only=adapter_ready,
         blocked_for_real_adapter=blocked,
     )
+
+
+def apply_screen_observation(
+    catalog: TmsScreenMapCatalog,
+    observation: ScreenObservation,
+) -> TmsScreenMapCatalog:
+    """Return a catalog updated with one read-only observation.
+
+    Promotion to OBSERVED is deliberately strict:
+    - observed URL must match an allowed domain;
+    - all required fields on the target screen must be observed and confirmed;
+    - forbidden controls seen during observation are appended to the safety boundary;
+    - the resulting catalog is revalidated.
+    """
+
+    _require_allowed_url(catalog, observation.observed_url)
+    updated = []
+    matched = False
+    for screen in catalog.screens:
+        if screen.screen_id != observation.screen_id:
+            updated.append(screen)
+            continue
+        matched = True
+        _require_screen_url_match(screen, observation.observed_url)
+        if observation.status == ObservationStatus.OBSERVED:
+            _require_selector_overlap(screen, observation)
+            _require_required_fields(screen, observation)
+        evidence = _observation_evidence_lines(observation)
+        forbidden = list(dict.fromkeys(screen.action_boundary.forbidden_actions + observation.forbidden_controls_seen))
+        action_boundary = screen.action_boundary.model_copy(update={"forbidden_actions": forbidden})
+        updates = {
+            "observation_status": observation.status,
+            "observation_evidence": list(dict.fromkeys(screen.observation_evidence + evidence)),
+            "action_boundary": action_boundary,
+        }
+        if observation.stable_selectors_seen:
+            updates["stable_selectors"] = list(
+                dict.fromkeys(screen.stable_selectors + observation.stable_selectors_seen)
+            )
+        updated.append(screen.model_copy(update=updates))
+    if not matched:
+        raise ValueError(f"screen_id not found in catalog: {observation.screen_id}")
+    return TmsScreenMapCatalog.model_validate(catalog.model_copy(update={"screens": updated}).model_dump(mode="json"))
+
+
+def _require_allowed_url(catalog: TmsScreenMapCatalog, url: str) -> None:
+    match = re.match(r"^https?://([^/:]+)(?::\d+)?(?:/|$)", url)
+    if not match:
+        raise ValueError(f"observation URL is not http(s): {url}")
+    host = match.group(1).lower()
+    allowed = {domain.lower() for domain in catalog.allowed_domains}
+    wildcard_allowed = {
+        domain[2:].lower()
+        for domain in allowed
+        if domain.startswith("*.")
+    }
+    if host in allowed or any(host == domain or host.endswith(f".{domain}") for domain in wildcard_allowed):
+        return
+    raise ValueError(f"observation URL host is not allowlisted: {host}")
+
+
+def _require_screen_url_match(screen: ScreenMap, url: str) -> None:
+    subdomain_pattern = screen.url_pattern.replace("https://ascendtms.com", "https://*.ascendtms.com")
+    if not (fnmatch.fnmatch(url, screen.url_pattern) or fnmatch.fnmatch(url, subdomain_pattern)):
+        raise ValueError(
+            f"{screen.screen_id}: observation URL does not match screen url_pattern "
+            f"{screen.url_pattern}: {url}"
+        )
+
+
+def _require_selector_overlap(screen: ScreenMap, observation: ScreenObservation) -> None:
+    configured = [selector.lower() for selector in screen.stable_selectors]
+    observed = [selector.lower() for selector in observation.stable_selectors_seen]
+    if any(
+        configured_selector in observed_selector or observed_selector in configured_selector
+        for configured_selector in configured
+        for observed_selector in observed
+    ):
+        return
+    raise ValueError(f"{screen.screen_id}: OBSERVED evidence does not overlap configured stable selectors")
+
+
+def _require_required_fields(screen: ScreenMap, observation: ScreenObservation) -> None:
+    observed = {
+        field.name
+        for field in observation.field_observations
+        if field.required_for_read_confirmed
+    }
+    missing = [
+        field.name
+        for field in screen.fields
+        if field.required_for_read and field.name not in observed
+    ]
+    if missing:
+        raise ValueError(f"{screen.screen_id}: OBSERVED evidence is missing required fields: {missing}")
+
+
+def _observation_evidence_lines(observation: ScreenObservation) -> list[str]:
+    lines = [
+        f"{observation.observed_at}: observed {observation.title or observation.screen_id} at {observation.observed_url}",
+    ]
+    if observation.navigation_path_seen:
+        lines.append(f"Navigation path seen: {' > '.join(observation.navigation_path_seen)}")
+    if observation.stable_selectors_seen:
+        lines.append(f"Stable selectors seen: {', '.join(observation.stable_selectors_seen)}")
+    if observation.field_observations:
+        fields = ", ".join(f"{field.name} ({field.label_seen})" for field in observation.field_observations)
+        lines.append(f"Fields observed: {fields}")
+    if observation.action_controls_seen:
+        lines.append(f"Action controls seen: {', '.join(observation.action_controls_seen)}")
+    if observation.screenshot_path:
+        lines.append(f"Screenshot evidence: {observation.screenshot_path}")
+    lines.extend(observation.notes)
+    return lines

@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from .ingestion import (
+    AttachmentTextExtractor,
     IngestedPacket,
     LoadIndex,
     ParsedEmail,
@@ -87,6 +88,7 @@ def run_mailbox_intake(
     preserve_dir: str | Path,
     state_path: str | Path,
     loads: list[FreightLoadForReconciliation],
+    attachment_text_extractor: AttachmentTextExtractor | None = None,
 ) -> MailboxPollResult:
     """Poll a controlled inbound mailbox directory and reprocess touched packet groups.
 
@@ -113,7 +115,7 @@ def run_mailbox_intake(
     for source in eml_paths:
         raw = source.read_bytes()
         sha = _sha256(raw)
-        parsed = parse_eml(source)
+        parsed = parse_eml(source, attachment_text_extractor=attachment_text_extractor)
         keys = _message_keys(sha, parsed.message_id)
         if processed.intersection(keys):
             duplicates.append(
@@ -144,7 +146,11 @@ def run_mailbox_intake(
     state.processed_keys = sorted(processed)
     state_file.write_text(json.dumps(state.model_dump(mode="json"), indent=2), encoding="utf-8")
 
-    packet_runs, unlinked = _assemble_packets(state.messages, loads)
+    packet_runs, unlinked = _assemble_packets(
+        state.messages,
+        loads,
+        attachment_text_extractor=attachment_text_extractor,
+    )
     return MailboxPollResult(
         inbox_dir=str(inbox),
         preserve_dir=str(preserve),
@@ -167,6 +173,7 @@ def load_mailbox_state(path: str | Path) -> MailboxState:
 def _assemble_packets(
     records: list[MailboxMessageRecord],
     loads: list[FreightLoadForReconciliation],
+    attachment_text_extractor: AttachmentTextExtractor | None = None,
 ) -> tuple[list[MailboxPacketRun], list[MailboxMessageRecord]]:
     by_load: dict[str, list[MailboxMessageRecord]] = {}
     unlinked: list[MailboxMessageRecord] = []
@@ -183,7 +190,7 @@ def _assemble_packets(
         for record in grouped:
             preserved = Path(record.preserved_path)
             if preserved.exists():
-                parsed.append(parse_eml(preserved))
+                parsed.append(parse_eml(preserved, attachment_text_extractor=attachment_text_extractor))
         if not parsed:
             continue
         packets.append(
@@ -207,7 +214,12 @@ def _record_for_message(
 ) -> MailboxMessageRecord:
     linked_ids: set[str] = set()
     for attachment in parsed.attachments:
-        linked, _, _ = link_attachment(attachment.filename, parsed.subject, index)
+        linked, _, _ = link_attachment(
+            attachment.filename,
+            parsed.subject,
+            index,
+            text_hint=attachment.text_hint,
+        )
         if linked:
             linked_ids.add(linked)
     hint = subject_load_hint(parsed.subject, index)

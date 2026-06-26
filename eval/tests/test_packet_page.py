@@ -1,6 +1,8 @@
 """Tests for local packet detail page generation."""
 
+import hashlib
 import json
+from email.message import EmailMessage
 from pathlib import Path
 import sys
 
@@ -74,6 +76,137 @@ def test_packet_page_renders_evidence_math_actions_and_audit(tmp_path):
     assert (site / "evidence" / "LD-560003" / "rate_confirmation.pdf").exists()
     assert (site / "index.html").exists()
     assert (site / "favicon.ico").exists()
+    store.close()
+
+
+def test_packet_page_prefers_exact_mailbox_attachment_evidence(tmp_path):
+    corpus, loads, store, payloads = _build_review_fixture(tmp_path)
+    payload = payloads[0]
+    attachment_bytes = b"%PDF-1.4\n% received mailbox invoice bytes\n"
+    attachment_sha = hashlib.sha256(attachment_bytes).hexdigest()
+
+    message = EmailMessage()
+    message["From"] = "carrier@example.test"
+    message["To"] = "ap@example.test"
+    message["Subject"] = f"Invoice for {payload.load_id}"
+    message.set_content("Attached.")
+    message.add_attachment(
+        attachment_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename="received invoice.pdf",
+    )
+    mailbox = tmp_path / "mailbox"
+    messages = mailbox / "messages"
+    messages.mkdir(parents=True)
+    (messages / "received.eml").write_bytes(message.as_bytes())
+
+    mailbox_payload = payload.model_copy(
+        update={
+            "evidence_links": [
+                EvidenceLink(
+                    label="Received carrier invoice: received invoice.pdf",
+                    document_type="carrier_invoice",
+                    path=f"mailbox://{attachment_sha}/received invoice.pdf",
+                    url=f"http://localhost:8000/evidence/{payload.load_id}/mailbox/{attachment_sha[:12]}",
+                    note="received from inbox",
+                )
+            ]
+        }
+    )
+    site = tmp_path / "site"
+
+    pages = build_packet_site(
+        output_dir=site,
+        corpus_dir=corpus,
+        store=store,
+        loads=loads,
+        payloads=[mailbox_payload],
+        mailbox_preserve_dir=mailbox,
+    )
+
+    received_pdf = (
+        site
+        / "evidence"
+        / payload.load_id
+        / "mailbox"
+        / attachment_sha[:12]
+        / "received_invoice.pdf"
+    )
+    html = pages[0].path.read_text(encoding="utf-8")
+    assert received_pdf.read_bytes() == attachment_bytes
+    assert f'iframe src="../../evidence/{payload.load_id}/mailbox/{attachment_sha[:12]}/received_invoice.pdf"' in html
+    assert "Received in Mailbox" in html
+    assert "Received: carrier invoice: received invoice.pdf" in html
+    assert "received from inbox" in html
+    store.close()
+
+
+def test_packet_page_links_each_mailbox_evidence_item_by_exact_sha(tmp_path):
+    corpus, loads, store, payloads = _build_review_fixture(tmp_path)
+    payload = payloads[0]
+    attachment_one = b"%PDF-1.4\n% first carrier invoice bytes\n"
+    attachment_two = b"%PDF-1.4\n% second carrier invoice bytes\n"
+    sha_one = hashlib.sha256(attachment_one).hexdigest()
+    sha_two = hashlib.sha256(attachment_two).hexdigest()
+
+    message = EmailMessage()
+    message["From"] = "carrier@example.test"
+    message["To"] = "ap@example.test"
+    message["Subject"] = f"Corrected invoices for {payload.load_id}"
+    message.set_content("Attached.")
+    message.add_attachment(
+        attachment_one,
+        maintype="application",
+        subtype="pdf",
+        filename="invoice original.pdf",
+    )
+    message.add_attachment(
+        attachment_two,
+        maintype="application",
+        subtype="pdf",
+        filename="invoice corrected.pdf",
+    )
+    mailbox = tmp_path / "mailbox"
+    messages = mailbox / "messages"
+    messages.mkdir(parents=True)
+    (messages / "received.eml").write_bytes(message.as_bytes())
+
+    mailbox_payload = payload.model_copy(
+        update={
+            "evidence_links": [
+                EvidenceLink(
+                    label="Received carrier invoice: invoice original.pdf",
+                    document_type="carrier_invoice",
+                    path=f"mailbox://{sha_one}/invoice original.pdf",
+                    url=f"http://localhost:8000/evidence/{payload.load_id}/mailbox/{sha_one[:12]}",
+                    note="first invoice",
+                ),
+                EvidenceLink(
+                    label="Received carrier invoice: invoice corrected.pdf",
+                    document_type="carrier_invoice",
+                    path=f"mailbox://{sha_two}/invoice corrected.pdf",
+                    url=f"http://localhost:8000/evidence/{payload.load_id}/mailbox/{sha_two[:12]}",
+                    note="corrected invoice",
+                ),
+            ]
+        }
+    )
+
+    pages = build_packet_site(
+        output_dir=tmp_path / "site",
+        corpus_dir=corpus,
+        store=store,
+        loads=loads,
+        payloads=[mailbox_payload],
+        mailbox_preserve_dir=mailbox,
+    )
+
+    html = pages[0].path.read_text(encoding="utf-8")
+    assert f'mailbox/{sha_one[:12]}/invoice_original.pdf' in html
+    assert f'mailbox/{sha_two[:12]}/invoice_corrected.pdf' in html
+    assert "first invoice" in html
+    assert "corrected invoice" in html
     store.close()
 
 

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from email import policy
+from email.parser import BytesParser
 from html import escape
+import hashlib
 import shutil
 from pathlib import Path
 
 from .reconciliation import FreightLoadForReconciliation
-from .review import ReviewPayload
+from .review import EvidenceLink, ReviewPayload
 from .workflow import WorkflowRun, WorkflowStore
 
 
@@ -21,6 +24,12 @@ class PacketPageResult:
     url_path: str
 
 
+@dataclass(frozen=True)
+class MailboxEvidenceAssets:
+    primary_by_doc_type: dict[str, str]
+    href_by_mailbox_path: dict[str, str]
+
+
 def build_packet_site(
     *,
     output_dir: Path,
@@ -28,6 +37,7 @@ def build_packet_site(
     store: WorkflowStore,
     loads: dict[str, FreightLoadForReconciliation],
     payloads: list[ReviewPayload],
+    mailbox_preserve_dir: Path | None = None,
 ) -> list[PacketPageResult]:
     """Build local static packet pages and evidence links."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +59,11 @@ def build_packet_site(
             page.write_text(_render_unlinked_packet_page(run, payload, store.audit_events(run.id)), encoding="utf-8")
         else:
             _copy_evidence(output_dir, corpus_dir, load)
-            page.write_text(_render_packet_page(run, load, payload, store.audit_events(run.id)), encoding="utf-8")
+            mailbox_assets = _copy_mailbox_evidence(output_dir, payload, mailbox_preserve_dir)
+            page.write_text(
+                _render_packet_page(run, load, payload, store.audit_events(run.id), mailbox_assets),
+                encoding="utf-8",
+            )
         results.append(
             PacketPageResult(
                 run_id=payload.run_id,
@@ -68,12 +82,14 @@ def _render_packet_page(
     load: FreightLoadForReconciliation,
     payload: ReviewPayload,
     audit_events: list[dict],
+    mailbox_assets: MailboxEvidenceAssets | None = None,
 ) -> str:
     expected_total = _expected_total(load)
     invoice_total = _invoice_total(load)
     delta = invoice_total - expected_total
-    invoice_src = _site_doc_path(load, "carrier_invoice")
-    rate_src = _site_doc_path(load, "rate_confirmation")
+    assets = mailbox_assets or MailboxEvidenceAssets(primary_by_doc_type={}, href_by_mailbox_path={})
+    invoice_src = assets.primary_by_doc_type.get("carrier_invoice") or _site_doc_path(load, "carrier_invoice")
+    rate_src = assets.primary_by_doc_type.get("rate_confirmation") or _site_doc_path(load, "rate_confirmation")
 
     return f"""<!doctype html>
 <html lang="en">
@@ -167,7 +183,7 @@ def _render_packet_page(
 
     <section>
       <h2>Evidence</h2>
-      <div class="evidence-list">{_evidence_links(load)}</div>
+      {_evidence_links(load, payload, assets)}
     </section>
 
     <section class="grid-two">
@@ -294,6 +310,8 @@ th { color: #526170; font-size: 12px; text-transform: uppercase; letter-spacing:
 .action strong { display: block; margin-bottom: 4px; }
 .evidence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .evidence-list a { display: block; border: 1px solid #d8dee6; border-radius: 6px; padding: 10px; background: #fafbfc; overflow-wrap: anywhere; }
+.evidence-list a span { display: block; margin-top: 4px; color: #657282; font-size: 12px; line-height: 1.35; }
+.evidence-subhead { margin: 14px 0 8px; font-size: 14px; color: #526170; text-transform: uppercase; letter-spacing: 0; }
 pre { white-space: pre-wrap; margin: 0; background: #f6f7f9; border: 1px solid #d8dee6; border-radius: 6px; padding: 12px; line-height: 1.45; }
 .audit { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
 .audit li { padding-bottom: 8px; border-bottom: 1px solid #edf0f3; }
@@ -317,17 +335,115 @@ def _copy_evidence(output_dir: Path, corpus_dir: Path, load: FreightLoadForRecon
             shutil.copyfile(source, target_dir / f"{doc_type}.pdf")
 
 
+def _copy_mailbox_evidence(
+    output_dir: Path,
+    payload: ReviewPayload,
+    mailbox_preserve_dir: Path | None,
+) -> MailboxEvidenceAssets:
+    if mailbox_preserve_dir is None:
+        return MailboxEvidenceAssets(primary_by_doc_type={}, href_by_mailbox_path={})
+    evidence_by_sha = _mailbox_attachment_index(mailbox_preserve_dir)
+    primary_by_doc_type: dict[str, str] = {}
+    href_by_mailbox_path: dict[str, str] = {}
+    for link in payload.evidence_links:
+        attachment_sha = _mailbox_sha_from_path(link.path)
+        if not attachment_sha:
+            continue
+        attachment = evidence_by_sha.get(attachment_sha)
+        if attachment is None:
+            continue
+        filename, content = attachment
+        safe_name = _safe_filename(filename)
+        target = output_dir / "evidence" / payload.load_id / "mailbox" / attachment_sha[:12] / safe_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        href = f"../../evidence/{payload.load_id}/mailbox/{attachment_sha[:12]}/{safe_name}"
+        href_by_mailbox_path[link.path] = href
+        primary_by_doc_type.setdefault(
+            link.document_type,
+            href,
+        )
+    return MailboxEvidenceAssets(
+        primary_by_doc_type=primary_by_doc_type,
+        href_by_mailbox_path=href_by_mailbox_path,
+    )
+
+
+def _mailbox_attachment_index(preserve_dir: Path) -> dict[str, tuple[str, bytes]]:
+    messages_dir = preserve_dir / "messages"
+    roots = [messages_dir] if messages_dir.exists() else [preserve_dir]
+    attachments: dict[str, tuple[str, bytes]] = {}
+    for root in roots:
+        for eml_path in sorted(root.glob("*.eml")):
+            message = BytesParser(policy=policy.default).parsebytes(eml_path.read_bytes())
+            for part in message.walk():
+                if part.is_multipart():
+                    continue
+                filename = part.get_filename()
+                if not filename:
+                    continue
+                content = part.get_payload(decode=True) or b""
+                attachments[hashlib.sha256(content).hexdigest()] = (filename, content)
+    return attachments
+
+
+def _mailbox_sha_from_path(path: str) -> str | None:
+    if not path.startswith("mailbox://"):
+        return None
+    sha = path.removeprefix("mailbox://").split("/", 1)[0].strip().lower()
+    if len(sha) == 64 and all(char in "0123456789abcdef" for char in sha):
+        return sha
+    return None
+
+
+def _safe_filename(filename: str) -> str:
+    safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in filename.strip())
+    return safe or "attachment.pdf"
+
+
 def _site_doc_path(load: FreightLoadForReconciliation, doc_type: str) -> str:
     if doc_type not in load.documents:
         return "about:blank"
     return f"../../evidence/{load.load_id}/{doc_type}.pdf"
 
 
-def _evidence_links(load: FreightLoadForReconciliation) -> str:
-    return "\n".join(
+def _evidence_links(
+    load: FreightLoadForReconciliation,
+    payload: ReviewPayload,
+    mailbox_assets: MailboxEvidenceAssets,
+) -> str:
+    mailbox_links = [
+        (
+            f'<a href="{escape(mailbox_assets.href_by_mailbox_path[link.path])}" target="_blank">'
+            f"<strong>{escape(_received_evidence_label(link))}</strong>"
+            f"<span>{escape(link.note or 'received from mailbox')}</span>"
+            "</a>"
+        )
+        for link in payload.evidence_links
+        if link.path in mailbox_assets.href_by_mailbox_path
+    ]
+    canonical_links = [
         f'<a href="../../evidence/{escape(load.load_id)}/{escape(doc_type)}.pdf" target="_blank">{escape(doc_type.replace("_", " ").title())}</a>'
         for doc_type in sorted(load.documents)
-    )
+    ]
+    parts = []
+    if mailbox_links:
+        parts.append('<h3 class="evidence-subhead">Received in Mailbox</h3>')
+        parts.append('<div class="evidence-list received">' + "\n".join(mailbox_links) + "</div>")
+    if canonical_links:
+        parts.append('<h3 class="evidence-subhead">Reference Source Docs</h3>')
+        parts.append('<div class="evidence-list reference">' + "\n".join(canonical_links) + "</div>")
+    return "\n".join(parts)
+
+
+def _received_evidence_label(link: EvidenceLink) -> str:
+    note = (link.note or "").lower()
+    prefix = "Received"
+    if "not in packet" in note or "does_not_belong_to_packet" in note or "unlinked" in note:
+        prefix = "Review"
+    if "," in note and ("wrong_load" in note or "extraneous" in note):
+        prefix = "Extraneous"
+    return f"{prefix}: {link.label.removeprefix('Received ')}"
 
 
 def _payload_evidence_links(payload: ReviewPayload) -> str:

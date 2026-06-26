@@ -6,8 +6,10 @@ import json
 import shutil
 import subprocess
 import sys
+from decimal import Decimal
 from email.message import EmailMessage
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -21,6 +23,35 @@ from freight_recon.review_actions import ReviewActionRequest, ReviewDecision, ap
 from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _c(value, confidence=0.99):
+    return SimpleNamespace(value=value, confidence=confidence)
+
+
+def _fake_obj(load, *, linehaul=None, fuel=None, load_or_pro=None, linehaul_conf=0.99, total=None):
+    linehaul_value = load.rate_linehaul if linehaul is None else linehaul
+    fuel_value = load.rate_fuel if fuel is None else fuel
+    consistent_total = Decimal(str(linehaul_value)) + Decimal(str(fuel_value))
+    return SimpleNamespace(
+        invoice_number=_c(load.invoice_number),
+        carrier_name=_c(load.carrier),
+        load_or_pro=_c(load_or_pro if load_or_pro is not None else load.load_id),
+        linehaul_amount=_c(linehaul_value, linehaul_conf),
+        fuel_surcharge=_c(fuel_value),
+        total_amount=_c(consistent_total if total is None else total),
+        invoice_date=_c("2026-05-05"),
+        accessorials=[],
+    )
+
+
+def _extractor_for(obj, calls=None, *, model="gpt-4o", error=None):
+    def extractor(path):
+        if calls is not None:
+            calls.append(Path(path))
+        return SimpleNamespace(extraction=obj, model=model, error=error)
+
+    return extractor
 
 
 def _email_corpus(tmp_path, count=12):
@@ -88,6 +119,180 @@ def test_mailbox_workflow_creates_review_and_signed_delivery_for_exception(tmp_p
     assert "document_received" in events
     assert "review_payload_created" in events
     assert "delivery_message_created" in events
+
+
+def test_mailbox_workflow_real_extraction_uses_preserved_carrier_invoice_attachment(tmp_path):
+    _, loads, email_corpus = _email_corpus(tmp_path)
+    packet = next(p for p in email_corpus.packets if p.scenario == "single_email_complete")
+    load = next(load for load in loads if load.load_id == packet.load_id)
+    billed_linehaul = load.rate_linehaul + 500
+    calls: list[Path] = []
+    inbox = tmp_path / "inbox"
+    _copy_packet_emails(packet, inbox)
+
+    result = run_mailbox_workflow(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        workflow_db_path=tmp_path / "workflow.sqlite3",
+        loads=loads,
+        signer=DeliverySigner(b"test-secret"),
+        extractor=_extractor_for(_fake_obj(load, linehaul=billed_linehaul), calls),
+    )
+
+    assert calls and calls[0].exists()
+    assert calls[0].parent.name == "extracted_attachments"
+    workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
+    assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
+    payload = next(item for item in result.review_payloads if item.load_id == packet.load_id)
+    linehaul = next(field for field in payload.fields if field.label == "linehaul")
+    assert linehaul.invoice_value == f"{billed_linehaul:.2f}"
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        extracted = next(
+            event for event in store.audit_events(workflow_result.workflow_run_id)
+            if event["event_type"] == "extraction_recorded"
+        )
+    finally:
+        store.close()
+    assert extracted["payload"]["source"] == "vision_extraction"
+    assert extracted["payload"]["extracted_invoice"]["invoice_linehaul"] == str(billed_linehaul)
+
+
+def test_mailbox_workflow_real_extraction_low_confidence_forces_review(tmp_path):
+    _, loads, email_corpus = _email_corpus(tmp_path)
+    packet = next(p for p in email_corpus.packets if p.scenario == "single_email_complete")
+    load = next(load for load in loads if load.load_id == packet.load_id)
+    inbox = tmp_path / "inbox"
+    _copy_packet_emails(packet, inbox)
+
+    result = run_mailbox_workflow(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        workflow_db_path=tmp_path / "workflow.sqlite3",
+        loads=loads,
+        signer=DeliverySigner(b"test-secret"),
+        extractor=_extractor_for(_fake_obj(load, linehaul_conf=0.4)),
+    )
+
+    workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
+    assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        run = store.get_run(workflow_result.workflow_run_id)
+    finally:
+        store.close()
+    assert run is not None
+    assert "low-confidence extraction" in (run.reason or "")
+
+
+def test_mailbox_workflow_real_extraction_total_mismatch_forces_review(tmp_path):
+    _, loads, email_corpus = _email_corpus(tmp_path)
+    packet = next(p for p in email_corpus.packets if p.scenario == "single_email_complete")
+    load = next(load for load in loads if load.load_id == packet.load_id)
+    inbox = tmp_path / "inbox"
+    _copy_packet_emails(packet, inbox)
+
+    result = run_mailbox_workflow(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        workflow_db_path=tmp_path / "workflow.sqlite3",
+        loads=loads,
+        signer=DeliverySigner(b"test-secret"),
+        extractor=_extractor_for(_fake_obj(load, total=load.rate_linehaul + load.rate_fuel + 125)),
+    )
+
+    workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
+    assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        run = store.get_run(workflow_result.workflow_run_id)
+    finally:
+        store.close()
+    assert run is not None
+    assert "does not equal its line items" in (run.reason or "")
+
+
+def test_mailbox_workflow_real_extraction_exception_routes_to_review_not_crash(tmp_path):
+    _, loads, email_corpus = _email_corpus(tmp_path)
+    packet = next(p for p in email_corpus.packets if p.scenario == "single_email_complete")
+    inbox = tmp_path / "inbox"
+    _copy_packet_emails(packet, inbox)
+
+    def raises(_path):
+        raise RuntimeError("render failed")
+
+    result = run_mailbox_workflow(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        workflow_db_path=tmp_path / "workflow.sqlite3",
+        loads=loads,
+        signer=DeliverySigner(b"test-secret"),
+        extractor=raises,
+    )
+
+    workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
+    assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        run = store.get_run(workflow_result.workflow_run_id)
+    finally:
+        store.close()
+    assert run is not None
+    assert "render failed" in (run.reason or "")
+
+
+def test_mailbox_workflow_multiple_carrier_invoices_force_review_without_extracting(tmp_path):
+    corpus, loads, _ = _email_corpus(tmp_path)
+    load = loads[0]
+    invoice_pdf = corpus / load.documents["carrier_invoice"]
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    message = EmailMessage()
+    message["Message-ID"] = "<multi-invoice@example.test>"
+    message["From"] = "billing@carrier.test"
+    message["To"] = "billing@neyma-test-freight.test"
+    message["Subject"] = f"Invoices for {load.load_id} {load.invoice_number}"
+    message.set_content("Please process these invoices.")
+    payload = invoice_pdf.read_bytes()
+    message.add_attachment(
+        payload,
+        maintype="application",
+        subtype="pdf",
+        filename=f"{load.load_id}_{load.invoice_number}_carrier_invoice_a.pdf",
+    )
+    message.add_attachment(
+        payload,
+        maintype="application",
+        subtype="pdf",
+        filename=f"{load.load_id}_{load.invoice_number}_carrier_invoice_b.pdf",
+    )
+    (inbox / "multi_invoice.eml").write_bytes(message.as_bytes())
+    calls: list[Path] = []
+
+    result = run_mailbox_workflow(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        workflow_db_path=tmp_path / "workflow.sqlite3",
+        loads=loads,
+        signer=DeliverySigner(b"test-secret"),
+        extractor=_extractor_for(_fake_obj(load), calls),
+    )
+
+    workflow_result = next(item for item in result.packet_results if item.load_id == load.load_id)
+    assert calls == []
+    assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        run = store.get_run(workflow_result.workflow_run_id)
+    finally:
+        store.close()
+    assert run is not None
+    assert "multiple linked carrier invoice attachments" in (run.reason or "")
 
 
 def test_mailbox_workflow_surfaces_unlinked_inbound_email_for_review(tmp_path):
@@ -241,6 +446,49 @@ def test_mailbox_workflow_trickle_email_refreshes_same_run_when_packet_resolves(
     assert "mailbox_packet_refreshed" in events
     assert "reconciliation_refreshed" in events
     assert "route_after_reconciliation_refresh" in events
+
+
+def test_mailbox_workflow_real_extraction_trickle_refreshes_same_run_when_packet_resolves(tmp_path):
+    _, loads, email_corpus = _email_corpus(tmp_path)
+    packet = next(p for p in email_corpus.packets if p.scenario == "trickle_pod_later" and len(p.emails) >= 2)
+    load = next(load for load in loads if load.load_id == packet.load_id)
+    assert load.expected_outcome == "MATCHED"
+    calls: list[Path] = []
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    first_email = Path(packet.emails[0].eml_path)
+    shutil.copy2(first_email, inbox / first_email.name)
+    kwargs = {
+        "inbox_dir": inbox,
+        "preserve_dir": tmp_path / "mailbox",
+        "mailbox_state_path": tmp_path / "mailbox" / "mailbox_state.json",
+        "workflow_db_path": tmp_path / "workflow.sqlite3",
+        "loads": loads,
+        "signer": DeliverySigner(b"test-secret"),
+        "extractor": _extractor_for(_fake_obj(load), calls),
+    }
+
+    first = run_mailbox_workflow(**kwargs)
+    first_run_id = first.packet_results[0].workflow_run_id
+    assert first.packet_results[0].workflow_state == WorkflowState.NEEDS_REVIEW
+    assert first.packet_results[0].outcome == "NEEDS_REVIEW"
+
+    second_email = Path(packet.emails[1].eml_path)
+    shutil.copy2(second_email, inbox / second_email.name)
+    second = run_mailbox_workflow(**kwargs)
+
+    assert second.packet_results[0].workflow_run_id == first_run_id
+    assert second.packet_results[0].workflow_state == WorkflowState.DONE
+    assert second.packet_results[0].outcome == "MATCHED"
+    assert len(calls) >= 2
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        events = [event["event_type"] for event in store.audit_events(first_run_id)]
+    finally:
+        store.close()
+    assert "mailbox_packet_refreshed" in events
+    assert "extraction_recorded" in events
+    assert "reconciliation_refreshed" in events
 
 
 def test_mailbox_workflow_requested_backup_consumes_arriving_backup(tmp_path):

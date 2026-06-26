@@ -10,8 +10,12 @@ money/TMS actions still require the existing workflow gates.
 
 from __future__ import annotations
 
+import email
+import hashlib
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +27,9 @@ from .delivery import (
     record_delivery_message,
     redact_delivery_message,
 )
+from .ingestion import AttachmentTextExtractor
 from .mailbox_intake import MailboxMessageRecord, MailboxPacketRun, MailboxPollResult, run_mailbox_intake
+from .extraction_bridge import reconciliation_from_extraction
 from .reconciliation import (
     FreightLoadForReconciliation,
     ReconciliationOutcome,
@@ -44,6 +50,7 @@ from .review import (
     RoutingDecision,
     build_review_payload,
     record_review_payload,
+    review_load_for_run,
 )
 from .workflow import TERMINAL_STATES, WorkflowRun, WorkflowState, WorkflowStore
 
@@ -95,6 +102,9 @@ def run_mailbox_workflow(
     age_hours: int = 0,
     record_audit: bool = True,
     redact_tokens: bool = True,
+    extractor: Callable[[str | Path], Any] | None = None,
+    confidence_threshold: float = 0.85,
+    attachment_text_extractor: AttachmentTextExtractor | None = None,
 ) -> MailboxWorkflowResult:
     """Run the controlled mailbox intake through workflow, review, and delivery.
 
@@ -108,6 +118,7 @@ def run_mailbox_workflow(
         preserve_dir=preserve_dir,
         state_path=mailbox_state_path,
         loads=loads,
+        attachment_text_extractor=attachment_text_extractor,
     )
     load_by_id = {load.load_id: load for load in loads}
     store = WorkflowStore(workflow_db_path)
@@ -135,19 +146,15 @@ def run_mailbox_workflow(
 
             run = _receive_or_refresh_packet(store, packet_run, load)
             if run.state == WorkflowState.RECEIVED:
-                run = store.mark_extracted(
-                    run.id,
-                    {
-                        "invoice_number": load.invoice_number,
-                        "carrier": load.carrier,
-                        "source": "mailbox_packet_ground_truth",
-                        "packet_load_id": packet_run.packet.packet_load_id,
-                        "source_message_count": packet_run.source_message_count,
-                        "delivered_doc_types": packet_run.packet.delivered_doc_types,
-                        "mailbox_flags": packet_run.packet.flags,
-                    },
+                extraction_payload, result = _mailbox_extraction_payload_and_result(
+                    packet_run=packet_run,
+                    load=load,
+                    preserve_dir=Path(preserve_dir),
+                    seen_invoice_keys=seen_invoice_keys,
+                    extractor=extractor,
+                    confidence_threshold=confidence_threshold,
                 )
-                result = reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
+                run = store.mark_extracted(run.id, extraction_payload)
                 result = _apply_packet_review_flags(result, packet_run)
                 run = store.mark_reconciled(run.id, result)
             elif run.state in {WorkflowState.NEEDS_REVIEW, WorkflowState.REQUESTED_BACKUP}:
@@ -157,10 +164,21 @@ def run_mailbox_workflow(
                     actor="system",
                     payload=_mailbox_packet_payload(packet_run, load),
                 )
-                result = reconcile_load(
-                    load,
+                extraction_payload, result = _mailbox_extraction_payload_and_result(
+                    packet_run=packet_run,
+                    load=load,
+                    preserve_dir=Path(preserve_dir),
                     seen_invoice_keys=_seen_invoice_keys_from_store(store, exclude_run_id=run.id),
+                    extractor=extractor,
+                    confidence_threshold=confidence_threshold,
                 )
+                if extraction_payload["source"] == "vision_extraction":
+                    store.add_audit_event(
+                        run.id,
+                        "extraction_recorded",
+                        actor="system",
+                        payload=extraction_payload,
+                    )
                 result = _apply_packet_review_flags(result, packet_run)
                 run = store.refresh_reconciliation(run.id, result)
             elif run.state not in TERMINAL_STATES:
@@ -171,7 +189,8 @@ def run_mailbox_workflow(
                     payload=_mailbox_packet_payload(packet_run, load),
                 )
 
-            payload = build_review_payload(run, load, client=client_profile, age_hours=age_hours)
+            review_load = review_load_for_run(store, run, load)
+            payload = build_review_payload(run, review_load, client=client_profile, age_hours=age_hours)
             if payload is not None:
                 payload = _with_mailbox_packet_evidence(payload, packet_run)
             message = None
@@ -284,6 +303,111 @@ def _mailbox_packet_payload(
             for attachment in packet.attachments
         ],
     }
+
+
+def _mailbox_extraction_payload_and_result(
+    *,
+    packet_run: MailboxPacketRun,
+    load: FreightLoadForReconciliation,
+    preserve_dir: Path,
+    seen_invoice_keys: set[tuple[str, str]] | None,
+    extractor: Callable[[str | Path], Any] | None,
+    confidence_threshold: float,
+) -> tuple[dict, ReconciliationResult]:
+    base_payload = {
+        "invoice_number": load.invoice_number,
+        "carrier": load.carrier,
+        "source": "mailbox_packet_ground_truth",
+        "packet_load_id": packet_run.packet.packet_load_id,
+        "source_message_count": packet_run.source_message_count,
+        "delivered_doc_types": packet_run.packet.delivered_doc_types,
+        "mailbox_flags": packet_run.packet.flags,
+    }
+    if extractor is None:
+        return base_payload, reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
+
+    invoice_path, invoice_issue = _materialize_carrier_invoice_attachment(packet_run, preserve_dir)
+    if invoice_path is None:
+        # Missing/ambiguous invoice remains a packet-review problem; do not synthesize an extraction.
+        result = reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
+        if invoice_issue:
+            result = result.model_copy(
+                update={
+                    "outcome": ReconciliationOutcome.NEEDS_REVIEW,
+                    "reasons": [*result.reasons, invoice_issue],
+                    "needs_human_review": True,
+                }
+            )
+        return {
+            **base_payload,
+            "source": "mailbox_packet_no_extractable_invoice",
+            "extractor_requested": True,
+            "invoice_selection_issue": invoice_issue,
+        }, result
+
+    extraction_payload, result = reconciliation_from_extraction(
+        load,
+        _call_extractor(extractor, invoice_path),
+        seen_invoice_keys=seen_invoice_keys,
+        confidence_threshold=confidence_threshold,
+    )
+    extraction_payload.update(
+        {
+            "mailbox_invoice_attachment": str(invoice_path),
+            "packet_load_id": packet_run.packet.packet_load_id,
+            "source_message_count": packet_run.source_message_count,
+            "delivered_doc_types": packet_run.packet.delivered_doc_types,
+            "mailbox_flags": packet_run.packet.flags,
+        }
+    )
+    return extraction_payload, result
+
+
+def _materialize_carrier_invoice_attachment(
+    packet_run: MailboxPacketRun,
+    preserve_dir: Path,
+) -> tuple[Path | None, str | None]:
+    candidates = [
+        attachment
+        for attachment in packet_run.packet.attachments
+        if attachment.belongs_to_packet and attachment.classification.doc_type == "carrier_invoice"
+    ]
+    if not candidates:
+        return None, "no linked carrier invoice attachment"
+    if len(candidates) > 1:
+        return None, f"multiple linked carrier invoice attachments: {len(candidates)}"
+    candidate = candidates[0]
+
+    messages_dir = preserve_dir / "messages"
+    output_dir = preserve_dir / "extracted_attachments"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{candidate.sha256[:16]}_{_safe_filename(candidate.filename)}"
+    if output_path.exists():
+        return output_path, None
+
+    for eml_path in sorted(messages_dir.glob("*.eml")):
+        mime = email.message_from_bytes(eml_path.read_bytes())
+        for part in mime.walk():
+            if part.get_content_disposition() != "attachment":
+                continue
+            payload = part.get_payload(decode=True) or b""
+            if hashlib.sha256(payload).hexdigest() != candidate.sha256:
+                continue
+            output_path.write_bytes(payload)
+            return output_path, None
+    return None, "linked carrier invoice attachment was not found in preserved messages"
+
+
+def _safe_filename(filename: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in filename)
+    return cleaned or "attachment.pdf"
+
+
+def _call_extractor(extractor: Callable[[str | Path], Any], path: str | Path) -> Any:
+    try:
+        return extractor(path)
+    except Exception as exc:  # noqa: BLE001 - keep mailbox runs reviewable on render/provider failure
+        return SimpleNamespace(extraction=None, model=None, error=f"{type(exc).__name__}: {exc}")
 
 
 def _process_unlinked_message(store: WorkflowStore, record: MailboxMessageRecord) -> WorkflowRun:

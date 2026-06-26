@@ -29,6 +29,7 @@ import json
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 from pydantic import BaseModel, Field
 
@@ -88,6 +89,23 @@ class ReadbackVerification(BaseModel):
 
 def idempotency_key(run_id: int, load_id: str, amount: str) -> str:
     return hashlib.sha256(f"{run_id}:{load_id}:{amount}".encode("utf-8")).hexdigest()[:24]
+
+
+# The audit events the review/Slack intake records when a human approves an amount for a run.
+_APPROVAL_EVENT_TYPES = ("review_approved_expected_amount", "review_approved_full_amount")
+
+
+def approved_amount_for_run(store: WorkflowStore, run_id: int) -> str | None:
+    """The amount a human approved for this run (from the latest review/Slack approval), or ``None``.
+
+    This is the authoritative figure a TMS write must enter — the approval is the source of truth,
+    not an amount handed to the executor afterward.
+    """
+    for event in reversed(store.audit_events(run_id)):
+        if event["event_type"] in _APPROVAL_EVENT_TYPES:
+            amount = event["payload"].get("amount")
+            return str(amount) if amount is not None else None
+    return None
 
 
 class MockTmsWriteLedger:
@@ -285,6 +303,33 @@ class PayableEntryOutcome(BaseModel):
     note: str
 
 
+class ExecutionPhase(str, Enum):
+    """Coarse phases of a TMS write, for human-facing status updates (e.g. a Slack thread)."""
+
+    ENTERING = "ENTERING"
+    ENTERED = "ENTERED"
+    VERIFIED = "VERIFIED"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    WAITING_FOR_SESSION = "WAITING_FOR_SESSION"
+
+
+class ExecutionStatusUpdate(BaseModel):
+    """A channel-neutral status update emitted as the gated write progresses.
+
+    Transports (a Slack thread, etc.) render this so a human watches the payable land in the same
+    place they approved it. Best-effort: the gated spine stays authoritative and never depends on a
+    status sink succeeding.
+    """
+
+    run_id: int
+    load_id: str
+    phase: ExecutionPhase
+    message: str
+    external_ref: str | None = None
+    amount: str | None = None
+
+
 def enter_approved_payable(
     store: WorkflowStore,
     ledger: MockTmsWriteLedger,
@@ -294,6 +339,7 @@ def enter_approved_payable(
     charges: list[ChargeLine] | None = None,
     actor: str = "Rasheed",
     tms_write_enabled: bool = True,
+    on_status: Callable[[ExecutionStatusUpdate], None] | None = None,
 ) -> PayableEntryOutcome:
     """Drive an APPROVED run through the gated write path to DONE, FAILED, or WAITING_FOR_SESSION.
 
@@ -307,9 +353,39 @@ def enter_approved_payable(
     if run.state != WorkflowState.APPROVED:
         raise WorkflowError(f"payable entry requires APPROVED state, got {run.state.value}")
 
+    # Bind the entry to the human approval: the amount entered must be the amount approved in Slack
+    # for THIS run (recorded on the APPROVED transition), never just a caller-supplied figure.
+    # Deterministic Python owns the money; the caller's `amount` is only an assertion that must match.
+    approved = approved_amount_for_run(store, run_id)
+    if approved is None:
+        # Fail closed: the binding is the last line of defense for real money, so a run with no
+        # recorded human approval must never reach the writer on a caller-supplied amount.
+        raise WorkflowError(
+            f"refusing TMS entry for run {run_id}: no human-approved amount recorded for this run"
+        )
+    if Decimal(approved) != Decimal(amount):
+        raise WorkflowError(
+            f"refusing TMS entry for run {run_id}: requested amount {amount} does not match the "
+            f"human-approved amount {approved}"
+        )
+
     charges = charges or []
     adapter = TmsWriteAdapter(store, ledger)
     trace: list[str] = []
+    load_id = run.load_id
+
+    def _emit(phase: ExecutionPhase, message: str, *, external_ref: str | None = None, amount: str | None = None) -> None:
+        # Best-effort human-facing status; a sink failure must never break or alter the money path.
+        if on_status is None:
+            return
+        try:
+            on_status(
+                ExecutionStatusUpdate(
+                    run_id=run_id, load_id=load_id, phase=phase, message=message, external_ref=external_ref, amount=amount
+                )
+            )
+        except Exception:  # noqa: BLE001 - status posting is advisory only
+            pass
 
     run = store.transition(run_id, WorkflowState.READY_FOR_ENTRY, actor=actor, event_type="route_to_entry")
     trace.append("APPROVED→READY_FOR_ENTRY")
@@ -322,6 +398,7 @@ def enter_approved_payable(
 
     run = store.transition(run_id, WorkflowState.ENTERING, actor=actor, event_type="begin_entry")
     trace.append("READY_FOR_ENTRY→ENTERING")
+    _emit(ExecutionPhase.ENTERING, f"Entering payable in TMS for {load_id} (${amount})…", amount=amount)
 
     submit_ctx = ToolContext(
         workflow_state=WorkflowState.ENTERING, actor=actor, approval_granted=True, tms_write_enabled=tms_write_enabled
@@ -332,13 +409,17 @@ def enter_approved_payable(
     if result.status == PayableWriteStatus.SESSION_EXPIRED:
         store.transition(run_id, WorkflowState.WAITING_FOR_SESSION, actor=actor, event_type="entry_session_expired")
         trace.append("ENTERING→WAITING_FOR_SESSION")
+        _emit(ExecutionPhase.WAITING_FOR_SESSION, "Session expired — waiting for a fresh login before entering.")
         return _outcome(run, WorkflowState.WAITING_FOR_SESSION, result, verified=False, trace=trace,
                         note="session expired; awaiting a fresh human-established session")
     if result.status == PayableWriteStatus.DUPLICATE_BLOCKED:
         store.transition(run_id, WorkflowState.FAILED, actor=actor, event_type="entry_duplicate_blocked")
         trace.append("ENTERING→FAILED")
+        _emit(ExecutionPhase.FAILED, "Duplicate payable blocked — routed to review.")
         return _outcome(run, WorkflowState.FAILED, result, verified=False, trace=trace,
                         note="duplicate payable blocked; routed to review")
+
+    _emit(ExecutionPhase.ENTERED, f"Payable entered: {result.external_ref}", external_ref=result.external_ref)
 
     verify_ctx = ToolContext(workflow_state=WorkflowState.ENTERING, actor=actor)
     verification = adapter.verify(run, expected_amount=amount, context=verify_ctx)
@@ -347,12 +428,15 @@ def enter_approved_payable(
     if not verification.match:
         store.transition(run_id, WorkflowState.FAILED, actor=actor, event_type="entry_readback_mismatch")
         trace.append("ENTERING→FAILED")
+        _emit(ExecutionPhase.FAILED, "Readback mismatch — payable not confirmed, routed to review.")
         return _outcome(run, WorkflowState.FAILED, result, verified=False, trace=trace,
                         note="readback mismatch; payable not confirmed, routed to review")
 
+    _emit(ExecutionPhase.VERIFIED, f"Readback verified ${amount}.", external_ref=result.external_ref, amount=amount)
     store.transition(run_id, WorkflowState.ENTERED, actor=actor, event_type="entry_confirmed")
     store.transition(run_id, WorkflowState.DONE, actor=actor, event_type="entry_done")
     trace.extend(["ENTERING→ENTERED", "ENTERED→DONE"])
+    _emit(ExecutionPhase.DONE, f"Marked DONE — {load_id} payable complete.", external_ref=result.external_ref, amount=amount)
     return _outcome(run, WorkflowState.DONE, result, verified=True, trace=trace,
                     note="payable entered and verified by readback")
 

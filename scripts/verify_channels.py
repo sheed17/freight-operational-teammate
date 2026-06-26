@@ -9,6 +9,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:  # pragma: no cover - optional local/runtime convenience
+    pass
+
 from freight_recon.channels import load_delivery_config, verify_delivery_config  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]

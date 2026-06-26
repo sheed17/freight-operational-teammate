@@ -29,6 +29,7 @@ import re
 from email.message import EmailMessage as MimeMessage
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from typing import Callable
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +62,7 @@ class ParsedAttachment(BaseModel):
     content_type: str
     sha256: str
     size_bytes: int
+    text_hint: str = ""
 
 
 class ParsedEmail(BaseModel):
@@ -122,7 +124,10 @@ class LoadIndex:
                 self.by_bol[_norm(load.bol_number)] = load.load_id
 
 
-def parse_eml(source: str | Path) -> ParsedEmail:
+AttachmentTextExtractor = Callable[[bytes, str, str], str]
+
+
+def parse_eml(source: str | Path, attachment_text_extractor: AttachmentTextExtractor | None = None) -> ParsedEmail:
     """Parse a .eml file (path) or raw MIME string into a typed :class:`ParsedEmail`."""
     if _looks_like_path(source):
         mime: MimeMessage = email.message_from_bytes(Path(source).read_bytes())
@@ -133,12 +138,20 @@ def parse_eml(source: str | Path) -> ParsedEmail:
         if part.get_content_disposition() != "attachment":
             continue
         payload = part.get_payload(decode=True) or b""
+        filename = part.get_filename() or "attachment"
+        content_type = part.get_content_type()
+        text_hint = _pdf_text_hint(payload, content_type, filename)
+        if attachment_text_extractor is not None:
+            extra_hint = attachment_text_extractor(payload, filename, content_type)
+            if extra_hint:
+                text_hint = f"{text_hint}\n{extra_hint}".strip()
         attachments.append(
             ParsedAttachment(
-                filename=part.get_filename() or "attachment",
-                content_type=part.get_content_type(),
+                filename=filename,
+                content_type=content_type,
                 sha256=hashlib.sha256(payload).hexdigest(),
                 size_bytes=len(payload),
+                text_hint=text_hint,
             )
         )
     return ParsedEmail(
@@ -175,30 +188,53 @@ def classify_attachment(filename: str, subject: str = "") -> DocClassification:
     return DocClassification(doc_type="unknown", confidence=0.2, reason="no document-type signal")
 
 
-def link_attachment(filename: str, subject: str, index: LoadIndex) -> tuple[str | None, float, str]:
-    """Link an attachment to a known load via identifiers in its **own filename**.
+def link_attachment(
+    filename: str,
+    subject: str,
+    index: LoadIndex,
+    *,
+    text_hint: str = "",
+) -> tuple[str | None, float, str]:
+    """Link an attachment to a known load via identifiers in its own filename or PDF text.
 
-    The filename is the authoritative per-attachment signal for belonging. The ``subject`` is NOT
-    used here: a subject names the *email*, not each attachment, so letting it bleed into per-
-    attachment linking would let a generic-filename foreign document inherit the packet's load id.
-    Subject text is handled separately as a packet-level hint (see :func:`subject_load_hint`).
+    Filename identifiers are the strongest per-attachment signal. If the filename is generic, a
+    bounded PDF text hint can still link the document to a load. The ``subject`` is NOT used here:
+    a subject names the email, not each attachment, so letting it bleed into per-attachment linking
+    would let a generic-filename foreign document inherit the packet's load id. Subject text is
+    handled separately as a packet-level hint (see :func:`subject_load_hint`).
     """
-    for match in _LOAD_ID_RE.findall(filename):
+    linked = _link_from_text(filename, index)
+    if linked[0]:
+        return linked
+    linked = _link_from_text(text_hint, index, confidence_offset=-0.07, source="PDF text")
+    if linked[0]:
+        return linked
+    return None, 0.0, "no known identifier in filename or PDF text"
+
+
+def _link_from_text(
+    text: str,
+    index: LoadIndex,
+    *,
+    confidence_offset: float = 0.0,
+    source: str = "filename",
+) -> tuple[str | None, float, str]:
+    for match in _LOAD_ID_RE.findall(text):
         load_id = index.by_load_id.get(match.upper())
         if load_id:
-            return load_id, 0.95, f"load id {match}"
-    for match in _INVOICE_RE.findall(filename):
+            return load_id, 0.95 + confidence_offset, f"{source} load id {match}"
+    for match in _INVOICE_RE.findall(text):
         load_id = index.by_invoice.get(_norm(match))
         if load_id:
-            return load_id, 0.9, f"invoice {match}"
-    for match in _BOL_RE.findall(filename):
+            return load_id, 0.9 + confidence_offset, f"{source} invoice {match}"
+    for match in _BOL_RE.findall(text):
         load_id = index.by_bol.get(_norm(match))
         if load_id:
-            return load_id, 0.88, f"BOL {match}"
-    for match in _PRO_RE.findall(filename):
+            return load_id, 0.88 + confidence_offset, f"{source} BOL {match}"
+    for match in _PRO_RE.findall(text):
         load_id = index.by_pro.get(_norm(match))
         if load_id:
-            return load_id, 0.85, f"PRO {match}"
+            return load_id, 0.85 + confidence_offset, f"{source} PRO {match}"
     return None, 0.0, "no known identifier in filename"
 
 
@@ -232,7 +268,12 @@ def ingest_emails(emails: list[ParsedEmail], loads: list[FreightLoadForReconcili
         hint = subject_load_hint(parsed.subject, index)
         for attachment in parsed.attachments:
             classification = classify_attachment(attachment.filename, parsed.subject)
-            linked, link_conf, link_reason = link_attachment(attachment.filename, parsed.subject, index)
+            linked, link_conf, link_reason = link_attachment(
+                attachment.filename,
+                parsed.subject,
+                index,
+                text_hint=attachment.text_hint,
+            )
             if linked:
                 filename_votes[linked] = filename_votes.get(linked, 0) + 1
             rows.append(
@@ -335,8 +376,13 @@ def _resolve_packet_load(
     return None, 0.0, len(unique_hints) > 1, False
 
 
-def ingest_eml_paths(paths: list[str | Path], loads: list[FreightLoadForReconciliation]) -> IngestedPacket:
-    return ingest_emails([parse_eml(path) for path in paths], loads)
+def ingest_eml_paths(
+    paths: list[str | Path],
+    loads: list[FreightLoadForReconciliation],
+    *,
+    attachment_text_extractor: AttachmentTextExtractor | None = None,
+) -> IngestedPacket:
+    return ingest_emails([parse_eml(path, attachment_text_extractor=attachment_text_extractor) for path in paths], loads)
 
 
 def _norm(value: str) -> str:
@@ -347,6 +393,19 @@ def _looks_like_path(source: str | Path) -> bool:
     if isinstance(source, Path):
         return True
     return "\n" not in source and source.lower().endswith(".eml")
+
+
+def _pdf_text_hint(payload: bytes, content_type: str, filename: str) -> str:
+    if content_type != "application/pdf" and not filename.lower().endswith(".pdf"):
+        return ""
+    try:
+        import fitz
+
+        with fitz.open(stream=payload, filetype="pdf") as doc:
+            text = "\n".join(doc[index].get_text("text") for index in range(min(len(doc), 2)))
+    except Exception:
+        return ""
+    return text[:5000]
 
 
 def _parse_email_timestamp(date_header: str | None) -> str | None:

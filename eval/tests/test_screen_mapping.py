@@ -10,8 +10,11 @@ from freight_recon.screen_mapping import (
     ObservationStatus,
     ScreenActionBoundary,
     ScreenField,
+    ScreenFieldObservation,
     ScreenMap,
+    ScreenObservation,
     TmsScreenMapCatalog,
+    apply_screen_observation,
     load_screen_map_catalog,
     summarize_observation,
     validate_screen_map_catalog,
@@ -69,6 +72,115 @@ def test_observation_summary_blocks_unobserved_screens_from_real_adapter():
         "carrier_profile",
         "accounting_payables",
     }
+
+
+def test_apply_screen_observation_promotes_required_field_evidence():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="load_board",
+        observed_url="https://ascendtms.com/loads",
+        status=ObservationStatus.OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+        title="Loads",
+        navigation_path_seen=["Loads", "View Loads"],
+        stable_selectors_seen=["left navigation Loads", "load reference column"],
+        field_observations=[
+            ScreenFieldObservation(
+                name="load_id",
+                label_seen="Load ID",
+                value_seen="TEST-LOAD",
+                required_for_read_confirmed=True,
+            )
+        ],
+        forbidden_controls_seen=["Build a Load button nearby"],
+    )
+
+    updated = apply_screen_observation(catalog, observation)
+    screen = next(screen for screen in updated.screens if screen.screen_id == "load_board")
+
+    assert screen.observation_status == ObservationStatus.OBSERVED
+    assert "load reference column" in screen.stable_selectors
+    assert "Build a Load button nearby" in screen.action_boundary.forbidden_actions
+    assert "load_board" in summarize_observation(updated).adapter_ready_read_only
+
+
+def test_apply_screen_observation_blocks_missing_required_fields():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="load_board",
+        observed_url="https://ascendtms.com/loads",
+        status=ObservationStatus.OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+        stable_selectors_seen=["left navigation Loads"],
+        field_observations=[
+            ScreenFieldObservation(name="status", label_seen="Status", required_for_read_confirmed=True)
+        ],
+    )
+
+    with pytest.raises(ValueError, match="missing required fields"):
+        apply_screen_observation(catalog, observation)
+
+
+def test_apply_screen_observation_blocks_unallowlisted_domain():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="load_board",
+        observed_url="https://evil.example/loads",
+        status=ObservationStatus.NAV_OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+    )
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        apply_screen_observation(catalog, observation)
+
+
+def test_apply_screen_observation_blocks_wrong_screen_url():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="load_board",
+        observed_url="https://ascendtms.com/settings/org",
+        status=ObservationStatus.NAV_OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+    )
+
+    with pytest.raises(ValueError, match="does not match screen url_pattern"):
+        apply_screen_observation(catalog, observation)
+
+
+def test_apply_screen_observation_blocks_selector_mismatch():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="load_board",
+        observed_url="https://ascendtms.com/loads",
+        status=ObservationStatus.OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+        stable_selectors_seen=["unrelated settings form"],
+        field_observations=[
+            ScreenFieldObservation(
+                name="load_id",
+                label_seen="Load ID",
+                required_for_read_confirmed=True,
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="does not overlap"):
+        apply_screen_observation(catalog, observation)
+
+
+def test_apply_screen_observation_allows_ascendtms_subdomains():
+    catalog = load_screen_map_catalog(ASCENDTMS_MAP)
+    observation = ScreenObservation(
+        screen_id="document_management",
+        observed_url="https://app.ascendtms.com/doc_management",
+        status=ObservationStatus.NAV_OBSERVED,
+        observed_at="2026-06-25T00:00:00Z",
+        navigation_path_seen=["Doc Management"],
+    )
+
+    updated = apply_screen_observation(catalog, observation)
+    screen = next(screen for screen in updated.screens if screen.screen_id == "document_management")
+    assert screen.observation_status == ObservationStatus.NAV_OBSERVED
 
 
 def test_read_only_screen_cannot_declare_write_fields():

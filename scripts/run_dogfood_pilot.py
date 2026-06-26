@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -13,12 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.action_callback import handle_signed_action_callback  # noqa: E402
+from freight_recon.config import load_config  # noqa: E402
 from freight_recon.delivery import (  # noqa: E402
     DeliverySigner,
     render_delivery_message,
     redact_delivery_message,
     submit_signed_action,
 )
+from freight_recon.extraction import extract_from_pdf  # noqa: E402
 from freight_recon.email_corpus import build_email_corpus  # noqa: E402
 from freight_recon.ingestion import ingest_eml_paths  # noqa: E402
 from freight_recon.mailbox_workflow import run_mailbox_workflow  # noqa: E402
@@ -33,6 +36,13 @@ from freight_recon.tool_permissions import ToolContext, evaluate_tool_permission
 from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:  # pragma: no cover - optional developer convenience
+    pass
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WORKSPACE = ROOT / "data" / "active_workspace"
 
@@ -43,6 +53,9 @@ def run_pilot(
     loads_count: int = 18,
     seed: int = 42,
     age_hours: int = 48,
+    extractor=None,
+    extraction_mode: str = "synthetic_truth",
+    apply_sample_actions: bool = True,
 ) -> dict:
     workspace.mkdir(parents=True, exist_ok=True)
     corpus = workspace / "synthetic_corpus"
@@ -107,6 +120,7 @@ def run_pilot(
         actor="Rasheed",
         age_hours=age_hours,
         redact_tokens=False,
+        extractor=extractor,
     )
     mailbox_workflow_report = mailbox_workflow.model_copy(
         update={
@@ -139,6 +153,7 @@ def run_pilot(
             store=store,
             loads=load_by_id,
             payloads=payloads,
+            mailbox_preserve_dir=mailbox_dir,
         )
         mock_tms = build_mock_tms_site(
             output_dir=mock_tms_site,
@@ -153,7 +168,7 @@ def run_pilot(
         tms_write_drill = None
         signed_action_outcome = None
         first_variance = next((payload for payload in payloads if payload.outcome.value == "VARIANCE"), None)
-        if first_variance is not None:
+        if apply_sample_actions and first_variance is not None:
             variance_message = next(message for message in delivery_messages if message.run_id == first_variance.run_id)
             variance_button = next(
                 button
@@ -246,7 +261,7 @@ def run_pilot(
             delivery_messages,
             skip_run_id=first_variance.run_id if first_variance else None,
         )
-        if round_trip_button is not None:
+        if apply_sample_actions and round_trip_button is not None:
             callback_action_response = handle_signed_action_callback(
                 store,
                 round_trip_button.signed_token,
@@ -266,6 +281,8 @@ def run_pilot(
             "operator": "Rasheed",
             "role": "owner/operator",
             "loads_generated": loads_count,
+            "extraction_mode": extraction_mode,
+            "sample_actions_applied": apply_sample_actions,
             "review_payloads": len(payloads),
             "delivery_messages": len(delivery_messages),
             "email_ingestion": email_ingestion["summary"],
@@ -351,20 +368,63 @@ def main() -> int:
     parser.add_argument("--loads", type=int, default=18)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--age-hours", type=int, default=48)
+    parser.add_argument(
+        "--real-extraction",
+        action="store_true",
+        help="Use configured vision extraction on carrier invoice PDFs instead of synthetic invoice truth",
+    )
+    parser.add_argument("--provider", default=None, choices=["anthropic", "openai"], help="Override extraction provider")
+    parser.add_argument("--model", default=None, help="Override extraction model for this run")
+    parser.add_argument("--dpi", type=int, default=200, help="PDF render DPI for real extraction")
+    parser.add_argument("--max-pages", type=int, default=3, help="Maximum PDF pages for real extraction")
+    parser.add_argument(
+        "--skip-sample-actions",
+        action="store_true",
+        help="Stop after creating review messages; useful before live Slack posting",
+    )
     parser.add_argument("--text", action="store_true")
     args = parser.parse_args()
 
+    extractor = _build_real_extractor(
+        provider=args.provider,
+        model=args.model,
+        dpi=args.dpi,
+        max_pages=args.max_pages,
+    ) if args.real_extraction else None
     report = run_pilot(
         workspace=Path(args.workspace),
         loads_count=args.loads,
         seed=args.seed,
         age_hours=args.age_hours,
+        extractor=extractor,
+        extraction_mode="vision_extraction" if args.real_extraction else "synthetic_truth",
+        apply_sample_actions=not args.skip_sample_actions,
     )
     print(json.dumps(report, indent=2))
     if args.text:
         print()
         print(report["daily_summary_text"])
     return 0
+
+
+def _build_real_extractor(*, provider: str | None, model: str | None, dpi: int, max_pages: int):
+    resolved_provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "anthropic").lower()
+    key_var = "ANTHROPIC_API_KEY" if resolved_provider == "anthropic" else "OPENAI_API_KEY"
+    if not os.getenv(key_var):
+        raise SystemExit(f"{key_var} is required when --real-extraction uses provider={resolved_provider}")
+    config = load_config("carrier_invoice")
+
+    def extractor(pdf_path: str | Path):
+        return extract_from_pdf(
+            pdf_path,
+            config,
+            provider=provider,
+            model=model,
+            dpi=dpi,
+            max_pages=max_pages,
+        )
+
+    return extractor
 
 
 def _pick_round_trip_button(delivery_messages, *, skip_run_id):

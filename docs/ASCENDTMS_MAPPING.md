@@ -27,6 +27,35 @@ AscendTMS access is read-only reference exploration plus fake sandbox data entry
 needed for mapping. Neyma must not submit real payments, send real customer/carrier communications,
 change billing, invite users, or operate on real company data.
 
+As of the real-access mapping slice, `scripts/drive_real_tms.py` is an **observation recorder**,
+not a general browser agent runner and not a write adapter. It requires a screen id from the typed
+catalog, loads the catalog allowlist, rejects write/action verbs, adds a read-only prompt guard, and
+writes an evidence artifact under:
+
+```text
+data/active_workspace/ascendtms_observations
+```
+
+Use it only with a human-established Chrome session:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/ascend-agent-chrome"
+```
+
+Then log into AscendTMS manually in that Chrome profile and run read-only observation:
+
+```bash
+.venv/bin/python scripts/drive_real_tms.py \
+  --screen-id load_board \
+  --task "Observe the load board. Return visible headings, table labels, nearby action controls, and whether fake/sandbox loads are present." \
+  --max-steps 12
+```
+
+For screens still marked `SEED_PENDING_OBSERVATION`, add `--allow-seed-observation`. That flag only
+allows evidence capture; it does not make the screen adapter-ready.
+
 Production browser-use agents will navigate inside each customer's actual TMS/accounting/email
 systems. Each customer system needs its own screen map, domain allowlist, permission gate, and
 readback contract. The AscendTMS catalog is a reference catalog that helps shape those contracts
@@ -45,6 +74,61 @@ Capture each target as a screen map with:
 - Human confirmation point.
 - Readback verification point.
 - Failure modes.
+
+Each observation artifact should preserve:
+
+- observed URL and page title;
+- screenshot path if captured;
+- visible labels/selectors;
+- required fields and whether their values were readable;
+- nearby controls that could mutate data;
+- forbidden controls seen on the page;
+- whether fake/sandbox data was used;
+- notes about editable fields, modals, empty states, or session expiry.
+
+After converting an artifact into a `ScreenObservation` JSON, apply it with:
+
+```bash
+.venv/bin/python scripts/record_tms_observation.py path/to/observation.json --apply --text
+```
+
+The recorder enforces catalog allowlisted domains and refuses to promote a screen to `OBSERVED`
+unless every required read field is confirmed in the observation.
+
+Example `ScreenObservation` JSON:
+
+```json
+{
+  "screen_id": "load_board",
+  "observed_url": "https://ascendtms.com/loads",
+  "status": "OBSERVED",
+  "observed_at": "2026-06-25T12:00:00Z",
+  "observer": "codex",
+  "title": "Loads",
+  "navigation_path_seen": ["Loads", "View Loads"],
+  "stable_selectors_seen": [
+    "left navigation Loads",
+    "Loads submenu: View Loads",
+    "load reference column"
+  ],
+  "field_observations": [
+    {
+      "name": "load_id",
+      "label_seen": "Load ID",
+      "value_seen": "sandbox/fake load row visible",
+      "selector_evidence": "load table reference column",
+      "required_for_read_confirmed": true
+    }
+  ],
+  "action_controls_seen": ["Build a Load", "Search Loads"],
+  "forbidden_controls_seen": ["Build a Load", "Delete load if visible"],
+  "screenshot_path": "data/active_workspace/ascendtms_observations/load_board.png",
+  "notes": [
+    "Read-only observation only; no fields changed.",
+    "Use only fake/sandbox rows for mapping evidence."
+  ]
+}
+```
 
 The typed seed catalog lives at:
 
@@ -101,6 +185,10 @@ manual screen map
 → approved prepare-only write in mock TMS
 → approved sandbox/customer write drill only after gates
 ```
+
+`scripts/enter_tms_payable.py --browser` and `BrowserUseWriteLedger` remain mock/sandbox execution
+tools. They are explicitly blocked from targeting `ascendtms.com`; real AscendTMS work stays
+read-only until a customer/sandbox-specific write gate is designed and approved.
 
 The adapter contract stays the same:
 

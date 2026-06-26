@@ -14,8 +14,28 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .extraction_bridge import apply_extracted_invoice
 from .reconciliation import FreightLoadForReconciliation, ReconciliationOutcome
 from .workflow import WorkflowRun, WorkflowState, WorkflowStore
+
+
+def review_load_for_run(
+    store: WorkflowStore, run: WorkflowRun, source_load: FreightLoadForReconciliation
+) -> FreightLoadForReconciliation:
+    """Return the load the review card should render from.
+
+    On the real-extraction path the run carries the extracted invoice side (what the carrier
+    *actually billed*); overlay it onto the source-of-truth load so the Slack card fields, variance
+    dollars, and exact-amount money buttons reflect the real read. On the ground-truth path (no
+    extraction event) the source load is returned unchanged.
+    """
+    for event in reversed(store.audit_events(run.id)):
+        if event["event_type"] == "extraction_recorded" and event["payload"].get("source") == "vision_extraction":
+            extracted = event["payload"].get("extracted_invoice")
+            if extracted:
+                return apply_extracted_invoice(source_load, extracted)
+            break
+    return source_load
 
 
 class ReviewSeverity(str, Enum):

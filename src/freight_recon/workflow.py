@@ -10,16 +10,16 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from types import SimpleNamespace
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-from .extraction_bridge import apply_extraction_to_load
+from .extraction_bridge import reconciliation_from_extraction
 from .reconciliation import (
     FreightLoadForReconciliation,
-    ReconciliationOutcome,
     ReconciliationResult,
     reconcile_load,
 )
@@ -480,51 +480,18 @@ def process_load_packet(
         result = reconcile_load(load, seen_invoice_keys=seen_invoice_keys)
         return store.mark_reconciled(run.id, result)
 
-    extraction = extractor(primary_document_path)
-    if getattr(extraction, "extraction", None) is None:
-        # Extraction failed — route to a human, never guess, never crash.
-        run = store.mark_extracted(
-            run.id,
-            {"source": "vision_extraction", "model": getattr(extraction, "model", None),
-             "error": getattr(extraction, "error", "extraction returned no result")},
-        )
-        result = ReconciliationResult(
-            load_id=load.load_id,
-            invoice_number=load.invoice_number or "",
-            carrier=load.carrier,
-            outcome=ReconciliationOutcome.NEEDS_REVIEW,
-            reasons=[f"extraction failed: {getattr(extraction, 'error', 'no result')}"],
-            needs_human_review=True,
-        )
-        return store.mark_reconciled(run.id, result)
-
-    recon_load, low_confidence, link_ok = apply_extraction_to_load(
-        load, extraction.extraction, confidence_threshold=confidence_threshold
+    extraction_payload, result = reconciliation_from_extraction(
+        load,
+        _call_extractor(extractor, primary_document_path),
+        seen_invoice_keys=seen_invoice_keys,
+        confidence_threshold=confidence_threshold,
     )
-    run = store.mark_extracted(
-        run.id,
-        {
-            "invoice_number": recon_load.invoice_number,
-            "carrier": recon_load.carrier,
-            "source": "vision_extraction",
-            "model": getattr(extraction, "model", None),
-            "low_confidence_required": low_confidence,
-            "link_ok": link_ok,
-        },
-    )
-    result = reconcile_load(recon_load, seen_invoice_keys=seen_invoice_keys)
-    if low_confidence or not link_ok:
-        # The confidence gate: a low-confidence read or a wrong load link never auto-clears.
-        reasons = list(result.reasons)
-        if low_confidence:
-            reasons.append(f"low-confidence extraction on required field(s): {', '.join(low_confidence)}")
-        if not link_ok:
-            reasons.append("extracted load/PRO does not match the linked load id")
-        result = result.model_copy(
-            update={
-                "outcome": ReconciliationOutcome.NEEDS_REVIEW,
-                "reasons": reasons,
-                "needs_human_review": True,
-            }
-        )
+    run = store.mark_extracted(run.id, extraction_payload)
     return store.mark_reconciled(run.id, result)
+
+
+def _call_extractor(extractor: Callable[[str | Path], Any], path: str | Path) -> Any:
+    try:
+        return extractor(path)
+    except Exception as exc:  # noqa: BLE001 - provider/render failures become reviewable outcomes
+        return SimpleNamespace(extraction=None, model=None, error=f"{type(exc).__name__}: {exc}")

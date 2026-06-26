@@ -13,6 +13,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:  # pragma: no cover - optional local/runtime convenience
+    pass
+
 from freight_recon.channels import load_delivery_config  # noqa: E402
 from freight_recon.delivery import DeliverySigner, build_delivery_message, record_delivery_message  # noqa: E402
 from freight_recon.delivery_dispatch import DispatchMode, dispatch_delivery_message  # noqa: E402
@@ -73,6 +80,7 @@ def run_first_design_partner(
         loads_count=loads_count,
         seed=seed,
         age_hours=age_hours,
+        apply_sample_actions=dispatch_mode != "LIVE_SLACK",
     )
     dispatch_report = _dispatch_review_messages(
         workspace=workspace,
@@ -93,6 +101,7 @@ def run_first_design_partner(
             "local_callback_action_applied": pilot_report["local_callback_action_applied"],
             "tms_readback_verified": pilot_report["tms_readback_verified"],
             "mock_tms_write_verified": pilot_report["mock_tms_write_verified"],
+            "sample_actions_applied": pilot_report["sample_actions_applied"],
             "review_payloads": pilot_report["review_payloads"],
             "delivery_messages": pilot_report["delivery_messages"],
             "artifacts": pilot_report["artifacts"],
@@ -230,6 +239,15 @@ def _channel_counts(attempts) -> dict[str, int]:
 
 
 def _ready(pilot_report: dict, dispatch_report: dict, *, dispatch_mode: str) -> bool:
+    if dispatch_mode == "LIVE_SLACK":
+        return (
+            pilot_report["email_ingestion"]["packet_link_accuracy"] == 1.0
+            and pilot_report["email_ingestion"]["doc_type_accuracy"] == 1.0
+            and pilot_report["review_payloads"] > 0
+            and dispatch_report["attempts"] > 0
+            and dispatch_report["statuses"].get("SENT", 0) > 0
+            and dispatch_report["channels"] == {"slack": dispatch_report["attempts"]}
+        )
     common = (
         pilot_report["email_ingestion"]["packet_link_accuracy"] == 1.0
         and pilot_report["email_ingestion"]["doc_type_accuracy"] == 1.0
@@ -238,8 +256,6 @@ def _ready(pilot_report: dict, dispatch_report: dict, *, dispatch_mode: str) -> 
         and pilot_report["mock_tms_write_verified"] is True
         and dispatch_report["attempts"] > 0
     )
-    if dispatch_mode == "LIVE_SLACK":
-        return common and dispatch_report["statuses"].get("SENT", 0) > 0 and dispatch_report["channels"] == {"slack": dispatch_report["attempts"]}
     return common and "SENT" not in dispatch_report["statuses"]
 
 
