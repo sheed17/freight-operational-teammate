@@ -57,6 +57,12 @@ def test_review_payload_for_variance_has_human_actions(tmp_path):
     assert payload.found_money.flagged_amount == "300.00"
     assert payload.routing.route == ReviewRoute.IMMEDIATE_PING
     assert any("Approve $3334.50 and dispute $300.00 detention" == option.label for option in payload.action_options)
+    # A standalone dispute (hold the whole payable, pay nothing) is offered, distinct from the
+    # approve-the-clean-part-and-dispute-the-delta option.
+    standalone_dispute = [
+        o for o in payload.action_options if o.code == ReviewAction.DISPUTE and "hold payment" in o.label.lower()
+    ]
+    assert len(standalone_dispute) == 1 and standalone_dispute[0].amount is None
     assert payload.audit_context["no_autonomous_tms_write"] is True
     store.close()
 

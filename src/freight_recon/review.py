@@ -329,7 +329,7 @@ def _action_options_for(
         dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} variance"
         if any("detention" in reason.lower() for reason in reasons):
             dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} detention"
-        return [
+        options = [
             ReviewActionOption(
                 code=ReviewAction.APPROVE,
                 label=dispute_label,
@@ -344,12 +344,34 @@ def _action_options_for(
                 amount=_money(invoice_total),
                 consequence="Approves the carrier invoice as billed.",
             ),
+            # Standalone dispute: hold the whole payable and push back — distinct from approving the
+            # clean part and disputing only the delta. Pays nothing until resolved.
+            ReviewActionOption(
+                code=ReviewAction.DISPUTE,
+                label=f"Dispute ${_money(flagged_amount)} — hold payment",
+                requires_send_gate=True,
+                creates_follow_up_draft=True,
+                consequence="Holds the payable (no approval) and drafts a carrier dispute for the variance.",
+            ),
+        ]
+        if any("missing backup" in reason.lower() or "missing pod" in reason.lower() for reason in reasons):
+            options.append(
+                ReviewActionOption(
+                    code=ReviewAction.REQUEST_BACKUP,
+                    label="Request backup from carrier",
+                    requires_send_gate=True,
+                    creates_follow_up_draft=True,
+                    consequence="Creates a short backup-request email behind a send gate.",
+                )
+            )
+        options.append(
             ReviewActionOption(
                 code=ReviewAction.EDIT,
                 label="Edit fields",
                 consequence="Opens the packet detail page for correction before decision.",
-            ),
-        ]
+            )
+        )
+        return options
 
     options = [
         ReviewActionOption(
