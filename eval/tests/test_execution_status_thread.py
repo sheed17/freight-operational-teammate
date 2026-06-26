@@ -70,6 +70,25 @@ def test_status_skipped_and_audited_when_no_card_target():
     assert store.added[-1]["event_type"] == "execution_status_post_skipped"
 
 
+def test_post_text_to_slack_posts_digest_to_channel():
+    from freight_recon.delivery_dispatch import post_text_to_slack
+
+    poster = _FakePoster()
+    result = post_text_to_slack(
+        "Neyma Daily Summary…", channel="C-DIGEST", config=SimpleNamespace(slack=None), env={}, poster=poster
+    )
+    assert result.ok is True
+    assert poster.calls[0]["channel"] == "C-DIGEST"
+    assert poster.calls[0]["text"] == "Neyma Daily Summary…"
+
+
+def test_post_text_to_slack_fails_safe_without_channel():
+    from freight_recon.delivery_dispatch import post_text_to_slack
+
+    result = post_text_to_slack("x", channel="", config=SimpleNamespace(slack=None), env={}, poster=_FakePoster())
+    assert result.ok is False
+
+
 def test_latest_slack_card_target_picks_most_recent_sent():
     store = _FakeStore(
         [

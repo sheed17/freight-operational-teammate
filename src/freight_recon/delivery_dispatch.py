@@ -176,6 +176,26 @@ def slack_thread_status_poster(
     return _on_status
 
 
+def post_text_to_slack(
+    text: str,
+    *,
+    channel: str,
+    config: DeliveryConfig,
+    env: Mapping[str, str],
+    poster: SlackPoster | None = None,
+) -> SlackPostResult:
+    """Post a plain-text message (e.g. the daily digest) to a Slack channel via the live poster."""
+    resolved = poster
+    if resolved is None and config.slack is not None:
+        token = env.get(config.slack.bot_token_env or "")
+        resolved = SlackApiPoster(token) if token else None
+    if resolved is None:
+        return SlackPostResult(ok=False, error="no_slack_token")
+    if not channel:
+        return SlackPostResult(ok=False, error="no_channel")
+    return resolved.post_message(channel=channel, payload={"text": text})
+
+
 def dispatch_delivery_message(
     store: WorkflowStore,
     message: DeliveryMessage,
