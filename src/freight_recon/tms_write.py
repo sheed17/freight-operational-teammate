@@ -33,6 +33,7 @@ from typing import Callable
 
 from pydantic import BaseModel, Field
 
+from .ops_control import OpsControl, TmsWritesPausedError
 from .tool_permissions import (
     ToolContext,
     ToolPermissionDecision,
@@ -340,6 +341,7 @@ def enter_approved_payable(
     actor: str = "Rasheed",
     tms_write_enabled: bool = True,
     on_status: Callable[[ExecutionStatusUpdate], None] | None = None,
+    ops_control: OpsControl | None = None,
 ) -> PayableEntryOutcome:
     """Drive an APPROVED run through the gated write path to DONE, FAILED, or WAITING_FOR_SESSION.
 
@@ -352,6 +354,20 @@ def enter_approved_payable(
         raise WorkflowError(f"workflow run not found: {run_id}")
     if run.state != WorkflowState.APPROVED:
         raise WorkflowError(f"payable entry requires APPROVED state, got {run.state.value}")
+
+    # Owner's brake: if TMS writes are paused, hold this APPROVED run in place (do not fail it).
+    # It will execute on a later attempt once an owner resumes from Slack.
+    if ops_control is not None and ops_control.is_tms_writes_paused():
+        paused = ops_control.status()
+        store.add_audit_event(
+            run_id, "tms_write_paused_hold", actor=actor,
+            payload={"paused_by": paused.get("paused_by"), "reason": paused.get("reason")},
+        )
+        raise TmsWritesPausedError(
+            f"TMS writes are paused by {paused.get('paused_by')}"
+            + (f" ({paused.get('reason')})" if paused.get("reason") else "")
+            + "; run held in APPROVED until resumed"
+        )
 
     # Bind the entry to the human approval: the amount entered must be the amount approved in Slack
     # for THIS run (recorded on the APPROVED transition), never just a caller-supplied figure.

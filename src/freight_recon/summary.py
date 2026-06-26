@@ -89,14 +89,16 @@ def render_daily_summary(summary: DailySummary) -> str:
 
 
 def _confirmed_recovered(store: WorkflowStore, payload_by_run: dict[int, ReviewPayload]) -> Decimal:
+    """Money is *recovered* only once the payable is entered AND verified by readback (the run
+    reaches DONE via ``entry_done``) — not merely approved. An approval the TMS never confirmed has
+    recovered nothing yet, so crediting it at approval time would overstate the trust metric.
+    """
+    recovered_runs = {event["run_id"] for event in store.audit_events() if event["event_type"] == "entry_done"}
     total = Decimal("0.00")
-    for event in store.audit_events():
-        if event["event_type"] != "review_approved_expected_amount":
-            continue
-        payload = payload_by_run.get(event["run_id"])
-        if payload is None:
-            continue
-        total += Decimal(payload.found_money.flagged_amount)
+    for run_id in recovered_runs:
+        payload = payload_by_run.get(run_id)
+        if payload is not None:
+            total += Decimal(payload.found_money.flagged_amount)
     return total
 
 

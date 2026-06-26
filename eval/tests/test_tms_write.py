@@ -47,6 +47,23 @@ def _ledger(tmp_path, fail_modes=frozenset()):
     return MockTmsWriteLedger(tmp_path / "ledger.json", fail_modes=fail_modes)
 
 
+def test_tms_writes_pause_holds_approved_run(tmp_path):
+    from freight_recon.ops_control import OpsControl, TmsWritesPausedError
+
+    store, run_id = _approved_run(tmp_path)
+    ops = OpsControl(tmp_path / "ops.json")
+    ops.pause_tms_writes(actor="Rasheed", reason="something looks off")
+    with pytest.raises(TmsWritesPausedError):
+        enter_approved_payable(store, _ledger(tmp_path), run_id, amount=_AMOUNT, ops_control=ops)
+    assert store.get_run(run_id).state == WorkflowState.APPROVED  # held in place, not failed
+    assert _ledger(tmp_path).get_payable("LD-560003") is None  # nothing entered
+    # resuming lets the same run proceed to DONE
+    ops.resume_tms_writes(actor="Rasheed")
+    outcome = enter_approved_payable(store, _ledger(tmp_path), run_id, amount=_AMOUNT, ops_control=ops)
+    assert outcome.final_state == WorkflowState.DONE
+    store.close()
+
+
 def test_execution_status_updates_emitted_in_order_to_done(tmp_path):
     # The gated write emits channel-neutral status so a transport (Slack thread) can narrate it.
     store, run_id = _approved_run(tmp_path)

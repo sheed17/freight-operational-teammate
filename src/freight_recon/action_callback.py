@@ -23,8 +23,11 @@ from .delivery import (
     render_delivery_message,
     submit_signed_action,
 )
+from pathlib import Path
+
+from .ops_control import OpsControl, handle_ops_command
 from .reconciliation import FreightLoadForReconciliation
-from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError
+from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
 from .workflow import WorkflowError, WorkflowStore
 
 
@@ -191,6 +194,22 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     return
                 self._handle_slack(body or b"")
                 return
+            if path == "/slack/commands":
+                if config.slack_signing_secret is None:
+                    self._write(
+                        CallbackResponse(
+                            status=CallbackStatus.REJECTED,
+                            http_status=404,
+                            title="Not found",
+                            message="Unknown Neyma callback path.",
+                        )
+                    )
+                    return
+                if method != "POST":
+                    self._write(_method_not_allowed("Use POST for Slack commands."))
+                    return
+                self._handle_slack_command(body or b"")
+                return
             if path == "/email/action" and method != "GET":
                 self._write(_method_not_allowed("Use GET for email action links."))
                 return
@@ -274,6 +293,45 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             finally:
                 store.close()
             self._write_json(200, update)
+
+        def _handle_slack_command(self, body: bytes) -> None:
+            """Verify a Slack slash command and run it (the owner's brake + status surface).
+
+            Slack POSTs ``command``/``text``/``user_name`` form-encoded with the same signing headers
+            as interactivity. We verify the signature, then run a lightweight ops command and reply
+            ephemerally. Commands: ``pause/resume tms writes``, ``status``, ``show unresolved``.
+            """
+            if config.slack_signing_secret is None:
+                self._write_json(404, {"error": "slack commands are not enabled on this server"})
+                return
+            timestamp = self.headers.get("X-Slack-Request-Timestamp", "")
+            signature = self.headers.get("X-Slack-Signature", "")
+            body_str = body.decode("utf-8", errors="replace")
+            try:
+                verify_slack_signature(
+                    config.slack_signing_secret, timestamp=timestamp, body=body_str, signature=signature
+                )
+            except SlackSignatureError:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_request_rejected", actor="system", payload={"failure": "signature", "route": "commands"}
+                    )
+                finally:
+                    store.close()
+                self._write_json(401, {"error": "invalid Slack signature"})
+                return
+            fields = {key: values[0] for key, values in parse_qs(body_str).items()}
+            text = (fields.get("text") or "").strip()
+            actor = fields.get("user_name") or fields.get("user_id") or "slack-user"
+            ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
+            store = WorkflowStore(config.db_path)
+            try:
+                reply = handle_ops_command(text, actor=actor, ops_control=ops_control, store=store)
+            finally:
+                store.close()
+            # Ephemeral: only the operator who ran the command sees the reply.
+            self._write_json(200, {"response_type": "ephemeral", "text": reply})
 
         def _write_json(self, http_status: int, data: dict) -> None:
             payload = json.dumps(data).encode("utf-8")

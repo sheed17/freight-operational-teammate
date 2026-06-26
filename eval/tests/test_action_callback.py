@@ -329,6 +329,60 @@ def test_slack_interactivity_rejects_forged_signature_without_state_change(tmp_p
         check.close()
 
 
+def test_slack_command_pause_flips_brake(tmp_path):
+    from pathlib import Path
+
+    from freight_recon.ops_control import OpsControl
+
+    store, signer, message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    body = urlencode({"command": "/neyma", "text": "pause tms writes", "user_name": "rasheed"})
+    server, thread = _serve(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/commands", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert payload["response_type"] == "ephemeral" and "PAUSED" in payload["text"]
+    assert OpsControl(Path(db_path).parent / "ops_control.json").is_tms_writes_paused() is True
+
+
+def test_slack_command_rejects_forged_signature(tmp_path):
+    from pathlib import Path
+
+    from freight_recon.ops_control import OpsControl
+
+    store, signer, message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    body = urlencode({"command": "/neyma", "text": "pause tms writes", "user_name": "x"})
+    server, thread = _serve(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        headers = _slack_headers(body)
+        headers["X-Slack-Signature"] = "v0=deadbeef"  # forged
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/commands", body=body, headers=headers)
+        result = conn.getresponse()
+        result.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 401
+    # forged command must not flip the brake
+    assert OpsControl(Path(db_path).parent / "ops_control.json").is_tms_writes_paused() is False
+
+
 def test_slack_interactivity_disabled_without_signing_secret(tmp_path):
     store, signer, message, loads = _delivered(tmp_path)
     db_path = store.db_path

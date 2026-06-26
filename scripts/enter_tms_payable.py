@@ -74,6 +74,10 @@ def main() -> int:
     else:
         ledger = MockTmsWriteLedger(args.ledger, fail_modes=frozenset(args.fail_mode))
 
+    from freight_recon.ops_control import OpsControl, TmsWritesPausedError
+
+    ops_control = OpsControl(Path(args.db).parent / "ops_control.json")
+
     on_status = None
     if args.slack_thread:
         if not args.client_config:
@@ -95,7 +99,11 @@ def main() -> int:
             charges=charges,
             tms_write_enabled=not args.no_write_enabled,
             on_status=on_status,
+            ops_control=ops_control,
         )
+    except TmsWritesPausedError as exc:
+        print(json.dumps({"run_id": args.run_id, "final_state": "HELD", "reason": str(exc)}, indent=2))
+        return 0
     finally:
         store.close()
     print(json.dumps(outcome.model_dump(mode="json"), indent=2))

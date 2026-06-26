@@ -53,21 +53,23 @@ def test_daily_summary_counts_and_found_money(tmp_path):
     store.close()
 
 
-def test_daily_summary_confirmed_recovered_from_expected_approval(tmp_path):
+def test_confirmed_recovered_counts_only_at_verified_done(tmp_path):
+    from freight_recon.tms_write import MockTmsWriteLedger, enter_approved_payable
+
     store, payloads = _summary_fixture(tmp_path)
     run_id = next(payload.run_id for payload in payloads if payload.load_id == "LD-560003")
     apply_review_action(
         store,
-        ReviewActionRequest(
-            run_id=run_id,
-            decision=ReviewDecision.APPROVE_EXPECTED_AMOUNT,
-            amount="3334.50",
-        ),
+        ReviewActionRequest(run_id=run_id, decision=ReviewDecision.APPROVE_EXPECTED_AMOUNT, amount="3334.50"),
     )
 
+    # Approval alone has recovered nothing yet — the TMS hasn't confirmed it.
+    assert build_daily_summary(store, payloads).confirmed_recovered == "0.00"
+
+    # Only once the payable is entered and verified by readback (run DONE) does it count.
+    enter_approved_payable(store, MockTmsWriteLedger(tmp_path / "ledger.json"), run_id, amount="3334.50")
     summary = build_daily_summary(store, payloads)
     text = render_daily_summary(summary)
-
     assert summary.confirmed_recovered == "300.00"
-    assert "Month to date: $1250.00 flagged · $300.00 confirmed recovered" in text
+    assert "$300.00 confirmed recovered" in text
     store.close()
