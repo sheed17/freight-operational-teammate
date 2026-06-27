@@ -74,13 +74,20 @@ Pointed at the **same workspace's** DB + heartbeat as the loop:
 `--auto-enter-approved-mock-tms` makes an APPROVE_* click auto-run the **mock-gated** payable entry and
 narrate it into the load's Slack thread. (Real-TMS write is intentionally NOT enabled here.)
 
-## 5. Stable ingress (replaces the rotating quick-tunnel)
+## 5. Stable ingress (fixed URL — set Slack once, never again)
 
-Quick `cloudflared tunnel --url http://127.0.0.1:8001` gives a **new random URL each restart** — fine
-for a demo, not for a deploy. For a stable URL use a cloudflared **named tunnel** bound to a domain, an
-**ngrok reserved domain**, or a real HTTPS host. Then set, in the Slack app (api.slack.com):
-- **Interactivity** Request URL → `https://<stable-host>/slack/actions`
-- **Slash Commands** Request URL → `https://<stable-host>/slack/commands`
+A `cloudflared` quick tunnel hands out a **new random URL each restart**. Use a fixed endpoint instead.
+We use an **ngrok free static domain** (`NGROK_AUTHTOKEN` + `NGROK_STATIC_DOMAIN` in `.env`):
+
+```bash
+ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+ngrok http --domain="$NGROK_STATIC_DOMAIN" 8001          # always forwards to the callback port
+```
+This URL is permanent, so set the Slack app (api.slack.com) Request URLs **once**:
+- **Interactivity** Request URL → `https://$NGROK_STATIC_DOMAIN/slack/actions`
+- **Slash Commands** Request URL → `https://$NGROK_STATIC_DOMAIN/slack/commands`
+
+(Production alternative: a cloudflared **named tunnel** bound to a domain you own, or a real HTTPS host.)
 
 ## 6. Daily digest (scheduled)
 
