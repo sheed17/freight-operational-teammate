@@ -107,3 +107,34 @@ def test_scrub_redacts_secret_shaped_output():
     assert "hunter2" not in loop._scrub("IMAP error: password=hunter2 rejected")
     assert "[redacted]" in loop._scrub("authorization: Bearer abc123xyz")
     assert loop._scrub("normal line with no secrets") == "normal line with no secrets"
+
+
+def test_new_work_nudge_fires_only_when_work_waiting():
+    loop = _loop_module()
+    nudge = loop._new_work_nudge({"review_payloads": 3, "new_messages": 5})
+    assert nudge and "3 new item" in nudge  # work waiting -> volunteer it
+    assert loop._new_work_nudge({"review_payloads": 0, "new_messages": 4}) is None  # all auto-cleared -> quiet
+    assert loop._new_work_nudge(None) is None
+
+
+def test_cycle_summary_parses_report(tmp_path):
+    loop = _loop_module()
+    (tmp_path / "gmail_to_slack_report.json").write_text(
+        json.dumps({"workflow": {"new_messages": 4, "packet_runs": 2, "review_payloads": 3}, "dispatch": {"sent": 3}})
+    )
+    assert loop._cycle_summary(tmp_path) == {"new_messages": 4, "packet_runs": 2, "review_payloads": 3, "sent": 3}
+    assert loop._cycle_summary(tmp_path / "missing") is None
+
+
+def test_should_post_digest_once_per_day_after_hour():
+    from datetime import datetime, timezone
+
+    loop = _loop_module()
+    now = datetime.now(timezone.utc)
+    local_hour = now.astimezone().hour
+    today = now.astimezone().date().isoformat()
+    assert loop._should_post_digest(now, None, None) is False  # disabled
+    assert loop._should_post_digest(now, None, local_hour) is True  # at/after hour, not posted today
+    assert loop._should_post_digest(now, today, local_hour) is False  # already posted today
+    if local_hour < 23:
+        assert loop._should_post_digest(now, None, local_hour + 1) is False  # before the hour

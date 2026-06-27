@@ -73,8 +73,9 @@ def main() -> int:
     )
     parser.add_argument("--status-file", default=None, help="Defaults to <workspace>/teammate_status.json")
     parser.add_argument("--stop-on-error", action="store_true")
-    parser.add_argument("--client-config", default=None, help="post Slack alerts to the digest channel when polling fails/recovers")
+    parser.add_argument("--client-config", default=None, help="post Slack alerts/nudges/digest to the digest channel")
     parser.add_argument("--alert-after", type=int, default=1, help="post a Slack failure alert after this many consecutive failures")
+    parser.add_argument("--daily-digest-hour", type=int, default=None, help="post the daily digest once/day at/after this local hour (0-23)")
     parser.add_argument(
         "--",
         dest="runner_args",
@@ -144,6 +145,16 @@ def main() -> int:
                 alert_poster(message)
         prev_failures = consecutive_failures
 
+        # Volunteer good news: when a healthy cycle surfaced new review work, say so.
+        if alert_poster is not None and result.returncode == 0:
+            nudge = _new_work_nudge(_cycle_summary(workspace))
+            if nudge:
+                alert_poster(nudge)
+
+        # Loop-driven daily digest (once/day at the configured hour) — operator owns no cron.
+        if args.client_config and args.daily_digest_hour is not None:
+            _maybe_post_daily_digest(workspace, args.client_config, args.daily_digest_hour)
+
         if result.returncode != 0 and args.stop_on_error:
             return result.returncode
         if args.iterations != 0 and iteration >= args.iterations:
@@ -164,6 +175,67 @@ def _loop_alert(consecutive_failures: int, prev_failures: int, alert_after: int,
     if prev_failures >= alert_after and consecutive_failures == 0:
         return f":large_green_circle: *Neyma recovered:* Gmail polling is back to normal (cycle {iteration})."
     return None
+
+
+def _cycle_summary(workspace: Path) -> dict | None:
+    """Read this cycle's counts from the runner report (new mail, packets, items needing review)."""
+    report = workspace / "gmail_to_slack_report.json"
+    if not report.exists():
+        return None
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    workflow = data.get("workflow", {})
+    return {
+        "new_messages": int(workflow.get("new_messages") or 0),
+        "packet_runs": int(workflow.get("packet_runs") or 0),
+        "review_payloads": int(workflow.get("review_payloads") or 0),
+        "sent": int(data.get("dispatch", {}).get("sent") or 0),
+    }
+
+
+def _new_work_nudge(summary: dict | None) -> str | None:
+    """A compact 'Neyma brought you work' line — only when something needs the human this cycle, so
+    the always-on loop volunteers good news, not only failures (and stays quiet on empty cycles)."""
+    if not summary:
+        return None
+    needs = summary.get("review_payloads") or 0
+    if needs <= 0:
+        return None
+    new_mail = summary.get("new_messages") or 0
+    src = f" from {new_mail} new email(s)" if new_mail else ""
+    return f":inbox_tray: *Neyma:* {needs} new item(s) need your review this cycle{src} — open Slack to approve/dispute."
+
+
+def _should_post_digest(now: datetime, last_date_iso: str | None, hour: int | None) -> bool:
+    """True at most once per day, on the first cycle at/after the configured local hour."""
+    if hour is None:
+        return False
+    if now.astimezone().hour < hour:
+        return False
+    return now.astimezone().date().isoformat() != last_date_iso
+
+
+def _maybe_post_daily_digest(workspace: Path, client_config: str, hour: int) -> None:
+    """Post the daily digest once/day (operator owns no cron). Reuses the tested digest script."""
+    marker = workspace / "last_digest.txt"
+    last = marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+    if not _should_post_digest(datetime.now(timezone.utc), last, hour):
+        return
+    db = workspace / "workflow.sqlite3"
+    payloads = workspace / "review_payloads.json"
+    if not (db.exists() and payloads.exists()):
+        return
+    subprocess.run(
+        [
+            sys.executable, str(ROOT / "scripts" / "generate_daily_summary.py"),
+            "--db", str(db), "--payloads", str(payloads),
+            "--post-slack", "--client-config", client_config,
+        ],
+        text=True, capture_output=True, check=False,
+    )
+    marker.write_text(datetime.now(timezone.utc).astimezone().date().isoformat(), encoding="utf-8")
 
 
 def _write_status(path: Path, data: dict) -> None:

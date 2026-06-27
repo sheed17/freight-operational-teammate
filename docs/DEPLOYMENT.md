@@ -30,13 +30,15 @@ NEYMA_SLACK_SIGNING_SECRET_RASHEED_FIRST         # verifies inbound Slack reques
 ```bash
 .venv/bin/python scripts/run_gmail_to_slack_loop.py \
   --workspace "$WS" --interval-seconds 300 \
-  --client-config "$CLIENT_CONFIG" \
+  --client-config "$CLIENT_CONFIG" --daily-digest-hour 7 \
   -- --client-config "$CLIENT_CONFIG" --real-extraction --provider openai \
      --mailbox "Neyma-Test-Inbox" --query UNSEEN \
      --dispatch-mode LIVE --enable-live-slack-outbound
 ```
-`--client-config` on the loop enables proactive Slack **failure/recovery alerts** to the digest
-channel. Args after `--` are forwarded to the per-cycle runner.
+`--client-config` on the loop makes Neyma post to the digest channel: proactive **failure/recovery
+alerts**, a per-cycle **"N new items need review" nudge** when a cycle surfaces work, and the
+**daily digest** once a day at `--daily-digest-hour` (so you run no separate cron). Args after `--`
+are forwarded to the per-cycle runner.
 
 ## 3. Process B — the static packet site (the card links)
 
