@@ -15,6 +15,19 @@ All processes use `--workspace "$WS"`. The loop writes `$WS/workflow.sqlite3`,
 `$WS/teammate_status.json`, and `$WS/ops_control.json`; the callback server is pointed at the **same**
 files. If they diverge, the callback prints a loud `WARNING:` at startup — do not ignore it.
 
+## Quick start (one command)
+
+After the secrets in §1 are set, the launcher brings up all three local processes wired to one
+workspace (the path-mismatch landmine is removed by construction):
+
+```bash
+.venv/bin/python scripts/run_teammate.py \
+  --client-config "$CLIENT_CONFIG" \
+  --daily-digest-hour 7 --query UNSEEN
+```
+Then add stable ingress (§5) and point the Slack app's Request URLs at it. Ctrl-C stops the group.
+The sections below are the same processes run individually (useful for debugging one at a time).
+
 ## 1. Secrets (`.env`, never committed)
 
 ```
