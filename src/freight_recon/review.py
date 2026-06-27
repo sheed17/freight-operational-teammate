@@ -295,8 +295,10 @@ def _actions_for(outcome: ReconciliationOutcome, reasons: list[str]) -> list[Rev
     actions = [ReviewAction.EDIT, ReviewAction.DISPUTE]
     if outcome == ReconciliationOutcome.DUPLICATE:
         return [ReviewAction.MARK_DUPLICATE, ReviewAction.DISPUTE]
-    if any("missing backup" in reason.lower() or "missing pod" in reason.lower() for reason in reasons):
+    if _needs_backup_request(reasons):
         actions.append(ReviewAction.REQUEST_BACKUP)
+    if _has_missing_required_document(reasons):
+        return actions
     actions.append(ReviewAction.APPROVE)
     return actions
 
@@ -309,6 +311,7 @@ def _action_options_for(
 ) -> list[ReviewActionOption]:
     expected_total = _expected_total(load)
     invoice_total = _invoice_total(load)
+    missing_required_doc = _has_missing_required_document(reasons)
     if outcome == ReconciliationOutcome.DUPLICATE:
         return [
             ReviewActionOption(
@@ -326,6 +329,30 @@ def _action_options_for(
         ]
 
     if outcome == ReconciliationOutcome.VARIANCE:
+        if missing_required_doc:
+            options = [
+                ReviewActionOption(
+                    code=ReviewAction.REQUEST_BACKUP,
+                    label="Request missing POD/backup",
+                    requires_send_gate=True,
+                    creates_follow_up_draft=True,
+                    consequence="Keeps payable unapproved and creates a carrier backup request behind a send gate.",
+                ),
+                ReviewActionOption(
+                    code=ReviewAction.DISPUTE,
+                    label=f"Dispute ${_money(flagged_amount)} — hold payment",
+                    requires_send_gate=True,
+                    creates_follow_up_draft=True,
+                    consequence="Holds the payable (no approval) and drafts a carrier dispute for the variance.",
+                ),
+                ReviewActionOption(
+                    code=ReviewAction.EDIT,
+                    label="Edit packet",
+                    consequence="Opens the packet detail page for correction before decision.",
+                ),
+            ]
+            return options
+
         dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} variance"
         if any("detention" in reason.lower() for reason in reasons):
             dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} detention"
@@ -354,7 +381,7 @@ def _action_options_for(
                 consequence="Holds the payable (no approval) and drafts a carrier dispute for the variance.",
             ),
         ]
-        if any("missing backup" in reason.lower() or "missing pod" in reason.lower() for reason in reasons):
+        if _needs_backup_request(reasons):
             options.append(
                 ReviewActionOption(
                     code=ReviewAction.REQUEST_BACKUP,
@@ -380,16 +407,18 @@ def _action_options_for(
             consequence="Opens the packet detail page for correction before decision.",
         )
     ]
-    if any("missing backup" in reason.lower() or "missing pod" in reason.lower() for reason in reasons):
+    if _needs_backup_request(reasons):
         options.append(
             ReviewActionOption(
                 code=ReviewAction.REQUEST_BACKUP,
-                label="Request backup from carrier",
+                label="Request missing POD/backup" if missing_required_doc else "Request backup from carrier",
                 requires_send_gate=True,
                 creates_follow_up_draft=True,
                 consequence="Creates a short backup-request email behind a send gate.",
             )
         )
+    if missing_required_doc:
+        return options
     options.append(
         ReviewActionOption(
             code=ReviewAction.APPROVE,
@@ -399,6 +428,21 @@ def _action_options_for(
         )
     )
     return options
+
+
+def _has_missing_required_document(reasons: list[str]) -> bool:
+    return any("mailbox packet missing required" in reason.lower() for reason in reasons)
+
+
+def _needs_backup_request(reasons: list[str]) -> bool:
+    normalized = [reason.lower() for reason in reasons]
+    return any(
+        "missing backup" in reason
+        or "missing pod" in reason
+        or "missing required pod" in reason
+        or "mailbox packet missing required" in reason
+        for reason in normalized
+    )
 
 
 def _fields_for_outcome(

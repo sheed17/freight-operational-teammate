@@ -25,10 +25,12 @@ from freight_recon.action_callback import (  # noqa: E402
     run_callback_server,
 )
 from freight_recon.delivery import DeliverySigner, build_delivery_message, record_delivery_message  # noqa: E402
+from freight_recon.post_approval_execution import MockTmsAutoEntryConfig, maybe_execute_mock_tms_after_approval  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
 from freight_recon.review_actions import ReviewDecision  # noqa: E402
 from freight_recon.workflow import WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
+from run_gmail_to_slack_dogfood import _redacted_workflow_json  # noqa: E402
 
 
 def _delivered(tmp_path, load_id="LD-560008"):
@@ -77,6 +79,110 @@ def test_direct_callback_applies_signed_action_and_formats_confirmation(tmp_path
     run = store.get_run(message.run_id)
     assert run is not None
     assert run.state == WorkflowState.REQUESTED_BACKUP
+    store.close()
+
+
+def test_direct_callback_can_auto_enter_approved_mock_tms(tmp_path):
+    store, signer, message, loads = _delivered(tmp_path, load_id="LD-560003")
+    token = _token_for(message, ReviewDecision.APPROVE_EXPECTED_AMOUNT)
+    updates = []
+    ledger_path = tmp_path / "auto_tms_ledger.json"
+
+    def _executor(active_store, outcome):
+        maybe_execute_mock_tms_after_approval(
+            active_store,
+            outcome,
+            config=MockTmsAutoEntryConfig(enabled=True, ledger_path=str(ledger_path)),
+            on_status=updates.append,
+        )
+
+    response = handle_signed_action_callback(
+        store,
+        token,
+        signer=signer,
+        follow_up_loads=loads,
+        post_action_executor=_executor,
+    )
+
+    assert response.status == CallbackStatus.APPLIED
+    assert store.get_run(message.run_id).state == WorkflowState.DONE
+    assert [update.phase.value for update in updates] == ["ENTERING", "ENTERED", "VERIFIED", "DONE"]
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert ledger["LD-560003"]["amount"] == "3334.50"
+    events = [event["event_type"] for event in store.audit_events(message.run_id)]
+    assert "post_approval_execution_completed" in events
+    assert "tms_write_verified" in events
+    store.close()
+
+
+def test_gmail_workflow_report_redacts_signed_tokens(tmp_path):
+    from types import SimpleNamespace
+
+    store, signer, message, _loads = _delivered(tmp_path, load_id="LD-560003")
+    raw_token = message.actions[0].signed_token
+    workflow = SimpleNamespace(
+        delivery_messages=[message],
+        model_copy=lambda update: SimpleNamespace(
+            delivery_messages=update["delivery_messages"],
+            model_dump_json=lambda indent=2: json.dumps(
+                [item.model_dump(mode="json") for item in update["delivery_messages"]],
+                indent=indent,
+            ),
+        ),
+    )
+
+    report = _redacted_workflow_json(workflow)
+
+    assert raw_token not in report
+    assert "redacted:" in report
+    store.close()
+
+
+def test_direct_callback_does_not_auto_enter_for_backup_request(tmp_path):
+    store, signer, message, loads = _delivered(tmp_path)
+    token = _token_for(message, ReviewDecision.REQUEST_BACKUP)
+    ledger_path = tmp_path / "auto_tms_ledger.json"
+
+    def _executor(active_store, outcome):
+        maybe_execute_mock_tms_after_approval(
+            active_store,
+            outcome,
+            config=MockTmsAutoEntryConfig(enabled=True, ledger_path=str(ledger_path)),
+        )
+
+    response = handle_signed_action_callback(
+        store,
+        token,
+        signer=signer,
+        follow_up_loads=loads,
+        post_action_executor=_executor,
+    )
+
+    assert response.status == CallbackStatus.APPLIED
+    assert store.get_run(message.run_id).state == WorkflowState.REQUESTED_BACKUP
+    assert not ledger_path.exists()
+    store.close()
+
+
+def test_post_action_executor_failure_is_audited_without_breaking_callback(tmp_path):
+    store, signer, message, loads = _delivered(tmp_path, load_id="LD-560003")
+    token = _token_for(message, ReviewDecision.APPROVE_EXPECTED_AMOUNT)
+
+    def _boom(_store, _outcome):
+        raise RuntimeError("execution service down")
+
+    response = handle_signed_action_callback(
+        store,
+        token,
+        signer=signer,
+        follow_up_loads=loads,
+        post_action_executor=_boom,
+    )
+
+    assert response.status == CallbackStatus.APPLIED
+    assert store.get_run(message.run_id).state == WorkflowState.APPROVED
+    events = store.audit_events(message.run_id)
+    assert any(event["event_type"] == "post_action_executor_failed" for event in events)
     store.close()
 
 

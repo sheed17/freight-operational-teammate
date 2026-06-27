@@ -19,6 +19,7 @@ from freight_recon.delivery import DeliverySigner  # noqa: E402
 from freight_recon.email_corpus import build_email_corpus  # noqa: E402
 from freight_recon.mailbox_workflow import run_mailbox_workflow  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
+from freight_recon.review import ReviewAction  # noqa: E402
 from freight_recon.review_actions import ReviewActionRequest, ReviewDecision, apply_review_action  # noqa: E402
 from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 
@@ -405,6 +406,10 @@ def test_mailbox_workflow_packet_flags_force_human_review_for_math_clean_packet(
     assert "missing required pod" in result.review_payloads[0].summary.lower() or any(
         "missing required pod" in reason for reason in result.review_payloads[0].reasons
     )
+    payload = result.review_payloads[0]
+    assert ReviewAction.APPROVE not in payload.actions
+    assert all(option.code != ReviewAction.APPROVE for option in payload.action_options)
+    assert any(option.code == ReviewAction.REQUEST_BACKUP for option in payload.action_options)
 
 
 def test_mailbox_workflow_trickle_email_refreshes_same_run_when_packet_resolves(tmp_path):

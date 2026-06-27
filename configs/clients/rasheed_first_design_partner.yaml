@@ -55,7 +55,7 @@ delivery:
     routing:
       IMMEDIATE_PING: C0BB8KG21J8
       CHANNEL_POST: C0BB8KG21J8
-      DIGEST_ONLY: C0BB8KG21J8
+      DIGEST_ONLY: C0BCXGPAD2B
   # Slack is the headless UI: review/approval/evidence go to Slack ONLY. Email is NOT a review
   # channel for the user. Email's real role is inbound intake (the agent lives in the inbox and
   # ingests documents) plus carrier-facing follow-ups — both separate from this delivery block.

@@ -160,7 +160,7 @@ def main() -> int:
         else None,
     )
 
-    workflow_report_path.write_text(workflow.model_dump_json(indent=2), encoding="utf-8")
+    workflow_report_path.write_text(_redacted_workflow_json(workflow), encoding="utf-8")
     review_payloads_path.write_text(
         json.dumps([payload.model_dump(mode="json") for payload in workflow.review_payloads], indent=2),
         encoding="utf-8",
@@ -296,6 +296,17 @@ def _dispatch_reviews(
 
 def _has_dispatch_attempt(store: WorkflowStore, run_id: int) -> bool:
     return any(event["event_type"] == "delivery_dispatch_attempted" for event in store.audit_events(run_id))
+
+
+def _redacted_workflow_json(workflow) -> str:
+    safe = workflow.model_copy(
+        update={
+            "delivery_messages": [
+                redact_delivery_message(message) for message in workflow.delivery_messages
+            ]
+        }
+    )
+    return safe.model_dump_json(indent=2)
 
 
 def _delivery_signer(client_config_path: str | Path, allow_local_dev_secret: bool):

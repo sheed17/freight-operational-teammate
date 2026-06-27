@@ -52,3 +52,16 @@ def test_handle_command_unresolved_and_load_status(tmp_path):
     assert "LD-1" in unresolved and "LD-2" not in unresolved  # only open items
     one = handle_ops_command("status LD-2", actor="R", ops_control=oc, store=store)
     assert "LD-2" in one and "DONE" in one
+
+
+def test_status_command_answers_what_is_neyma_doing(tmp_path):
+    import json
+
+    oc = OpsControl(tmp_path / "ops.json")
+    status_file = tmp_path / "status.json"
+    status_file.write_text(json.dumps({"state": "IDLE", "iteration": 2, "consecutive_failures": 0}))
+    out = handle_ops_command("what is neyma doing", actor="R", ops_control=oc, store=_Store(), status_file=str(status_file))
+    assert "Gmail polling" in out  # service health line
+    assert "TMS writes are *ACTIVE*" in out  # brake state
+    assert "waiting on you" in out  # how much needs the owner
+

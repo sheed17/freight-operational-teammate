@@ -52,6 +52,7 @@ class PayableWriteStatus(str, Enum):
     IDEMPOTENT_REPLAY = "IDEMPOTENT_REPLAY"
     DUPLICATE_BLOCKED = "DUPLICATE_BLOCKED"
     SESSION_EXPIRED = "SESSION_EXPIRED"
+    ADAPTER_FAILED = "ADAPTER_FAILED"
 
 
 class ChargeLine(BaseModel):
@@ -419,7 +420,78 @@ def enter_approved_payable(
     submit_ctx = ToolContext(
         workflow_state=WorkflowState.ENTERING, actor=actor, approval_granted=True, tms_write_enabled=tms_write_enabled
     )
-    result = adapter.submit(prepared, context=submit_ctx, confirmed=True)
+    try:
+        result = adapter.submit(prepared, context=submit_ctx, confirmed=True)
+    except Exception as exc:  # noqa: BLE001 - adapter failures must fail closed through workflow state
+        trace.append("submit:ADAPTER_FAILED")
+        recovery = _recover_after_submit_exception(
+            store,
+            adapter,
+            run,
+            prepared=prepared,
+            amount=amount,
+            actor=actor,
+            error=exc,
+        )
+        if recovery is not None:
+            result, verification = recovery
+            trace.append("recover_readback:match=True")
+            _emit(
+                ExecutionPhase.VERIFIED,
+                f"TMS adapter failed after submit, but readback verified ${amount}.",
+                external_ref=result.external_ref,
+                amount=amount,
+            )
+            store.transition(run_id, WorkflowState.ENTERED, actor=actor, event_type="entry_recovered_after_adapter_failure")
+            store.transition(run_id, WorkflowState.DONE, actor=actor, event_type="entry_done")
+            trace.extend(["ENTERING→ENTERED", "ENTERED→DONE"])
+            _emit(
+                ExecutionPhase.DONE,
+                f"Marked DONE — {load_id} payable complete after recovered readback.",
+                external_ref=result.external_ref,
+                amount=amount,
+            )
+            return _outcome(
+                run,
+                WorkflowState.DONE,
+                result,
+                verified=verification.match,
+                trace=trace,
+                note="TMS adapter failed after submit, but deterministic readback recovered the payable",
+            )
+
+        store.add_audit_event(
+            run_id,
+            "tms_write_adapter_failed",
+            actor=actor,
+            payload={
+                "adapter_error_type": type(exc).__name__,
+                "adapter_error": str(exc)[:500],
+                "idempotency_key": prepared.idempotency_key,
+                "possible_write_unverified": True,
+            },
+        )
+        store.transition(run_id, WorkflowState.FAILED, actor=actor, event_type="entry_adapter_failed")
+        trace.append("ENTERING→FAILED")
+        _emit(
+            ExecutionPhase.FAILED,
+            "TMS entry failed and readback could not verify whether the write landed — routed to review.",
+        )
+        failed = PayableWriteResult(
+            run_id=run_id,
+            load_id=load_id,
+            idempotency_key=prepared.idempotency_key,
+            status=PayableWriteStatus.ADAPTER_FAILED,
+            note=f"TMS adapter failed and readback could not verify write state: {type(exc).__name__}",
+        )
+        return _outcome(
+            run,
+            WorkflowState.FAILED,
+            failed,
+            verified=False,
+            trace=trace,
+            note="TMS adapter failed; possible write unverified and routed to review",
+        )
     trace.append(f"submit:{result.status.value}")
 
     if result.status == PayableWriteStatus.SESSION_EXPIRED:
@@ -455,6 +527,81 @@ def enter_approved_payable(
     _emit(ExecutionPhase.DONE, f"Marked DONE — {load_id} payable complete.", external_ref=result.external_ref, amount=amount)
     return _outcome(run, WorkflowState.DONE, result, verified=True, trace=trace,
                     note="payable entered and verified by readback")
+
+
+def _recover_after_submit_exception(
+    store: WorkflowStore,
+    adapter: TmsWriteAdapter,
+    run: WorkflowRun,
+    *,
+    prepared: PreparedPayableEntry,
+    amount: str,
+    actor: str,
+    error: Exception,
+) -> tuple[PayableWriteResult, ReadbackVerification] | None:
+    """Recover a possible post-click browser crash by reading the TMS before failing the run."""
+    try:
+        verification = adapter.verify(
+            run,
+            expected_amount=amount,
+            context=ToolContext(workflow_state=WorkflowState.ENTERING, actor=actor),
+        )
+        record = adapter.ledger.get_payable(run.load_id)
+    except Exception as read_exc:  # noqa: BLE001 - recovery is best-effort and audited below
+        store.add_audit_event(
+            run.id,
+            "tms_write_adapter_recovery_readback_failed",
+            actor=actor,
+            payload={
+                "submit_error_type": type(error).__name__,
+                "submit_error": str(error)[:500],
+                "readback_error_type": type(read_exc).__name__,
+                "readback_error": str(read_exc)[:500],
+                "idempotency_key": prepared.idempotency_key,
+                "possible_write_unverified": True,
+            },
+        )
+        return None
+
+    record_key = record.get("idempotency_key") if isinstance(record, dict) else None
+    key_matches = record_key == prepared.idempotency_key
+    if verification.match and key_matches:
+        result = PayableWriteResult(
+            run_id=run.id,
+            load_id=run.load_id,
+            idempotency_key=prepared.idempotency_key,
+            status=PayableWriteStatus.ADAPTER_FAILED,
+            external_ref=record.get("external_ref") if isinstance(record, dict) else None,
+            note="adapter failed after submit, but readback matched amount and idempotency key",
+        )
+        store.add_audit_event(
+            run.id,
+            "tms_write_adapter_failure_recovered",
+            actor=actor,
+            payload={
+                "submit_error_type": type(error).__name__,
+                "submit_error": str(error)[:500],
+                "idempotency_key": prepared.idempotency_key,
+                "external_ref": result.external_ref,
+                "verified": True,
+            },
+        )
+        return result, verification
+
+    store.add_audit_event(
+        run.id,
+        "tms_write_adapter_recovery_unverified",
+        actor=actor,
+        payload={
+            "submit_error_type": type(error).__name__,
+            "submit_error": str(error)[:500],
+            "idempotency_key": prepared.idempotency_key,
+            "readback_match": verification.match,
+            "record_idempotency_key": record_key,
+            "possible_write_unverified": True,
+        },
+    )
+    return None
 
 
 def _outcome(

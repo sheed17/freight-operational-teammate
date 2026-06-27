@@ -76,12 +76,12 @@ class TmsWritesPausedError(Exception):
 _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "REQUESTED_BACKUP"}
 
 _HELP = (
-    "Commands: `pause tms writes` | `resume tms writes` | `status` | "
+    "Commands: `status` (what is Neyma doing) | `pause tms writes` | `resume tms writes` | "
     "`show unresolved` | `status <LOAD-ID>`"
 )
 
 
-def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=None) -> str:
+def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=None, status_file=None) -> str:
     """Parse one lightweight owner command from Slack into an action + reply. Channel-neutral."""
     raw = text.strip()
     cmd = " ".join(raw.lower().split())
@@ -91,17 +91,33 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
     if cmd in ("resume", "resume tms writes", "resume writes", "resume tms"):
         ops_control.resume_tms_writes(actor=actor)
         return f":unlock: TMS writes *RESUMED* by {actor}."
-    if cmd in ("status", "ops status"):
-        state = ops_control.status()
-        if state["tms_writes_paused"]:
-            reason = f", {state['reason']}" if state.get("reason") else ""
-            return f":lock: TMS writes are *PAUSED* (by {state['paused_by']}{reason})."
-        return ":white_check_mark: TMS writes are *ACTIVE*."
+    if cmd in ("status", "ops status", "health", "what is neyma doing", "whats neyma doing", "what's neyma doing"):
+        return _render_operational_status(ops_control, store=store, status_file=status_file)
     if cmd in ("show unresolved", "unresolved", "show open") and store is not None:
         return _render_unresolved(store)
     if cmd.startswith("status ") and store is not None:
         return _render_load_status(store, raw.split(None, 1)[1].strip())
     return _HELP
+
+
+def _render_operational_status(ops_control: OpsControl, *, store=None, status_file=None) -> str:
+    """The owner's one-glance answer to 'what is Neyma doing right now?': service health + the TMS
+    brake + how much is waiting on them."""
+    parts: list[str] = []
+    if status_file is not None:
+        from .teammate_health import read_loop_health, render_health
+
+        parts.append(render_health(read_loop_health(status_file)))
+    brake = ops_control.status()
+    if brake["tms_writes_paused"]:
+        reason = f", {brake['reason']}" if brake.get("reason") else ""
+        parts.append(f":lock: TMS writes are *PAUSED* (by {brake['paused_by']}{reason}).")
+    else:
+        parts.append(":white_check_mark: TMS writes are *ACTIVE*.")
+    if store is not None:
+        open_count = sum(1 for run in store.list_runs() if _state_of(run) in _OPEN_STATES)
+        parts.append(f":memo: {open_count} item(s) waiting on you." if open_count else ":sparkles: Nothing waiting on you.")
+    return "\n".join(parts)
 
 
 def _state_of(run) -> str:

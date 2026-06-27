@@ -98,6 +98,54 @@ def test_status_sink_failure_never_breaks_the_money_path(tmp_path):
     store.close()
 
 
+class _ExplodingLedger:
+    def write_payable(self, **kwargs):
+        raise RuntimeError("browser navigation failed")
+
+    def get_payable(self, load_id):
+        return None
+
+
+class _WritesThenExplodesLedger(MockTmsWriteLedger):
+    def write_payable(self, **kwargs):
+        super().write_payable(**kwargs)
+        raise RuntimeError("browser crashed after submit click")
+
+
+def test_adapter_failure_routes_to_failed_and_emits_status(tmp_path):
+    store, run_id = _approved_run(tmp_path)
+    updates: list = []
+
+    outcome = enter_approved_payable(store, _ExplodingLedger(), run_id, amount=_AMOUNT, on_status=updates.append)
+
+    assert outcome.final_state == WorkflowState.FAILED
+    assert outcome.write_status == PayableWriteStatus.ADAPTER_FAILED
+    assert outcome.verified is False
+    assert store.get_run(run_id).state == WorkflowState.FAILED
+    assert [u.phase.value for u in updates] == ["ENTERING", "FAILED"]
+    assert any(e["event_type"] == "tms_write_adapter_failed" for e in store.audit_events(run_id))
+    store.close()
+
+
+def test_adapter_failure_after_write_recovers_through_readback(tmp_path):
+    store, run_id = _approved_run(tmp_path)
+    ledger = _WritesThenExplodesLedger(tmp_path / "ledger.json")
+    updates: list = []
+
+    outcome = enter_approved_payable(store, ledger, run_id, amount=_AMOUNT, on_status=updates.append)
+
+    assert outcome.final_state == WorkflowState.DONE
+    assert outcome.write_status == PayableWriteStatus.ADAPTER_FAILED
+    assert outcome.verified is True
+    assert store.get_run(run_id).state == WorkflowState.DONE
+    assert ledger.get_payable("LD-560003")["amount"] == _AMOUNT
+    assert [u.phase.value for u in updates] == ["ENTERING", "VERIFIED", "DONE"]
+    events = store.audit_events(run_id)
+    assert any(e["event_type"] == "tms_write_adapter_failure_recovered" for e in events)
+    assert not any(e["event_type"] == "tms_write_adapter_failed" for e in events)
+    store.close()
+
+
 def test_entry_refused_when_no_human_approval_recorded(tmp_path):
     # APPROVED via a direct transition with no review_approved_* event → binding fails closed.
     corpus = tmp_path / "corpus"

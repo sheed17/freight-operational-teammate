@@ -11,12 +11,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Literal
+from typing import Callable, Literal
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, Field
 
 from .delivery import (
+    DeliveryActionOutcome,
     DeliveryExpiredError,
     DeliverySignatureError,
     DeliverySigner,
@@ -56,6 +57,9 @@ class CallbackAppConfig:
     # When set, the `/slack/actions` interactivity route is enabled. Slack requests are verified
     # against this signing secret before the carried action token is applied.
     slack_signing_secret: bytes | None = None
+    post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None
+    # Loop heartbeat file, so the Slack `status` command can answer "what is Neyma doing right now?".
+    status_file: str | None = None
 
 
 def handle_signed_action_callback(
@@ -64,6 +68,7 @@ def handle_signed_action_callback(
     *,
     signer: DeliverySigner,
     follow_up_loads: dict[str, FreightLoadForReconciliation] | None = None,
+    post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None,
 ) -> CallbackResponse:
     """Apply one signed action token and return a response safe to show to a human."""
     if not token:
@@ -105,6 +110,9 @@ def handle_signed_action_callback(
             message="The workflow state has changed, so this action was not applied.",
             errors=[str(exc)],
         )
+
+    if post_action_executor is not None:
+        _run_post_action_executor(store, outcome, post_action_executor)
 
     return CallbackResponse(
         status=CallbackStatus.APPLIED,
@@ -234,6 +242,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     token,
                     signer=config.signer,
                     follow_up_loads=config.follow_up_loads,
+                    post_action_executor=config.post_action_executor,
                 )
             finally:
                 store.close()
@@ -264,6 +273,8 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     signature=signature,
                     follow_up_loads=config.follow_up_loads,
                 )
+                if config.post_action_executor is not None:
+                    _run_post_action_executor(store, outcome, config.post_action_executor)
             except SlackSignatureError:
                 # Audit the rejected request at the transport boundary (untrusted: dedicated
                 # security log, no body/token retained) so probing a live endpoint leaves a trace.
@@ -327,7 +338,9 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
             store = WorkflowStore(config.db_path)
             try:
-                reply = handle_ops_command(text, actor=actor, ops_control=ops_control, store=store)
+                reply = handle_ops_command(
+                    text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
+                )
             finally:
                 store.close()
             # Ephemeral: only the operator who ran the command sees the reply.
@@ -372,6 +385,8 @@ def run_callback_server(
     signer: DeliverySigner,
     follow_up_loads: dict[str, FreightLoadForReconciliation] | None = None,
     slack_signing_secret: bytes | str | None = None,
+    post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None,
+    status_file: str | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -383,9 +398,27 @@ def run_callback_server(
             signer=signer,
             follow_up_loads=follow_up_loads,
             slack_signing_secret=secret,
+            post_action_executor=post_action_executor,
+            status_file=status_file,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
+
+
+def _run_post_action_executor(
+    store: WorkflowStore,
+    outcome: DeliveryActionOutcome,
+    executor: Callable[[WorkflowStore, DeliveryActionOutcome], None],
+) -> None:
+    try:
+        executor(store, outcome)
+    except Exception as exc:  # noqa: BLE001 - post-action work must not break callback ack
+        store.add_audit_event(
+            outcome.run_id,
+            "post_action_executor_failed",
+            actor="system",
+            payload={"error_type": type(exc).__name__, "error": str(exc)[:500]},
+        )
 
 
 def _render_html(response: CallbackResponse) -> str:
