@@ -5,7 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from run_teammate import build_process_commands  # noqa: E402
+from run_teammate import build_process_commands, preflight_credentials  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+CLIENT_CONFIG = str(ROOT / "configs" / "clients" / "rasheed_first_design_partner.yaml")
 
 
 def _val_after(cmd: list[str], flag: str) -> str:
@@ -32,3 +35,38 @@ def test_all_processes_share_one_workspace_db_and_heartbeat():
 def test_no_auto_enter_omits_the_mock_tms_flag():
     cmds = build_process_commands(workspace="/tmp/ws", client_config="c", auto_enter_mock_tms=False)
     assert "--auto-enter-approved-mock-tms" not in cmds["callback"]
+
+
+def _full_env() -> dict[str, str]:
+    return {
+        "NEYMA_IMAP_USERNAME": "u",
+        "NEYMA_IMAP_PASSWORD": "p",
+        "OPENAI_API_KEY": "k",
+        "NEYMA_DELIVERY_SECRET_RASHEED_FIRST": "s",
+        "NEYMA_SLACK_SIGNING_SECRET_RASHEED_FIRST": "ss",
+        "NEYMA_SLACK_BOT_TOKEN_RASHEED_FIRST": "bt",
+    }
+
+
+def test_preflight_passes_when_all_secrets_present():
+    assert preflight_credentials(client_config=CLIENT_CONFIG, env=_full_env()) == []
+
+
+def test_preflight_flags_each_missing_secret():
+    # No env at all -> mail creds, OpenAI key, and all of the client's Slack/action secrets are flagged.
+    problems = preflight_credentials(client_config=CLIENT_CONFIG, env={})
+    blob = " ".join(problems).lower()
+    assert "imap username" in blob and "imap app password" in blob
+    assert "openai_api_key" in blob
+    assert "neyma_delivery_secret_rasheed_first" in blob
+    assert "neyma_slack_signing_secret_rasheed_first" in blob
+    assert "neyma_slack_bot_token_rasheed_first" in blob
+
+
+def test_preflight_accepts_smtp_creds_as_mail_fallback():
+    env = _full_env()
+    del env["NEYMA_IMAP_USERNAME"]
+    del env["NEYMA_IMAP_PASSWORD"]
+    env["NEYMA_SMTP_USERNAME"] = "u"
+    env["NEYMA_SMTP_PASSWORD"] = "p"
+    assert preflight_credentials(client_config=CLIENT_CONFIG, env=env) == []

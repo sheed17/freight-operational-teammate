@@ -6,6 +6,8 @@ import argparse
 import ipaddress
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -56,6 +58,13 @@ def main() -> int:
         "--status-file",
         default=None,
         help="Loop heartbeat the Slack `status` command reads; defaults to <workspace>/teammate_status.json",
+    )
+    parser.add_argument(
+        "--watchdog-interval-seconds",
+        type=int,
+        default=120,
+        help="How often the callback server checks the loop heartbeat and proactively alerts Slack if "
+        "the loop has gone STALE (hung/died). 0 disables. Requires --client-config for the Slack post.",
     )
     args = parser.parse_args()
 
@@ -122,6 +131,16 @@ def main() -> int:
         print("         -> Slack `status` will report NOT_STARTED until the loop writes it.")
         print("         -> point --status-file at <loop --workspace>/teammate_status.json.")
 
+    # Liveness watchdog: the loop alerts on its own *failures*, but a loop that hangs or dies simply
+    # stops heart-beating and would go unnoticed. This independent thread (the callback is always up)
+    # watches the same heartbeat and proactively pings Slack when it goes STALE / recovers.
+    watchdog_poster = _build_digest_poster(args.client_config) if args.watchdog_interval_seconds > 0 else None
+    if args.watchdog_interval_seconds > 0 and watchdog_poster is None:
+        print("NOTE: heartbeat watchdog idle — needs --client-config with a Slack channel to post alerts.")
+    elif watchdog_poster is not None:
+        _start_heartbeat_watchdog(status_file, watchdog_poster, args.watchdog_interval_seconds)
+        print(f"Liveness watchdog: alerting Slack if the loop heartbeat goes stale (every {args.watchdog_interval_seconds}s)")
+
     server = run_callback_server(
         host=args.host,
         port=args.port,
@@ -146,6 +165,57 @@ def main() -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _build_digest_poster(client_config: str | None):
+    """Return callable(text)->None that posts to the client's Slack digest channel, or None.
+
+    Best-effort: any failure to build or post is swallowed so watchdog alerting never crashes the
+    callback server. Mirrors the loop's alert poster so both surfaces speak to the same channel.
+    """
+    if not client_config:
+        return None
+    try:
+        from freight_recon.channels import slack_channel_for_route
+        from freight_recon.delivery_dispatch import post_text_to_slack
+        from freight_recon.review import ReviewRoute
+
+        config = load_delivery_config(client_config)
+        if config is None or config.slack is None:
+            return None
+        channel = slack_channel_for_route(config.slack, ReviewRoute.DIGEST_ONLY)
+    except Exception:  # noqa: BLE001 - alerting must never block the server
+        return None
+
+    def _post(text: str) -> None:
+        try:
+            post_text_to_slack(text, channel=channel, config=config, env=os.environ)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return _post
+
+
+def _start_heartbeat_watchdog(status_file: Path, poster, interval_seconds: int) -> threading.Thread:
+    """Start a daemon thread that classifies the loop heartbeat each interval and posts a fire-once
+    Slack alert when it goes STALE (loop hung/died) and a recovery when it heart-beats again."""
+    from freight_recon.teammate_health import read_loop_health, watchdog_decision
+
+    def _run() -> None:
+        already_alerted = False
+        while True:
+            time.sleep(max(interval_seconds, 1))
+            try:
+                snapshot = read_loop_health(status_file)
+                message, already_alerted = watchdog_decision(snapshot, already_alerted=already_alerted)
+                if message:
+                    poster(message)
+            except Exception:  # noqa: BLE001 - the watchdog must never take down the server
+                continue
+
+    thread = threading.Thread(target=_run, name="neyma-heartbeat-watchdog", daemon=True)
+    thread.start()
+    return thread
 
 
 def _is_loopback_host(host: str) -> bool:

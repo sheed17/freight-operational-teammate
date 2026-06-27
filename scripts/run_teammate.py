@@ -14,13 +14,60 @@ callback port) is a separate concern — see docs/DEPLOYMENT.md.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 DEFAULT_WORKSPACE = ROOT / "data" / "active_workspace" / "gmail_to_slack_service"
+
+
+def preflight_credentials(*, client_config: str, env: Mapping[str, str]) -> list[str]:
+    """Return human-readable problems for any credential the teammate needs but is missing.
+
+    Empty list means good to go. This runs BEFORE the children are spawned so a missing secret fails
+    loudly at launch instead of silently at first use — where today it would only surface as a poll
+    cycle failure (mail), a refused Slack post (alerts), or an unverifiable button click (actions).
+    """
+    problems: list[str] = []
+    if not (env.get("NEYMA_IMAP_USERNAME") or env.get("NEYMA_SMTP_USERNAME")):
+        problems.append("IMAP username missing (set NEYMA_IMAP_USERNAME) — the loop cannot read mail.")
+    if not (env.get("NEYMA_IMAP_PASSWORD") or env.get("NEYMA_SMTP_PASSWORD")):
+        problems.append("IMAP app password missing (set NEYMA_IMAP_PASSWORD) — the loop cannot read mail.")
+    if not env.get("OPENAI_API_KEY"):
+        problems.append("OPENAI_API_KEY missing — invoice extraction and the browser agent cannot run.")
+
+    try:
+        from freight_recon.channels import load_delivery_config
+
+        config = load_delivery_config(client_config)
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"could not load client config {client_config}: {exc}")
+        return problems
+    if config is None:
+        problems.append(f"no delivery config found at {client_config}.")
+        return problems
+
+    if not env.get(config.action_token_secret_env):
+        problems.append(
+            f"action-token secret missing (set {config.action_token_secret_env}) — Slack action links "
+            "cannot be signed or verified."
+        )
+    if config.slack is not None:
+        if config.slack.signing_secret_env and not env.get(config.slack.signing_secret_env):
+            problems.append(
+                f"Slack signing secret missing (set {config.slack.signing_secret_env}) — inbound Slack "
+                "clicks cannot be verified."
+            )
+        if config.slack.bot_token_env and not env.get(config.slack.bot_token_env):
+            problems.append(
+                f"Slack bot token missing (set {config.slack.bot_token_env}) — Neyma cannot post to Slack."
+            )
+    return problems
 
 
 def build_process_commands(
@@ -81,7 +128,21 @@ def main() -> int:
     parser.add_argument("--mailbox", default="Neyma-Test-Inbox")
     parser.add_argument("--query", default="UNSEEN")
     parser.add_argument("--no-auto-enter", action="store_true", help="do not auto-enter approved payables into the mock TMS")
+    parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     args = parser.parse_args()
+
+    # Fail loud at launch, not silently at first use, when a required credential is missing.
+    problems = preflight_credentials(client_config=args.client_config, env=os.environ)
+    if problems:
+        print("Credential preflight found problems:")
+        for problem in problems:
+            print(f"  - {problem}")
+        if not args.skip_preflight:
+            print("\nRefusing to start. Fix the .env entries above, or rerun with --skip-preflight to start anyway.")
+            return 1
+        print("\n--skip-preflight set: starting anyway (some functions will fail until fixed).")
+    else:
+        print("Credential preflight: all required secrets present.")
 
     workspace = Path(args.workspace)
     (workspace / "site").mkdir(parents=True, exist_ok=True)

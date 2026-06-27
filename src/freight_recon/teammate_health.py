@@ -104,6 +104,28 @@ def read_loop_health(status_file: str | Path, *, now: datetime | None = None, st
     return HealthSnapshot(status="OK", healthy=True, detail=detail, **common)
 
 
+def watchdog_decision(snapshot: HealthSnapshot, *, already_alerted: bool) -> tuple[str | None, bool]:
+    """Decide the proactive "the loop went dark" Slack alert from a heartbeat snapshot.
+
+    The continuous loop already posts its own alert when a cycle *fails* (non-zero exit). The gap this
+    closes is a loop that *hangs or dies* and simply stops heart-beating: its last heartbeat freezes,
+    :func:`read_loop_health` classifies it STALE, but nothing tells the operator. This fires once on
+    going STALE and once on recovery, so "Neyma went dark and didn't tell me" cannot happen silently.
+
+    Returns ``(message_or_none, new_already_alerted)``. Only STALE triggers an alert — ERROR is the
+    loop's own job, and NOT_STARTED/UNREADABLE are transient at boot and would cause false alarms.
+    """
+    if snapshot.status == "STALE" and not already_alerted:
+        message = (
+            f":large_yellow_circle: *Neyma watchdog:* {snapshot.detail} The poll loop may have hung or "
+            "stopped. Incoming mail will keep queuing until it resumes — check the loop process."
+        )
+        return message, True
+    if already_alerted and snapshot.status == "OK":
+        return ":large_green_circle: *Neyma watchdog:* the poll loop is heart-beating normally again.", False
+    return None, already_alerted
+
+
 def render_health(snapshot: HealthSnapshot) -> str:
     emoji = _EMOJI.get(snapshot.status, ":grey_question:")
     lines = [f"{emoji} *Neyma — what I'm doing right now:* {snapshot.detail}"]

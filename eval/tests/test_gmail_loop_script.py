@@ -109,11 +109,15 @@ def test_scrub_redacts_secret_shaped_output():
     assert loop._scrub("normal line with no secrets") == "normal line with no secrets"
 
 
-def test_new_work_nudge_fires_only_when_work_waiting():
+def test_new_work_nudge_fires_only_on_newly_dispatched_cards():
     loop = _loop_module()
-    nudge = loop._new_work_nudge({"review_payloads": 3, "new_messages": 5})
-    assert nudge and "3 new item" in nudge  # work waiting -> volunteer it
-    assert loop._new_work_nudge({"review_payloads": 0, "new_messages": 4}) is None  # all auto-cleared -> quiet
+    # A new card was actually dispatched this cycle -> volunteer it.
+    nudge = loop._new_work_nudge({"sent": 3, "review_payloads": 7, "new_messages": 5})
+    assert nudge and "3 new item" in nudge
+    # The spam case: BODY.PEEK re-reads the same UNSEEN mail so reviews are re-derived (7), but the
+    # dispatch layer re-sent nothing (sent=0). Must stay quiet instead of nudging every interval.
+    assert loop._new_work_nudge({"sent": 0, "review_payloads": 7, "new_messages": 0}) is None
+    assert loop._new_work_nudge({"review_payloads": 0, "new_messages": 4}) is None  # nothing to do -> quiet
     assert loop._new_work_nudge(None) is None
 
 

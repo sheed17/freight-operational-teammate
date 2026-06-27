@@ -196,16 +196,21 @@ def _cycle_summary(workspace: Path) -> dict | None:
 
 
 def _new_work_nudge(summary: dict | None) -> str | None:
-    """A compact 'Neyma brought you work' line — only when something needs the human this cycle, so
-    the always-on loop volunteers good news, not only failures (and stays quiet on empty cycles)."""
+    """A compact 'Neyma brought you work' line — only when Neyma actually *dispatched a new review
+    card* this cycle (``sent`` > 0), so the always-on loop volunteers genuinely new work.
+
+    Gating on ``sent`` (not ``review_payloads``) is deliberate: Neyma polls with BODY.PEEK and never
+    marks mail seen, so every cycle re-reads the same UNSEEN mail and re-derives the same review
+    payloads — but the dispatch layer is idempotent and does NOT re-post already-sent cards. Keying
+    the nudge off ``review_payloads`` made it fire every interval on re-processed (not new) work."""
     if not summary:
         return None
-    needs = summary.get("review_payloads") or 0
-    if needs <= 0:
+    sent = summary.get("sent") or 0
+    if sent <= 0:
         return None
     new_mail = summary.get("new_messages") or 0
     src = f" from {new_mail} new email(s)" if new_mail else ""
-    return f":inbox_tray: *Neyma:* {needs} new item(s) need your review this cycle{src} — open Slack to approve/dispute."
+    return f":inbox_tray: *Neyma:* {sent} new item(s) need your review this cycle{src} — open Slack to approve/dispute."
 
 
 def _should_post_digest(now: datetime, last_date_iso: str | None, hour: int | None) -> bool:
