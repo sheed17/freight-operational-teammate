@@ -87,6 +87,26 @@ def interpret_command(text: str, *, complete: Completer) -> CommandIntent:
     )
 
 
+def propose_operation(intent: CommandIntent, observation, *, complete: Completer):
+    """Bridge an OPERATE command to the Operator Brain: plan it, and render a human approval proposal.
+
+    Returns ``(plan, proposal_text)``. This is propose-only — it never executes; the consequential
+    step(s) are surfaced for the owner to approve, then run through the money gates.
+    """
+    from freight_recon.operator_brain import StepAction, plan_flow
+
+    plan = plan_flow(intent.summary or "", observation, complete=complete)
+    lines = [f"Here's my plan for: {intent.summary or 'your request'!r}"]
+    for i, step in enumerate(plan.steps, 1):
+        mark = "  ← needs your approval" if step.is_consequential() else ""
+        lines.append(f"  {i}. {step.action.value} {step.target}".rstrip() + mark)
+    if plan.consequential_steps():
+        lines.append("Approve and I'll run the consequential step(s) through the money gates.")
+    elif any(s.action == StepAction.ESCALATE for s in plan.steps):
+        lines.append("I can't complete this safely on my own — see the escalation above.")
+    return plan, "\n".join(lines)
+
+
 def handle_owner_command(
     text: str,
     *,

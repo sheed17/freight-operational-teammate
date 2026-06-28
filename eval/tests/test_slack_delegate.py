@@ -100,3 +100,46 @@ def test_interpret_maps_kinds_and_handles_bad_json():
 
     bad = interpret_command("???", complete=lambda p: "not json at all")
     assert bad.kind == CommandKind.UNKNOWN  # unparseable -> UNKNOWN, never a guessed action
+
+
+# ----- delegate -> Brain bridge: OPERATE command becomes a gated plan proposal -----
+
+def test_propose_operation_plans_and_renders_approval_proposal():
+    import json as _json
+    from freight_recon.slack_delegate import propose_operation
+    from freight_recon.operator_brain import observe
+
+    class S:
+        def navigate(self, u): pass
+        def evaluate(self, e): return {"url": "u", "nav": [{"text": "Invoices", "href": "/order/invoices"}], "headings": [], "has_form": False}
+
+    obs = observe(S(), "u")
+    plan_json = _json.dumps({"steps": [
+        {"action": "NAVIGATE", "target": "/orders/new"},
+        {"action": "RESOLVE_CUSTOMER", "target": "Acme"},
+        {"action": "FILL_AND_SUBMIT", "target": "/orders/new"},
+    ]})
+    plan, text = propose_operation(CommandIntent(CommandKind.OPERATE, summary="invoice the Acme load"),
+                                   obs, complete=lambda _p: plan_json)
+    assert len(plan.steps) == 3
+    assert "needs your approval" in text          # the consequential step is flagged for the human
+    assert "money gates" in text                   # approval routes through the gates
+    assert "invoice the Acme load" in text
+
+
+def test_propose_operation_surfaces_escalation_when_blocked():
+    import json as _json
+    from freight_recon.slack_delegate import propose_operation
+    from freight_recon.operator_brain import observe
+
+    class S:
+        def navigate(self, u): pass
+        def evaluate(self, e): return {"url": "u", "nav": [], "headings": [], "has_form": False}
+
+    plan, text = propose_operation(
+        CommandIntent(CommandKind.OPERATE, summary="do the impossible"),
+        observe(S(), "u"),
+        complete=lambda _p: _json.dumps({"steps": [{"action": "ESCALATE", "target": "no invoice capability"}]}),
+    )
+    assert "can't complete this safely" in text
+    assert not plan.consequential_steps()
