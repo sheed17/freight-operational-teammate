@@ -12,7 +12,7 @@ from freight_recon.tms_write import PayableWriteStatus  # noqa: E402
 
 def _form(**over) -> DiscoveredInvoiceForm:
     base = dict(
-        url="https://any-tms.test/invoice/new",
+        url="http://localhost/invoice/new",
         submit_label="Save",
         bill_to_selector="[name=cust]",
         amount_selector="[name=amt]",
@@ -36,16 +36,16 @@ class FakeSession:
         if "alert-danger" in expression:
             return self.error_flash
         self.evals.append(expression)
-        return None
+        return True
 
 
-def _ledger(session, form=None, resolve=lambda n: "99", error=None):
+def _ledger(session, form=None, resolve=lambda n: "99", readback=lambda lid: None):
     return DiscoveredInvoiceLedger(
         session=session,
         form=form or _form(),
         resolve_customer=resolve,
         apply_customer=lambda s, cid: s.evaluate(f"APPLY_CUSTOMER:{cid}"),
-        readback_fn=lambda lid: {"amount": "100.00"},
+        readback_fn=readback,
         invoice_number_transform=lambda lid: "".join(c for c in lid if c.isdigit()) or None,
         base_url="http://localhost",  # localhost: gate is satisfied without acknowledgement
     )
@@ -85,7 +85,47 @@ def test_not_writable_form_refused():
 
 
 def test_get_payable_delegates_to_readback():
-    assert _ledger(FakeSession()).get_payable("LD-1") == {"amount": "100.00"}
+    assert _ledger(FakeSession(), readback=lambda lid: {"amount": "100.00"}).get_payable("LD-1") == {
+        "amount": "100.00",
+        "idempotency_key": None,
+    }
+
+
+def test_write_authorizes_actual_form_url_not_just_base_url():
+    s = FakeSession(error_flash="")
+    ledger = _ledger(s, form=_form(url="https://secure.truckingoffice.com/no_load_invoice/new"))
+    res = ledger.write_payable(run_id=1, load_id="LD-560005", carrier="Prairie Line", amount="4147.00", charges=None, key="k")
+
+    assert res.status == PayableWriteStatus.ADAPTER_FAILED
+    assert not s.navigated
+
+
+def test_preexisting_readback_blocks_discovered_duplicate_before_submit():
+    s = FakeSession(error_flash="")
+    res = _ledger(s, readback=lambda lid: {"amount": "4147.00"}).write_payable(
+        run_id=1, load_id="LD-560005", carrier="Prairie Line", amount="4147.00", charges=None, key="k"
+    )
+
+    assert res.status == PayableWriteStatus.DUPLICATE_BLOCKED
+    assert not s.navigated
+
+
+def test_write_fails_when_discovered_selector_cannot_be_set():
+    class MissingSelectorSession(FakeSession):
+        def evaluate(self, expression):
+            if "alert-danger" in expression:
+                return ""
+            self.evals.append(expression)
+            return False
+
+    res = _ledger(
+        MissingSelectorSession(),
+        resolve=lambda n: "99",
+        form=_form(),
+    ).write_payable(run_id=1, load_id="LD-560005", carrier="Prairie Line", amount="4147.00", charges=None, key="k")
+
+    assert res.status == PayableWriteStatus.ADAPTER_FAILED
+    assert "Could not set" in res.note
 
 
 class HealSession:
@@ -105,7 +145,7 @@ class HealSession:
             self.submits += 1
             return self.error if self.submits <= self.fail_until else ""
         self.evals.append(expression)
-        return None
+        return True
 
 
 def _heal_ledger(session, repair_fn, transform=lambda x: x):
@@ -113,7 +153,7 @@ def _heal_ledger(session, repair_fn, transform=lambda x: x):
         session=session, form=_form(),
         resolve_customer=lambda n: "99",
         apply_customer=lambda s, cid: None,
-        readback_fn=lambda lid: {"amount": "1.00"},
+        readback_fn=lambda lid: None,
         invoice_number_transform=transform,
         repair_fn=repair_fn,
         base_url="http://localhost",

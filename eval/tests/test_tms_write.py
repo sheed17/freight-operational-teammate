@@ -112,6 +112,33 @@ class _WritesThenExplodesLedger(MockTmsWriteLedger):
         raise RuntimeError("browser crashed after submit click")
 
 
+class _AmountOnlyReadbackLedger:
+    def write_payable(self, *, run_id, load_id, carrier, amount, charges, key):
+        return type(
+            "Result",
+            (),
+            {
+                "run_id": run_id,
+                "load_id": load_id,
+                "idempotency_key": key,
+                "status": PayableWriteStatus.WRITTEN,
+                "external_ref": "OLD-ROW",
+                "note": "claimed written",
+                "model_dump": lambda self, mode="json": {
+                    "run_id": run_id,
+                    "load_id": load_id,
+                    "idempotency_key": key,
+                    "status": PayableWriteStatus.WRITTEN.value,
+                    "external_ref": "OLD-ROW",
+                    "note": "claimed written",
+                },
+            },
+        )()
+
+    def get_payable(self, load_id):
+        return {"amount": _AMOUNT, "idempotency_key": None, "external_ref": "OLD-ROW"}
+
+
 def test_adapter_failure_routes_to_failed_and_emits_status(tmp_path):
     store, run_id = _approved_run(tmp_path)
     updates: list = []
@@ -124,6 +151,21 @@ def test_adapter_failure_routes_to_failed_and_emits_status(tmp_path):
     assert store.get_run(run_id).state == WorkflowState.FAILED
     assert [u.phase.value for u in updates] == ["ENTERING", "FAILED"]
     assert any(e["event_type"] == "tms_write_adapter_failed" for e in store.audit_events(run_id))
+    store.close()
+
+
+def test_amount_only_readback_without_idempotency_key_never_reaches_done(tmp_path):
+    store, run_id = _approved_run(tmp_path)
+    updates: list = []
+
+    outcome = enter_approved_payable(store, _AmountOnlyReadbackLedger(), run_id, amount=_AMOUNT, on_status=updates.append)
+
+    assert outcome.final_state == WorkflowState.FAILED
+    assert outcome.verified is False
+    assert [u.phase.value for u in updates][-1] == "FAILED"
+    verify_event = next(e for e in store.audit_events(run_id) if e["event_type"] == "tms_write_verified")
+    assert verify_event["payload"]["found_amount"] == _AMOUNT
+    assert verify_event["payload"]["identity_match"] is False
     store.close()
 
 

@@ -85,7 +85,10 @@ class ReadbackVerification(BaseModel):
     load_id: str
     match: bool
     expected_amount: str
+    expected_idempotency_key: str | None = None
     found_amount: str | None = None
+    found_idempotency_key: str | None = None
+    identity_match: bool = False
     note: str
 
 
@@ -264,19 +267,30 @@ class TmsWriteAdapter:
         run: WorkflowRun,
         *,
         expected_amount: str,
+        expected_idempotency_key: str | None = None,
         context: ToolContext,
     ) -> ReadbackVerification:
         self._gate("verify_tms_payable", run.id, context)
         record = self.ledger.get_payable(run.load_id)
         found = record.get("amount") if record else None
-        match = found is not None and Decimal(found) == Decimal(expected_amount)
+        found_key = record.get("idempotency_key") if record else None
+        amount_match = found is not None and Decimal(found) == Decimal(expected_amount)
+        identity_match = expected_idempotency_key is not None and found_key == expected_idempotency_key
+        match = amount_match and identity_match
         verification = ReadbackVerification(
             run_id=run.id,
             load_id=run.load_id,
             match=match,
             expected_amount=expected_amount,
+            expected_idempotency_key=expected_idempotency_key,
             found_amount=found,
-            note="readback matches intended amount" if match else "readback does not match intended amount",
+            found_idempotency_key=found_key,
+            identity_match=identity_match,
+            note=(
+                "readback matches intended amount and idempotency key"
+                if match
+                else "readback does not match intended amount and idempotency key"
+            ),
         )
         self.store.add_audit_event(
             run.id,
@@ -510,7 +524,12 @@ def enter_approved_payable(
     _emit(ExecutionPhase.ENTERED, f"Payable entered: {result.external_ref}", external_ref=result.external_ref)
 
     verify_ctx = ToolContext(workflow_state=WorkflowState.ENTERING, actor=actor)
-    verification = adapter.verify(run, expected_amount=amount, context=verify_ctx)
+    verification = adapter.verify(
+        run,
+        expected_amount=amount,
+        expected_idempotency_key=prepared.idempotency_key,
+        context=verify_ctx,
+    )
     trace.append(f"verify:match={verification.match}")
 
     if not verification.match:
@@ -544,6 +563,7 @@ def _recover_after_submit_exception(
         verification = adapter.verify(
             run,
             expected_amount=amount,
+            expected_idempotency_key=prepared.idempotency_key,
             context=ToolContext(workflow_state=WorkflowState.ENTERING, actor=actor),
         )
         record = adapter.ledger.get_payable(run.load_id)
@@ -564,8 +584,7 @@ def _recover_after_submit_exception(
         return None
 
     record_key = record.get("idempotency_key") if isinstance(record, dict) else None
-    key_matches = record_key == prepared.idempotency_key
-    if verification.match and key_matches:
+    if verification.match:
         result = PayableWriteResult(
             run_id=run.id,
             load_id=run.load_id,

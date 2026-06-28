@@ -201,6 +201,7 @@ class TruckingOfficeInvoiceLedger:
         self.session = session
         self.base_url = base_url.rstrip("/")
         self.customer_resolver = customer_resolver
+        self._written_keys: dict[str, str] = {}
         # Fail-closed authorization happens at construction: an unauthorized target can't be built.
         authorize_write_host(
             urlparse(self.base_url).hostname,
@@ -227,6 +228,16 @@ class TruckingOfficeInvoiceLedger:
                 status=PayableWriteStatus.ADAPTER_FAILED, external_ref=None,
                 note=f"no numeric invoice number derivable from {load_id!r}; refusing to write",
             )
+        existing = self.get_payable(load_id)
+        if existing is not None:
+            return PayableWriteResult(
+                run_id=run_id,
+                load_id=load_id,
+                idempotency_key=key,
+                status=PayableWriteStatus.DUPLICATE_BLOCKED,
+                external_ref=existing.get("external_ref") if isinstance(existing, dict) else None,
+                note="a TruckingOffice invoice already exists for this invoice number; duplicate entry blocked",
+            )
         # TruckingOffice requires a non-blank charge description. Use the charge lines when present,
         # else a clear default tying the invoice to its load/carrier.
         description = str(charges) if charges else f"Load {load_id} — {carrier}"
@@ -236,7 +247,16 @@ class TruckingOfficeInvoiceLedger:
             description=description,
         )
         self.session.navigate(f"{self.base_url}/no_load_invoice/new")
-        self.session.evaluate(_fill_and_save_js(values))
+        submitted = self.session.evaluate(_fill_and_save_js(values))
+        if submitted is False:
+            return PayableWriteResult(
+                run_id=run_id,
+                load_id=load_id,
+                idempotency_key=key,
+                status=PayableWriteStatus.ADAPTER_FAILED,
+                external_ref=None,
+                note="TruckingOffice form fill/submit failed before save; selector or submit button was not found",
+            )
         time.sleep(_SAVE_SETTLE_SECONDS)  # let the invoice POST land (success redirects; failure keeps the error flash)
         error = self.session.evaluate(_error_flash_js())
         if error:
@@ -245,6 +265,7 @@ class TruckingOfficeInvoiceLedger:
                 status=PayableWriteStatus.ADAPTER_FAILED, external_ref=None,
                 note=f"TruckingOffice rejected the invoice: {str(error)[:160]}",
             )
+        self._written_keys[load_id] = key
         return PayableWriteResult(
             run_id=run_id, load_id=load_id, idempotency_key=key,
             status=PayableWriteStatus.WRITTEN, external_ref=str(load_id),
@@ -266,7 +287,7 @@ class TruckingOfficeInvoiceLedger:
             "amount": amount,
             "carrier": match.get("customer"),
             "external_ref": str(load_id),
-            "idempotency_key": str(load_id),
+            "idempotency_key": self._written_keys.get(load_id),
         }
 
 
@@ -275,15 +296,17 @@ def _fill_and_save_js(values: dict) -> str:
 
     return (
         "(function(v){"
+        "var ok=true;"
         "function setn(n,val){var el=document.querySelector('[name=\"'+n+'\"]');"
         "if(el){el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));"
-        "el.dispatchEvent(new Event('change',{bubbles:true}));}}"
+        "el.dispatchEvent(new Event('change',{bubbles:true}));}else{ok=false;}}"
         "function setid(id,val){var el=document.getElementById(id);"
-        "if(el){el.value=val;el.dispatchEvent(new Event('change',{bubbles:true}));}}"
-        "for(var n in v.by_name){setn(n,v.by_name[n]);}"
+        "if(el){el.value=val;el.dispatchEvent(new Event('change',{bubbles:true}));}else{ok=false;}}"
+        "for(var n in v.by_name){if(v.by_name[n]!==''&&v.by_name[n]!=null){setn(n,v.by_name[n]);}}"
         "for(var i in v.by_id){setid(i,v.by_id[i]);}"
         "var b=[...document.querySelectorAll('form button, form input[type=submit]')]"
-        ".find(e=>/save/i.test(e.innerText||e.value||''));if(b)b.click();"
+        ".find(e=>/save/i.test(e.innerText||e.value||''));if(b){b.click();}else{ok=false;}"
+        "return ok;"
         "})(" + json.dumps(values) + ")"
     )
 

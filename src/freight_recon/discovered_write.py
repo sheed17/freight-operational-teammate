@@ -55,6 +55,9 @@ class DiscoveredInvoiceLedger:
         # repair_fn(error, values)->corrected non-money values. None disables self-heal (single attempt).
         self.repair_fn = repair_fn
         self.max_heal_retries = max_heal_retries
+        self._written_keys: dict[str, str] = {}
+        self._approved_write_hosts = tuple(approved_write_hosts)
+        self._real_write_acknowledged = real_write_acknowledged
 
     def write_payable(
         self, *, run_id: int, load_id: str, carrier: str, amount: str, charges, key: str
@@ -70,6 +73,16 @@ class DiscoveredInvoiceLedger:
         customer_id = self.resolve_customer(carrier)
         if not customer_id:
             return _fail(f"no customer resolved for {carrier!r}; refusing to write")
+        existing = self.get_payable(load_id)
+        if existing is not None:
+            return PayableWriteResult(
+                run_id=run_id,
+                load_id=load_id,
+                idempotency_key=key,
+                status=PayableWriteStatus.DUPLICATE_BLOCKED,
+                external_ref=existing.get("external_ref") if isinstance(existing, dict) else None,
+                note="an invoice already exists for this reference; duplicate entry blocked",
+            )
 
         # Concept->value. The agent's discovered selectors map concepts to fields; self-heal may revise
         # these values — except `amount`, which is the human-approved figure and is never repairable.
@@ -79,7 +92,10 @@ class DiscoveredInvoiceLedger:
             "description": str(charges) if charges else f"Load {load_id} — {carrier}",
             "bill_to": carrier,
         }
-        error = self._fill_and_submit(values, customer_id)
+        try:
+            error = self._fill_and_submit(values, customer_id)
+        except Exception as exc:  # noqa: BLE001 - browser/TMS write errors fail closed through adapter status
+            return _fail(str(exc)[:160])
         heals: list[str] = []
         retries = 0
         while error and self.repair_fn is not None and retries < self.max_heal_retries:
@@ -91,13 +107,17 @@ class DiscoveredInvoiceLedger:
                 break
             heals.append(str(error)[:60])
             values.update(repair)
-            error = self._fill_and_submit(values, customer_id)
+            try:
+                error = self._fill_and_submit(values, customer_id)
+            except Exception as exc:  # noqa: BLE001
+                return _fail(str(exc)[:160])
 
         if error:
             return _fail(f"TMS rejected the invoice: {str(error)[:160]}")
         note = "invoice saved via agent-discovered field map"
         if heals:
             note += f" (self-healed {len(heals)}x past: {'; '.join(heals)})"
+        self._written_keys[load_id] = key
         return PayableWriteResult(
             run_id=run_id, load_id=load_id, idempotency_key=key,
             status=PayableWriteStatus.WRITTEN, external_ref=str(load_id), note=note,
@@ -105,6 +125,11 @@ class DiscoveredInvoiceLedger:
 
     def _fill_and_submit(self, values: dict, customer_id: str) -> str:
         """Fill the discovered selectors with ``values`` and submit; return the TMS error flash (or '')."""
+        authorize_write_host(
+            urlparse(self.form.url).hostname,
+            approved_hosts=self._approved_write_hosts,
+            acknowledged=self._real_write_acknowledged,
+        )
         self.session.navigate(self.form.url)
         selectors = {
             "amount": self.form.amount_selector,
@@ -114,21 +139,27 @@ class DiscoveredInvoiceLedger:
         }
         for concept, sel in selectors.items():
             if sel and values.get(concept) not in (None, ""):
-                self._set(sel, values[concept])
+                if not self._set(sel, values[concept]):
+                    return f"Could not set discovered {concept} field ({sel})"
         self.apply_customer(self.session, customer_id)
-        self._click_submit(self.form.submit_label)
+        if not self._click_submit(self.form.submit_label):
+            return f"Could not click submit button labeled {self.form.submit_label!r}"
         time.sleep(_SAVE_SETTLE_SECONDS)
         return self.session.evaluate(_ERROR_FLASH_JS) or ""
 
     def get_payable(self, load_id: str) -> dict | None:
-        return self.readback_fn(load_id)
+        record = self.readback_fn(load_id)
+        if record is None:
+            return None
+        return {**record, "idempotency_key": self._written_keys.get(load_id)}
 
-    def _set(self, selector: str | None, value: str) -> None:
+    def _set(self, selector: str | None, value: str) -> bool:
         if selector:
-            self.session.evaluate(_set_field_js(selector, value))
+            return bool(self.session.evaluate(_set_field_js(selector, value)))
+        return False
 
-    def _click_submit(self, label: str) -> None:
-        self.session.evaluate(_click_submit_js(label))
+    def _click_submit(self, label: str) -> bool:
+        return bool(self.session.evaluate(_click_submit_js(label)))
 
 
 def _set_field_js(selector: str, value: str) -> str:

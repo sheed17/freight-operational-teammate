@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from freight_recon.screen_discovery import (  # noqa: E402
@@ -98,6 +100,35 @@ def test_discover_handles_fenced_json_and_dict_selectors():
     disc = discover_invoice_form(schema, complete=fenced)
     assert disc.amount_selector == "[name=\"invoice[total_charge]\"]"
     assert disc.is_writable()
+
+
+def test_discover_handles_prose_and_trailing_bad_braces_after_json():
+    schema = extract_form_schema(FakeSession(_TO_FORM), "u")
+    payload = json.dumps({
+        "fields": {
+            "bill_to": "[name=\"customer_finder_field\"]",
+            "amount": "[name=\"invoice[total_charge]\"]",
+        },
+        "submit_label": "Save",
+    })
+
+    disc = discover_invoice_form(schema, complete=lambda _p: f"Here you go:\n{payload}\ntrailing {{not json")
+
+    assert disc.amount_selector == "[name=\"invoice[total_charge]\"]"
+    assert disc.is_writable()
+
+
+def test_discover_rejects_bad_model_json_with_clear_value_error():
+    schema = extract_form_schema(FakeSession(_TO_FORM), "u")
+    bad_outputs = [
+        '{"fields": {"amount": "[name=x]"}',
+        '["not", "an", "object"]',
+        "```python\nnot json\n```",
+    ]
+
+    for output in bad_outputs:
+        with pytest.raises(ValueError, match="JSON|object"):
+            discover_invoice_form(schema, complete=lambda _p, output=output: output)
 
 
 def test_propose_field_repair_reads_error_and_strips_amount():

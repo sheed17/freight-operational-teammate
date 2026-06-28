@@ -133,6 +133,32 @@ def test_write_payable_written_when_no_error_flash():
     assert s.fills and "2450.00" in s.fills[0]  # approved amount went into the form
 
 
+def test_write_payable_blocks_preexisting_invoice_duplicate_before_submit():
+    s = FakeSession(rows=[{"number": "1000", "customer": "TQL", "total": "$2,450.00"}], error_flash="")
+    res = _ledger(s).write_payable(run_id=1, load_id="1000", carrier="TQL", amount="2450.00", charges=None, key="k1")
+
+    assert res.status == PayableWriteStatus.DUPLICATE_BLOCKED
+    assert not s.fills
+
+
+def test_write_payable_fails_when_form_submit_script_reports_noop():
+    class NoopSession(FakeSession):
+        def evaluate(self, expression):
+            if "alert-danger" in expression:
+                return ""
+            if "table tbody tr" in expression:
+                return []
+            self.fills.append(expression)
+            return False
+
+    res = _ledger(NoopSession()).write_payable(
+        run_id=1, load_id="1000", carrier="TQL", amount="2450.00", charges=None, key="k1"
+    )
+
+    assert res.status == PayableWriteStatus.ADAPTER_FAILED
+    assert "fill/submit failed" in res.note
+
+
 def test_write_payable_fails_closed_on_error_flash():
     s = FakeSession(error_flash="Customer can't be blank")
     res = _ledger(s).write_payable(run_id=1, load_id="1000", carrier="TQL", amount="2450.00", charges=None, key="k1")
@@ -152,5 +178,5 @@ def test_write_payable_refuses_when_no_customer_resolved():
 def test_get_payable_reads_back_amount():
     s = FakeSession(rows=[{"number": "1000", "customer": "TQL", "total": "$2,450.00"}])
     out = _ledger(s).get_payable("1000")
-    assert out["amount"] == "2450.00" and out["idempotency_key"] == "1000"
+    assert out["amount"] == "2450.00" and out["idempotency_key"] is None
     assert _ledger(FakeSession(rows=[])).get_payable("1000") is None  # absent -> None

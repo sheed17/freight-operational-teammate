@@ -111,6 +111,8 @@ def discover_invoice_form(schema: FormSchema, *, complete: Completer) -> Discove
     """Use the model to map a never-seen form's fields to invoice concepts, from labels alone."""
     raw = complete(_discovery_prompt(schema))
     parsed = _parse_llm_json(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError("discovery model JSON must be an object")
     fields_by = {"map": parsed.get("fields", parsed)}
     m = fields_by["map"]
     return DiscoveredInvoiceForm(
@@ -184,14 +186,38 @@ def _discovery_prompt(schema: FormSchema) -> str:
 
 
 def _parse_llm_json(text: str) -> dict:
+    raw = text or ""
+    candidates = [_strip_markdown_fence(raw), raw]
+    decoder = json.JSONDecoder()
+    errors: list[str] = []
+    for candidate in candidates:
+        s = candidate.strip()
+        index = s.find("{")
+        if index == -1:
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(s[index:])
+        except json.JSONDecodeError as exc:
+            errors.append(str(exc))
+            continue
+        if not isinstance(parsed, dict):
+            raise ValueError("discovery model JSON must be an object")
+        return parsed
+    detail = "; ".join(errors[-2:]) if errors else raw[:160]
+    raise ValueError(f"discovery model did not return a valid JSON object: {detail}")
+
+
+def _strip_markdown_fence(text: str) -> str:
     s = (text or "").strip()
-    if s.startswith("```"):
-        s = s.split("```", 2)[1] if "```" in s[3:] else s.strip("`")
-        s = s[4:] if s.lower().startswith("json") else s
-    start, end = s.find("{"), s.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError(f"discovery model did not return JSON: {text[:160]!r}")
-    return json.loads(s[start : end + 1])
+    if not s.startswith("```"):
+        return s
+    first_newline = s.find("\n")
+    if first_newline == -1:
+        return s.strip("`")
+    closing = s.rfind("```")
+    if closing <= first_newline:
+        return s[first_newline + 1 :]
+    return s[first_newline + 1 : closing]
 
 
 def openai_completer(model: str = "gpt-4.1-mini", *, temperature: float = 0.0) -> Completer:

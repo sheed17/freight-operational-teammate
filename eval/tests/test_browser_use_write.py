@@ -222,10 +222,11 @@ def test_deterministic_readback_fails_closed_on_duplicate_rows():
 def test_deterministic_verify_reaches_done(tmp_path):
     # Agent writes (fuzzy is fine); verify-by-readback is a deterministic independent read → DONE.
     store, run_id = _approved_run(tmp_path)
+    runner = FakeRunner()
     ledger = BrowserUseWriteLedger(
-        runner=FakeRunner(),
+        runner=runner,
         base_url="http://localhost:8012",
-        readback_fn=lambda lid: {"amount": _AMOUNT, "idempotency_key": None},
+        readback_fn=lambda lid: {"amount": _AMOUNT, "idempotency_key": runner.typed_key},
     )
     outcome = enter_approved_payable(store, ledger, run_id, amount=_AMOUNT)
     assert outcome.final_state == WorkflowState.DONE
