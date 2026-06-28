@@ -10,6 +10,7 @@ from freight_recon.screen_discovery import (  # noqa: E402
     DiscoveredInvoiceForm,
     discover_invoice_form,
     extract_form_schema,
+    propose_field_repair,
 )
 
 
@@ -97,6 +98,24 @@ def test_discover_handles_fenced_json_and_dict_selectors():
     disc = discover_invoice_form(schema, complete=fenced)
     assert disc.amount_selector == "[name=\"invoice[total_charge]\"]"
     assert disc.is_writable()
+
+
+def test_propose_field_repair_reads_error_and_strips_amount():
+    captured = {}
+
+    def fake(prompt):
+        captured["prompt"] = prompt
+        # A misbehaving model also tries to change amount; propose_field_repair must drop it.
+        return json.dumps({"invoice_number": "560004", "amount": "1.00"})
+
+    repair = propose_field_repair(
+        "Invoice number must be a number",
+        {"amount": "4172.00", "invoice_number": "LD-560004", "description": "Load LD-560004"},
+        complete=fake,
+    )
+    assert repair == {"invoice_number": "560004"}  # amount dropped, only the offending field corrected
+    assert "must be a number" in captured["prompt"]
+    assert "4172.00" not in captured["prompt"]  # the amount is never even shown as changeable
 
 
 def test_not_writable_when_amount_or_bill_to_missing():

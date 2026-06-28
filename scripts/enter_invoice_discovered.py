@@ -26,7 +26,12 @@ except Exception:  # pragma: no cover
 from enter_truckingoffice_invoice import seed_approved_run  # noqa: E402
 from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.discovered_write import DiscoveredInvoiceLedger  # noqa: E402
-from freight_recon.screen_discovery import discover_invoice_form, extract_form_schema, openai_completer  # noqa: E402
+from freight_recon.screen_discovery import (  # noqa: E402
+    discover_invoice_form,
+    extract_form_schema,
+    openai_completer,
+    propose_field_repair,
+)
 from freight_recon.tms_write import ExecutionStatusUpdate, approved_amount_for_run, enter_approved_payable  # noqa: E402
 from freight_recon.truckingoffice_write import (  # noqa: E402
     DEFAULT_BASE_URL,
@@ -50,6 +55,8 @@ def main() -> int:
     parser.add_argument("--invoice-form-url", default=DEFAULT_BASE_URL + "/no_load_invoice/new")
     parser.add_argument("--model", default="gpt-4.1-mini")
     parser.add_argument("--acknowledge-real-write", action="store_true")
+    parser.add_argument("--induce-heal", action="store_true",
+                        help="feed a naive invoice-number value (raw load id) to trigger a real TMS validation error and prove self-heal")
     args = parser.parse_args()
 
     Path(args.db).unlink(missing_ok=True)
@@ -85,13 +92,19 @@ def main() -> int:
             amt = parse_invoice_readback(rows, inv) if inv else None
             return None if amt is None else {"amount": amt, "carrier": None, "external_ref": load_id, "idempotency_key": load_id}
 
+        # Self-heal: on a TMS validation error, the agent reads the error and repairs non-money fields.
+        completer = openai_completer(model=args.model)
+        # --induce-heal feeds the raw load id as the invoice number (naive map) so the TMS rejects it
+        # with "Invoice number must be a number" and self-heal has to recover — a real failure, not a mock.
+        transform = (lambda lid: lid) if args.induce_heal else numeric_invoice_number
         ledger = DiscoveredInvoiceLedger(
             session=session,
             form=form,
             resolve_customer=lambda name: find_or_create_customer(session, name, base_url=base),
             apply_customer=apply_customer,
             readback_fn=readback,
-            invoice_number_transform=numeric_invoice_number,
+            invoice_number_transform=transform,
+            repair_fn=lambda err, vals: propose_field_repair(err, vals, complete=completer),
             base_url=base,
             approved_write_hosts=["secure.truckingoffice.com"],
             real_write_acknowledged=args.acknowledge_real_write,

@@ -86,3 +86,66 @@ def test_not_writable_form_refused():
 
 def test_get_payable_delegates_to_readback():
     assert _ledger(FakeSession()).get_payable("LD-1") == {"amount": "100.00"}
+
+
+class HealSession:
+    """Fails the first N submits with an error, then succeeds. Records every field set."""
+
+    def __init__(self, fail_until=1, error="Invoice number must be a number"):
+        self.fail_until = fail_until
+        self.error = error
+        self.submits = 0
+        self.evals = []
+
+    def navigate(self, url):
+        pass
+
+    def evaluate(self, expression):
+        if "alert-danger" in expression:  # error-flash check happens once per submit attempt
+            self.submits += 1
+            return self.error if self.submits <= self.fail_until else ""
+        self.evals.append(expression)
+        return None
+
+
+def _heal_ledger(session, repair_fn, transform=lambda x: x):
+    return DiscoveredInvoiceLedger(
+        session=session, form=_form(),
+        resolve_customer=lambda n: "99",
+        apply_customer=lambda s, cid: None,
+        readback_fn=lambda lid: {"amount": "1.00"},
+        invoice_number_transform=transform,
+        repair_fn=repair_fn,
+        base_url="http://localhost",
+    )
+
+
+def test_self_heal_retries_with_repaired_value_then_succeeds():
+    s = HealSession(fail_until=1, error="Invoice number must be a number")
+    # The agent reads the error and returns digits-only for the invoice number.
+    res = _heal_ledger(s, repair_fn=lambda err, vals: {"invoice_number": "560004"}).write_payable(
+        run_id=1, load_id="LD-560004", carrier="X", amount="4172.00", charges=None, key="k"
+    )
+    assert res.status == PayableWriteStatus.WRITTEN
+    assert "self-healed" in res.note
+    assert "560004" in " ".join(s.evals)  # the repaired numeric value was actually entered
+
+
+def test_self_heal_can_never_change_the_amount():
+    s = HealSession(fail_until=1)
+    # A misbehaving/compromised repair tries to slash the amount — the ledger must ignore it.
+    res = _heal_ledger(s, repair_fn=lambda err, vals: {"amount": "1.00", "invoice_number": "560004"}).write_payable(
+        run_id=1, load_id="LD-560004", carrier="X", amount="4172.00", charges=None, key="k"
+    )
+    assert res.status == PayableWriteStatus.WRITTEN
+    blob = " ".join(s.evals)
+    assert "4172.00" in blob and '"1.00"' not in blob  # the approved amount stood; the repair's amount was dropped
+
+
+def test_self_heal_gives_up_after_max_retries():
+    s = HealSession(fail_until=99, error="Some permanent error")
+    res = _heal_ledger(s, repair_fn=lambda err, vals: {"description": "x"}).write_payable(
+        run_id=1, load_id="LD-1", carrier="X", amount="1.00", charges=None, key="k"
+    )
+    assert res.status == PayableWriteStatus.ADAPTER_FAILED
+    assert s.submits == 3  # initial + 2 heal retries (max_heal_retries default)

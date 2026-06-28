@@ -126,6 +126,34 @@ def discover_invoice_form(schema: FormSchema, *, complete: Completer) -> Discove
     )
 
 
+def propose_field_repair(error: str, values: dict, *, complete: Completer) -> dict:
+    """The agent reads a TMS validation error + the values it submitted and proposes corrected values.
+
+    This is self-heal: instead of dead-ending on a rejection the discovery didn't anticipate (a field
+    that must be numeric, a required field left blank), the agent reasons from the error message the
+    system gave — exactly how a human recovers. Returns a partial {concept: new_value} map.
+
+    Money invariant: ``amount`` is stripped from any proposal here and again at the ledger, so self-heal
+    can fix navigation/format but can never change the human-approved figure.
+    """
+    safe = {k: v for k, v in values.items() if k != "amount"}
+    prompt = (
+        "You are operating an unfamiliar freight TMS. You submitted a customer invoice and it was "
+        "REJECTED with this validation error:\n\n"
+        f"  {error}\n\n"
+        "These are the non-amount values you submitted (concept: value):\n"
+        f"  {json.dumps(safe)}\n\n"
+        "Return ONLY corrected values for the field(s) the error is about, as JSON {concept: new_value} "
+        "using these concept keys: invoice_number, description, bill_to. Rules: if the error says a "
+        "field must be a number, return only its digits; if it says a field can't be blank, provide a "
+        "short sensible value; change as little as possible; NEVER include or change amount."
+    )
+    repair = _parse_llm_json(complete(prompt))
+    repair = repair.get("fields", repair) if isinstance(repair, dict) else {}
+    repair.pop("amount", None)
+    return {k: str(v) for k, v in repair.items() if isinstance(k, str) and v not in (None, "")}
+
+
 def _sel(value) -> str | None:
     if isinstance(value, dict):
         value = value.get("selector")

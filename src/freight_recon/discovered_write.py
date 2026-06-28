@@ -37,6 +37,8 @@ class DiscoveredInvoiceLedger:
         apply_customer: Callable[[BrowserSession, str], None],
         readback_fn: Callable[[str], dict | None],
         invoice_number_transform: Callable[[str], str | None] = lambda x: x,
+        repair_fn: Callable[[str, dict], dict] | None = None,
+        max_heal_retries: int = 2,
         base_url: str,
         approved_write_hosts=(),
         real_write_acknowledged: bool = False,
@@ -50,6 +52,9 @@ class DiscoveredInvoiceLedger:
         self.apply_customer = apply_customer
         self.readback_fn = readback_fn
         self.invoice_number_transform = invoice_number_transform
+        # repair_fn(error, values)->corrected non-money values. None disables self-heal (single attempt).
+        self.repair_fn = repair_fn
+        self.max_heal_retries = max_heal_retries
 
     def write_payable(
         self, *, run_id: int, load_id: str, carrier: str, amount: str, charges, key: str
@@ -66,28 +71,54 @@ class DiscoveredInvoiceLedger:
         if not customer_id:
             return _fail(f"no customer resolved for {carrier!r}; refusing to write")
 
-        # Everything below uses the agent-discovered selectors — there is no hardcoded TMS field name.
-        self.session.navigate(self.form.url)
-        self._set(self.form.amount_selector, amount)
-        inv_no = self.invoice_number_transform(load_id)
-        if self.form.invoice_number_selector and inv_no:
-            self._set(self.form.invoice_number_selector, inv_no)
-        if self.form.description_selector:
-            self._set(self.form.description_selector, str(charges) if charges else f"Load {load_id} — {carrier}")
-        if self.form.bill_to_selector:
-            self._set(self.form.bill_to_selector, carrier)
-        self.apply_customer(self.session, customer_id)
+        # Concept->value. The agent's discovered selectors map concepts to fields; self-heal may revise
+        # these values — except `amount`, which is the human-approved figure and is never repairable.
+        values = {
+            "amount": amount,
+            "invoice_number": self.invoice_number_transform(load_id) or "",
+            "description": str(charges) if charges else f"Load {load_id} — {carrier}",
+            "bill_to": carrier,
+        }
+        error = self._fill_and_submit(values, customer_id)
+        heals: list[str] = []
+        retries = 0
+        while error and self.repair_fn is not None and retries < self.max_heal_retries:
+            retries += 1
+            repair = dict(self.repair_fn(error, dict(values)) or {})
+            repair.pop("amount", None)  # MONEY INVARIANT: self-heal can fix navigation, never the amount
+            repair = {k: str(v) for k, v in repair.items() if k in values}
+            if not repair:
+                break
+            heals.append(str(error)[:60])
+            values.update(repair)
+            error = self._fill_and_submit(values, customer_id)
 
-        self._click_submit(self.form.submit_label)
-        time.sleep(_SAVE_SETTLE_SECONDS)
-        error = self.session.evaluate(_ERROR_FLASH_JS)
         if error:
             return _fail(f"TMS rejected the invoice: {str(error)[:160]}")
+        note = "invoice saved via agent-discovered field map"
+        if heals:
+            note += f" (self-healed {len(heals)}x past: {'; '.join(heals)})"
         return PayableWriteResult(
             run_id=run_id, load_id=load_id, idempotency_key=key,
-            status=PayableWriteStatus.WRITTEN, external_ref=str(load_id),
-            note="invoice saved via agent-discovered field map",
+            status=PayableWriteStatus.WRITTEN, external_ref=str(load_id), note=note,
         )
+
+    def _fill_and_submit(self, values: dict, customer_id: str) -> str:
+        """Fill the discovered selectors with ``values`` and submit; return the TMS error flash (or '')."""
+        self.session.navigate(self.form.url)
+        selectors = {
+            "amount": self.form.amount_selector,
+            "invoice_number": self.form.invoice_number_selector,
+            "description": self.form.description_selector,
+            "bill_to": self.form.bill_to_selector,
+        }
+        for concept, sel in selectors.items():
+            if sel and values.get(concept) not in (None, ""):
+                self._set(sel, values[concept])
+        self.apply_customer(self.session, customer_id)
+        self._click_submit(self.form.submit_label)
+        time.sleep(_SAVE_SETTLE_SECONDS)
+        return self.session.evaluate(_ERROR_FLASH_JS) or ""
 
     def get_payable(self, load_id: str) -> dict | None:
         return self.readback_fn(load_id)
