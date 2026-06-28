@@ -14,6 +14,7 @@ from freight_recon.truckingoffice_write import (  # noqa: E402
     authorize_write_host,
     build_invoice_form_values,
     normalize_money,
+    parse_customer_id,
     parse_invoice_readback,
 )
 
@@ -63,6 +64,17 @@ def test_parse_invoice_readback_fail_closed_on_missing_or_duplicate():
     ]
     assert parse_invoice_readback(rows, "1000") is None  # duplicate -> fail closed
     assert parse_invoice_readback(rows, "4242") is None  # absent -> fail closed
+
+
+def test_parse_customer_id_matches_and_fails_closed():
+    rows = [
+        {"text": "Total Quality Logistics ap@tql.com (513) Milford OH", "id": "15114781"},
+        {"text": "Echo Global Logistics ap@echo.com Chicago IL", "id": "15114782"},
+    ]
+    assert parse_customer_id(rows, "Total Quality Logistics") == "15114781"
+    assert parse_customer_id(rows, "Nonexistent Broker") is None  # absent -> None
+    dupes = [{"text": "Acme Freight A", "id": "1"}, {"text": "Acme Freight B", "id": "2"}]
+    assert parse_customer_id(dupes, "Acme Freight") is None  # ambiguous -> fail closed
 
 
 def test_build_form_values_sets_both_customer_id_inputs():

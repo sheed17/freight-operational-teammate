@@ -22,8 +22,13 @@ Mapping from the payable seam to TruckingOffice's AR invoice:
 from __future__ import annotations
 
 import re
+import time
 from typing import Callable, Protocol, Sequence
 from urllib.parse import urlparse
+
+# A Save click fires an async form POST that redirects on success. Reading or navigating before it
+# lands aborts the write, so we settle after every Save before observing the result.
+_SAVE_SETTLE_SECONDS = 3.5
 
 from freight_recon.tms_write import PayableWriteResult, PayableWriteStatus, TmsWriteError
 
@@ -56,6 +61,14 @@ def authorize_write_host(
     )
 
 
+def numeric_invoice_number(load_id: str) -> str | None:
+    """TruckingOffice requires a numeric invoice number. Derive it from the load/reference id's digits
+    (e.g. 'LD-560008' -> '560008'). The full reference is preserved in the Custom Invoice Number field.
+    Returns None when there are no digits to use (write then fails closed rather than guess)."""
+    m = re.search(r"\d+", str(load_id or ""))
+    return m.group(0) if m else None
+
+
 def normalize_money(text: str | None) -> str | None:
     """'$2,450.00' -> '2450.00'. Returns None when no money value is present (fail-closed for verify)."""
     if text is None:
@@ -84,6 +97,7 @@ def build_invoice_form_values(
     customer_name: str,
     invoice_number: str,
     total_charge: str,
+    custom_invoice_number: str | None = None,
     description: str | None = None,
     note: str | None = None,
 ) -> dict:
@@ -97,6 +111,7 @@ def build_invoice_form_values(
         "by_name": {
             "customer_finder_field": customer_name,
             "invoice[invoice_number]": str(invoice_number),
+            "invoice[invoice_number_override]": custom_invoice_number or "",
             "invoice[charge_description]": description or "",
             "invoice[total_charge]": str(total_charge),
             "invoice[note]": note or "",
@@ -106,6 +121,57 @@ def build_invoice_form_values(
             "customer": str(customer_id),
         },
     }
+
+
+def parse_customer_id(rows: Sequence[dict], name: str) -> str | None:
+    """From /addresses rows ({text, id}), return the customer id whose row text contains ``name``.
+
+    Fail-closed on ambiguity: zero or more than one matching row returns None, so a write never binds
+    to the wrong bill-to when names collide.
+    """
+    target = (name or "").strip().lower()
+    if not target:
+        return None
+    matches = [r for r in rows if target in str(r.get("text", "")).lower()]
+    if len(matches) != 1:
+        return None
+    return str(matches[0].get("id")) or None
+
+
+def _first_customer_id(rows: Sequence[dict], name: str) -> str | None:
+    """Lenient lookup: the FIRST customer row whose text contains ``name``. Used by find-or-create so a
+    pre-existing (even duplicated) broker is reused instead of creating yet another stub."""
+    target = (name or "").strip().lower()
+    if not target:
+        return None
+    for r in rows:
+        if target in str(r.get("text", "")).lower():
+            return str(r.get("id")) or None
+    return None
+
+
+def find_or_create_customer(
+    session: "BrowserSession", name: str, *, base_url: str = DEFAULT_BASE_URL, city: str = "Dallas", state: str = "Texas"
+) -> str | None:
+    """Resolve a customer (Address) id by name, creating a stub broker customer if none exists.
+
+    Production-correct: when Neyma invoices a broker not yet on file, it creates the customer rather
+    than guessing or failing. Reuse is lenient (first match) so it never creates a duplicate for a
+    broker that already exists; creation only happens when there is no match at all.
+    """
+    base = base_url.rstrip("/")
+
+    def _rows():
+        session.navigate(f"{base}/addresses?object=customer")
+        return session.evaluate(_addresses_rows_js()) or []
+
+    existing = _first_customer_id(_rows(), name)
+    if existing:
+        return existing
+    session.navigate(f"{base}/addresses/form?address_widget_id=customer&object=customer")
+    session.evaluate(_create_customer_js(name, city, state))
+    time.sleep(_SAVE_SETTLE_SECONDS)  # let the create POST + redirect land before re-reading
+    return _first_customer_id(_rows(), name)  # re-read to confirm + capture the new id
 
 
 class BrowserSession(Protocol):
@@ -154,13 +220,24 @@ class TruckingOfficeInvoiceLedger:
                 external_ref=None,
                 note=f"no TruckingOffice customer resolved for {carrier!r}; refusing to write",
             )
+        inv_no = numeric_invoice_number(load_id)
+        if not inv_no:
+            return PayableWriteResult(
+                run_id=run_id, load_id=load_id, idempotency_key=key,
+                status=PayableWriteStatus.ADAPTER_FAILED, external_ref=None,
+                note=f"no numeric invoice number derivable from {load_id!r}; refusing to write",
+            )
+        # TruckingOffice requires a non-blank charge description. Use the charge lines when present,
+        # else a clear default tying the invoice to its load/carrier.
+        description = str(charges) if charges else f"Load {load_id} — {carrier}"
         values = build_invoice_form_values(
             customer_id=customer_id, customer_name=carrier,
-            invoice_number=load_id, total_charge=amount,
-            description=str(charges) if charges else None,
+            invoice_number=inv_no, custom_invoice_number=load_id, total_charge=amount,
+            description=description,
         )
         self.session.navigate(f"{self.base_url}/no_load_invoice/new")
         self.session.evaluate(_fill_and_save_js(values))
+        time.sleep(_SAVE_SETTLE_SECONDS)  # let the invoice POST land (success redirects; failure keeps the error flash)
         error = self.session.evaluate(_error_flash_js())
         if error:
             return PayableWriteResult(
@@ -176,12 +253,15 @@ class TruckingOfficeInvoiceLedger:
 
     def get_payable(self, load_id: str) -> dict | None:
         """Deterministic verify-by-readback: read the /invoices ledger and parse this invoice's total."""
+        inv_no = numeric_invoice_number(load_id)
+        if not inv_no:
+            return None
         self.session.navigate(f"{self.base_url}/invoices")
         rows = self.session.evaluate(_extract_invoice_rows_js()) or []
-        amount = parse_invoice_readback(rows, load_id)
+        amount = parse_invoice_readback(rows, inv_no)
         if amount is None:
             return None  # fail-closed: unreadable/ambiguous -> verify mismatch -> FAILED, never DONE
-        match = next((r for r in rows if str(r.get("number", "")).strip() == str(load_id).strip()), {})
+        match = next((r for r in rows if str(r.get("number", "")).strip() == inv_no), {})
         return {
             "amount": amount,
             "carrier": match.get("customer"),
@@ -212,6 +292,34 @@ def _error_flash_js() -> str:
     return (
         "(function(){return [...document.querySelectorAll('.alert-danger,.error,.invalid-feedback,"
         ".field_with_errors')].map(e=>e.innerText.trim()).filter(Boolean).join('; ');})()"
+    )
+
+
+def _addresses_rows_js() -> str:
+    return (
+        "[...document.querySelectorAll('table tbody tr')].map(function(r){"
+        "var a=r.querySelector('a[href*=\"/addresses/\"]');"
+        "return {text:r.innerText.replace(/\\s+/g,' ').trim(), id:a?a.getAttribute('href').split('/').pop():''};"
+        "}).filter(r=>r.id)"
+    )
+
+
+def _create_customer_js(name: str, city: str, state: str) -> str:
+    import json
+
+    return (
+        "(function(c){"
+        "function setn(n,v){var el=document.querySelector('[name=\"'+n+'\"]');"
+        "if(el){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));"
+        "el.dispatchEvent(new Event('change',{bubbles:true}));}}"
+        "function sel(n,rx){var s=document.querySelector('[name=\"'+n+'\"]');if(!s)return;"
+        "var o=[...s.options].find(o=>rx.test(o.text.trim()));if(o){s.value=o.value;"
+        "s.dispatchEvent(new Event('change',{bubbles:true}));}}"
+        "setn('address[name]',c.name);sel('address[customer_type_id]',/broker/i);"
+        "setn('address[city]',c.city);sel('address[state_id]',new RegExp('^'+c.state+'$','i'));"
+        "var b=[...document.querySelectorAll('form button, form input[type=submit]')]"
+        ".find(e=>/save/i.test(e.innerText||e.value||''));if(b)b.click();"
+        "})(" + json.dumps({"name": name, "city": city, "state": state}) + ")"
     )
 
 
