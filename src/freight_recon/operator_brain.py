@@ -153,6 +153,92 @@ def _plan_prompt(goal: str, observation: Observation) -> str:
     )
 
 
+@dataclass
+class StepResult:
+    step: "FlowStep"
+    ok: bool
+    detail: str = ""
+
+
+@dataclass
+class FlowResult:
+    goal: str
+    step_results: list[StepResult]
+    completed: bool
+    escalated: bool
+    note: str
+    replans: int = 0
+
+    def trace(self) -> list[str]:
+        return [f"{r.step.action.value}{'' if r.ok else ' FAILED'}: {r.detail}".strip() for r in self.step_results]
+
+
+# A handler runs ONE step against the real tools, reading/writing the shared `context` dict (so e.g.
+# DISCOVER_FORM stores the field map that FILL_AND_SUBMIT later uses). Signature: (step, context)->StepResult.
+StepHandler = Callable[["FlowStep", dict], StepResult]
+
+
+class FlowExecutor:
+    """Drive a Brain plan step-by-step through injected tool handlers — brain proposes, gates dispose.
+
+    The executor itself performs NO writes: it only dispatches each step to its handler. The handler for
+    a CONSEQUENTIAL action (FILL_AND_SUBMIT) MUST be wired to the gated path (enter_approved_payable +
+    human approval); if a plan contains a consequential step with no handler, the executor halts fail-
+    closed rather than proceed. ESCALATE halts and surfaces to the human. On a step failure it re-plans
+    (bounded) if a re-planner was provided, else halts — the observe→act→re-plan loop.
+    """
+
+    def __init__(
+        self,
+        *,
+        handlers: dict["StepAction", StepHandler],
+        observe_fn: Callable[[], "Observation"] | None = None,
+        replan_fn: Callable[[str, "Observation | None", str], "FlowPlan"] | None = None,
+        max_replans: int = 1,
+    ) -> None:
+        self.handlers = handlers
+        self.observe_fn = observe_fn
+        self.replan_fn = replan_fn
+        self.max_replans = max_replans
+
+    def run(self, plan: "FlowPlan", context: dict | None = None) -> FlowResult:
+        context = context if context is not None else {}
+        results: list[StepResult] = []
+        steps = list(plan.steps)
+        replans = 0
+        i = 0
+        while i < len(steps):
+            step = steps[i]
+            handler = self.handlers.get(step.action)
+            if handler is None:
+                # Fail-closed: a consequential step with no wired (gated) handler must never be skipped
+                # or improvised. Halt.
+                results.append(StepResult(step, ok=False, detail=f"no handler wired for {step.action.value}"))
+                return FlowResult(plan.goal, results, completed=False, escalated=False,
+                                  note=f"halted: no handler for {step.action.value}", replans=replans)
+
+            if step.action == StepAction.ESCALATE:
+                results.append(StepResult(step, ok=True, detail=step.target or "escalated to human"))
+                return FlowResult(plan.goal, results, completed=False, escalated=True,
+                                  note=step.target or "escalated to human", replans=replans)
+
+            result = handler(step, context)
+            results.append(result)
+            if not result.ok:
+                if self.replan_fn is not None and replans < self.max_replans:
+                    replans += 1
+                    observation = self.observe_fn() if self.observe_fn else None
+                    steps = list(self.replan_fn(plan.goal, observation, result.detail).steps)
+                    i = 0
+                    continue
+                return FlowResult(plan.goal, results, completed=False, escalated=False,
+                                  note=f"halted at {step.action.value}: {result.detail}", replans=replans)
+            i += 1
+
+        return FlowResult(plan.goal, results, completed=True, escalated=False,
+                          note="flow complete", replans=replans)
+
+
 _OBSERVE_JS = r"""
 (function(){
   var nav=[...document.querySelectorAll('nav a[href], .sidebar a[href], aside a[href], .menu a[href], .nav a[href], a[href]')]
