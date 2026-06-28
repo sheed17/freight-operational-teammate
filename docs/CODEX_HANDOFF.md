@@ -138,9 +138,14 @@ Do these in order. Each is shippable on its own.
 4. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
    rate con) and thread state (ready-for-billing / dispute reply / missing-backup), linked to a load.
    **Accept when:** classification is tested on the synthetic corpus with measured accuracy.
-5. **Second, structurally different TMS** (the one load-bearing claim still n=1). **NEEDS RASHEED:** a
-   second TMS account. **Accept when:** discovery + customer/vendor lookup + readback + self-heal +
-   safety spine all hold on a non-TruckingOffice system, with the same gated path.
+5. **Second TMS proof — DONE (n=2): `transporters.io`.** Result: deterministic DOM extraction and the
+   discovery agent generalized with zero per-TMS code, and the agent **fail-closed safely** (mapped the
+   customer, refused to invent a missing amount → `writable: false`). BUT it exposed that the write
+   model is TruckingOffice-shaped: transporters.io is **order-driven + multi-step** (order wizard with
+   line-item pricing → invoice raised from a completed order), not a single invoice form. **New sub-work
+   (high priority):** make the System Operator write model **flow-aware** — multi-step wizards, line-item
+   composition, and an "invoice-from-order" action — generalizing `DiscoveredInvoiceForm` beyond a
+   single form. (See project memory `transporters-io-second-tms` for the nav map + URLs.)
 6. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (all alerts
    are currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an
    email alert; tested.
