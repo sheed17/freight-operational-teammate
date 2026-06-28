@@ -103,22 +103,55 @@ Debugging left **duplicate "Iron Horse Logistics LLC" stub customers** (Dallas, 
 invoices (`560003/560004/560005/560006/560008`) in the TruckingOffice account. The "real" seed data is
 brokers TQL/Echo/Coyote/C.H. Robinson with invoices `1000–1006`.
 
-## 5. What's NOT done / next
-- **Screen-finding**: currently the invoice-form URL is handed to the agent; next, have it navigate
-  from the TMS landing page to find the invoice screen itself.
-- **Persist learned repairs**: today self-heal re-heals each run; write the learned constraint back into
-  the screen-map so it becomes deterministic next time (the heal is already recorded in the result note).
-- **Second TMS**: the agnostic claim is only proven on ONE system (TruckingOffice). Point discovery at a
-  structurally different TMS to find what generalizes and what's secretly TruckingOffice-specific.
-- **AP vs AR seam**: the email pipeline produces AP-style runs (carrier invoices to pay); the
-  TruckingOffice wedge we wired is AR (customer invoices). The `load_id→invoice_number`,
-  `carrier→customer` mapping is a pragmatic bridge — decide the real product direction.
-- Deferred earlier: a **Slack-down secondary alert channel** (email fallback when the Slack token is
-  dead — all current alerts are circular through Slack).
+## 5. LOCKED direction & working agreement (do NOT pivot)
+This is set in stone. Continue THIS direction across sessions/tools — do not re-derive a new plan.
+
+**North star:** Neyma = *AI operational teammates for freight back offices* — small freight teams get
+the leverage of a bigger back office without hiring one. It is a **workflow operating layer** (agents
+operate freight workflows inside existing systems, surface exceptions, ask in Slack, do the approved
+work, prove it), NOT "AI document extraction." The moat is the **boring-safe Safety Spine** (§2).
+
+**Five layers:** Inbox Brain → Freight Workflow Engine → Slack Operating Surface → System Operator
+Layer → Safety Spine. (Full definitions in the conversation / project memory `neyma-roadmap`.)
+
+**Working agreement:** execute the roadmap **autonomously, in pieces** — build → test → honest report
+of gaps → commit (branch `demos`) — without waiting for step-by-step prompting. **Finish each piece;
+do not pivot.** Only propose an alternative if it is genuinely better *along the build path*, and say
+so explicitly. Never claim DONE without verification; report failing tests as failing. If something is
+needed that only the owner (Rasheed) can provide, ask for it precisely — do not guess.
+
+## 6. Ordered execution plan — next pieces (acceptance criteria)
+Do these in order. Each is shippable on its own.
+
+1. **AP vs AR split at the reconciliation layer** (sharpest gap). Make "approved amount" mean two
+   distinct things: AP = validate a carrier's invoice vs the rate con (catch overbilling); AR =
+   construct our invoice to the broker (capture accessorials owed). Introduce an explicit workflow
+   *direction/kind* threaded through reconciliation → review payload → Slack copy → execution. **Accept
+   when:** AP and AR runs never blur in Slack copy or in which amount is bound; tests cover both
+   directions; the gated write binds the correct direction's approved amount.
+2. **Screen-finding** — agent navigates from a TMS landing page to the target screen itself (today the
+   URL is handed in). **Accept when:** given only a base URL + goal ("create customer invoice"), the
+   agent reaches the right form and discovery proceeds; unit-tested with a fake session.
+3. **Persist learned self-heal repairs** — write the agent's learned constraint (e.g. "invoice_number
+   must be numeric") back into the screen-map so the next run is deterministic, not re-healed. **Accept
+   when:** a healed quirk is recorded to the map and reused without a second heal; tested.
+4. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
+   rate con) and thread state (ready-for-billing / dispute reply / missing-backup), linked to a load.
+   **Accept when:** classification is tested on the synthetic corpus with measured accuracy.
+5. **Second, structurally different TMS** (the one load-bearing claim still n=1). **NEEDS RASHEED:** a
+   second TMS account. **Accept when:** discovery + customer/vendor lookup + readback + self-heal +
+   safety spine all hold on a non-TruckingOffice system, with the same gated path.
+6. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (all alerts
+   are currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an
+   email alert; tested.
+7. **Clean up TruckingOffice proof debris** — duplicate "Iron Horse Logistics LLC" stub customers and
+   proof invoices 560003–560008; keep the real seed (TQL/Echo/Coyote/C.H. Robinson, invoices 1000–1006).
+
+Then resume the roadmap: always-on runtime hardening → design-partner pilot → workflow packs.
 
 ---
 
-## 6. Review agents to spawn (prompts)
+## 7. Review agents to spawn (prompts)
 Spawn these as parallel review agents. They are **read-only audits** — report findings + severity, do
 not edit. Give each the repo and this brief.
 
