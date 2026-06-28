@@ -23,6 +23,7 @@ from .reconciliation import (
     ReconciliationResult,
     reconcile_load,
 )
+from .workflow_direction import WorkflowDirection
 
 
 class WorkflowState(str, Enum):
@@ -81,6 +82,7 @@ class WorkflowRun:
     load_id: str
     document_hash: str
     state: WorkflowState
+    workflow_direction: WorkflowDirection
     invoice_number: str | None
     carrier: str | None
     outcome: str | None
@@ -120,6 +122,7 @@ class WorkflowStore:
                 load_id TEXT NOT NULL,
                 document_hash TEXT NOT NULL UNIQUE,
                 state TEXT NOT NULL,
+                workflow_direction TEXT NOT NULL DEFAULT 'CARRIER_PAYABLE',
                 invoice_number TEXT,
                 carrier TEXT,
                 outcome TEXT,
@@ -149,16 +152,38 @@ class WorkflowStore:
             );
             """
         )
+        columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(workflow_runs)").fetchall()
+        }
+        if "workflow_direction" not in columns:
+            self.conn.execute(
+                "ALTER TABLE workflow_runs ADD COLUMN workflow_direction TEXT NOT NULL DEFAULT 'CARRIER_PAYABLE'"
+            )
         self.conn.commit()
 
-    def receive_document(self, load_id: str, document_hash: str, payload: dict[str, Any]) -> WorkflowRun:
-        existing = self.get_run_by_hash(document_hash)
+    def receive_document(
+        self,
+        load_id: str,
+        document_hash: str,
+        payload: dict[str, Any],
+        *,
+        workflow_direction: WorkflowDirection | str = WorkflowDirection.CARRIER_PAYABLE,
+    ) -> WorkflowRun:
+        direction = WorkflowDirection(workflow_direction)
+        scoped_document_hash = _direction_scoped_document_hash(document_hash, direction)
+        existing = self.get_run_by_hash(scoped_document_hash)
         if existing:
             self.add_audit_event(
                 existing.id,
                 "duplicate_received",
                 actor="system",
-                payload={"load_id": load_id, "document_hash": document_hash},
+                payload={
+                    "load_id": load_id,
+                    "document_hash": scoped_document_hash,
+                    "source_document_hash": document_hash,
+                    "workflow_direction": direction.value,
+                },
             )
             return existing
 
@@ -166,10 +191,10 @@ class WorkflowStore:
         cur = self.conn.execute(
             """
             INSERT INTO workflow_runs (
-                load_id, document_hash, state, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?)
+                load_id, document_hash, state, workflow_direction, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (load_id, document_hash, WorkflowState.RECEIVED.value, now, now),
+            (load_id, scoped_document_hash, WorkflowState.RECEIVED.value, direction.value, now, now),
         )
         self.conn.commit()
         run = self.get_run(cur.lastrowid)
@@ -257,10 +282,11 @@ class WorkflowStore:
         self.conn.execute(
             """
             UPDATE workflow_runs
-            SET invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
+            SET workflow_direction = ?, invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
             WHERE id = ?
             """,
             (
+                result.workflow_direction.value,
                 result.invoice_number,
                 result.carrier,
                 result.outcome.value,
@@ -275,7 +301,11 @@ class WorkflowStore:
             run_id,
             next_state,
             event_type="route_after_reconciliation",
-            payload={"outcome": result.outcome.value, "reasons": result.reasons},
+            payload={
+                "outcome": result.outcome.value,
+                "workflow_direction": result.workflow_direction.value,
+                "reasons": result.reasons,
+            },
         )
 
     def refresh_reconciliation(self, run_id: int, result: ReconciliationResult) -> WorkflowRun:
@@ -297,10 +327,11 @@ class WorkflowStore:
         self.conn.execute(
             """
             UPDATE workflow_runs
-            SET invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
+            SET workflow_direction = ?, invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
             WHERE id = ?
             """,
             (
+                result.workflow_direction.value,
                 result.invoice_number,
                 result.carrier,
                 result.outcome.value,
@@ -322,14 +353,22 @@ class WorkflowStore:
                 run_id,
                 WorkflowState.DONE,
                 event_type="route_after_reconciliation_refresh",
-                payload={"outcome": result.outcome.value, "reasons": result.reasons},
+                payload={
+                    "outcome": result.outcome.value,
+                    "workflow_direction": result.workflow_direction.value,
+                    "reasons": result.reasons,
+                },
             )
         if run.state == WorkflowState.REQUESTED_BACKUP and next_state == WorkflowState.NEEDS_REVIEW:
             return self.transition(
                 run_id,
                 WorkflowState.NEEDS_REVIEW,
                 event_type="route_after_reconciliation_refresh",
-                payload={"outcome": result.outcome.value, "reasons": result.reasons},
+                payload={
+                    "outcome": result.outcome.value,
+                    "workflow_direction": result.workflow_direction.value,
+                    "reasons": result.reasons,
+                },
             )
         updated = self.get_run(run_id)
         assert updated is not None
@@ -433,6 +472,7 @@ class WorkflowStore:
             load_id=row["load_id"],
             document_hash=row["document_hash"],
             state=WorkflowState(row["state"]),
+            workflow_direction=WorkflowDirection(row["workflow_direction"]),
             invoice_number=row["invoice_number"],
             carrier=row["carrier"],
             outcome=row["outcome"],
@@ -445,7 +485,7 @@ def process_load_packet(
     load: FreightLoadForReconciliation,
     *,
     primary_document_path: str | Path,
-    seen_invoice_keys: set[tuple[str, str]] | None = None,
+    seen_invoice_keys: set[tuple[str, str, str]] | None = None,
     extractor: Callable[[str | Path], Any] | None = None,
     confidence_threshold: float = 0.85,
 ) -> WorkflowRun:
@@ -462,7 +502,12 @@ def process_load_packet(
     run = store.receive_document(
         load.load_id,
         doc_hash,
-        payload={"primary_document": str(primary_document_path), "load_id": load.load_id},
+        payload={
+            "primary_document": str(primary_document_path),
+            "load_id": load.load_id,
+            "workflow_direction": load.workflow_direction.value,
+        },
+        workflow_direction=load.workflow_direction,
     )
 
     if run.state in TERMINAL_STATES or run.state == WorkflowState.NEEDS_REVIEW:
@@ -495,3 +540,14 @@ def _call_extractor(extractor: Callable[[str | Path], Any], path: str | Path) ->
         return extractor(path)
     except Exception as exc:  # noqa: BLE001 - provider/render failures become reviewable outcomes
         return SimpleNamespace(extraction=None, model=None, error=f"{type(exc).__name__}: {exc}")
+
+
+def _direction_scoped_document_hash(document_hash: str, direction: WorkflowDirection) -> str:
+    """Scope workflow idempotency by money direction.
+
+    AP and AR may legitimately use the same source PDF/load evidence, but they authorize different
+    financial objects. Persisting the scoped key prevents a carrier-payable run from swallowing a
+    customer-invoice run for the same document.
+    """
+    prefix = f"{direction.value}:"
+    return document_hash if document_hash.startswith(prefix) else f"{prefix}{document_hash}"

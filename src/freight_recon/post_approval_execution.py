@@ -24,6 +24,7 @@ from .tms_write import (
     enter_approved_payable,
 )
 from .workflow import WorkflowState, WorkflowStore
+from .workflow_direction import WorkflowDirection
 
 
 class MockTmsAutoEntryConfig(BaseModel):
@@ -54,6 +55,21 @@ def maybe_execute_mock_tms_after_approval(
     if action.decision not in {ReviewDecision.APPROVE_EXPECTED_AMOUNT, ReviewDecision.APPROVE_FULL_AMOUNT}:
         return None
     if action.to_state != WorkflowState.APPROVED:
+        return None
+    run = store.get_run(action.run_id)
+    if run is None:
+        return None
+    if run.workflow_direction != WorkflowDirection.CARRIER_PAYABLE:
+        store.add_audit_event(
+            action.run_id,
+            "post_approval_execution_skipped",
+            actor=config.actor,
+            payload={
+                "reason": "non_payable_workflow_direction",
+                "workflow_direction": run.workflow_direction.value,
+                "decision": action.decision.value,
+            },
+        )
         return None
 
     if not config.enabled:

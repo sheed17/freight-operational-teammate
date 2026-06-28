@@ -41,6 +41,7 @@ from .tool_permissions import (
     record_tool_permission_decision,
 )
 from .workflow import WorkflowError, WorkflowRun, WorkflowState, WorkflowStore
+from .workflow_direction import WorkflowDirection
 
 
 class TmsWriteError(RuntimeError):
@@ -100,7 +101,12 @@ def idempotency_key(run_id: int, load_id: str, amount: str) -> str:
 _APPROVAL_EVENT_TYPES = ("review_approved_expected_amount", "review_approved_full_amount")
 
 
-def approved_amount_for_run(store: WorkflowStore, run_id: int) -> str | None:
+def approved_amount_for_run(
+    store: WorkflowStore,
+    run_id: int,
+    *,
+    workflow_direction: WorkflowDirection | str | None = None,
+) -> str | None:
     """The amount a human approved for this run (from the latest review/Slack approval), or ``None``.
 
     This is the authoritative figure a TMS write must enter — the approval is the source of truth,
@@ -108,6 +114,10 @@ def approved_amount_for_run(store: WorkflowStore, run_id: int) -> str | None:
     """
     for event in reversed(store.audit_events(run_id)):
         if event["event_type"] in _APPROVAL_EVENT_TYPES:
+            if workflow_direction is not None:
+                expected_direction = WorkflowDirection(workflow_direction).value
+                if event["payload"].get("workflow_direction") != expected_direction:
+                    continue
             amount = event["payload"].get("amount")
             return str(amount) if amount is not None else None
     return None
@@ -369,6 +379,10 @@ def enter_approved_payable(
         raise WorkflowError(f"workflow run not found: {run_id}")
     if run.state != WorkflowState.APPROVED:
         raise WorkflowError(f"payable entry requires APPROVED state, got {run.state.value}")
+    if run.workflow_direction != WorkflowDirection.CARRIER_PAYABLE:
+        raise WorkflowError(
+            f"payable entry requires CARRIER_PAYABLE workflow direction, got {run.workflow_direction.value}"
+        )
 
     # Owner's brake: if TMS writes are paused, hold this APPROVED run in place (do not fail it).
     # It will execute on a later attempt once an owner resumes from Slack.
@@ -387,7 +401,11 @@ def enter_approved_payable(
     # Bind the entry to the human approval: the amount entered must be the amount approved in Slack
     # for THIS run (recorded on the APPROVED transition), never just a caller-supplied figure.
     # Deterministic Python owns the money; the caller's `amount` is only an assertion that must match.
-    approved = approved_amount_for_run(store, run_id)
+    approved = approved_amount_for_run(
+        store,
+        run_id,
+        workflow_direction=WorkflowDirection.CARRIER_PAYABLE,
+    )
     if approved is None:
         # Fail closed: the binding is the last line of defense for real money, so a run with no
         # recorded human approval must never reach the writer on a caller-supplied amount.

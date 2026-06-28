@@ -61,7 +61,7 @@ def test_dogfood_pilot_runner_writes_core_artifacts(tmp_path):
     assert Path(report["artifacts"]["operator_console"]).is_relative_to(workspace)
     assert Path(report["artifacts"]["packet_site"]).is_relative_to(workspace)
     assert (workspace / "synthetic_corpus" / "ground_truth" / "carrier_invoice_extraction.json").exists()
-    assert "Approved expected amount $3334.50 by Rasheed" in report["signed_action_mutation"]
+    assert "Approved expected carrier payable $3334.50 by Rasheed" in report["signed_action_mutation"]
     assert "Backup requested by Rasheed" in report["secondary_signed_action_mutation"]
     callback = json.loads(Path(report["artifacts"]["callback_action_response"]).read_text(encoding="utf-8"))
     assert callback["status"] == "APPLIED"

@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from freight_recon.workflow_direction import (  # noqa: E402
     WorkflowDirection,
+    approval_object,
     approval_action_label,
     approved_amount_meaning,
     execution_verb,
@@ -49,6 +50,11 @@ def test_approved_amount_meaning_distinct_per_direction():
 def test_execution_verb_distinct_per_direction():
     assert execution_verb(AP) == "Enter carrier payable in TMS"
     assert execution_verb(AR) == "Create customer invoice in TMS"
+
+
+def test_approval_object_distinct_per_direction():
+    assert approval_object(AP) == "carrier payable"
+    assert approval_object(AR) == "customer invoice"
 
 
 def test_money_formatting_has_thousands_separator():

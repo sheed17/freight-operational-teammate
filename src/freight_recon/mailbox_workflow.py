@@ -53,6 +53,7 @@ from .review import (
     review_load_for_run,
 )
 from .workflow import TERMINAL_STATES, WorkflowRun, WorkflowState, WorkflowStore
+from .workflow_direction import WorkflowDirection
 
 
 class MailboxWorkflowPacketResult(BaseModel):
@@ -265,7 +266,12 @@ def _receive_or_refresh_packet(
     load: FreightLoadForReconciliation,
 ) -> WorkflowRun:
     packet_key = _packet_workflow_key(load)
-    return store.receive_document(load.load_id, packet_key, payload=_mailbox_packet_payload(packet_run, load))
+    return store.receive_document(
+        load.load_id,
+        packet_key,
+        payload=_mailbox_packet_payload(packet_run, load),
+        workflow_direction=load.workflow_direction,
+    )
 
 
 def _packet_workflow_key(load: FreightLoadForReconciliation) -> str:
@@ -279,6 +285,7 @@ def _mailbox_packet_payload(
     packet = packet_run.packet
     return {
         "source": "mailbox_intake",
+        "workflow_direction": load.workflow_direction.value,
         "load_id": load.load_id,
         "invoice_number": load.invoice_number,
         "carrier": load.carrier,
@@ -310,7 +317,7 @@ def _mailbox_extraction_payload_and_result(
     packet_run: MailboxPacketRun,
     load: FreightLoadForReconciliation,
     preserve_dir: Path,
-    seen_invoice_keys: set[tuple[str, str]] | None,
+    seen_invoice_keys: set[tuple[str, str, str]] | None,
     extractor: Callable[[str | Path], Any] | None,
     confidence_threshold: float,
 ) -> tuple[dict, ReconciliationResult]:
@@ -431,6 +438,7 @@ def _process_unlinked_message(store: WorkflowStore, record: MailboxMessageRecord
             },
         )
         result = ReconciliationResult(
+            workflow_direction=WorkflowDirection.CARRIER_PAYABLE,
             load_id="UNLINKED",
             invoice_number="UNKNOWN",
             carrier=record.from_addr or "UNKNOWN",
@@ -608,6 +616,7 @@ def _apply_packet_review_flags(
         return result.model_copy(update={"reasons": result.reasons + packet_reasons})
 
     return ReconciliationResult(
+        workflow_direction=result.workflow_direction,
         load_id=result.load_id,
         invoice_number=result.invoice_number,
         carrier=result.carrier,
@@ -622,11 +631,17 @@ def _seen_invoice_keys_from_store(
     store: WorkflowStore,
     *,
     exclude_run_id: int | None = None,
-) -> set[tuple[str, str]]:
-    seen: set[tuple[str, str]] = set()
+) -> set[tuple[str, str, str]]:
+    seen: set[tuple[str, str, str]] = set()
     for run in store.list_runs():
         if exclude_run_id is not None and run.id == exclude_run_id:
             continue
         if run.carrier and run.invoice_number:
-            seen.add((run.carrier.strip().lower(), run.invoice_number.strip().lower()))
+            seen.add(
+                (
+                    run.workflow_direction.value,
+                    run.carrier.strip().lower(),
+                    run.invoice_number.strip().lower(),
+                )
+            )
     return seen

@@ -62,3 +62,8 @@ def approval_action_label(direction: WorkflowDirection, amount, *, tms_name: str
 def execution_verb(direction: WorkflowDirection) -> str:
     """How the gated executor narrates the action it is performing."""
     return "Enter carrier payable in TMS" if is_payable(direction) else "Create customer invoice in TMS"
+
+
+def approval_object(direction: WorkflowDirection) -> str:
+    """The concrete financial object a human just approved."""
+    return "carrier payable" if is_payable(direction) else "customer invoice"

@@ -18,6 +18,7 @@ from freight_recon.workflow import (  # noqa: E402
     process_load_packet,
     sha256_file,
 )
+from freight_recon.workflow_direction import WorkflowDirection  # noqa: E402
 
 
 def _generated_corpus(tmp_path, count=9, seed=42):
@@ -60,6 +61,25 @@ def test_workflow_idempotency_uses_document_hash(tmp_path):
     assert run1.id == run2.id
     assert len(store.list_runs()) == 1
     assert any(event["event_type"] == "duplicate_received" for event in store.audit_events(run1.id))
+    store.close()
+
+
+def test_workflow_idempotency_is_scoped_by_ap_ar_direction(tmp_path):
+    corpus, loads = _generated_corpus(tmp_path, count=4)
+    source = next(load for load in loads if load.load_id == "LD-560003")
+    ap_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CARRIER_PAYABLE})
+    ar_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE})
+    doc = corpus / source.documents["carrier_invoice"]
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+
+    ap_run = process_load_packet(store, ap_load, primary_document_path=doc)
+    ar_run = process_load_packet(store, ar_load, primary_document_path=doc)
+
+    assert ap_run.id != ar_run.id
+    assert ap_run.workflow_direction == WorkflowDirection.CARRIER_PAYABLE
+    assert ar_run.workflow_direction == WorkflowDirection.CUSTOMER_INVOICE
+    assert store.get_run(ap_run.id).document_hash.startswith("CARRIER_PAYABLE:")
+    assert store.get_run(ar_run.id).document_hash.startswith("CUSTOMER_INVOICE:")
     store.close()
 
 

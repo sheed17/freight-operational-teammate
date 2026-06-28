@@ -22,6 +22,7 @@ from freight_recon.tms_write import (  # noqa: E402
     enter_approved_payable,
 )
 from freight_recon.workflow import WorkflowError, WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
+from freight_recon.workflow_direction import WorkflowDirection  # noqa: E402
 
 _AMOUNT = "3634.50"  # LD-560003 full invoice amount
 
@@ -45,6 +46,38 @@ def _approved_run(tmp_path):
 
 def _ledger(tmp_path, fail_modes=frozenset()):
     return MockTmsWriteLedger(tmp_path / "ledger.json", fail_modes=fail_modes)
+
+
+def _approved_ar_run(tmp_path):
+    corpus = tmp_path / "corpus_ar"
+    generate(corpus, 5, seed=42)
+    raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
+    load = FreightLoadForReconciliation.from_mapping(raw["LD-560003"]).model_copy(
+        update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE}
+    )
+    store = WorkflowStore(tmp_path / "wf_ar.sqlite3")
+    run = process_load_packet(store, load, primary_document_path=corpus / load.documents["carrier_invoice"])
+    payload = build_review_payload(run, load, age_hours=0)
+    record_review_payload(store, payload)
+    apply_review_action(
+        store,
+        ReviewActionRequest(
+            run_id=run.id,
+            decision=ReviewDecision.APPROVE_EXPECTED_AMOUNT,
+            amount="3334.50",
+        ),
+    )
+    return store, run.id
+
+
+def test_customer_invoice_approval_cannot_enter_carrier_payable_path(tmp_path):
+    store, run_id = _approved_ar_run(tmp_path)
+
+    with pytest.raises(WorkflowError, match="requires CARRIER_PAYABLE workflow direction"):
+        enter_approved_payable(store, _ledger(tmp_path), run_id, amount="3334.50")
+
+    assert _ledger(tmp_path).get_payable("LD-560003") is None
+    store.close()
 
 
 def test_tms_writes_pause_holds_approved_run(tmp_path):

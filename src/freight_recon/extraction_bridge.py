@@ -112,7 +112,7 @@ def reconciliation_from_extraction(
     source_load: FreightLoadForReconciliation,
     extraction: Any,
     *,
-    seen_invoice_keys: set[tuple[str, str]] | None = None,
+    seen_invoice_keys: set[tuple[str, str, str]] | None = None,
     confidence_threshold: float = 0.85,
 ) -> tuple[dict, ReconciliationResult]:
     """Build an extraction audit payload and deterministic reconciliation result.
@@ -128,6 +128,7 @@ def reconciliation_from_extraction(
             "error": getattr(extraction, "error", "extraction returned no result"),
         }
         result = ReconciliationResult(
+            workflow_direction=source_load.workflow_direction,
             load_id=source_load.load_id,
             invoice_number=source_load.invoice_number or "",
             carrier=source_load.carrier,
@@ -148,6 +149,7 @@ def reconciliation_from_extraction(
             "error": f"invalid extraction values: {type(exc).__name__}: {exc}",
         }
         result = ReconciliationResult(
+            workflow_direction=source_load.workflow_direction,
             load_id=source_load.load_id,
             invoice_number=source_load.invoice_number or "",
             carrier=source_load.carrier,

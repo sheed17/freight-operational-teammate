@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from generate_realistic_corpus import generate  # noqa: E402
-from freight_recon.reconciliation import FreightLoadForReconciliation, ReconciliationOutcome  # noqa: E402
+from freight_recon.reconciliation import ChargeLine, FreightLoadForReconciliation, ReconciliationOutcome  # noqa: E402
 from freight_recon.review import (  # noqa: E402
     DogfoodClientProfile,
     ReviewAction,
@@ -19,6 +19,7 @@ from freight_recon.review import (  # noqa: E402
     render_text_review,
 )
 from freight_recon.workflow import WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
+from freight_recon.workflow_direction import WorkflowDirection  # noqa: E402
 
 
 def _run_generated_workflow(tmp_path, count=9):
@@ -64,6 +65,69 @@ def test_review_payload_for_variance_has_human_actions(tmp_path):
     ]
     assert len(standalone_dispute) == 1 and standalone_dispute[0].amount is None
     assert payload.audit_context["no_autonomous_tms_write"] is True
+    store.close()
+
+
+def test_ar_review_payload_uses_customer_invoice_copy_and_amounts(tmp_path):
+    corpus = tmp_path / "corpus"
+    generate(corpus, 5, seed=42)
+    raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
+    load = FreightLoadForReconciliation.from_mapping(raw["LD-560003"]).model_copy(
+        update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE}
+    )
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    run = process_load_packet(
+        store,
+        load,
+        primary_document_path=corpus / load.documents["carrier_invoice"],
+    )
+
+    payload = build_review_payload(run, load)
+
+    assert payload is not None
+    assert payload.workflow_direction == WorkflowDirection.CUSTOMER_INVOICE
+    assert "customer invoice" in payload.title.lower()
+    assert "carrier payable" not in render_text_review(payload).lower()
+    labels = [option.label for option in payload.action_options]
+    assert "Create customer invoice for $3,334.50" in labels
+    assert "Create customer invoice for $3,634.50" in labels
+    expected = next(option for option in payload.action_options if option.amount == "3334.50")
+    assert expected.amount_kind == "EXPECTED"
+    assert expected.creates_follow_up_draft is False
+    assert payload.audit_context["workflow_direction"] == "CUSTOMER_INVOICE"
+    store.close()
+
+
+def test_ar_missing_backup_review_does_not_offer_carrier_follow_up(tmp_path):
+    load = FreightLoadForReconciliation(
+        workflow_direction=WorkflowDirection.CUSTOMER_INVOICE,
+        load_id="LD-AR-BACKUP",
+        invoice_number="AR-100",
+        carrier="Test Carrier",
+        customer="Test Broker",
+        rate_linehaul="2000.00",
+        rate_fuel="300.00",
+        invoice_linehaul="2000.00",
+        invoice_fuel="300.00",
+        rate_accessorials=[ChargeLine(name="Detention", amount="150.00")],
+        invoice_accessorials=[ChargeLine(name="Detention", amount="150.00")],
+        documents={"carrier_invoice": "invoice.pdf", "rate_confirmation": "rate.pdf", "pod": "pod.pdf"},
+    )
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    invoice = corpus / "invoice.pdf"
+    invoice.write_bytes(b"%PDF-1.4 fake")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    run = process_load_packet(store, load, primary_document_path=invoice)
+
+    payload = build_review_payload(run, load)
+
+    assert payload is not None
+    assert payload.outcome == ReconciliationOutcome.NEEDS_REVIEW
+    backup = next(option for option in payload.action_options if option.code == ReviewAction.REQUEST_BACKUP)
+    assert backup.label == "Request billing backup"
+    assert backup.creates_follow_up_draft is False
+    assert "carrier" not in backup.consequence.lower()
     store.close()
 
 

@@ -17,6 +17,12 @@ from pydantic import BaseModel, Field
 from .extraction_bridge import apply_extracted_invoice
 from .reconciliation import FreightLoadForReconciliation, ReconciliationOutcome
 from .workflow import WorkflowRun, WorkflowState, WorkflowStore
+from .workflow_direction import (
+    WorkflowDirection,
+    approval_action_label,
+    approved_amount_meaning,
+    is_payable,
+)
 
 
 def review_load_for_run(
@@ -77,6 +83,7 @@ class ReviewActionOption(BaseModel):
     code: ReviewAction
     label: str
     amount: str | None = None
+    amount_kind: str | None = None
     requires_send_gate: bool = False
     creates_follow_up_draft: bool = False
     consequence: str
@@ -113,6 +120,7 @@ class DogfoodClientProfile(BaseModel):
 
 class ReviewPayload(BaseModel):
     run_id: int
+    workflow_direction: WorkflowDirection = WorkflowDirection.CARRIER_PAYABLE
     client: DogfoodClientProfile = Field(default_factory=DogfoodClientProfile)
     load_id: str
     invoice_number: str
@@ -159,6 +167,7 @@ def build_review_payload(
     routing = _routing_for(outcome, reasons, flagged_amount, client)
     return ReviewPayload(
         run_id=run.id,
+        workflow_direction=run.workflow_direction,
         client=client,
         load_id=run.load_id,
         invoice_number=run.invoice_number or load.invoice_number,
@@ -166,12 +175,12 @@ def build_review_payload(
         outcome=outcome,
         state=run.state,
         severity=_severity_for(outcome, reasons, flagged_amount, client),
-        title=_title_for(outcome, load),
-        summary=_summary_for(outcome, load, reasons),
+        title=_title_for(outcome, load, run.workflow_direction),
+        summary=_summary_for(outcome, load, reasons, run.workflow_direction),
         reasons=reasons,
         fields=fields,
         actions=_actions_for(outcome, reasons),
-        action_options=_action_options_for(outcome, load, reasons, flagged_amount),
+        action_options=_action_options_for(outcome, load, reasons, flagged_amount, run.workflow_direction),
         source_documents=load.documents,
         evidence_links=_evidence_links_for(load, client),
         packet_detail_url=f"{client.packet_base_url}/{run.id}",
@@ -182,6 +191,8 @@ def build_review_payload(
             "requires_human": True,
             "no_autonomous_tms_write": True,
             "workflow_state": run.state.value,
+            "workflow_direction": run.workflow_direction.value,
+            "approved_amount_meaning": approved_amount_meaning(run.workflow_direction),
             "dogfood_company": client.company_name,
             "operator_role": client.operator_role,
         },
@@ -215,6 +226,7 @@ def render_text_review(payload: ReviewPayload) -> str:
         f"Load: {payload.load_id}",
         f"Carrier: {payload.carrier}",
         f"Invoice: {payload.invoice_number}",
+        f"Workflow: {payload.workflow_direction.value}",
         f"Outcome: {payload.outcome.value}",
         f"Severity: {payload.severity.value}",
         f"Route: {payload.routing.route.value}",
@@ -269,7 +281,17 @@ def _severity_for(
     return ReviewSeverity.INFO
 
 
-def _title_for(outcome: ReconciliationOutcome, load: FreightLoadForReconciliation) -> str:
+def _title_for(
+    outcome: ReconciliationOutcome,
+    load: FreightLoadForReconciliation,
+    direction: WorkflowDirection,
+) -> str:
+    if not is_payable(direction):
+        if outcome == ReconciliationOutcome.VARIANCE:
+            return f"Review customer invoice variance for {load.load_id}"
+        if outcome == ReconciliationOutcome.DUPLICATE:
+            return f"Review duplicate customer invoice for {load.load_id}"
+        return f"Review customer billing packet for {load.load_id}"
     if outcome == ReconciliationOutcome.VARIANCE:
         return f"Review variance for {load.load_id}"
     if outcome == ReconciliationOutcome.DUPLICATE:
@@ -281,7 +303,16 @@ def _summary_for(
     outcome: ReconciliationOutcome,
     load: FreightLoadForReconciliation,
     reasons: list[str],
+    direction: WorkflowDirection,
 ) -> str:
+    if not is_payable(direction):
+        if outcome == ReconciliationOutcome.VARIANCE:
+            return "Customer invoice inputs do not match the load record. Human approval is required before billing."
+        if outcome == ReconciliationOutcome.DUPLICATE:
+            return "This customer invoice appears more than once. Do not create a receivable until reviewed."
+        if reasons:
+            return "The billing packet is missing backup or evidence needed before creating the customer invoice."
+        return f"Customer invoice {load.invoice_number} needs human review."
     if outcome == ReconciliationOutcome.VARIANCE:
         return "Invoice values do not match the rate/load record. Human approval is required."
     if outcome == ReconciliationOutcome.DUPLICATE:
@@ -308,23 +339,33 @@ def _action_options_for(
     load: FreightLoadForReconciliation,
     reasons: list[str],
     flagged_amount: Decimal,
+    direction: WorkflowDirection,
 ) -> list[ReviewActionOption]:
     expected_total = _expected_total(load)
     invoice_total = _invoice_total(load)
     missing_required_doc = _has_missing_required_document(reasons)
+    direction_is_ap = is_payable(direction)
     if outcome == ReconciliationOutcome.DUPLICATE:
         return [
             ReviewActionOption(
                 code=ReviewAction.MARK_DUPLICATE,
                 label="Mark duplicate",
-                consequence="Closes this packet as duplicate and prevents payable entry.",
+                consequence=(
+                    "Closes this packet as duplicate and prevents payable entry."
+                    if direction_is_ap
+                    else "Closes this packet as duplicate and prevents customer-invoice creation."
+                ),
             ),
             ReviewActionOption(
                 code=ReviewAction.DISPUTE,
-                label="Dispute duplicate invoice",
+                label="Dispute duplicate invoice" if direction_is_ap else "Hold duplicate billing packet",
                 requires_send_gate=True,
-                creates_follow_up_draft=True,
-                consequence="Creates a short carrier dispute draft behind a send gate.",
+                creates_follow_up_draft=direction_is_ap,
+                consequence=(
+                    "Creates a short carrier dispute draft behind a send gate."
+                    if direction_is_ap
+                    else "Keeps the receivable uncreated until the duplicate is resolved."
+                ),
             ),
         ]
 
@@ -335,15 +376,27 @@ def _action_options_for(
                     code=ReviewAction.REQUEST_BACKUP,
                     label="Request missing POD/backup",
                     requires_send_gate=True,
-                    creates_follow_up_draft=True,
-                    consequence="Keeps payable unapproved and creates a carrier backup request behind a send gate.",
+                    creates_follow_up_draft=direction_is_ap,
+                    consequence=(
+                        "Keeps payable unapproved and creates a carrier backup request behind a send gate."
+                        if direction_is_ap
+                        else "Keeps billing unapproved until the missing customer-invoice backup is attached."
+                    ),
                 ),
                 ReviewActionOption(
                     code=ReviewAction.DISPUTE,
-                    label=f"Dispute ${_money(flagged_amount)} — hold payment",
+                    label=(
+                        f"Dispute ${_money(flagged_amount)} — hold payment"
+                        if direction_is_ap
+                        else f"Hold customer invoice — review ${_money(flagged_amount)} variance"
+                    ),
                     requires_send_gate=True,
-                    creates_follow_up_draft=True,
-                    consequence="Holds the payable (no approval) and drafts a carrier dispute for the variance.",
+                    creates_follow_up_draft=direction_is_ap,
+                    consequence=(
+                        "Holds the payable (no approval) and drafts a carrier dispute for the variance."
+                        if direction_is_ap
+                        else "Holds the receivable until the billing variance is resolved."
+                    ),
                 ),
                 ReviewActionOption(
                     code=ReviewAction.EDIT,
@@ -353,42 +406,70 @@ def _action_options_for(
             ]
             return options
 
-        dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} variance"
-        if any("detention" in reason.lower() for reason in reasons):
+        dispute_label = approval_action_label(direction, expected_total)
+        if direction_is_ap:
+            dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} variance"
+        if direction_is_ap and any("detention" in reason.lower() for reason in reasons):
             dispute_label = f"Approve ${_money(expected_total)} and dispute ${_money(flagged_amount)} detention"
         options = [
             ReviewActionOption(
                 code=ReviewAction.APPROVE,
                 label=dispute_label,
                 amount=_money(expected_total),
-                requires_send_gate=True,
-                creates_follow_up_draft=True,
-                consequence="Approves expected payable amount and drafts a carrier dispute.",
+                amount_kind="EXPECTED",
+                requires_send_gate=direction_is_ap,
+                creates_follow_up_draft=direction_is_ap,
+                consequence=(
+                    "Approves expected payable amount and drafts a carrier dispute."
+                    if direction_is_ap
+                    else "Approves customer billing for the expected load amount."
+                ),
             ),
             ReviewActionOption(
                 code=ReviewAction.APPROVE,
-                label=f"Approve full ${_money(invoice_total)}",
+                label=(
+                    f"Approve full ${_money(invoice_total)}"
+                    if direction_is_ap
+                    else approval_action_label(direction, invoice_total)
+                ),
                 amount=_money(invoice_total),
-                consequence="Approves the carrier invoice as billed.",
+                amount_kind="FULL",
+                consequence=(
+                    "Approves the carrier invoice as billed."
+                    if direction_is_ap
+                    else "Approves customer billing for the full invoice amount."
+                ),
             ),
             # Standalone dispute: hold the whole payable and push back — distinct from approving the
             # clean part and disputing only the delta. Pays nothing until resolved.
             ReviewActionOption(
                 code=ReviewAction.DISPUTE,
-                label=f"Dispute ${_money(flagged_amount)} — hold payment",
+                label=(
+                    f"Dispute ${_money(flagged_amount)} — hold payment"
+                    if direction_is_ap
+                    else f"Hold customer invoice — review ${_money(flagged_amount)} variance"
+                ),
                 requires_send_gate=True,
-                creates_follow_up_draft=True,
-                consequence="Holds the payable (no approval) and drafts a carrier dispute for the variance.",
+                creates_follow_up_draft=direction_is_ap,
+                consequence=(
+                    "Holds the payable (no approval) and drafts a carrier dispute for the variance."
+                    if direction_is_ap
+                    else "Holds the receivable until the billing variance is resolved."
+                ),
             ),
         ]
         if _needs_backup_request(reasons):
             options.append(
                 ReviewActionOption(
                     code=ReviewAction.REQUEST_BACKUP,
-                    label="Request backup from carrier",
+                    label="Request backup from carrier" if direction_is_ap else "Request billing backup",
                     requires_send_gate=True,
-                    creates_follow_up_draft=True,
-                    consequence="Creates a short backup-request email behind a send gate.",
+                    creates_follow_up_draft=direction_is_ap,
+                    consequence=(
+                        "Creates a short backup-request email behind a send gate."
+                        if direction_is_ap
+                        else "Keeps billing unapproved until backup is attached."
+                    ),
                 )
             )
         options.append(
@@ -411,10 +492,20 @@ def _action_options_for(
         options.append(
             ReviewActionOption(
                 code=ReviewAction.REQUEST_BACKUP,
-                label="Request missing POD/backup" if missing_required_doc else "Request backup from carrier",
+                label=(
+                    "Request missing POD/backup"
+                    if missing_required_doc and direction_is_ap
+                    else "Request billing backup"
+                    if not direction_is_ap
+                    else "Request backup from carrier"
+                ),
                 requires_send_gate=True,
-                creates_follow_up_draft=True,
-                consequence="Creates a short backup-request email behind a send gate.",
+                creates_follow_up_draft=direction_is_ap,
+                consequence=(
+                    "Creates a short backup-request email behind a send gate."
+                    if direction_is_ap
+                    else "Keeps billing unapproved until backup is attached."
+                ),
             )
         )
     if missing_required_doc:
@@ -422,9 +513,18 @@ def _action_options_for(
     options.append(
         ReviewActionOption(
             code=ReviewAction.APPROVE,
-            label=f"Approve ${_money(invoice_total)} anyway",
+            label=(
+                f"Approve ${_money(invoice_total)} anyway"
+                if direction_is_ap
+                else f"Create customer invoice for ${_money(invoice_total)} anyway"
+            ),
             amount=_money(invoice_total),
-            consequence="Approves the invoice despite missing evidence.",
+            amount_kind="FULL",
+            consequence=(
+                "Approves the invoice despite missing evidence."
+                if direction_is_ap
+                else "Creates the customer invoice despite missing evidence."
+            ),
         )
     )
     return options
@@ -570,6 +670,7 @@ def _payload_key(payload: ReviewPayload) -> str:
         "run_id": payload.run_id,
         "state": payload.state.value,
         "outcome": payload.outcome.value,
+        "workflow_direction": payload.workflow_direction.value,
         "reasons": payload.reasons,
         "summary": payload.summary,
         "flagged_amount": payload.found_money.flagged_amount,

@@ -49,6 +49,7 @@ from .review_actions import (
     apply_review_action,
 )
 from .workflow import WorkflowError, WorkflowRun, WorkflowState, WorkflowStore
+from .workflow_direction import WorkflowDirection
 
 # Local dogfood signing secret. This is NOT a production secret and NOT a customer credential;
 # the token only carries a run id, decision, and amount. Real channels must inject a per-deployment
@@ -105,6 +106,7 @@ class DeliveryActionButton(BaseModel):
     decision: ReviewDecision
     label: str
     amount: str | None = None
+    amount_kind: str | None = None
     requires_send_gate: bool = False
     creates_follow_up_draft: bool = False
     consequence: str
@@ -115,6 +117,7 @@ class DeliveryMessage(BaseModel):
     """A channel-neutral review message ready to render into Slack/Teams/CLI."""
 
     run_id: int
+    workflow_direction: WorkflowDirection = WorkflowDirection.CARRIER_PAYABLE
     channel: DeliveryChannel = DeliveryChannel.LOCAL
     load_id: str
     carrier: str
@@ -260,6 +263,7 @@ def build_delivery_message(
     ]
     return DeliveryMessage(
         run_id=payload.run_id,
+        workflow_direction=payload.workflow_direction,
         channel=channel,
         load_id=payload.load_id,
         carrier=payload.carrier,
@@ -301,6 +305,7 @@ def render_delivery_message(message: DeliveryMessage) -> str:
     lines = [
         message.title,
         f"State: {message.status_banner}",
+        f"Workflow: {message.workflow_direction.value}",
         f"Load: {message.load_id}",
         f"Carrier: {message.carrier}",
         f"Invoice: {message.invoice_number}",
@@ -477,6 +482,7 @@ def _button_for_option(
         decision=decision,
         label=option.label,
         amount=option.amount,
+        amount_kind=option.amount_kind,
         requires_send_gate=option.requires_send_gate,
         creates_follow_up_draft=option.creates_follow_up_draft,
         consequence=option.consequence,
@@ -504,6 +510,10 @@ def _decision_for_option(option: ReviewActionOption) -> ReviewDecision:
     if option.code == ReviewAction.EDIT:
         return ReviewDecision.EDIT_FIELDS
     # APPROVE splits into expected-amount (drafts a dispute) vs full-amount as billed.
+    if option.amount_kind == "EXPECTED":
+        return ReviewDecision.APPROVE_EXPECTED_AMOUNT
+    if option.amount_kind == "FULL":
+        return ReviewDecision.APPROVE_FULL_AMOUNT
     if option.creates_follow_up_draft:
         return ReviewDecision.APPROVE_EXPECTED_AMOUNT
     return ReviewDecision.APPROVE_FULL_AMOUNT
