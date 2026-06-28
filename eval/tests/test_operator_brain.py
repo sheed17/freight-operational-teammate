@@ -188,3 +188,94 @@ def test_executor_replans_once_on_failure_then_succeeds():
         _plan(StepAction.DISCOVER_FORM, StepAction.FILL_AND_SUBMIT)
     )
     assert res.completed and res.replans == 1
+
+
+# ----- brick 3: real-tool handlers (wired to discovery + injected gated write) -----
+
+_FORM_DOM = {
+    "url": "https://t.test/orders/new", "action": "/o", "submits": ["Save"],
+    "fields": [
+        {"selector": "[name=amt]", "name": "amt", "id": "", "tag": "input", "type": "text",
+         "label": "Total Charge", "required": False, "options": []},
+        {"selector": "[name=cust]", "name": "cust", "id": "", "tag": "input", "type": "text",
+         "label": "Customer", "required": True, "options": []},
+    ],
+}
+
+
+class ToolSession:
+    def __init__(self, dom):
+        self.dom = dom
+        self.nav = []
+
+    def navigate(self, url):
+        self.nav.append(url)
+
+    def evaluate(self, expression):
+        return self.dom
+
+
+def _writable_mapping(_prompt):
+    return json.dumps({"fields": {"amount": "[name=amt]", "bill_to": "[name=cust]"}, "submit_label": "Save"})
+
+
+def test_build_tool_handlers_drives_full_flow_into_the_gated_write():
+    from freight_recon.operator_brain import build_tool_handlers
+    s = ToolSession(_FORM_DOM)
+    captured = {}
+
+    def gated_submit(ctx):
+        captured["form"] = ctx.get("form")
+        captured["customer_id"] = ctx.get("customer_id")
+        return StepResult(FlowStep(StepAction.FILL_AND_SUBMIT), ok=True, detail="gated write verified")
+
+    handlers = build_tool_handlers(
+        session=s, complete=_writable_mapping, resolve_customer=lambda n: "C1", gated_submit=gated_submit,
+    )
+    plan = FlowPlan(goal="invoice", steps=[
+        FlowStep(StepAction.NAVIGATE, "https://t.test/orders/new"),
+        FlowStep(StepAction.DISCOVER_FORM, "https://t.test/orders/new"),
+        FlowStep(StepAction.RESOLVE_CUSTOMER, "Acme Brokerage"),
+        FlowStep(StepAction.FILL_AND_SUBMIT, "https://t.test/orders/new"),
+        FlowStep(StepAction.READBACK_VERIFY),
+    ])
+    res = FlowExecutor(handlers=handlers).run(plan, {})
+    assert res.completed
+    # The gated write was reached only AFTER discovery + customer resolution populated the context.
+    assert captured["customer_id"] == "C1"
+    assert captured["form"] is not None and captured["form"].is_writable()
+    assert "https://t.test/orders/new" in s.nav
+
+
+def test_fill_and_submit_fails_closed_without_form_or_customer():
+    from freight_recon.operator_brain import build_tool_handlers
+    handlers = build_tool_handlers(
+        session=ToolSession(_FORM_DOM), complete=_writable_mapping, resolve_customer=lambda n: "C1",
+        gated_submit=lambda ctx: StepResult(FlowStep(StepAction.FILL_AND_SUBMIT), ok=True, detail="should not run"),
+    )
+    no_form = handlers[StepAction.FILL_AND_SUBMIT](FlowStep(StepAction.FILL_AND_SUBMIT), {})
+    assert not no_form.ok and "no discovered form" in no_form.detail
+    no_cust = handlers[StepAction.FILL_AND_SUBMIT](FlowStep(StepAction.FILL_AND_SUBMIT), {"form": object()})
+    assert not no_cust.ok and "no resolved customer" in no_cust.detail
+
+
+def test_resolve_and_discover_fail_closed():
+    from freight_recon.operator_brain import build_tool_handlers
+    # resolver returns nothing -> fail closed
+    h = build_tool_handlers(session=ToolSession(_FORM_DOM), complete=_writable_mapping,
+                            resolve_customer=lambda n: None,
+                            gated_submit=lambda ctx: StepResult(FlowStep(StepAction.FILL_AND_SUBMIT), ok=True))
+    r = h[StepAction.RESOLVE_CUSTOMER](FlowStep(StepAction.RESOLVE_CUSTOMER, "Ghost LLC"), {})
+    assert not r.ok and "no customer resolved" in r.detail
+
+    # a form with no amount field -> model maps amount null -> not writable -> step fails
+    dom_no_amount = {"url": "u", "action": "/o", "submits": ["Save"],
+                     "fields": [{"selector": "[name=cust]", "name": "cust", "id": "", "tag": "input",
+                                 "type": "text", "label": "Customer", "required": True, "options": []}]}
+    h2 = build_tool_handlers(session=ToolSession(dom_no_amount),
+                             complete=lambda _p: json.dumps({"fields": {"amount": None, "bill_to": "[name=cust]"}}),
+                             resolve_customer=lambda n: "C1",
+                             gated_submit=lambda ctx: StepResult(FlowStep(StepAction.FILL_AND_SUBMIT), ok=True))
+    ctx = {}
+    rd = h2[StepAction.DISCOVER_FORM](FlowStep(StepAction.DISCOVER_FORM, "u"), ctx)
+    assert not rd.ok and "not writable" in rd.detail

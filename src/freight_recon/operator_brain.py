@@ -22,7 +22,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Protocol
 
-from freight_recon.screen_discovery import _parse_llm_json  # hardened JSON extraction (reused)
+from freight_recon.screen_discovery import (  # hardened JSON extraction + discovery tools (reused)
+    _parse_llm_json,
+    discover_invoice_form,
+    extract_form_schema,
+)
 
 
 class BrowserSession(Protocol):
@@ -237,6 +241,74 @@ class FlowExecutor:
 
         return FlowResult(plan.goal, results, completed=True, escalated=False,
                           note="flow complete", replans=replans)
+
+
+def build_tool_handlers(
+    *,
+    session: BrowserSession,
+    complete: Completer,
+    resolve_customer: Callable[[str], str | None],
+    gated_submit: Callable[[dict], StepResult],
+    readback_fn: Callable[[dict], StepResult] | None = None,
+) -> dict[StepAction, StepHandler]:
+    """Wire the Brain's step vocabulary to the real tools.
+
+    The non-consequential steps (navigate / discover / resolve) run directly. The CONSEQUENTIAL write
+    (FILL_AND_SUBMIT) is delegated to an INJECTED ``gated_submit`` — the caller wires it to the gated
+    money path (enter_approved_payable with a ledger built from the discovered form + resolved
+    customer). This module therefore never performs an ungated write; it only orchestrates.
+
+    Shared ``context`` carries state across steps: ``form`` (DiscoveredInvoiceForm from DISCOVER_FORM),
+    ``customer_id`` / ``customer_name`` (from RESOLVE_CUSTOMER).
+    """
+
+    def navigate(step: FlowStep, ctx: dict) -> StepResult:
+        if not step.target:
+            return StepResult(step, ok=False, detail="NAVIGATE requires a target url")
+        session.navigate(step.target)
+        return StepResult(step, ok=True, detail=step.target)
+
+    def discover(step: FlowStep, ctx: dict) -> StepResult:
+        url = step.target or ctx.get("current_url", "")
+        if not url:
+            return StepResult(step, ok=False, detail="DISCOVER_FORM requires a form url")
+        form = discover_invoice_form(extract_form_schema(session, url), complete=complete)
+        ctx["form"] = form
+        # Fail closed: a form the Brain can't fully map (no amount/bill-to/submit) is not writable.
+        return StepResult(step, ok=form.is_writable(),
+                          detail="discovered writable form" if form.is_writable() else "form not writable")
+
+    def resolve(step: FlowStep, ctx: dict) -> StepResult:
+        if not step.target:
+            return StepResult(step, ok=False, detail="RESOLVE_CUSTOMER requires a customer name")
+        cid = resolve_customer(step.target)
+        if not cid:
+            return StepResult(step, ok=False, detail=f"no customer resolved for {step.target!r}")
+        ctx["customer_id"] = cid
+        ctx["customer_name"] = step.target
+        return StepResult(step, ok=True, detail=f"customer {cid}")
+
+    def fill_and_submit(step: FlowStep, ctx: dict) -> StepResult:
+        if not ctx.get("form"):
+            return StepResult(step, ok=False, detail="no discovered form in context (run DISCOVER_FORM first)")
+        if not ctx.get("customer_id"):
+            return StepResult(step, ok=False, detail="no resolved customer in context (run RESOLVE_CUSTOMER first)")
+        # Hand off to the caller-owned gated path. The Brain decides nothing about the money here.
+        return gated_submit(ctx)
+
+    def verify(step: FlowStep, ctx: dict) -> StepResult:
+        if readback_fn is None:
+            # The gated submit already verifies by deterministic readback before reaching DONE.
+            return StepResult(step, ok=True, detail="verification handled by the gated submit")
+        return readback_fn(ctx)
+
+    return {
+        StepAction.NAVIGATE: navigate,
+        StepAction.DISCOVER_FORM: discover,
+        StepAction.RESOLVE_CUSTOMER: resolve,
+        StepAction.FILL_AND_SUBMIT: fill_and_submit,
+        StepAction.READBACK_VERIFY: verify,
+    }
 
 
 _OBSERVE_JS = r"""
