@@ -17,16 +17,25 @@ files. If they diverge, the callback prints a loud `WARNING:` at startup — do 
 
 ## Quick start (one command)
 
-After the secrets in §1 are set, the launcher brings up all three local processes wired to one
+After the secrets in §1 are set, the launcher brings up all local processes wired to one
 workspace (the path-mismatch landmine is removed by construction):
 
 ```bash
+set -a; . ./.env; set +a   # load secrets (preflight + children + NGROK_* read the env)
 .venv/bin/python scripts/run_teammate.py \
   --client-config "$CLIENT_CONFIG" \
   --daily-digest-hour 7 --query UNSEEN
 ```
-Then add stable ingress (§5) and point the Slack app's Request URLs at it. Ctrl-C stops the group.
-The sections below are the same processes run individually (useful for debugging one at a time).
+This supervises **four** children sharing one workspace: site, callback, loop, **and the ngrok
+tunnel** (when `NGROK_STATIC_DOMAIN` is set and `ngrok` is on PATH; `--no-ngrok` to opt out). Folding
+ingress into the same supervisor removes the failure where the app is up but the tunnel is dead (or
+vice-versa) — the exact desync behind Slack's "the app did not respond". A startup **credential
+preflight** refuses to launch if a required secret is missing. ngrok forwards to `127.0.0.1`
+explicitly (a bare port can resolve to IPv6 `[::1]` and miss the IPv4-bound callback → `ERR_NGROK_8012`).
+Point the Slack app's Request URLs at the fixed domain once (§5). Ctrl-C stops the whole group.
+
+> Run this in a terminal you control (or a process manager) for durable always-on — the supervisor
+> must outlive your shell session. The sections below are the same processes run individually (debugging).
 
 ## 1. Secrets (`.env`, never committed)
 

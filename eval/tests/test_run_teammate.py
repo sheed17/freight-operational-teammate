@@ -37,6 +37,27 @@ def test_no_auto_enter_omits_the_mock_tms_flag():
     assert "--auto-enter-approved-mock-tms" not in cmds["callback"]
 
 
+def test_ngrok_supervised_forwards_fixed_domain_to_callback_port():
+    cmds = build_process_commands(
+        workspace="/tmp/ws", client_config="c", callback_port=8001,
+        ngrok_domain="frigidly-sixteen-shifter.ngrok-free.dev", ngrok_bin="ngrok",
+    )
+    ngrok = cmds["ngrok"]
+    # Modern --url=https://<domain> form, forwarding to 127.0.0.1 explicitly (a bare port lets ngrok
+    # pick IPv6 [::1] while the callback binds IPv4 only -> ERR_NGROK_8012 connection refused).
+    assert ngrok == [
+        "ngrok", "http", "--url=https://frigidly-sixteen-shifter.ngrok-free.dev",
+        "http://127.0.0.1:8001", "--log=stdout",
+    ]
+
+
+def test_ngrok_omitted_when_no_domain_or_no_binary():
+    assert "ngrok" not in build_process_commands(workspace="/tmp/ws", client_config="c")
+    assert "ngrok" not in build_process_commands(
+        workspace="/tmp/ws", client_config="c", ngrok_domain="d.ngrok-free.dev", ngrok_bin=None
+    )
+
+
 def _full_env() -> dict[str, str]:
     return {
         "NEYMA_IMAP_USERNAME": "u",

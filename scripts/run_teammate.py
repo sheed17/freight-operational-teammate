@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -81,12 +82,19 @@ def build_process_commands(
     mailbox: str = "Neyma-Test-Inbox",
     query: str = "UNSEEN",
     auto_enter_mock_tms: bool = True,
+    ngrok_domain: str | None = None,
+    ngrok_bin: str | None = "ngrok",
     python: str = sys.executable,
 ) -> dict[str, list[str]]:
-    """Build the three child commands, all sharing one workspace, DB, and heartbeat file.
+    """Build the child commands, all sharing one workspace, DB, and heartbeat file.
 
     The callback's --db/--status-file are derived from the SAME workspace the loop drives, so the
     `status` surface is provably wired to the loop's real DB and heartbeat.
+
+    When ``ngrok_domain`` and a resolvable ``ngrok_bin`` are given, the stable-ingress tunnel is
+    supervised as a fourth child forwarding the fixed domain to the callback port — so Slack's
+    Request URL can never silently point at a dead tunnel while the app itself is up (the exact
+    desync that makes `/neyma` report "the app did not respond").
     """
     ws = Path(workspace)
     db = ws / "workflow.sqlite3"
@@ -114,7 +122,21 @@ def build_process_commands(
         "--", "--client-config", client_config, "--real-extraction", "--provider", "openai",
         "--mailbox", mailbox, "--query", query, "--dispatch-mode", "LIVE", "--enable-live-slack-outbound",
     ]
-    return {"site": site, "callback": callback, "loop": loop}
+    commands = {"site": site, "callback": callback, "loop": loop}
+
+    if ngrok_domain and ngrok_bin:
+        # ngrok reads NGROK_AUTHTOKEN from the environment, so no prior `ngrok config` is required.
+        # Use the modern --url=https://<domain> form: the deprecated --domain flag on ngrok 3.39+
+        # binds an HTTP-only edge, so Slack's HTTPS Request URL fails the TLS handshake and reports
+        # "the app did not respond". --log=stdout keeps tunnel state in the supervised log.
+        url = ngrok_domain if "://" in ngrok_domain else f"https://{ngrok_domain}"
+        # Forward to 127.0.0.1 EXPLICITLY, not the bare port: ngrok resolves a bare port via
+        # "localhost", which can pick IPv6 [::1] while the callback binds IPv4 127.0.0.1 only —
+        # causing ERR_NGROK_8012 "connection refused" even though both processes are up.
+        commands["ngrok"] = [
+            ngrok_bin, "http", f"--url={url}", f"http://127.0.0.1:{callback_port}", "--log=stdout",
+        ]
+    return commands
 
 
 def main() -> int:
@@ -129,6 +151,8 @@ def main() -> int:
     parser.add_argument("--query", default="UNSEEN")
     parser.add_argument("--no-auto-enter", action="store_true", help="do not auto-enter approved payables into the mock TMS")
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
+    parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
+    parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
     args = parser.parse_args()
 
     # Fail loud at launch, not silently at first use, when a required credential is missing.
@@ -146,6 +170,13 @@ def main() -> int:
 
     workspace = Path(args.workspace)
     (workspace / "site").mkdir(parents=True, exist_ok=True)
+
+    ngrok_domain = None if args.no_ngrok else args.ngrok_domain
+    ngrok_bin = shutil.which("ngrok") if ngrok_domain else None
+    if ngrok_domain and not ngrok_bin:
+        print(f"NOTE: --ngrok-domain {ngrok_domain} given but the `ngrok` binary is not on PATH — "
+              "ingress NOT supervised. Install ngrok or run the tunnel separately (see docs/DEPLOYMENT.md).")
+
     commands = build_process_commands(
         workspace=workspace,
         client_config=args.client_config,
@@ -156,6 +187,8 @@ def main() -> int:
         mailbox=args.mailbox,
         query=args.query,
         auto_enter_mock_tms=not args.no_auto_enter,
+        ngrok_domain=ngrok_domain,
+        ngrok_bin=ngrok_bin,
     )
 
     procs: dict[str, subprocess.Popen] = {}
@@ -164,8 +197,12 @@ def main() -> int:
     for name, cmd in commands.items():
         procs[name] = subprocess.Popen(cmd)
         print(f"  started {name} (pid {procs[name].pid})")
-    print(f"\nSlack: point your app's Request URLs at https://<stable-host>/slack/actions and /slack/commands")
-    print(f"       (tunnel/forward to 127.0.0.1:{args.callback_port}). Type `status` in Slack to check health.")
+    host = f"https://{ngrok_domain}" if (ngrok_domain and ngrok_bin) else "https://<stable-host>"
+    print(f"\nSlack: point your app's Request URLs at {host}/slack/actions and {host}/slack/commands")
+    if ngrok_domain and ngrok_bin:
+        print(f"       (ingress supervised here -> 127.0.0.1:{args.callback_port}; fixed domain, set Slack once).")
+    else:
+        print(f"       (tunnel/forward to 127.0.0.1:{args.callback_port} yourself). Type `status` in Slack to check health.")
     print("Ctrl-C to stop the whole group.\n")
 
     try:
