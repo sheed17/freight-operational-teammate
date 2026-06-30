@@ -107,8 +107,15 @@ class WorkflowStore:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, timeout=30.0)
         self.conn.row_factory = sqlite3.Row
+        # The callback now runs concurrent threads (background agent operations + Slack reads + the
+        # loop), all sharing this on-disk store. WAL lets a reader and the writer proceed at once
+        # instead of blocking each other, and an explicit busy timeout turns a transient lock into a
+        # short wait rather than an OperationalError that would kill a background operation mid-write.
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=30000")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
         self._migrate()
 
     def close(self) -> None:
