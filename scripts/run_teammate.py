@@ -86,6 +86,7 @@ def build_process_commands(
     allowed_slack_users: tuple[str, ...] = (),
     allowed_slack_channel: str | None = None,
     operation_url_filter: str | None = None,
+    propose_clean_payables: bool = False,
     ngrok_domain: str | None = None,
     ngrok_bin: str | None = "ngrok",
     python: str = sys.executable,
@@ -134,6 +135,8 @@ def build_process_commands(
         "--", "--client-config", client_config, "--real-extraction", "--provider", "openai",
         "--mailbox", mailbox, "--query", query, "--dispatch-mode", "LIVE", "--enable-live-slack-outbound",
     ]
+    if propose_clean_payables:
+        loop.append("--propose-clean-payables")
     commands = {"site": site, "callback": callback, "loop": loop}
 
     if ngrok_domain and ngrok_bin:
@@ -166,6 +169,7 @@ def main() -> int:
     parser.add_argument("--allowed-slack-user", action="append", default=[], help="Slack user id allowed to approve OperationRouter runs")
     parser.add_argument("--allowed-slack-channel", default=os.environ.get("NEYMA_ALLOWED_SLACK_CHANNEL"))
     parser.add_argument("--operation-url-filter", default=os.environ.get("NEYMA_OPERATION_URL_FILTER"))
+    parser.add_argument("--propose-clean-payables", action="store_true", help="auto-post a 'Record payable [Approve & run]' button for each cleanly matched carrier invoice")
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
     parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
@@ -207,6 +211,7 @@ def main() -> int:
         allowed_slack_users=tuple(args.allowed_slack_user),
         allowed_slack_channel=args.allowed_slack_channel,
         operation_url_filter=args.operation_url_filter,
+        propose_clean_payables=args.propose_clean_payables,
         ngrok_domain=ngrok_domain,
         ngrok_bin=ngrok_bin,
     )
