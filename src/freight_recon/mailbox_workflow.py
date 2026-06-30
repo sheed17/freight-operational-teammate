@@ -27,6 +27,7 @@ from .delivery import (
     record_delivery_message,
     redact_delivery_message,
 )
+from .inbox_brain import assess_packet
 from .ingestion import AttachmentTextExtractor
 from .mailbox_intake import MailboxMessageRecord, MailboxPacketRun, MailboxPollResult, run_mailbox_intake
 from .extraction_bridge import reconciliation_from_extraction
@@ -68,6 +69,10 @@ class MailboxWorkflowPacketResult(BaseModel):
     review_created: bool = False
     delivery_created: bool = False
     skipped_reason: str | None = None
+    # Inbox Brain's proactive read of this packet's thread state + the next step it suggests. This only
+    # surfaces a proposal — nothing auto-runs from it (that stays gated by approval/lane graduation).
+    thread_state: str | None = None
+    suggested_action: str | None = None
 
 
 class MailboxWorkflowResult(BaseModel):
@@ -204,6 +209,10 @@ def run_mailbox_workflow(
                     record_delivery_message(store, message)
                 delivery_messages.append(redact_delivery_message(message) if redact_tokens else message)
 
+            assessment = assess_packet(
+                packet_run.load_id, missing=list(packet_run.packet.missing_required),
+                subject=f"Load {packet_run.load_id}",
+            )
             packet_results.append(
                 MailboxWorkflowPacketResult(
                     load_id=packet_run.load_id,
@@ -216,6 +225,8 @@ def run_mailbox_workflow(
                     extraneous_attachments=packet_run.packet.extraneous_attachments,
                     review_created=payload is not None,
                     delivery_created=message is not None,
+                    thread_state=assessment.thread_state.value,
+                    suggested_action=assessment.suggested_action,
                 )
             )
         for record in mailbox.unlinked_messages:

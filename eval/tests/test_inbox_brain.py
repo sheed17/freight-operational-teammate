@@ -102,6 +102,17 @@ def test_inbox_classifier_is_injection_safe_in_brain_operator():
     assert decision.kind in (DecisionKind.PROPOSE, DecisionKind.ESCALATE)
 
 
+def test_assess_packet_bridges_mailbox_doc_state():
+    from freight_recon.inbox_brain import assess_packet
+
+    # Missing POD -> chase it.
+    a = assess_packet("LD-7", missing=["pod"])
+    assert a.thread_state == ThreadState.MISSING_BACKUP
+    # Complete packet (carrier invoice present) -> reconcile, not improvise.
+    b = assess_packet("LD-8", missing=[])
+    assert b.thread_state == ThreadState.NEW_CARRIER_INVOICE
+
+
 def test_unactionable_inbound_is_ignored():
     classify = build_inbox_classifier()
     brain = BrainOperator(

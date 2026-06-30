@@ -133,6 +133,22 @@ def assess_inbox_item(item: InboxItem, *, complete=None) -> InboxAssessment:
     )
 
 
+def assess_packet(load_ref: str, *, missing: list[str], subject: str = "",
+                  required: tuple[str, ...] = REQUIRED_DOC_TYPES, complete=None) -> InboxAssessment:
+    """Assess a mailbox packet from the doc state the intake already computed (its ``missing_required``).
+
+    Bridges the live mailbox workflow to the Inbox Brain: ``delivered = required - missing``, so a
+    complete packet reads as a carrier invoice to reconcile and an incomplete one as missing backup —
+    using the same assessment logic as inbound email, no duplicated rules.
+    """
+    delivered = [d for d in required if d not in set(missing)]
+    item = InboxItem(
+        load_ref=load_ref, subject=subject, doc_types=delivered,
+        delivered_doc_types=delivered, required_doc_types=list(required),
+    )
+    return assess_inbox_item(item, complete=complete)
+
+
 def build_inbox_classifier(complete=None):
     """Return a ``classify(trigger) -> dict`` compatible with ``BrainOperator``'s inbound seam.
 
