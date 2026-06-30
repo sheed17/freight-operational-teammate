@@ -81,7 +81,23 @@ def test_value_digest_folds_in_ap_reconciliation_numbers(tmp_path):
         text = render_value_digest(digest)
         assert "Caught $1310.00" in text and "recovered $940.00" in text
         assert "Raised 1 customer invoice" in text and "$2850.00" in text
-        assert "hrs of back-office saved (estimated)" in text
+        assert "hrs of back-office saved (conservative estimate)" in text
+    finally:
+        store.close()
+
+
+def test_ar_invoice_never_inflates_the_carrier_overbilling_recovered_bucket(tmp_path):
+    # Hard AP/AR guard (owner trust-eroder #2): an AR customer invoice is its own bucket and must
+    # NEVER be counted as money "recovered" from carrier overbilling (an AP concept).
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        _applied(store, lane="raise_invoice", status="DONE", amount="9999.00")  # big AR invoice
+        daily = _daily(potential_overbilling_flagged="100.00", confirmed_recovered="40.00")
+        digest = build_value_digest(store, daily=daily)
+        # Recovered stays the AP number; the $9,999 AR invoice lives only in the invoiced bucket.
+        assert digest.overbilling_recovered == "40.00"
+        assert digest.invoiced_amount == "9999.00"
+        assert "9999" not in digest.overbilling_recovered and "9999" not in digest.overbilling_flagged
     finally:
         store.close()
 
@@ -99,9 +115,13 @@ def test_hours_saved_is_a_tunable_estimate(tmp_path):
 
 
 def test_render_receipt_shapes_per_status():
+    # Verified (read back) shows "(verified)"; a prose-only id shows "(reported by agent)".
     done = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="DONE",
-                                                     amount="2850.00", proof="INV-4912"))
+                                                     amount="2850.00", proof="INV-4912", verified=True))
     assert done.startswith("✅ Done — customer invoice · $2850.00 — INV-4912 (verified)")
+    reported = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="DONE",
+                                                         amount="2850.00", proof="INV-4912", verified=False))
+    assert "INV-4912 (reported by agent)" in reported and "(verified)" not in reported
 
     esc = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="ESCALATED",
                                                     summary="customer field missing"))
@@ -123,8 +143,19 @@ def test_receipt_from_result_is_proof_carrying():
     result = OperationResult("DONE", "raise_invoice", "invoice INV-7001 verified",
                              [{"action": "READ", "observed": "INV-7001"}])
     receipt = receipt_from_result(result, amount="3200.00")
-    assert receipt.proof == "INV-7001" and receipt.amount == "3200.00"
-    assert render_operation_receipt(receipt).startswith("✅ Done — customer invoice · $3200.00 — INV-7001")
+    assert receipt.proof == "INV-7001" and receipt.amount == "3200.00" and receipt.verified is True
+    assert "INV-7001 (verified)" in render_operation_receipt(receipt)
+
+
+def test_prose_only_id_is_reported_not_verified():
+    from freight_recon.operation_router import OperationResult
+    from freight_recon.roi_ledger import receipt_from_result
+
+    # The agent's chatty note names an id, but it never READ it back -> reported, NOT verified.
+    result = OperationResult("DONE", "raise_invoice", "all set, saved invoice INV-9 I think", [])
+    receipt = receipt_from_result(result, amount="100.00")
+    assert receipt.proof == "INV-9" and receipt.verified is False
+    assert "(reported by agent)" in render_operation_receipt(receipt)
 
 
 def test_empty_digest_is_honest_not_fake(tmp_path):
@@ -138,10 +169,12 @@ def test_empty_digest_is_honest_not_fake(tmp_path):
         store.close()
 
 
-def test_proof_extraction_falls_back_to_steps_then_none():
-    # No id in the note, but a READ step confirms the invoice number.
-    with_step = OperationReceipt(lane="raise_invoice", status="DONE")
+def test_proof_extraction_distinguishes_readback_from_prose():
     from freight_recon.roi_ledger import _extract_proof
 
-    assert _extract_proof("done", [{"action": "READ", "observed": "Invoice #4912"}]) == "4912"
-    assert _extract_proof("all good, saved it", []) is None
+    # A READ step's observed value -> verified True.
+    assert _extract_proof("done", [{"action": "READ", "observed": "Invoice #4912"}]) == ("4912", True)
+    # Prose only -> proof but verified False.
+    assert _extract_proof("saved invoice INV-5 ok", []) == ("INV-5", False)
+    # Nothing -> none.
+    assert _extract_proof("all good, saved it", []) == (None, False)

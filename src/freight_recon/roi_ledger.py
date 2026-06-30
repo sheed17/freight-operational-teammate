@@ -40,12 +40,14 @@ _PAYABLE_LANES = {"record_payable"}
 
 @dataclass(frozen=True)
 class MinutesPerTask:
-    """Tunable, honest estimate of the back-office minutes each handled task would have cost a human."""
+    """Tunable, deliberately CONSERVATIVE estimate of the back-office minutes each handled task would
+    have cost a human. We under-claim on purpose: an inflated hours number sitting next to real
+    recovered dollars would make an owner doubt the dollars too, and the dollars are the product."""
 
-    invoice_raised: int = 6
-    payable_recorded: int = 6
-    overbilling_reviewed: int = 8
-    auto_cleared: int = 4
+    invoice_raised: int = 4
+    payable_recorded: int = 4
+    overbilling_reviewed: int = 5
+    auto_cleared: int = 2
 
 
 class OperationReceipt(BaseModel):
@@ -54,7 +56,10 @@ class OperationReceipt(BaseModel):
     lane: str | None
     status: str  # DONE | ESCALATED | FAILED | REFUSED
     amount: str | None = None
-    proof: str | None = None  # the verifiable artifact (invoice #, record id) parsed from the result
+    proof: str | None = None  # the verifiable artifact (invoice #, record id)
+    # True only when ``proof`` came from the agent's own READ-back of the saved record — not from prose.
+    # A receipt may show an id without claiming "verified"; "verified" must mean we read it back.
+    verified: bool = False
     summary: str = ""
     channel_id: str | None = None
     thread_ts: str | None = None
@@ -84,12 +89,14 @@ def build_operation_receipts(store: WorkflowStore) -> list[OperationReceipt]:
         if event["event_type"] != APPLIED_EVENT:
             continue
         payload = event.get("payload") or {}
+        proof, verified = _extract_proof(str(payload.get("note", "")), payload.get("steps") or [])
         receipts.append(
             OperationReceipt(
                 lane=payload.get("lane"),
                 status=str(payload.get("status", "")) or "UNKNOWN",
                 amount=_amount_str(payload.get("approved_amount")),
-                proof=_extract_proof(str(payload.get("note", "")), payload.get("steps") or []),
+                proof=proof,
+                verified=verified,
                 summary=str(payload.get("summary", "")),
                 channel_id=payload.get("channel_id"),
                 thread_ts=payload.get("thread_ts"),
@@ -156,23 +163,26 @@ def receipt_from_result(result, *, amount: str | None = None) -> OperationReceip
     """Build an owner receipt straight from an OperationRouter result (duck-typed: lane/status/note/
     steps), so the live Slack post can be proof-carrying without re-reading the audit log."""
     note = str(getattr(result, "note", "") or "")
+    proof, verified = _extract_proof(note, getattr(result, "steps", None) or [])
     return OperationReceipt(
         lane=getattr(result, "lane", None),
         status=str(getattr(result, "status", "")) or "UNKNOWN",
         amount=_amount_str(amount),
-        proof=_extract_proof(note, getattr(result, "steps", None) or []),
+        proof=proof,
+        verified=verified,
         summary=note,
     )
 
 
 def render_operation_receipt(receipt: OperationReceipt) -> str:
-    """Shape #3: the proof-carrying receipt shown right after a run. Proof, not a bare claim."""
+    """Shape #3: the proof-carrying receipt shown right after a run. Proof, not a bare claim — and it
+    only says 'verified' when the id was actually read back, otherwise it says 'reported'."""
     money = f" · ${receipt.amount}" if receipt.amount else ""
     what = _lane_label(receipt.lane)
     if receipt.status == "DONE":
         proof = f" — {receipt.proof}" if receipt.proof else ""
-        verified = " (verified)" if receipt.proof else ""
-        return f"✅ Done — {what}{money}{proof}{verified}"
+        tag = (" (verified)" if receipt.verified else " (reported by agent)") if receipt.proof else ""
+        return f"✅ Done — {what}{money}{proof}{tag}"
     if receipt.status == "ESCALATED":
         return f"✋ I need you — {what}{money}: {receipt.summary or 'stopped and handed it to you'}"
     if receipt.status == "REFUSED":
@@ -202,7 +212,7 @@ def render_value_digest(digest: ValueDigest, *, period: str = "this week") -> st
         lines.append(
             f"• {digest.operations_escalated} handed back to you · {digest.operations_failed} failed"
         )
-    lines.append(f"• ~{digest.hours_saved_estimate} hrs of back-office saved (estimated)")
+    lines.append(f"• ~{digest.hours_saved_estimate} hrs of back-office saved (conservative estimate)")
     if not (
         _nonzero(digest.overbilling_flagged)
         or digest.invoices_raised
@@ -215,29 +225,39 @@ def render_value_digest(digest: ValueDigest, *, period: str = "this week") -> st
 # --- helpers ---------------------------------------------------------------------------------
 
 _PROOF_RE = re.compile(
-    r"(?:invoice|inv|record)\s*#?\s*([A-Za-z]{1,4}-?\d{2,}|\d{2,})|#(\d{2,})", re.IGNORECASE
+    r"\b(?P<lettered>[A-Za-z]{2,4}-?\d+)\b"          # INV-7001, INV-5, PO1234
+    r"|(?:invoice|inv|record)\s*#?\s*(?P<num>\d{2,})"  # invoice 4912, record #88
+    r"|#(?P<hash>\d{2,})",                            # #4912
+    re.IGNORECASE,
 )
 
 
-def _extract_proof(note: str, steps: list) -> str | None:
-    """Best-effort pull of the verifiable artifact (an invoice/record id) from the run result.
+def _proof_token(match) -> str:
+    if match.group("lettered"):
+        return match.group("lettered").strip()
+    if match.group("num"):
+        return match.group("num").strip()
+    return f"#{match.group('hash')}"
 
-    A receipt is only trustworthy if it points at something the owner can open and check, so we look
-    for an id token in the agent's DONE note, then in any READ step it confirmed itself with.
+
+def _extract_proof(note: str, steps: list) -> tuple[str | None, bool]:
+    """Pull the verifiable artifact (an invoice/record id) AND whether it was actually read back.
+
+    Returns ``(proof, verified)``. ``verified`` is True ONLY when the id came from a READ step's
+    observed value — the agent's own read-back of the saved record — which is the only thing that
+    earns a "verified" claim. An id mentioned merely in the DONE prose is returned as proof but
+    ``verified=False`` (shown to the owner as "reported", never "verified"). A receipt must not
+    launder a chatty sentence into a verification.
     """
-    for text in [note, *[_step_text(s) for s in steps]]:
-        if not text:
-            continue
-        match = _PROOF_RE.search(text)
-        if match:
-            return (match.group(1) or f"#{match.group(2)}").strip()
-    return None
-
-
-def _step_text(step) -> str:
-    if isinstance(step, dict):
-        return " ".join(str(step.get(k, "")) for k in ("observed", "why", "value", "target"))
-    return str(step or "")
+    for step in steps:
+        if isinstance(step, dict) and str(step.get("action", "")).upper() == "READ":
+            match = _PROOF_RE.search(str(step.get("observed", "")))
+            if match:
+                return _proof_token(match), True
+    match = _PROOF_RE.search(note or "")
+    if match:
+        return _proof_token(match), False
+    return None, False
 
 
 def _lane_label(lane: str | None) -> str:
