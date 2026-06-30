@@ -227,10 +227,11 @@ def openai_completer(model: str = "gpt-4.1-mini", *, temperature: float = 0.0) -
         from openai import OpenAI
 
         client = OpenAI()
-        resp = client.chat.completions.create(
-            model=model, temperature=temperature,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        kwargs: dict = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+        # gpt-5 and the o-series only accept the default temperature; sending one 400s.
+        if not any(model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")):
+            kwargs["temperature"] = temperature
+        resp = client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content or ""
 
     return _complete

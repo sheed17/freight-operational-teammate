@@ -135,12 +135,15 @@ class OperatorAgent:
                 if self.approve is None or not self.approve(action):
                     return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
 
-            ok = self._execute(action)
-            history.append({"action": action.kind.value, "target": action.target,
-                            "value": action.value, "why": action.why, "ok": ok})
+            ok, observed = self._execute(action)
+            entry = {"action": action.kind.value, "target": action.target,
+                     "value": action.value, "why": action.why, "ok": ok}
+            if observed is not None:
+                # Feed the result back so the model can actually USE what it read (it was blind to this).
+                entry["observed"] = str(observed)[:300]
             if not ok:
-                # let the model see the failure and adapt on the next loop (self-heal); don't hard-stop
-                history[-1]["note"] = "action failed; agent may adapt"
+                entry["note"] = "action failed; agent may adapt"
+            history.append(entry)
 
         return AgentResult(goal, "FAILED", history, f"did not finish within {self.max_steps} steps")
 
@@ -156,19 +159,20 @@ class OperatorAgent:
             why=str(parsed.get("why", "")),
         )
 
-    def _execute(self, action: LiveAction) -> bool:
+    def _execute(self, action: LiveAction) -> tuple[bool, str | None]:
+        """Run an action. Returns (ok, observed) — observed is the read-back text for READ, else None."""
         if action.kind == LiveActionKind.NAVIGATE:
-            return bool(self.actuator.navigate(action.target))
+            return bool(self.actuator.navigate(action.target)), None
         if action.kind == LiveActionKind.CLICK:
-            return bool(self.actuator.click(action.target))
+            return bool(self.actuator.click(action.target)), None
         if action.kind == LiveActionKind.TYPE:
-            return bool(self.actuator.type(action.target, action.value))
+            return bool(self.actuator.type(action.target, action.value)), None
         if action.kind == LiveActionKind.SELECT:
-            return bool(self.actuator.select(action.target, action.value))
+            return bool(self.actuator.select(action.target, action.value)), None
         if action.kind == LiveActionKind.READ:
-            self.actuator.read(action.target)
-            return True
-        return False
+            value = self.actuator.read(action.target)
+            return True, (value or "")
+        return False, None
 
 
 def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None) -> str:
