@@ -127,25 +127,41 @@ def _known_lane_names() -> set[str]:
     return {lane.name for lane in freight_lanes()}
 
 
-def _handle_graduation(store, verb: str, lane: str, *, actor: str, tenant: str = "default") -> str:
-    """Flip a lane between supervised and autonomous from Slack. Unknown lanes are refused, not created."""
+def _handle_graduation(store, verb: str, arg: str, *, actor: str, tenant: str = "default") -> str:
+    """Flip a lane between supervised and autonomous from Slack, optionally with a dollar ceiling:
+    `graduate raise_invoice 2500`. Unknown lanes are refused, not created."""
+    parts = arg.split()
+    lane = parts[0] if parts else ""
     if lane not in _known_lane_names():
         known = ", ".join(sorted(_known_lane_names()))
         return f"Unknown lane `{lane}`. Known lanes: {known}."
     grad = _graduation_for(store)
     if verb in ("graduate", "autonomous"):
-        grad.graduate(tenant, lane, actor=actor, reason="graduated from Slack")
-        return f":rocket: Lane *{lane}* is now *AUTONOMOUS* — I'll run approved work on it unattended."
+        ceiling = parts[1].lstrip("$") if len(parts) > 1 else None
+        grad.graduate(tenant, lane, actor=actor, reason="graduated from Slack", max_amount=ceiling)
+        cap = f" up to ${ceiling}/run" if ceiling else " (no dollar ceiling set — consider adding one)"
+        return f":rocket: Lane *{lane}* is now *AUTONOMOUS*{cap} — I'll run approved work on it unattended."
     grad.restrict(tenant, lane, actor=actor, reason="restricted from Slack")
     return f":lock: Lane *{lane}* is back to *SUPERVISED* — it will ask for your approval before running."
 
 
 def _render_autonomy(store, tenant: str = "default") -> str:
-    lanes = _graduation_for(store).autonomous_lanes(tenant)
+    grad = _graduation_for(store)
+    lanes = grad.autonomous_lanes(tenant)
     if not lanes:
         return ":lock: All lanes are *supervised* — nothing runs without your approval yet."
-    rows = "\n".join(f"• {e['lane']} (by {e.get('updated_by', '?')})" for e in lanes)
-    return "*Autonomous lanes* (run unattended on approved work):\n" + rows
+    rows = []
+    for e in lanes:
+        limits = []
+        if e.get("max_amount"):
+            limits.append(f"≤ ${e['max_amount']}/run")
+        if e.get("allowed_parties"):
+            limits.append(f"{len(e['allowed_parties'])} allowed parties")
+        if e.get("daily_cap") is not None:
+            limits.append(f"≤ {e['daily_cap']}/day")
+        suffix = f" — {', '.join(limits)}" if limits else " — no limits set"
+        rows.append(f"• {e['lane']}{suffix}")
+    return "*Autonomous lanes* (run unattended on approved work):\n" + "\n".join(rows)
 
 
 def _render_operational_status(ops_control: OpsControl, *, store=None, status_file=None) -> str:

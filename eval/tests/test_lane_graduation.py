@@ -91,6 +91,43 @@ def test_human_approval_still_works_regardless_of_graduation(tmp_path):
     assert res.status == "DONE"
 
 
+def test_guardrails_block_over_ceiling_and_record_within_limit(tmp_path):
+    grad = LaneGraduation(tmp_path / "grad.json")
+    grad.graduate("acme", "record_payable", actor="R", max_amount="2500.00", daily_cap=2)
+    llm = _scripted_llm([{"action": "DONE", "why": "payable recorded"}])
+    router = OperationRouter(
+        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        approved_amount_for=lambda i: i.params.get("amount", "1000.00"),
+        graduation=grad, tenant="acme",
+    )
+    # Over the ceiling -> escalates with a readable reason, does not run.
+    over = router.run(_operate("record the carrier payable for LD-1", {"amount": "9000.00"}))
+    assert over.status == "ESCALATED" and "ceiling" in over.note
+    assert grad.autonomous_runs_today("acme", "record_payable") == 0
+    # Within the ceiling -> runs unattended and counts against the daily cap.
+    ok = router.run(_operate("record the carrier payable for LD-2", {"amount": "1200.00"}))
+    assert ok.status == "DONE"
+    assert grad.autonomous_runs_today("acme", "record_payable") == 1
+
+
+def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
+    grad = LaneGraduation(tmp_path / "grad.json")
+    grad.graduate("acme", "raise_invoice", actor="R", allowed_parties=["Acme Corp"], daily_cap=1)
+    llm = _scripted_llm([{"action": "DONE", "why": "ok"}])
+    router = OperationRouter(
+        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
+    )
+    # Party not on the allowlist -> escalates.
+    off = router.run(_operate("invoice the load", {"customer": "Stranger LLC"}))
+    assert off.status == "ESCALATED" and "allowlist" in off.note
+    # Allowed party -> runs (and hits the daily cap of 1).
+    on = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
+    assert on.status == "DONE"
+    capped = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
+    assert capped.status == "ESCALATED" and "daily" in capped.note
+
+
 def test_no_graduation_policy_keeps_old_behavior(tmp_path):
     # Backward compat: without a graduation policy, a no-approval money lane still escalates (supervised).
     router = OperationRouter(

@@ -120,23 +120,41 @@ class OperationRouter:
                 "amount and I'll run it through the gates.",
             )
 
-        # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may
-        # only proceed if it has been graduated to autonomous for this tenant. Otherwise it stops and
-        # asks — autonomy is earned per lane, never assumed.
+        # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may only
+        # proceed if it is graduated AND the run is within the owner's guardrails (dollar ceiling, party
+        # allowlist, daily cap). Otherwise it stops and asks — crossing a limit escalates, never slips.
+        autonomous_run = False
         if approve is None and lane.requires_amount:
-            if self.graduation is not None and self.graduation.is_autonomous(self.tenant, lane.name):
-                approve = _autonomous_approval()
-            else:
+            party = _party_of(intent)
+            allowed, reason = (
+                self.graduation.autonomy_allows(self.tenant, lane.name, amount=amount, party=party)
+                if self.graduation is not None else (False, "lane is supervised")
+            )
+            if not allowed:
                 return OperationResult(
                     "ESCALATED", lane.name,
-                    "this lane is supervised — it needs your approval to run. Graduate it to autonomous "
-                    "once you trust it and I'll handle it unattended.",
+                    f"needs your approval — {reason}. Graduate it (with limits) once you trust it and "
+                    "I'll handle it unattended.",
                 )
+            approve = _autonomous_approval()
+            autonomous_run = True
 
         goal = lane.build_goal(intent)
         agent = self.build_agent(approved_amount=amount, approve=approve)
         result: AgentResult = agent.run(goal)
+        # Count an unattended run against the daily cap only once it actually ran.
+        if autonomous_run and self.graduation is not None:
+            self.graduation.record_autonomous_run(self.tenant, lane.name)
         return OperationResult(result.status, lane.name, result.note, list(result.steps))
+
+
+def _party_of(intent: CommandIntent) -> str | None:
+    """The counterparty an autonomy allowlist is checked against — the customer (AR) or carrier (AP)."""
+    params = intent.params or {}
+    for key in ("customer", "carrier", "party"):
+        if params.get(key):
+            return str(params[key])
+    return None
 
 
 def _autonomous_approval() -> Callable[[object], bool]:

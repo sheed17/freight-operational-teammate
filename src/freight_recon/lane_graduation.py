@@ -17,12 +17,17 @@ the OperationRouter can read it before deciding whether a no-human-approval run 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _today() -> str:
+    return date.today().isoformat()
 
 
 def _key(tenant: str, lane: str) -> str:
@@ -52,20 +57,36 @@ class LaneGraduation:
         entry = self._read().get("lanes", {}).get(_key(tenant, lane))
         return bool(entry and entry.get("autonomous"))
 
-    def graduate(self, tenant: str, lane: str, *, actor: str, reason: str = "") -> None:
-        self._set(tenant, lane, autonomous=True, actor=actor, reason=reason)
+    def graduate(
+        self, tenant: str, lane: str, *, actor: str, reason: str = "",
+        max_amount: str | None = None, allowed_parties: list[str] | None = None,
+        daily_cap: int | None = None,
+    ) -> None:
+        """Graduate a lane to autonomous, with optional GUARDRAILS — the limits that make autonomy safe
+        to flip on: a per-run dollar ceiling, an allowlist of carriers/customers, and a daily run cap."""
+        self._set(
+            tenant, lane, autonomous=True, actor=actor, reason=reason,
+            max_amount=max_amount, allowed_parties=allowed_parties, daily_cap=daily_cap,
+        )
 
     def restrict(self, tenant: str, lane: str, *, actor: str, reason: str = "") -> None:
         """Revoke autonomy — the lane goes back to supervised (needs per-run approval)."""
         self._set(tenant, lane, autonomous=False, actor=actor, reason=reason)
 
-    def _set(self, tenant: str, lane: str, *, autonomous: bool, actor: str, reason: str) -> None:
+    def _set(
+        self, tenant: str, lane: str, *, autonomous: bool, actor: str, reason: str,
+        max_amount: str | None = None, allowed_parties: list[str] | None = None,
+        daily_cap: int | None = None,
+    ) -> None:
         data = self._read()
         lanes = data.setdefault("lanes", {})
         lanes[_key(tenant, lane)] = {
             "tenant": tenant,
             "lane": lane,
             "autonomous": autonomous,
+            "max_amount": max_amount,
+            "allowed_parties": [p.lower() for p in (allowed_parties or [])],
+            "daily_cap": daily_cap,
             "updated_by": actor,
             "updated_at": _now(),
             "reason": reason,
@@ -77,9 +98,60 @@ class LaneGraduation:
         })
         self._write(data)
 
+    def guardrails(self, tenant: str, lane: str) -> dict:
+        entry = self._read().get("lanes", {}).get(_key(tenant, lane)) or {}
+        return {
+            "max_amount": entry.get("max_amount"),
+            "allowed_parties": entry.get("allowed_parties") or [],
+            "daily_cap": entry.get("daily_cap"),
+        }
+
+    def autonomy_allows(
+        self, tenant: str, lane: str, *, amount: str | None = None, party: str | None = None,
+    ) -> tuple[bool, str]:
+        """May this lane run UNATTENDED for this specific run? Checks graduation AND every guardrail.
+
+        Returns ``(allowed, reason)``. A 'no' is always a reason the owner can read in the escalation —
+        the whole point is that crossing a limit asks for approval instead of silently proceeding.
+        """
+        if not self.is_autonomous(tenant, lane):
+            return False, "lane is supervised"
+        rails = self.guardrails(tenant, lane)
+        ceiling = rails["max_amount"]
+        if ceiling and amount and _as_decimal(amount) > _as_decimal(ceiling):
+            return False, f"amount ${amount} exceeds your autonomous ceiling ${ceiling}"
+        allowed = rails["allowed_parties"]
+        if allowed and (party or "").lower() not in allowed:
+            return False, f"{party or 'this party'} is not on your autonomous allowlist for {lane}"
+        cap = rails["daily_cap"]
+        if cap is not None and self.autonomous_runs_today(tenant, lane) >= cap:
+            return False, f"daily autonomous cap of {cap} for {lane} reached"
+        return True, "within your autonomous limits"
+
+    def autonomous_runs_today(self, tenant: str, lane: str, *, day: str | None = None) -> int:
+        return int(self._read().get("runs", {}).get(_run_key(tenant, lane, day or _today()), 0))
+
+    def record_autonomous_run(self, tenant: str, lane: str, *, day: str | None = None) -> None:
+        data = self._read()
+        runs = data.setdefault("runs", {})
+        key = _run_key(tenant, lane, day or _today())
+        runs[key] = int(runs.get(key, 0)) + 1
+        self._write(data)
+
     def autonomous_lanes(self, tenant: str | None = None) -> list[dict]:
         lanes = self._read().get("lanes", {}).values()
         return [
             e for e in lanes
             if e.get("autonomous") and (tenant is None or e.get("tenant") == tenant)
         ]
+
+
+def _run_key(tenant: str, lane: str, day: str) -> str:
+    return f"{tenant}::{lane}::{day}"
+
+
+def _as_decimal(value) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
