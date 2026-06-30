@@ -46,7 +46,7 @@ Operating an unknown system safely is split into a 4-layer loop. **The LLM does 
 
 ## 3. Repo state
 - Branch: **`demos`** (PRs target `main`). Working tree clean as of handoff (HEAD `7e65f56`).
-- Test suite: `python -m pytest eval/tests -q` — **468 tests, all green**; full run ~5–6 min (slow imports).
+- Test suite: `python -m pytest eval/tests -q` — **473 tests, all green**; full run ~5–6 min (slow imports).
   Per-module runs are sub-second — prefer those while iterating.
 - Latest commits (newest first) — the agentic stack landed in order, each tested + committed:
   - `7e65f56` **Version B: request→agent→result bridge** (`operation_router.py`, bounded lanes)
