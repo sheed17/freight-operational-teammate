@@ -46,7 +46,7 @@ Operating an unknown system safely is split into a 4-layer loop. **The LLM does 
 
 ## 3. Repo state
 - Branch: **`demos`** (PRs target `main`). Working tree clean as of handoff (HEAD `7e65f56`).
-- Test suite: `python -m pytest eval/tests -q` — **452 tests, all green**; full run ~5–6 min (slow imports).
+- Test suite: `python -m pytest eval/tests -q` — **468 tests, all green**; full run ~5–6 min (slow imports).
   Per-module runs are sub-second — prefer those while iterating.
 - Latest commits (newest first) — the agentic stack landed in order, each tested + committed:
   - `7e65f56` **Version B: request→agent→result bridge** (`operation_router.py`, bounded lanes)
@@ -217,17 +217,20 @@ Do these in order. Each is shippable on its own. **Items 1 & 2 from the old plan
 4. **Persist learned self-heal repairs** — write a learned constraint (e.g. "invoice_number must be
    numeric") back into the screen-map / flow-recipe so the next run is deterministic, not re-healed.
    **Accept when:** a healed quirk is recorded and reused without a second heal; tested.
-5. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
-   rate con) and thread state (ready-for-billing / dispute reply / missing-backup), linked to a load.
-   This is what AUTO-TRIGGERS a graduated lane (the consumer of item 3). **Accept when:** classification
-   is tested on the synthetic corpus with measured accuracy.
+5. **DONE — Inbox Brain** (`1331729`, `inbox_brain.py`). Assesses an inbound item linked to a load into
+   a THREAD STATE (READY_TO_BILL / NEW_CARRIER_INVOICE / MISSING_BACKUP / DISPUTE_REPLY / INFORMATIONAL)
+   and a proposed lane; `build_inbox_classifier` plugs into `BrainOperator`'s inbound seam (DATA →
+   PROPOSE only; a graduated lane is what may later auto-run it). Deterministic core (measured on a
+   labelled set) + injected model for ambiguity. REMAINING: wire it to the live mailbox intake +
+   per-(doc) vision identifier so real inbound auto-surfaces; richer dispute path.
 6. **DONE (core) — ROI instrumentation + receipts ledger** (`d3b64eb`, surfaced live `5c5c71b`).
    `roi_ledger.py`: proof-carrying receipt + value digest (caught/recovered/invoiced/hours, only on
    DONE), reads the same audit log. Live via `/neyma roi`, the daily poster, and the operation receipt.
-   REMAINING: DSO/error-rate metrics + a richer audit/observability surface.
-7. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (alerts are
-   currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an email
-   alert; tested.
+   Plus **`/neyma audit`** activity timeline (`e2625e3`, `activity_log.py`) — owner-readable "show your
+   work" from the event log. REMAINING: DSO/error-rate metrics.
+7. **DONE — Slack-down secondary alert channel** (`8a54d86`, `alert_channel.py`). `send_critical_alert`
+   tries Slack then falls back to email (handles both an error result and a raising poster), never
+   raises. REMAINING: wire it into the heartbeat watchdog's poster path (needs SMTP config plumbed).
 8. **Clean up live-account debris (CONFIRM SCOPE FIRST).** TruckingOffice: duplicate "Iron Horse
    Logistics LLC" stubs + proof invoices 560003–560008 (keep real seed TQL/Echo/Coyote/C.H. Robinson,
    1000–1006). transporters.io: category "Freight Services", product "Freight Haulage", draft orders
