@@ -116,6 +116,17 @@ def test_render_receipt_shapes_per_status():
     assert failed.startswith("⚠️ Couldn't finish — carrier payable · $1200.00")
 
 
+def test_receipt_from_result_is_proof_carrying():
+    from freight_recon.operation_router import OperationResult
+    from freight_recon.roi_ledger import receipt_from_result
+
+    result = OperationResult("DONE", "raise_invoice", "invoice INV-7001 verified",
+                             [{"action": "READ", "observed": "INV-7001"}])
+    receipt = receipt_from_result(result, amount="3200.00")
+    assert receipt.proof == "INV-7001" and receipt.amount == "3200.00"
+    assert render_operation_receipt(receipt).startswith("✅ Done — customer invoice · $3200.00 — INV-7001")
+
+
 def test_empty_digest_is_honest_not_fake(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3")
     try:

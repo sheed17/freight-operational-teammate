@@ -45,6 +45,25 @@ class _Store:
         return [_Run("LD-1", "NEEDS_REVIEW", "variance $300"), _Run("LD-2", "DONE")]
 
 
+def test_handle_command_roi_reports_what_neyma_did(tmp_path):
+    from freight_recon.workflow import WorkflowStore
+
+    oc = OpsControl(tmp_path / "ops.json")
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        store.add_security_event(
+            "slack_operation_applied", actor="R",
+            payload={"lane": "raise_invoice", "status": "DONE", "approved_amount": "2850.00",
+                     "note": "invoice INV-4912 verified", "steps": []},
+        )
+        out = handle_ops_command("roi", actor="R", ops_control=oc, store=store)
+        assert "Raised 1 customer invoice" in out and "$2850.00" in out
+        # No store -> falls through to help rather than erroring.
+        assert "Commands" in handle_ops_command("roi", actor="R", ops_control=oc)
+    finally:
+        store.close()
+
+
 def test_handle_command_unresolved_and_load_status(tmp_path):
     oc = OpsControl(tmp_path / "ops.json")
     store = _Store()

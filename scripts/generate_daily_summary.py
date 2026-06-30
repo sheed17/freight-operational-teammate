@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover
     pass
 
 from freight_recon.review import ReviewPayload, ReviewRoute  # noqa: E402
+from freight_recon.roi_ledger import build_value_digest, render_value_digest  # noqa: E402
 from freight_recon.summary import build_daily_summary, render_daily_summary  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 from run_review import DEFAULT_OUTPUT as DEFAULT_REVIEW_PAYLOADS  # noqa: E402
@@ -45,6 +46,8 @@ def main() -> int:
     store = WorkflowStore(args.db)
     try:
         summary = build_daily_summary(store, payloads)
+        # Fold the AP reconciliation numbers in with the agent-operation receipts into one ROI digest.
+        value_digest = build_value_digest(store, daily=summary)
     finally:
         store.close()
 
@@ -52,7 +55,7 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary.model_dump(mode="json"), indent=2), encoding="utf-8")
     print(f"Wrote: {output}")
-    text = render_daily_summary(summary)
+    text = render_daily_summary(summary) + "\n\n" + render_value_digest(value_digest, period="today")
     if args.text:
         print()
         print(text)

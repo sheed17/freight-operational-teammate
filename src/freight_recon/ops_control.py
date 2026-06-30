@@ -76,8 +76,8 @@ class TmsWritesPausedError(Exception):
 _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "REQUESTED_BACKUP"}
 
 _HELP = (
-    "Commands: `status` (what is Neyma doing) | `pause tms writes` | `resume tms writes` | "
-    "`show unresolved` | `status <LOAD-ID>`"
+    "Commands: `status` (what is Neyma doing) | `roi` (what Neyma recovered/did) | "
+    "`pause tms writes` | `resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
 )
 
 
@@ -93,6 +93,10 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         return f":unlock: TMS writes *RESUMED* by {actor}."
     if cmd in ("status", "ops status", "health", "what is neyma doing", "whats neyma doing", "what's neyma doing"):
         return _render_operational_status(ops_control, store=store, status_file=status_file)
+    if cmd in ("roi", "value", "what have you done", "what neyma did", "savings") and store is not None:
+        from .roi_ledger import build_value_digest, render_value_digest
+
+        return render_value_digest(build_value_digest(store), period="so far")
     if cmd in ("show unresolved", "unresolved", "show open") and store is not None:
         return _render_unresolved(store)
     if cmd.startswith("status ") and store is not None:

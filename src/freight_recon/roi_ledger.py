@@ -152,6 +152,19 @@ def build_value_digest(
     )
 
 
+def receipt_from_result(result, *, amount: str | None = None) -> OperationReceipt:
+    """Build an owner receipt straight from an OperationRouter result (duck-typed: lane/status/note/
+    steps), so the live Slack post can be proof-carrying without re-reading the audit log."""
+    note = str(getattr(result, "note", "") or "")
+    return OperationReceipt(
+        lane=getattr(result, "lane", None),
+        status=str(getattr(result, "status", "")) or "UNKNOWN",
+        amount=_amount_str(amount),
+        proof=_extract_proof(note, getattr(result, "steps", None) or []),
+        summary=note,
+    )
+
+
 def render_operation_receipt(receipt: OperationReceipt) -> str:
     """Shape #3: the proof-carrying receipt shown right after a run. Proof, not a bare claim."""
     money = f" · ${receipt.amount}" if receipt.amount else ""

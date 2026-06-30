@@ -819,11 +819,16 @@ def _start_operation_background_run(
             store.close()
         if poster is not None:
             try:
+                from .roi_ledger import receipt_from_result, render_operation_receipt
+
+                receipt = render_operation_receipt(
+                    receipt_from_result(result, amount=approval.approved_amount)
+                )
                 poster(
                     {
                         "channel_id": channel_id,
                         "thread_ts": thread_ts,
-                        "text": result.to_slack(),
+                        "text": receipt,
                         "status": result.status,
                         "lane": result.lane,
                     }
