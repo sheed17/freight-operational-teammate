@@ -87,6 +87,7 @@ class OperatorAgent:
         approve: Callable[[LiveAction], bool] | None = None,
         money_fence: MoneyFence | None = None,
         max_steps: int = 20,
+        stuck_after: int = 3,
     ) -> None:
         self.actuator = actuator
         self.complete = complete
@@ -94,12 +95,29 @@ class OperatorAgent:
         self.approve = approve
         self.fence = money_fence or MoneyFence()
         self.max_steps = max_steps
+        self.stuck_after = stuck_after  # escalate after this many identical actions in a row
 
     def run(self, goal: str) -> AgentResult:
         history: list[dict] = []
+        repeats = 0
+        last_sig: tuple | None = None
         for _ in range(self.max_steps):
             observation = self.actuator.observe()
-            action = self._decide(goal, observation, history)
+            # If the agent has been repeating itself, warn it to change tack before it decides again.
+            nudge = None
+            if repeats >= 1:
+                nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
+                         "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
+                         "the page's navigation — or ESCALATE if you are stuck.")
+            action = self._decide(goal, observation, history, nudge=nudge)
+
+            # No-progress guard: identical action repeated too many times -> stop, don't grind/loop.
+            sig = (action.kind, action.target)
+            repeats = repeats + 1 if sig == last_sig else 0
+            last_sig = sig
+            if repeats >= self.stuck_after and action.kind not in (LiveActionKind.DONE, LiveActionKind.ESCALATE):
+                return AgentResult(goal, "ESCALATED", history,
+                                   f"stuck: repeated {action.kind.value} {action.target!r} with no progress")
 
             if action.kind == LiveActionKind.DONE:
                 return AgentResult(goal, "DONE", history, action.why or "goal achieved")
@@ -126,8 +144,8 @@ class OperatorAgent:
 
         return AgentResult(goal, "FAILED", history, f"did not finish within {self.max_steps} steps")
 
-    def _decide(self, goal: str, observation: dict, history: list[dict]) -> LiveAction:
-        parsed = _parse_llm_json(self.complete(_decide_prompt(goal, observation, history)))
+    def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None) -> LiveAction:
+        parsed = _parse_llm_json(self.complete(_decide_prompt(goal, observation, history, nudge)))
         raw = parsed.get("action") if isinstance(parsed, dict) else None
         if raw not in LiveActionKind._value2member_map_:
             return LiveAction(LiveActionKind.ESCALATE, why=f"model returned unknown action {raw!r}")
@@ -153,10 +171,12 @@ class OperatorAgent:
         return False
 
 
-def _decide_prompt(goal: str, observation: dict, history: list[dict]) -> str:
+def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None) -> str:
+    warn = f"\n!!! {nudge}\n" if nudge else ""
     return (
         "You are an autonomous back-office agent operating an unfamiliar freight TMS in a browser, one "
-        "step at a time, to accomplish a goal. Decide the SINGLE next action from the current screen.\n\n"
+        "step at a time, to accomplish a goal. Decide the SINGLE next action from the current screen.\n"
+        + warn + "\n"
         f"GOAL: {goal}\n\n"
         f"CURRENT SCREEN (observation):\n{json.dumps(observation, indent=1)[:3500]}\n\n"
         f"RECENT ACTIONS:\n{json.dumps(history[-6:], indent=1)[:1500]}\n\n"

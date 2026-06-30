@@ -109,9 +109,15 @@ _OBSERVE_JS = r"""
     .map(e=>({kind:e.tagName.toLowerCase(), type:e.type||'', label:lbl(e).slice(0,40), name:e.name||'', value:(e.value||'').slice(0,40)}));
   var actions=[...document.querySelectorAll('button,a[href],[role=button],input[type=submit]')]
     .map(e=>((e.innerText||e.value||'').trim())).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,30);
+  // Navigation targets (text -> url) so the agent can NAVIGATE directly instead of fumbling clicks.
+  var navSeen={}, nav=[];
+  [...document.querySelectorAll('a[href]')].forEach(function(a){
+    var t=(a.innerText||'').trim(), h=a.getAttribute('href')||'';
+    if(t && h && h.indexOf('#')!==0 && h.indexOf('javascript:')!==0 && !navSeen[h]){ navSeen[h]=1; nav.push({text:t.slice(0,40), url:h}); }
+  });
   var errors=[...document.querySelectorAll('.alert-danger,.error,.invalid-feedback,.is-invalid,.field_with_errors')]
     .map(e=>e.innerText.trim()).filter(Boolean).slice(0,6);
   return {url:location.href, headings:[...document.querySelectorAll('h1,h2,h3')].map(e=>e.innerText.trim()).filter(Boolean).slice(0,6),
-          inputs:inputs, actions:actions, errors:errors};
+          inputs:inputs, actions:actions, nav:nav.slice(0,30), errors:errors};
 })()
 """

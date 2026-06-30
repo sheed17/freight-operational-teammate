@@ -100,3 +100,17 @@ def test_escalate_and_max_steps_fail_closed():
 def test_unknown_model_action_escalates():
     res = OperatorAgent(actuator=FakeActuator(), complete=lambda _p: json.dumps({"action": "DROP_TABLE"})).run("x")
     assert res.status == "ESCALATED"
+
+
+def test_agent_escalates_when_stuck_repeating_instead_of_looping():
+    # The real failure mode observed live: the model clicks "Close" forever. The loop guard must
+    # stop it (escalate) rather than grind to max_steps.
+    act = FakeActuator()
+    res = OperatorAgent(
+        actuator=act,
+        complete=lambda _p: json.dumps({"action": "CLICK", "target": "Close", "why": "close modal"}),
+        max_steps=20, stuck_after=3,
+    ).run("find the invoices")
+    assert res.status == "ESCALATED" and "stuck" in res.note
+    # It stopped early, not after 20 identical clicks.
+    assert len([c for c in act.calls if c == ("click", "Close")]) <= 3
