@@ -64,6 +64,23 @@ def test_handle_command_roi_reports_what_neyma_did(tmp_path):
         store.close()
 
 
+def test_handle_command_graduation_flips_lane_autonomy(tmp_path):
+    from freight_recon.workflow import WorkflowStore
+
+    oc = OpsControl(tmp_path / "ops.json")
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        assert "supervised" in handle_ops_command("autonomy", actor="R", ops_control=oc, store=store)
+        out = handle_ops_command("graduate raise_invoice", actor="R", ops_control=oc, store=store)
+        assert "AUTONOMOUS" in out
+        assert "raise_invoice" in handle_ops_command("autonomy", actor="R", ops_control=oc, store=store)
+        assert "SUPERVISED" in handle_ops_command("supervise raise_invoice", actor="R", ops_control=oc, store=store)
+        # Unknown lane is refused, not created.
+        assert "Unknown lane" in handle_ops_command("graduate frobnicate", actor="R", ops_control=oc, store=store)
+    finally:
+        store.close()
+
+
 def test_handle_command_unresolved_and_load_status(tmp_path):
     oc = OpsControl(tmp_path / "ops.json")
     store = _Store()

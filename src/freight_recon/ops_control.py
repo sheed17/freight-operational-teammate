@@ -77,7 +77,8 @@ _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "RE
 
 _HELP = (
     "Commands: `status` (what is Neyma doing) | `roi` (what Neyma recovered/did) | "
-    "`pause tms writes` | `resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
+    "`autonomy` · `graduate <lane>` · `supervise <lane>` | `pause tms writes` | "
+    "`resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
 )
 
 
@@ -97,11 +98,50 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         from .roi_ledger import build_value_digest, render_value_digest
 
         return render_value_digest(build_value_digest(store), period="so far")
+    if cmd in ("autonomy", "show autonomy", "graduations", "what is autonomous") and store is not None:
+        return _render_autonomy(store)
+    if store is not None and (raw_first := cmd.split(None, 1)[0]) in (
+        "graduate", "autonomous", "supervise", "restrict"
+    ) and len(raw.split(None, 1)) == 2:
+        return _handle_graduation(store, raw_first, raw.split(None, 1)[1].strip(), actor=actor)
     if cmd in ("show unresolved", "unresolved", "show open") and store is not None:
         return _render_unresolved(store)
     if cmd.startswith("status ") and store is not None:
         return _render_load_status(store, raw.split(None, 1)[1].strip())
     return _HELP
+
+
+def _graduation_for(store):
+    from .lane_graduation import LaneGraduation
+
+    return LaneGraduation(Path(store.db_path).parent / "lane_graduation.json")
+
+
+def _known_lane_names() -> set[str]:
+    from .operation_router import freight_lanes
+
+    return {lane.name for lane in freight_lanes()}
+
+
+def _handle_graduation(store, verb: str, lane: str, *, actor: str, tenant: str = "default") -> str:
+    """Flip a lane between supervised and autonomous from Slack. Unknown lanes are refused, not created."""
+    if lane not in _known_lane_names():
+        known = ", ".join(sorted(_known_lane_names()))
+        return f"Unknown lane `{lane}`. Known lanes: {known}."
+    grad = _graduation_for(store)
+    if verb in ("graduate", "autonomous"):
+        grad.graduate(tenant, lane, actor=actor, reason="graduated from Slack")
+        return f":rocket: Lane *{lane}* is now *AUTONOMOUS* — I'll run approved work on it unattended."
+    grad.restrict(tenant, lane, actor=actor, reason="restricted from Slack")
+    return f":lock: Lane *{lane}* is back to *SUPERVISED* — it will ask for your approval before running."
+
+
+def _render_autonomy(store, tenant: str = "default") -> str:
+    lanes = _graduation_for(store).autonomous_lanes(tenant)
+    if not lanes:
+        return ":lock: All lanes are *supervised* — nothing runs without your approval yet."
+    rows = "\n".join(f"• {e['lane']} (by {e.get('updated_by', '?')})" for e in lanes)
+    return "*Autonomous lanes* (run unattended on approved work):\n" + rows
 
 
 def _render_operational_status(ops_control: OpsControl, *, store=None, status_file=None) -> str:

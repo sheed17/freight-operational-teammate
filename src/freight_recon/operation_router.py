@@ -85,10 +85,16 @@ class OperationRouter:
         lanes: list[OperationLane],
         build_agent: Callable[..., OperatorAgent],
         approved_amount_for: Callable[[CommandIntent], str | None] | None = None,
+        graduation=None,
+        tenant: str = "default",
     ) -> None:
         self.lanes = lanes
         self.build_agent = build_agent
         self.approved_amount_for = approved_amount_for or (lambda _i: None)
+        # Optional LaneGraduation policy: governs whether a consequential lane may run WITHOUT a
+        # per-run human approval. Absent/ungraduated => supervised (fail-safe).
+        self.graduation = graduation
+        self.tenant = tenant
 
     def lane_for(self, intent: CommandIntent) -> OperationLane | None:
         for lane in self.lanes:
@@ -114,10 +120,37 @@ class OperationRouter:
                 "amount and I'll run it through the gates.",
             )
 
+        # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may
+        # only proceed if it has been graduated to autonomous for this tenant. Otherwise it stops and
+        # asks — autonomy is earned per lane, never assumed.
+        if approve is None and lane.requires_amount:
+            if self.graduation is not None and self.graduation.is_autonomous(self.tenant, lane.name):
+                approve = _autonomous_approval()
+            else:
+                return OperationResult(
+                    "ESCALATED", lane.name,
+                    "this lane is supervised — it needs your approval to run. Graduate it to autonomous "
+                    "once you trust it and I'll handle it unattended.",
+                )
+
         goal = lane.build_goal(intent)
         agent = self.build_agent(approved_amount=amount, approve=approve)
         result: AgentResult = agent.run(goal)
         return OperationResult(result.status, lane.name, result.note, list(result.steps))
+
+
+def _autonomous_approval() -> Callable[[object], bool]:
+    """A single-use approval a graduated lane grants itself: exactly ONE consequential commit may run
+    unattended; any further consequential action still escalates (autonomy is bounded, not blanket)."""
+    used = {"spent": False}
+
+    def approve(_action) -> bool:
+        if used["spent"]:
+            return False
+        used["spent"] = True
+        return True
+
+    return approve
 
 
 def freight_lanes() -> list[OperationLane]:
