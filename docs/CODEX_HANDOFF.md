@@ -45,32 +45,61 @@ Operating an unknown system safely is split into a 4-layer loop. **The LLM does 
 - **Idempotency** via the invoice number; duplicate/ambiguous readback rows fail closed.
 
 ## 3. Repo state
-- Branch: **`demos`** (PRs target `main`). Working tree clean as of handoff.
-- Test suite: `.venv/bin/python -m pytest eval/tests -q` — ~330 tests, full run ~5–6 min. All green.
-- This session's commits (newest first):
-  - `27a689b` Self-heal loop (agent repairs from the TMS's own validation error, amount invariant)
-  - `4ce735f` Generic discovered-map ledger (gated write driven by agent-authored selectors)
-  - `26dbf28` Agentic screen discovery (agent authors the TMS map from the live DOM)
-  - `3318e40` First autonomous gated write to the real TMS (TruckingOffice) end-to-end
-  - `d4d1170` Deterministic gated TruckingOffice invoice write + readback
-  - `18059c8` Grounded TruckingOffice screen-map (configs/tms/truckingoffice_screen_map.json)
-  - `5b3d64f` Supervise ngrok ingress in run_teammate + IPv4 upstream (ERR_NGROK_8012) fix
-  - `7d30b58` Digest-spam fix + stale-heartbeat watchdog + startup credential preflight
+- Branch: **`demos`** (PRs target `main`). Working tree clean as of handoff (HEAD `7e65f56`).
+- Test suite: `python -m pytest eval/tests -q` — **423 tests, all green**; full run ~5–6 min (slow imports).
+  Per-module runs are sub-second — prefer those while iterating.
+- Latest commits (newest first) — the agentic stack landed in order, each tested + committed:
+  - `7e65f56` **Version B: request→agent→result bridge** (`operation_router.py`, bounded lanes)
+  - `d388710` Agent perceives action results + GPT-5/o-series temperature compat (live goals complete)
+  - `4729c3a` Agent robustness: no-progress loop guard + navigation affordance (from a live failure)
+  - `3dedf9d` Runner to let the embedded Operator Agent drive a live TMS
+  - `f11e6fa` Real CDP Actuator: human-like browser hands (real keyboard input cracks SPA value-registration)
+  - `a45a3bc` Embedded Operator Agent: the model-in-the-loop driver that operates a TMS on its own
+  - `6aabaa8` Store transporters.io grounding as agent-learnable knowledge (n=2)
+  - `2d91afb` Brain runtime: wire FILL_AND_SUBMIT to the gated money path
+  - `d003fb7` Multi-step gated write: drive wizard-shaped TMS flows (closes the n=2 gap)
+  - `faae165` Brain Operator: one front door for owner requests AND inbound events
+  - `e881f7e`/`1a6f444`/`fa58da7`/`c3b43b3` Operator Brain bricks (delegate bridge, Slack delegate core,
+    crystallize→replay, executor handlers) + the AP/AR split (`workflow_direction.py`) before them.
 
 ### Key files
-Agnostic agent stack (NEW this session — review priority):
-- `src/freight_recon/cdp_session.py` — `CdpBrowserSession`: navigate/evaluate over CDP; **must** use
-  `suppress_origin=True` (Chrome 111+ rejects browser-origin CDP sockets).
-- `src/freight_recon/screen_discovery.py` — discovery agent (`extract_form_schema`,
-  `discover_invoice_form`, `openai_completer`) + self-heal reasoning (`propose_field_repair`).
-- `src/freight_recon/discovered_write.py` — `DiscoveredInvoiceLedger` (generic, self-healing).
-- `src/freight_recon/truckingoffice_write.py` — TruckingOffice seams: `find_or_create_customer`,
-  `numeric_invoice_number`, `parse_invoice_readback`, `authorize_write_host`, plus a (now largely
-  superseded) TruckingOffice-specific ledger.
-- Runners: `scripts/discover_tms_screen.py`, `scripts/enter_truckingoffice_invoice.py`,
-  `scripts/enter_invoice_discovered.py` (full loop: discover → generic ledger → self-heal;
-  `--induce-heal` forces a real validation error to demo recovery; `--acknowledge-real-write` required).
-- Tests: `eval/tests/test_screen_discovery.py`, `test_discovered_write.py`, `test_truckingoffice_write.py`.
+**The embedded agent stack (the headline — review hardest):**
+- `src/freight_recon/operator_agent.py` — **`OperatorAgent.run(goal)`**: the model-in-the-loop driver
+  (observe→reason→act→verify). `MoneyFence` (model never supplies a money value — approved amount is
+  substituted; consequential clicks need `approve`), no-progress loop guard, READ results fed back into
+  history. PROVEN LIVE: a GPT-5.4 brain autonomously navigated transporters.io to a result.
+- `src/freight_recon/cdp_actuator.py` — `CdpActuator`: the agent's real browser hands over CDP. Uses
+  **`Input.insertText` (real keyboard)** — the only thing that makes JS-SPA TMSs register a typed value;
+  prefers VISIBLE fields (never a hidden mirror); exposes nav affordances so the agent NAVIGATEs instead
+  of fumbling clicks.
+- `src/freight_recon/operation_router.py` — **Version B bridge**: request → KNOWN lane → bounded goal →
+  `OperatorAgent` → receipt. `freight_lanes()` (raise_invoice, record_payable, extensible). A request
+  matching no lane is REFUSED (never improvised); money lanes fail closed without an approved amount.
+- `src/freight_recon/operator_brain.py` — planning core (`observe`, `plan_flow`, `FlowPlan`/`FlowStep`,
+  `FlowExecutor` with gated handlers, `build_tool_handlers`). The propose/plan path (parallel to the
+  live-drive path in `operator_agent`).
+- `src/freight_recon/brain_operator.py` — `BrainOperator.dispatch(Trigger)` → `Decision`: one front
+  door for owner commands AND inbound docs; **prompt-injection boundary** (only authenticated owner
+  commands are obeyed; doc/email content is DATA → can only ever PROPOSE).
+- `src/freight_recon/slack_delegate.py` — `authorize_command` (authz/injection gate), `interpret_command`
+  (NL → intent), `propose_operation`, `handle_owner_command`.
+- `src/freight_recon/brain_runtime.py` — `build_gated_submit`: bridges a plan's FILL_AND_SUBMIT to
+  `enter_approved_payable` (ok only on a verified DONE).
+- `src/freight_recon/multistep_write.py` — `MultiStepInvoiceLedger` for wizard flows (EXACTLY ONE money
+  sub-step). `flow_recipe.py` — crystallize a learned flow → deterministic replay.
+- `src/freight_recon/workflow_direction.py` — `WorkflowDirection` (CARRIER_PAYABLE vs CUSTOMER_INVOICE)
+  threaded through reconciliation/review/execution; direction-aware Slack copy.
+
+**Discovery + gated write (prior, still the deterministic hands):**
+- `cdp_session.py` (`CdpBrowserSession`, `suppress_origin=True`, `.command()` passthrough for Input
+  domain), `screen_discovery.py` (discover + `propose_field_repair` self-heal + `openai_completer` —
+  omits temperature for gpt-5/o-series), `discovered_write.py` (`DiscoveredInvoiceLedger`),
+  `truckingoffice_write.py` (TMS seams + `authorize_write_host`).
+
+**Runners:** `scripts/run_operate_request.py` (the FULL Version-B loop live: request→intent→lane→agent→
+receipt), `scripts/run_operator_agent.py` (drive the agent toward a raw goal), `discover_tms_screen.py`,
+`enter_invoice_discovered.py`, `enter_truckingoffice_invoice.py`. Live runners need the CDP Chrome logged
+in and `--approve-consequential` (supervised) to allow a commit; otherwise they escalate.
 
 Existing core (prior sessions — context):
 - `src/freight_recon/tms_write.py` — the gated write spine: `enter_approved_payable`,
@@ -143,51 +172,71 @@ code executes+verifies, money gated, self-heal on drift, supervised per-tenant r
 system every time." Real remaining prod plumbing: per-tenant session/auth + credential vaulting
 (today = a human-logged-in CDP Chrome), multi-tenant isolation, full observability/audit.
 
+**The request→agent→result loop is "Version B" — BOUNDED, never open-ended (decided 2026-06-29).**
+The product is: a request comes in, the embedded agent performs the bounded work and returns a result.
+The line that must not be crossed: an **open-ended "do whatever the request says / free goal" agent is
+the demo version and is forbidden in money ops** — it eventually does something confident and wrong.
+The shipped boundary is `operation_router.py`: a request maps to a **KNOWN workflow lane** (`freight_lanes()`)
+→ a bounded goal → the agent drives it. A request matching no lane is **REFUSED, not improvised**. Do
+NOT "improve" this by letting the agent free-form goals or auto-pick amounts. New capabilities are added
+as new *lanes* (workflow packs), each with its own bounded goal and gates.
+
 **Working agreement:** execute the roadmap **autonomously, in pieces** — build → test → honest report
 of gaps → commit (branch `demos`) — without waiting for step-by-step prompting. **Finish each piece;
 do not pivot.** Only propose an alternative if it is genuinely better *along the build path*, and say
 so explicitly. Never claim DONE without verification; report failing tests as failing. If something is
 needed that only the owner (Rasheed) can provide, ask for it precisely — do not guess.
 
-## 6. Ordered execution plan — next pieces (acceptance criteria)
-Do these in order. Each is shippable on its own.
+**DO NOT, without Rasheed's explicit go-ahead in the moment (these are outward/irreversible):**
+- run a **live write against a real TMS account** (TruckingOffice / transporters.io). Building, testing
+  with fakes, and dry runs are fine; an actual `--approve-consequential` live commit needs his OK first.
+- send Slack/email to anyone, push commits, open PRs, or touch the always-on teammate's live creds.
+- delete/clean live-account data (the debris cleanup in §6) — confirm scope first.
+- change the driver model, loosen any money invariant, or relax the lane boundary.
+Everything else in the ordered plan below: proceed autonomously, build+test+commit, report honestly.
 
-1. **AP vs AR split at the reconciliation layer** (sharpest gap). Make "approved amount" mean two
-   distinct things: AP = validate a carrier's invoice vs the rate con (catch overbilling); AR =
-   construct our invoice to the broker (capture accessorials owed). Introduce an explicit workflow
-   *direction/kind* threaded through reconciliation → review payload → Slack copy → execution. **Accept
-   when:** AP and AR runs never blur in Slack copy or in which amount is bound; tests cover both
-   directions; the gated write binds the correct direction's approved amount.
-2. **Build the Operator Brain + Slack delegate** (headline architecture — absorbs "screen-finding" and
-   "flow-aware write model"). A goal-directed observe→reason→plan→act→verify→re-plan loop over the
-   existing tools that handles multi-step flows (e.g. transporters.io order→line-item→invoice), produces
-   a deterministic flow-recipe it crystallizes + replays, and re-engages only on novelty/failure. Expose
-   it via Slack as a two-way delegate: authenticated NL commands (verified owner only) → intent → Brain
-   plans → tools act (gated) → reports in-thread; email/doc content is DATA never COMMANDS. **Accept
-   when:** given only a base URL + goal, the Brain completes a multi-step invoice flow on a system it
-   wasn't hand-mapped for, under the Safety Spine, flow crystallized for replay; an injected instruction
-   in email content cannot trigger an action; unit-tested with fake session/LLM.
-3. **Persist learned self-heal repairs** — write the agent's learned constraint (e.g. "invoice_number
-   must be numeric") back into the screen-map so the next run is deterministic, not re-healed. **Accept
-   when:** a healed quirk is recorded to the map and reused without a second heal; tested.
-4. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
+## 6. Ordered execution plan — next pieces (acceptance criteria)
+Do these in order. Each is shippable on its own. **Items 1 & 2 from the old plan are DONE** (AP/AR split
+`workflow_direction.py`; Operator Brain + Slack delegate + embedded `OperatorAgent` + `operation_router`).
+
+1. **Supervised gated WRITE run, live (NEEDS RASHEED'S GO-AHEAD — do not run unprompted).** Let the
+   GPT-5.4 agent drive a full order→invoice on transporters.io via a lane, observe the SPA qty/persist
+   quirk (line = product price × qty; a hidden `unit_price` shadows the visible `order_row_price`), and
+   **self-heal** it, with Rasheed approving the commit. This turns "tested bridge" into "it actually
+   invoiced a load." **Accept when:** a real invoice is created at the approved amount and verified by
+   readback, the receipt says ✅ Done, OR the agent escalates cleanly — no silent/fake success.
+2. **Wire `OperationRouter` into the live Slack approval callback.** Today the router is proven by tests
+   + `scripts/run_operate_request.py`; the live path is: Slack request → `BrainOperator`/delegate
+   proposes → owner taps Approve → the approval callback calls `router.run(intent, approve=...)` → the
+   receipt posts back in-thread. **Accept when:** an authenticated Slack request runs end to end through
+   the router and posts a receipt; an unauthorized sender or an injected email instruction cannot trigger
+   it; tested with a fake Slack/agent.
+3. **Supervised→autonomous graduation per lane.** A lane starts requiring approval on every commit; once
+   proven for a tenant it can relax to auto-approve *for that one lane*. **Accept when:** graduation is
+   per-(tenant,lane), defaults to supervised, is recorded, and is tested.
+4. **Persist learned self-heal repairs** — write a learned constraint (e.g. "invoice_number must be
+   numeric") back into the screen-map / flow-recipe so the next run is deterministic, not re-healed.
+   **Accept when:** a healed quirk is recorded and reused without a second heal; tested.
+5. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
    rate con) and thread state (ready-for-billing / dispute reply / missing-backup), linked to a load.
    **Accept when:** classification is tested on the synthetic corpus with measured accuracy.
-5. **Second TMS proof — DONE (n=2): `transporters.io`.** Result: deterministic DOM extraction and the
-   discovery agent generalized with zero per-TMS code, and the agent **fail-closed safely** (mapped the
-   customer, refused to invent a missing amount → `writable: false`). BUT it exposed that the write
-   model is TruckingOffice-shaped: transporters.io is **order-driven + multi-step** (order wizard with
-   line-item pricing → invoice raised from a completed order), not a single invoice form. **New sub-work
-   (high priority):** make the System Operator write model **flow-aware** — multi-step wizards, line-item
-   composition, and an "invoice-from-order" action — generalizing `DiscoveredInvoiceForm` beyond a
-   single form. (See project memory `transporters-io-second-tms` for the nav map + URLs.)
-6. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (all alerts
-   are currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an
-   email alert; tested.
-7. **Clean up TruckingOffice proof debris** — duplicate "Iron Horse Logistics LLC" stub customers and
-   proof invoices 560003–560008; keep the real seed (TQL/Echo/Coyote/C.H. Robinson, invoices 1000–1006).
+6. **ROI instrumentation + receipts ledger** (the product-side gap from the strategy discussion) — tally
+   and surface dollars: overbilling caught, $ recovered, DSO impact, hours saved, error rate; every
+   agent run leaves an auditable receipt. **Accept when:** a running tally renders in Slack/console from
+   real run records; tested.
+7. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (alerts are
+   currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an email
+   alert; tested.
+8. **Clean up live-account debris (CONFIRM SCOPE FIRST).** TruckingOffice: duplicate "Iron Horse
+   Logistics LLC" stubs + proof invoices 560003–560008 (keep real seed TQL/Echo/Coyote/C.H. Robinson,
+   1000–1006). transporters.io: category "Freight Services", product "Freight Haulage", draft orders
+   #1000–1002.
 
 Then resume the roadmap: always-on runtime hardening → design-partner pilot → workflow packs.
+
+**Second TMS proof is DONE (n=2): `transporters.io`** — discovery generalized with zero per-TMS code and
+the agent fail-closed safely; the multi-step/wizard write model exists (`multistep_write.py`). The only
+open live item there is the supervised write run (item 1). See memory `transporters-io-second-tms`.
 
 ---
 
