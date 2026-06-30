@@ -107,6 +107,45 @@ def proposal_from_assessment(
     )
 
 
+def proposals_for_clean_matches(
+    packet_results,
+    loads_by_id: dict,
+    *,
+    signer: DeliverySigner,
+    channel_id: str,
+    amount_for_load,
+) -> list[dict]:
+    """Auto-emit a 'record payable' Approve button for each CLEANLY MATCHED carrier invoice.
+
+    This is the hands-off half: when a carrier invoice reconciles clean (outcome MATCHED), Neyma can
+    propose entering the payable unattended-pending-tap. Fail-safe and conservative:
+    - ONLY clean matches — a variance/overbilling never gets a run button (it goes to human review);
+    - the amount comes from ``amount_for_load`` (the deterministic rate-con total); if it returns None
+      no button is posted (we never bind a money button to an amount we can't stand behind).
+    """
+    proposals: list[dict] = []
+    for pr in packet_results:
+        if getattr(pr, "outcome", None) != "MATCHED":
+            continue
+        load = loads_by_id.get(getattr(pr, "load_id", None))
+        if load is None:
+            continue
+        amount = amount_for_load(load)
+        if amount in (None, ""):
+            continue
+        carrier = getattr(load, "carrier", None) or "the carrier"
+        load_ref = getattr(load, "load_id", None)
+        intent = CommandIntent(
+            kind=CommandKind.OPERATE,
+            summary=f"Record the agreed payable to {carrier}" + (f" for {load_ref}" if load_ref else ""),
+            params={"lane": "record_payable", "carrier": carrier, "load_ref": load_ref},
+        )
+        proposals.append(build_operation_proposal_message(
+            intent, signer, approved_amount=str(amount), channel_id=channel_id,
+        ))
+    return proposals
+
+
 def post_operation_proposal(message: dict, *, poster) -> "object":
     """Post a built proposal message (with its Approve button) to Slack via an injected poster.
 

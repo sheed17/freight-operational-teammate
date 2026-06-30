@@ -86,6 +86,18 @@ def money(value: Decimal | str | int | float) -> Decimal:
     return Decimal(str(value)).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
+def agreed_rate_total(load: "FreightLoadForReconciliation") -> Decimal:
+    """The deterministic rate-confirmed total a carrier is owed: linehaul + fuel + agreed accessorials.
+
+    For a cleanly MATCHED invoice the carrier billed exactly this, so it is the only figure safe to put
+    on an auto-proposed 'record payable' button — it comes from the rate con, never from a model.
+    """
+    total = money(load.rate_linehaul) + money(load.rate_fuel)
+    for charge in load.rate_accessorials:
+        total += money(charge.amount)
+    return money(total)
+
+
 def normalize_charge_name(name: str) -> str:
     return " ".join(name.strip().lower().replace("_", " ").replace("-", " ").split())
 

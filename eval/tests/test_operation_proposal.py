@@ -85,6 +85,32 @@ def test_proposal_from_ready_to_bill_assessment():
     assert approval.intent.params["customer"] == "Acme" and approval.intent.params["load_ref"] == "LD-9"
 
 
+def test_auto_emit_only_for_clean_matches_with_a_deterministic_amount():
+    from types import SimpleNamespace
+
+    from freight_recon.operation_proposal import proposals_for_clean_matches
+
+    loads = {
+        "LD-1": SimpleNamespace(load_id="LD-1", carrier="TQL"),
+        "LD-2": SimpleNamespace(load_id="LD-2", carrier="Echo"),
+        "LD-3": SimpleNamespace(load_id="LD-3", carrier="Coyote"),
+    }
+    packet_results = [
+        SimpleNamespace(load_id="LD-1", outcome="MATCHED"),    # clean -> button
+        SimpleNamespace(load_id="LD-2", outcome="VARIANCE"),   # overbilled -> NO button (human review)
+        SimpleNamespace(load_id="LD-3", outcome="MATCHED"),    # clean but amount resolver returns None
+    ]
+    amounts = {"LD-1": "2700.00", "LD-3": None}
+    proposals = proposals_for_clean_matches(
+        packet_results, loads, signer=_SIGNER, channel_id="C_OPS",
+        amount_for_load=lambda load: amounts.get(load.load_id),
+    )
+    assert len(proposals) == 1  # only the clean match with a known amount
+    approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
+    assert approval.intent.params["lane"] == "record_payable"
+    assert approval.intent.params["carrier"] == "TQL" and approval.approved_amount == "2700.00"
+
+
 def test_no_button_for_non_lane_or_amountless_assessments():
     # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
     chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,
