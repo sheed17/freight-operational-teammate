@@ -1,0 +1,24 @@
+{
+  "tms_name": "transporters.io",
+  "environment": "live_trial_account_neyma",
+  "source": "live_cdp_grounding_by_operator_2026-06-30",
+  "default_automation_mode": "READ_ONLY",
+  "allowed_domains": ["neyma.transporters.io", "*.transporters.io"],
+  "money_model": "Invoicing is ORDER-DRIVEN and PRODUCT-PRICED. An invoice is raised from an order; the order's line total = product price x qty. So the billed amount is controlled by the product's price (or a per-line unit_price override), NOT by a single 'total' field. This differs fundamentally from TruckingOffice's single 'No Load Invoice' form.",
+  "spa_input_learning": "transporters.io is a JS SPA. Setting input.value directly (which works on TruckingOffice's server-rendered Rails forms) does NOT reliably register here: the framework recomputes line totals from its own model, selecting a product auto-fills unit_price from the product's stored price (overriding a programmatic unit_price), and qty/row-total are JS-computed. RELIABLE INPUT REQUIRES real keyboard/mouse event simulation via the CDP Input domain (Input.dispatchMouseEvent to focus/click, Input.insertText / Input.dispatchKeyEvent to type) OR the native value-setter PLUS triggering the framework's exact change handlers. This is the next capability the Operator Brain needs to drive SPA TMSs; it is also a self-heal-worthy learning.",
+  "flow_order_to_invoice": [
+    {"step": "create_product_category", "url": "https://neyma.transporters.io/settings/productcats/newtype", "fields": {"prod_cat_name": "text"}, "submit": "Submit", "note": "one-time setup; empty on a fresh account"},
+    {"step": "create_product", "url": "https://neyma.transporters.io/products/new", "fields": {"prod_name": "text", "prod_cat_id": "select", "prod_price": "number (drives the line amount)"}, "submit": "Submit", "note": "one-time setup; the product price is what flows to the order line"},
+    {"step": "create_order", "url": "https://neyma.transporters.io/orders/new", "fields": {"company_name": "text", "customer_name": "text", "customer_email": "email"}, "line_item": {"reveal_button": "Add Product (type=button, reveals inline line sub-form)", "fields": {"prod_cat_id": "select", "prod_id": "select (auto-fills unit_price from product price)", "prod_qty": "number", "unit_price": "number (SPA-overridden on product select)", "order_row_price": "computed = unit_price x qty"}}, "submit": "Save and continue", "result": "redirects to https://neyma.transporters.io/orders/view/{order_id}"},
+    {"step": "raise_invoice", "trigger": "on the order page, the 'Create invoice' action: <a class='HANDLER_NEW_INVOICE' data-route='https://neyma.transporters.io/order/{order_id}/invoice/create' data-modal-title='New Invoice'>", "modal_url": "https://neyma.transporters.io/order/{order_id}/invoice/create", "fields": {"type": "radio Full|Amount|Percentage (Full = whole order)", "total_price/total_amount": "auto-computed from the order (0 if the order line saved at 0)", "date_at": "text date", "due_date_at": "text date"}, "actions": ["Checked all (include order rows)", "Submit", "Save as Draft"]},
+    {"step": "readback_verify", "url": "https://neyma.transporters.io/order/invoices", "note": "confirm an invoice exists for the order with total == the approved amount"}
+  ],
+  "nav_map": {
+    "orders": "/orders", "new_order": "/orders/new", "customers": "/customer", "new_customer": "/customer/create",
+    "products": "/products", "new_product": "/products/new", "product_categories": "/settings/productcats",
+    "uninvoiced": "/finance/uninvoiced (note: did NOT list a freshly-created order; invoicing is via the order's Create-invoice action)",
+    "invoices_list": "/order/invoices", "aged_debtors": "/finance/ageddebtors"
+  },
+  "grounded_artifacts_on_account": "Category 'Freight Services'; product 'Freight Haulage' (price set to 2850.00); draft orders #1000 and #1001 (created at $0-$1 because the SPA did not accept the programmatic line price) — these are test debris to clean up.",
+  "observation_status": "FLOW_GROUNDED_MANUALLY_WRITE_BLOCKED_ON_SPA_INPUT"
+}
