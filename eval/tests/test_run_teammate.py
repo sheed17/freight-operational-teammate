@@ -37,6 +37,25 @@ def test_no_auto_enter_omits_the_mock_tms_flag():
     assert "--auto-enter-approved-mock-tms" not in cmds["callback"]
 
 
+def test_operation_router_flags_are_opt_in_for_callback():
+    default_cmds = build_process_commands(workspace="/tmp/ws", client_config="c")
+    assert "--enable-operation-router" not in default_cmds["callback"]
+
+    cmds = build_process_commands(
+        workspace="/tmp/ws",
+        client_config="c",
+        enable_operation_router=True,
+        allowed_slack_users=("U_OWNER",),
+        allowed_slack_channel="C_OPS",
+        operation_url_filter="transporters",
+    )
+    callback = cmds["callback"]
+    assert "--enable-operation-router" in callback
+    assert _val_after(callback, "--allowed-slack-user") == "U_OWNER"
+    assert _val_after(callback, "--allowed-slack-channel") == "C_OPS"
+    assert _val_after(callback, "--operation-url-filter") == "transporters"
+
+
 def test_ngrok_supervised_forwards_fixed_domain_to_callback_port():
     cmds = build_process_commands(
         workspace="/tmp/ws", client_config="c", callback_port=8001,

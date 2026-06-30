@@ -150,6 +150,21 @@ class WorkflowStore:
                 payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS operation_action_claims (
+                action_id TEXT PRIMARY KEY,
+                actor TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS delivery_action_claims (
+                action_id TEXT PRIMARY KEY,
+                run_id INTEGER NOT NULL,
+                actor TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             """
         )
         columns = {
@@ -231,10 +246,15 @@ class WorkflowStore:
         if to_state not in ALLOWED_TRANSITIONS[run.state]:
             raise WorkflowError(f"invalid transition: {run.state.value} -> {to_state.value}")
 
-        self.conn.execute(
-            "UPDATE workflow_runs SET state = ?, updated_at = ? WHERE id = ?",
-            (to_state.value, utc_now(), run_id),
+        cur = self.conn.execute(
+            "UPDATE workflow_runs SET state = ?, updated_at = ? WHERE id = ? AND state = ?",
+            (to_state.value, utc_now(), run_id, run.state.value),
         )
+        if cur.rowcount != 1:
+            self.conn.rollback()
+            raise WorkflowError(
+                f"workflow run {run_id} changed while transitioning from {run.state.value}"
+            )
         self.conn.commit()
         self.add_audit_event(
             run_id,
@@ -419,6 +439,56 @@ class WorkflowStore:
             (event_type, actor, json.dumps(payload, sort_keys=True), utc_now()),
         )
         self.conn.commit()
+
+    def claim_operation_action(
+        self,
+        action_id: str,
+        *,
+        actor: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically claim an operation approval action id.
+
+        Returns ``False`` if another request already claimed the same action. This is separate from
+        audit logging so threaded Slack retries/double-clicks cannot both run the router before an
+        audit event is written.
+        """
+        try:
+            self.conn.execute(
+                """
+                INSERT INTO operation_action_claims (
+                    action_id, actor, payload_json, created_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (action_id, actor, json.dumps(payload, sort_keys=True), utc_now()),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def claim_delivery_action(
+        self,
+        action_id: str,
+        *,
+        run_id: int,
+        actor: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically claim a signed review action token before applying it."""
+        try:
+            self.conn.execute(
+                """
+                INSERT INTO delivery_action_claims (
+                    action_id, run_id, actor, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (action_id, run_id, actor, json.dumps(payload, sort_keys=True), utc_now()),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
 
     def audit_events(self, run_id: int | None = None) -> list[dict[str, Any]]:
         if run_id is None:

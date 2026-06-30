@@ -15,13 +15,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from freight_recon.action_callback import run_callback_server  # noqa: E402
 from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
+from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
+from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.delivery import DeliverySigner  # noqa: E402
-from freight_recon.delivery_dispatch import slack_thread_status_poster  # noqa: E402
+from freight_recon.delivery_dispatch import SlackApiPoster, slack_thread_status_poster  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.ops_control import OpsControl  # noqa: E402
 from freight_recon.post_approval_execution import (  # noqa: E402
     MockTmsAutoEntryConfig,
     maybe_execute_mock_tms_after_approval,
 )
+from freight_recon.screen_discovery import openai_completer  # noqa: E402
 from run_dogfood_pilot import DEFAULT_WORKSPACE  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
 
@@ -65,6 +70,26 @@ def main() -> int:
         default=120,
         help="How often the callback server checks the loop heartbeat and proactively alerts Slack if "
         "the loop has gone STALE (hung/died). 0 disables. Requires --client-config for the Slack post.",
+    )
+    parser.add_argument(
+        "--enable-operation-router",
+        action="store_true",
+        help="Enable Slack operation approvals -> OperationRouter. Requires --client-config and owner/channel allowlist.",
+    )
+    parser.add_argument("--operation-cdp-url", default=os.getenv("NEYMA_OPERATION_CDP_URL", "http://localhost:9222"))
+    parser.add_argument("--operation-url-filter", default=os.getenv("NEYMA_OPERATION_URL_FILTER", ""))
+    parser.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-4o"))
+    parser.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "20")))
+    parser.add_argument(
+        "--allowed-slack-user",
+        action="append",
+        default=[],
+        help="Slack user id allowed to approve operation-router runs. Can be repeated; defaults to NEYMA_ALLOWED_SLACK_USERS csv.",
+    )
+    parser.add_argument(
+        "--allowed-slack-channel",
+        default=os.getenv("NEYMA_ALLOWED_SLACK_CHANNEL"),
+        help="Slack channel id allowed for operation-router approvals.",
     )
     args = parser.parse_args()
 
@@ -119,6 +144,27 @@ def main() -> int:
 
         post_action_executor = _executor
 
+    operation_router = None
+    operation_result_poster = None
+    allowed_slack_users = tuple(
+        args.allowed_slack_user
+        or [u.strip() for u in os.getenv("NEYMA_ALLOWED_SLACK_USERS", "").split(",") if u.strip()]
+    )
+    if args.enable_operation_router:
+        if not args.client_config:
+            parser.error("--enable-operation-router requires --client-config")
+        if not slack_signing_secret:
+            parser.error("--enable-operation-router requires a Slack signing secret from --client-config")
+        if not allowed_slack_users or not args.allowed_slack_channel:
+            parser.error("--enable-operation-router requires --allowed-slack-user and --allowed-slack-channel")
+        operation_router = _build_live_operation_router(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            model=args.operation_model,
+            max_steps=args.operation_max_steps,
+        )
+        operation_result_poster = _build_operation_result_poster(args.client_config)
+
     # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
     # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
     # loop is not actually writing (the loop and this server must share one --workspace).
@@ -150,6 +196,10 @@ def main() -> int:
         slack_signing_secret=slack_signing_secret,
         post_action_executor=post_action_executor,
         status_file=str(status_file),
+        operation_router=operation_router,
+        operation_result_poster=operation_result_poster,
+        allowed_slack_users=allowed_slack_users,
+        allowed_slack_channel=args.allowed_slack_channel,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")
@@ -158,6 +208,8 @@ def main() -> int:
         print("Slack interactivity: POST /slack/actions (Slack-signed)")
     if post_action_executor is not None:
         print("Post-approval execution: mock TMS auto-entry enabled")
+    if operation_router is not None:
+        print("Operation router approvals: enabled for allowed Slack user/channel only")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -194,6 +246,77 @@ def _build_digest_poster(client_config: str | None):
             pass
 
     return _post
+
+
+def _build_live_operation_router(
+    *,
+    cdp_url: str,
+    url_filter: str | None,
+    model: str,
+    max_steps: int,
+) -> OperationRouter:
+    """Build the real browser-agent router for Slack-approved operation runs.
+
+    The callback remains non-sending; this router can operate a real human-established browser
+    session after a signed Slack operation approval. The agent still gets only a single
+    consequential approval from the callback's safety gate.
+    """
+    completer = openai_completer(model=model)
+
+    def _build_agent(*, approved_amount=None, approve=None):
+        session = CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter)
+        session.__enter__()
+        actuator = CdpActuator(session)
+
+        class _ClosingOperatorAgent(OperatorAgent):
+            def run(self, goal):
+                try:
+                    return super().run(goal)
+                finally:
+                    session.__exit__(None, None, None)
+
+        return _ClosingOperatorAgent(
+            actuator=actuator,
+            complete=completer,
+            approved_amount=approved_amount,
+            approve=approve,
+            max_steps=max_steps,
+        )
+
+    return OperationRouter(
+        lanes=freight_lanes(),
+        build_agent=_build_agent,
+        approved_amount_for=lambda intent: intent.params.get("approved_amount"),
+    )
+
+
+def _build_operation_result_poster(client_config: str | None):
+    if not client_config:
+        return None
+    config = load_delivery_config(client_config)
+    if config is None or config.slack is None:
+        return None
+    token = os.environ.get(config.slack.bot_token_env or "")
+    if not token:
+        return None
+    poster = SlackApiPoster(token)
+
+    def _post(receipt: dict) -> None:
+        channel = receipt.get("channel_id") or _default_slack_channel(config)
+        if not channel:
+            return
+        payload = {"text": receipt.get("text", "Neyma operation finished.")}
+        if receipt.get("thread_ts"):
+            payload["thread_ts"] = receipt["thread_ts"]
+        poster.post_message(channel=channel, payload=payload)
+
+    return _post
+
+
+def _default_slack_channel(config) -> str | None:
+    if config.slack is None:
+        return None
+    return config.slack.default_channel_id
 
 
 def _start_heartbeat_watchdog(status_file: Path, poster, interval_seconds: int) -> threading.Thread:

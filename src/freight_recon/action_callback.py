@@ -9,13 +9,21 @@ machine; this layer only parses HTTP-ish inputs and formats a confirmation respo
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
+import hmac
+import re
+import threading
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Literal
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, Field
 
+from .operation_router import OperationRouter
 from .delivery import (
     DeliveryActionOutcome,
     DeliveryExpiredError,
@@ -27,9 +35,13 @@ from .delivery import (
 from pathlib import Path
 
 from .ops_control import OpsControl, handle_ops_command
+from .operation_router import OperationResult
 from .reconciliation import FreightLoadForReconciliation
 from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
+from .slack_delegate import CommandIntent, CommandKind, authorize_command
 from .workflow import WorkflowError, WorkflowStore
+
+DEFAULT_OPERATION_TOKEN_TTL_SECONDS = 3600
 
 
 class CallbackStatus(str):
@@ -60,6 +72,12 @@ class CallbackAppConfig:
     post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None
     # Loop heartbeat file, so the Slack `status` command can answer "what is Neyma doing right now?".
     status_file: str | None = None
+    # Optional fake/live Slack approval bridge for the bounded request->agent->result router. This is
+    # callback-only: it returns a Slack response body and does not post or send on its own.
+    operation_router: OperationRouter | None = None
+    operation_result_poster: Callable[[dict], None] | None = None
+    allowed_slack_users: tuple[str, ...] = ()
+    allowed_slack_channel: str | None = None
 
 
 def handle_signed_action_callback(
@@ -262,6 +280,14 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             timestamp = self.headers.get("X-Slack-Request-Timestamp", "")
             signature = self.headers.get("X-Slack-Signature", "")
             body_str = body.decode("utf-8", errors="replace")
+            if config.operation_router is not None:
+                operation_response = self._maybe_handle_slack_operation_approval(
+                    body_str,
+                    timestamp=timestamp,
+                    signature=signature,
+                )
+                if operation_response is not None:
+                    return
             store = WorkflowStore(config.db_path)
             try:
                 adapter = SlackDeliveryAdapter(
@@ -305,6 +331,178 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 store.close()
             self._write_json(200, update)
 
+        def _maybe_handle_slack_operation_approval(
+            self,
+            body: str,
+            *,
+            timestamp: str,
+            signature: str,
+        ) -> bool | None:
+            """Handle a Slack-approved bounded operation request, if this interaction is one.
+
+            This is the Version-B callback bridge: Slack button approval -> authorized owner/channel
+            -> known OperationRouter lane -> agent receipt. Unknown button payloads fall through to
+            the normal review-action handler.
+            """
+            try:
+                verify_slack_signature(
+                    config.slack_signing_secret or b"",
+                    timestamp=timestamp,
+                    body=body,
+                    signature=signature,
+                )
+            except SlackSignatureError:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_request_rejected",
+                        actor="system",
+                        payload={"failure": "signature", "route": "operation_approval"},
+                    )
+                finally:
+                    store.close()
+                self._write_json(401, {"error": "invalid Slack signature"})
+                return True
+
+            try:
+                payload = _parse_slack_payload(body)
+            except SlackError:
+                return None
+            action_value = _first_slack_action_value(payload)
+            try:
+                approval = _verify_operation_approval_value(action_value, config.signer)
+                if approval is None:
+                    return None
+            except SlackError:
+                self._write_json(400, {"error": "malformed Slack operation approval"})
+                return True
+
+            user_id = ((payload.get("user") or {}).get("id") or (payload.get("user") or {}).get("username"))
+            channel_id = (
+                (payload.get("channel") or {}).get("id")
+                or (payload.get("container") or {}).get("channel_id")
+                or payload.get("channel_id")
+            )
+            thread_ts = _slack_thread_ts(payload)
+            ok, reason = authorize_command(
+                user_id,
+                channel_id,
+                allowed_users=config.allowed_slack_users,
+                allowed_channel=config.allowed_slack_channel,
+            )
+            if not ok:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_operation_rejected",
+                        actor=str(user_id or "unknown"),
+                        payload={"failure": "authorization", "reason": reason},
+                    )
+                finally:
+                    store.close()
+                self._write_json(
+                    200,
+                    {
+                        "replace_original": False,
+                        "text": f"Not authorized: {reason}.",
+                    },
+                )
+                return True
+            context_reason = _operation_context_mismatch(
+                approval,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
+            if context_reason:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_operation_rejected",
+                        actor=str(user_id or "unknown"),
+                        payload={
+                            "failure": context_reason,
+                            "action_id": approval.action_id,
+                            "token_fingerprint": _token_fingerprint(action_value or ""),
+                            "channel_id": channel_id,
+                            "thread_ts": thread_ts,
+                            "expected_channel_id": approval.expected_channel_id,
+                            "expected_thread_ts": approval.expected_thread_ts,
+                        },
+                    )
+                finally:
+                    store.close()
+                self._write_json(
+                    200,
+                    {
+                        "replace_original": False,
+                        "text": "That approval button does not belong to this Slack message context. "
+                        "Use the latest proposal.",
+                    },
+                )
+                return True
+
+            assert config.operation_router is not None
+            store = WorkflowStore(config.db_path)
+            try:
+                claimed = store.claim_operation_action(
+                    approval.action_id,
+                    actor=str(user_id or "unknown"),
+                    payload={
+                        "token_fingerprint": _token_fingerprint(action_value or ""),
+                        "channel_id": channel_id,
+                        "thread_ts": thread_ts,
+                    },
+                )
+                if not claimed:
+                    self._write_json(
+                        200,
+                        {
+                            "replace_original": False,
+                            "text": "This operation approval was already used. Re-open the latest proposal.",
+                        },
+                    )
+                    return True
+                store.add_security_event(
+                    "slack_operation_started",
+                    actor=str(user_id or "unknown"),
+                    payload={
+                        "action_id": approval.action_id,
+                        "token_fingerprint": _token_fingerprint(action_value or ""),
+                        "channel_id": channel_id,
+                        "thread_ts": thread_ts,
+                        "approved_amount": approval.approved_amount,
+                        "summary": approval.intent.summary,
+                        "params": approval.intent.params,
+                    },
+                )
+            finally:
+                store.close()
+            _start_operation_background_run(
+                db_path=config.db_path,
+                router=config.operation_router,
+                approval=approval,
+                action_value=action_value or "",
+                actor=str(user_id or "unknown"),
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                poster=config.operation_result_poster,
+            )
+            self._write_json(
+                200,
+                {
+                    "replace_original": False,
+                    "response_type": "ephemeral",
+                    "text": "Approved. Neyma is operating in the TMS now and will post the verified receipt in-thread.",
+                    "metadata": {
+                        "action_id": approval.action_id,
+                        "status": "RUNNING",
+                        "channel_id": channel_id,
+                        "thread_ts": thread_ts,
+                    },
+                },
+            )
+            return True
+
         def _handle_slack_command(self, body: bytes) -> None:
             """Verify a Slack slash command and run it (the owner's brake + status surface).
 
@@ -334,13 +532,43 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 return
             fields = {key: values[0] for key, values in parse_qs(body_str).items()}
             text = (fields.get("text") or "").strip()
-            actor = fields.get("user_name") or fields.get("user_id") or "slack-user"
+            user_id = fields.get("user_id")
+            channel_id = fields.get("channel_id")
+            actor = user_id or fields.get("user_name") or "slack-user"
+            ok, reason = authorize_command(
+                user_id,
+                channel_id,
+                allowed_users=config.allowed_slack_users,
+                allowed_channel=config.allowed_slack_channel,
+            )
+            if not ok:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_command_rejected",
+                        actor=str(user_id or "unknown"),
+                        payload={"failure": "authorization", "reason": reason, "channel_id": channel_id},
+                    )
+                finally:
+                    store.close()
+                self._write_json(200, {"response_type": "ephemeral", "text": f"Not authorized: {reason}."})
+                return
             ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
             store = WorkflowStore(config.db_path)
             try:
                 reply = handle_ops_command(
                     text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
                 )
+                if reply.startswith("Commands:") and config.operation_router is not None:
+                    proposal = _build_operation_command_proposal(
+                        text,
+                        signer=config.signer,
+                        router=config.operation_router,
+                        channel_id=channel_id,
+                    )
+                    if proposal is not None:
+                        self._write_json(200, proposal)
+                        return
             finally:
                 store.close()
             # Ephemeral: only the operator who ran the command sees the reply.
@@ -387,6 +615,10 @@ def run_callback_server(
     slack_signing_secret: bytes | str | None = None,
     post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None,
     status_file: str | None = None,
+    operation_router: OperationRouter | None = None,
+    operation_result_poster: Callable[[dict], None] | None = None,
+    allowed_slack_users: tuple[str, ...] = (),
+    allowed_slack_channel: str | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -400,9 +632,336 @@ def run_callback_server(
             slack_signing_secret=secret,
             post_action_executor=post_action_executor,
             status_file=status_file,
+            operation_router=operation_router,
+            operation_result_poster=operation_result_poster,
+            allowed_slack_users=allowed_slack_users,
+            allowed_slack_channel=allowed_slack_channel,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
+
+
+class SlackOperationApproval(BaseModel):
+    type: str = "operate_approval"
+    intent: CommandIntent
+    action_id: str
+    approved_amount: str | None = None
+    expected_channel_id: str | None = None
+    expected_thread_ts: str | None = None
+    issued_at: float
+    expires_at: float
+
+
+def build_slack_operation_approval_value(
+    intent: CommandIntent,
+    signer: DeliverySigner,
+    *,
+    approved_amount: str | None = None,
+    expected_channel_id: str | None = None,
+    expected_thread_ts: str | None = None,
+    issued_at: datetime | None = None,
+    ttl_seconds: int = DEFAULT_OPERATION_TOKEN_TTL_SECONDS,
+    action_id: str | None = None,
+) -> str:
+    """Encode a bounded operation approval payload for a Slack button value."""
+    if intent.kind != CommandKind.OPERATE:
+        raise ValueError("Slack operation approvals require an OPERATE intent")
+    issued = issued_at or datetime.now(timezone.utc)
+    claims = SlackOperationApproval(
+        intent=intent,
+        action_id=action_id or uuid.uuid4().hex,
+        approved_amount=approved_amount,
+        expected_channel_id=expected_channel_id,
+        expected_thread_ts=expected_thread_ts,
+        issued_at=issued.timestamp(),
+        expires_at=issued.timestamp() + ttl_seconds,
+    ).model_dump(mode="json")
+    return _encode_operation_approval(claims, signer)
+
+
+def _parse_slack_payload(body: str) -> dict:
+    fields = parse_qs(body)
+    raw = fields.get("payload")
+    if not raw:
+        raise SlackError("Slack interaction payload missing")
+    try:
+        payload = json.loads(raw[0])
+    except json.JSONDecodeError as exc:
+        raise SlackError("Slack interaction payload is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise SlackError("Slack interaction payload must be an object")
+    return payload
+
+
+def _first_slack_action_value(payload: dict) -> str | None:
+    actions = payload.get("actions") or []
+    if not actions or not isinstance(actions[0], dict):
+        return None
+    value = actions[0].get("value")
+    return str(value) if value else None
+
+
+def _slack_thread_ts(payload: dict) -> str | None:
+    message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    container = payload.get("container") if isinstance(payload.get("container"), dict) else {}
+    value = (
+        message.get("thread_ts")
+        or message.get("ts")
+        or container.get("thread_ts")
+        or container.get("message_ts")
+    )
+    return str(value) if value else None
+
+
+def _parse_operation_approval_value(value: str | None, signer: DeliverySigner) -> SlackOperationApproval | None:
+    if not value:
+        return None
+    if value.count(".") != 1:
+        # Non-operation Slack buttons carry signed review-action tokens here; let those fall through.
+        return None
+    try:
+        raw = _decode_operation_approval(value, signer)
+    except DeliverySignatureError as exc:
+        raise SlackError("Slack operation approval signature is invalid") from exc
+    if not isinstance(raw, dict) or raw.get("type") != "operate_approval":
+        return None
+    try:
+        approval = SlackOperationApproval.model_validate(raw)
+    except Exception as exc:  # noqa: BLE001 - malformed operation approval falls through as malformed
+        raise SlackError("Slack operation approval payload is malformed") from exc
+    if approval.intent.kind != CommandKind.OPERATE:
+        raise SlackError("Slack operation approval must carry an OPERATE intent")
+    if datetime.now(timezone.utc).timestamp() > approval.expires_at:
+        raise SlackError("Slack operation approval is expired")
+    return approval
+
+
+def _encode_operation_approval(claims: dict, signer: DeliverySigner) -> str:
+    body = base64.urlsafe_b64encode(
+        json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    signature = hmac.new(signer.secret, body, hashlib.sha256).hexdigest()
+    return f"{body.decode('ascii')}.{signature}"
+
+
+def _decode_operation_approval(token: str, signer: DeliverySigner) -> dict:
+    body_part, signature = token.split(".", 1)
+    body = body_part.encode("ascii")
+    expected = hmac.new(signer.secret, body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise DeliverySignatureError("operation approval signature mismatch")
+    try:
+        return json.loads(base64.urlsafe_b64decode(body).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise DeliverySignatureError("operation approval payload is not valid JSON") from exc
+
+
+def _verify_operation_approval_value(value: str | None, signer: DeliverySigner) -> SlackOperationApproval | None:
+    return _parse_operation_approval_value(value, signer)
+
+
+def _intent_with_signed_approved_amount(approval: SlackOperationApproval) -> CommandIntent:
+    if not approval.approved_amount:
+        return approval.intent
+    params = dict(approval.intent.params or {})
+    params["approved_amount"] = approval.approved_amount
+    return CommandIntent(kind=approval.intent.kind, summary=approval.intent.summary, params=params)
+
+
+def _start_operation_background_run(
+    *,
+    db_path: str,
+    router: OperationRouter,
+    approval: SlackOperationApproval,
+    action_value: str,
+    actor: str,
+    channel_id: str | None,
+    thread_ts: str | None,
+    poster: Callable[[dict], None] | None,
+) -> threading.Thread:
+    def _run() -> None:
+        store = WorkflowStore(db_path)
+        result: OperationResult
+        try:
+            result = router.run(
+                _intent_with_signed_approved_amount(approval),
+                approve=_single_consequential_approval(),
+            )
+            event_type = "slack_operation_applied"
+            payload = _operation_receipt_payload(
+                approval,
+                action_value=action_value,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                result=result,
+            )
+        except Exception as exc:  # noqa: BLE001 - background operation failures must still receipt
+            result = OperationResult(
+                "FAILED",
+                None,
+                "operation failed before it could complete; check the audit and retry with a fresh approval.",
+                [],
+            )
+            event_type = "slack_operation_failed"
+            payload = {
+                "action_id": approval.action_id,
+                "token_fingerprint": _token_fingerprint(action_value),
+                "channel_id": channel_id,
+                "thread_ts": thread_ts,
+                "approved_amount": approval.approved_amount,
+                "summary": approval.intent.summary,
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:500],
+            }
+        try:
+            store.add_security_event(event_type, actor=actor, payload=payload)
+        finally:
+            store.close()
+        if poster is not None:
+            try:
+                poster(
+                    {
+                        "channel_id": channel_id,
+                        "thread_ts": thread_ts,
+                        "text": result.to_slack(),
+                        "status": result.status,
+                        "lane": result.lane,
+                    }
+                )
+            except Exception:
+                return
+
+    thread = threading.Thread(target=_run, name=f"neyma-operation-{approval.action_id[:8]}", daemon=True)
+    thread.start()
+    return thread
+
+
+def _operation_receipt_payload(
+    approval: SlackOperationApproval,
+    *,
+    action_value: str,
+    channel_id: str | None,
+    thread_ts: str | None,
+    result: OperationResult,
+) -> dict:
+    return {
+        "action_id": approval.action_id,
+        "token_fingerprint": _token_fingerprint(action_value),
+        "channel_id": channel_id,
+        "thread_ts": thread_ts,
+        "approved_amount": approval.approved_amount,
+        "summary": approval.intent.summary,
+        "params": approval.intent.params,
+        "lane": result.lane,
+        "status": result.status,
+        "note": result.note,
+        "steps": result.steps,
+    }
+
+
+def _build_operation_command_proposal(
+    text: str,
+    *,
+    signer: DeliverySigner,
+    router: OperationRouter,
+    channel_id: str | None,
+) -> dict | None:
+    amount = _extract_command_amount(text)
+    if amount is None:
+        return {
+            "response_type": "ephemeral",
+            "text": "I can propose that operation, but I need an explicit approved amount first. "
+            "Example: `invoice LD-560006 for Acme amount 2850.00`.",
+        }
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary=text,
+        params={"approved_amount": amount},
+    )
+    lane = router.lane_for(intent)
+    if lane is None:
+        return {
+            "response_type": "ephemeral",
+            "text": "I won't improvise on that request because no known workflow lane handles it yet.",
+        }
+    value = build_slack_operation_approval_value(
+        intent,
+        signer,
+        approved_amount=amount,
+        expected_channel_id=channel_id,
+    )
+    return {
+        "response_type": "in_channel",
+        "text": f"Neyma proposal: {lane.name} for ${amount}",
+        "blocks": [
+            {"type": "header", "text": {"type": "plain_text", "text": "Neyma operation proposal"}},
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*Lane*\n{lane.name}"},
+                    {"type": "mrkdwn", "text": f"*Approved amount*\n${amount}"},
+                ],
+            },
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Request*\n{text}"}},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "Approving starts one bounded TMS operation. Neyma will post a verified receipt in-thread.",
+                    }
+                ],
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "action_id": "approve_operation_0",
+                        "text": {"type": "plain_text", "text": f"Approve ${amount}"},
+                        "style": "primary",
+                        "value": value,
+                    }
+                ],
+            },
+        ],
+    }
+
+
+def _extract_command_amount(text: str) -> str | None:
+    match = re.search(r"(?:amount|for|\$)\s*\$?([0-9][0-9,]*(?:\.[0-9]{1,2})?)", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return f"{float(match.group(1).replace(',', '')):.2f}"
+
+
+def _operation_context_mismatch(
+    approval: SlackOperationApproval,
+    *,
+    channel_id: str | None,
+    thread_ts: str | None,
+) -> str | None:
+    if approval.expected_channel_id and channel_id != approval.expected_channel_id:
+        return "channel_mismatch"
+    if approval.expected_thread_ts and thread_ts != approval.expected_thread_ts:
+        return "thread_mismatch"
+    return None
+
+
+def _single_consequential_approval() -> Callable[[object], bool]:
+    approved = {"used": False}
+
+    def approve(_action) -> bool:
+        if approved["used"]:
+            return False
+        approved["used"] = True
+        return True
+
+    return approve
+
+
+def _token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
 
 def _run_post_action_executor(

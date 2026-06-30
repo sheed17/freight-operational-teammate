@@ -385,9 +385,31 @@ def submit_signed_action(
             f"action token expired at {action.expires_at} (now {now.timestamp()})"
         )
 
-    prior = _prior_application(store, action.run_id, action.action_id)
-    if prior is not None:
-        return _duplicate_outcome(store, action, prior, now=now)
+    claimed = store.claim_delivery_action(
+        action.action_id,
+        run_id=action.run_id,
+        actor=action.actor,
+        payload={
+            "decision": action.decision.value,
+            "amount": _amount_str(action.amount),
+            "token_fingerprint": _token_fingerprint(token),
+        },
+    )
+    if not claimed:
+        prior = _prior_application(store, action.run_id, action.action_id)
+        if prior is not None:
+            return _duplicate_outcome(store, action, prior, now=now)
+        store.add_audit_event(
+            action.run_id,
+            "delivery_action_rejected",
+            actor=action.actor,
+            payload={
+                "action_id": action.action_id,
+                "decision": action.decision.value,
+                "failure": "already_claimed",
+            },
+        )
+        raise WorkflowError("action is already being processed")
 
     store.add_audit_event(
         action.run_id,

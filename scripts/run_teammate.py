@@ -82,6 +82,10 @@ def build_process_commands(
     mailbox: str = "Neyma-Test-Inbox",
     query: str = "UNSEEN",
     auto_enter_mock_tms: bool = True,
+    enable_operation_router: bool = False,
+    allowed_slack_users: tuple[str, ...] = (),
+    allowed_slack_channel: str | None = None,
+    operation_url_filter: str | None = None,
     ngrok_domain: str | None = None,
     ngrok_bin: str | None = "ngrok",
     python: str = sys.executable,
@@ -110,6 +114,14 @@ def build_process_commands(
     ]
     if auto_enter_mock_tms:
         callback.append("--auto-enter-approved-mock-tms")
+    if enable_operation_router:
+        callback.append("--enable-operation-router")
+        for user in allowed_slack_users:
+            callback += ["--allowed-slack-user", user]
+        if allowed_slack_channel:
+            callback += ["--allowed-slack-channel", allowed_slack_channel]
+        if operation_url_filter:
+            callback += ["--operation-url-filter", operation_url_filter]
 
     loop = [
         python, str(ROOT / "scripts" / "run_gmail_to_slack_loop.py"),
@@ -150,6 +162,10 @@ def main() -> int:
     parser.add_argument("--mailbox", default="Neyma-Test-Inbox")
     parser.add_argument("--query", default="UNSEEN")
     parser.add_argument("--no-auto-enter", action="store_true", help="do not auto-enter approved payables into the mock TMS")
+    parser.add_argument("--enable-operation-router", action="store_true", help="enable signed Slack operation approvals -> OperationRouter")
+    parser.add_argument("--allowed-slack-user", action="append", default=[], help="Slack user id allowed to approve OperationRouter runs")
+    parser.add_argument("--allowed-slack-channel", default=os.environ.get("NEYMA_ALLOWED_SLACK_CHANNEL"))
+    parser.add_argument("--operation-url-filter", default=os.environ.get("NEYMA_OPERATION_URL_FILTER"))
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
     parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
@@ -187,6 +203,10 @@ def main() -> int:
         mailbox=args.mailbox,
         query=args.query,
         auto_enter_mock_tms=not args.no_auto_enter,
+        enable_operation_router=args.enable_operation_router,
+        allowed_slack_users=tuple(args.allowed_slack_user),
+        allowed_slack_channel=args.allowed_slack_channel,
+        operation_url_filter=args.operation_url_filter,
         ngrok_domain=ngrok_domain,
         ngrok_bin=ngrok_bin,
     )

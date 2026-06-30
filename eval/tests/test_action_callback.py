@@ -20,15 +20,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.action_callback import (  # noqa: E402
     CallbackStatus,
+    build_slack_operation_approval_value,
     handle_signed_action_callback,
     parse_callback_token,
     run_callback_server,
 )
 from freight_recon.delivery import DeliverySigner, build_delivery_message, record_delivery_message  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operator_agent import AgentResult  # noqa: E402
 from freight_recon.post_approval_execution import MockTmsAutoEntryConfig, maybe_execute_mock_tms_after_approval  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
 from freight_recon.review_actions import ReviewDecision  # noqa: E402
+from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
 from run_gmail_to_slack_dogfood import _redacted_workflow_json  # noqa: E402
 
@@ -353,6 +357,18 @@ def _slack_interaction_body(token):
     return urlencode({"payload": json.dumps(payload)})
 
 
+def _slack_operation_body(value, *, user_id="U_OWNER", channel_id="C_OPS", message_ts="1710000000.000100"):
+    payload = {
+        "type": "block_actions",
+        "user": {"id": user_id, "username": "rasheed"},
+        "channel": {"id": channel_id},
+        "message": {"ts": message_ts},
+        "container": {"channel_id": channel_id, "message_ts": message_ts},
+        "actions": [{"action_id": "approve_operation_0", "value": value}],
+    }
+    return urlencode({"payload": json.dumps(payload)})
+
+
 def _slack_headers(body, *, secret=_SLACK_SECRET, timestamp=None):
     ts = timestamp or str(int(time.time()))
     sig = "v0=" + hmac.new(secret, f"v0:{ts}:{body}".encode("utf-8"), hashlib.sha256).hexdigest()
@@ -372,10 +388,71 @@ def _serve(db_path, signer, loads):
         signer=signer,
         follow_up_loads=loads,
         slack_signing_secret=_SLACK_SECRET,
+        allowed_slack_users=("U1",),
+        allowed_slack_channel="C_OPS",
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread
+
+
+class _FakeRouterAgent:
+    def __init__(self, calls, approve):
+        self.calls = calls
+        self.approve = approve
+
+    def run(self, goal):
+        self.calls.append(("goal", goal))
+        self.calls.append(("approval_gate_first", bool(self.approve and self.approve(object()))))
+        self.calls.append(("approval_gate_second", bool(self.approve and self.approve(object()))))
+        return AgentResult(goal=goal, status="DONE", steps=[{"action": "DONE"}], note="invoice INV-9001 verified")
+
+
+class _BoomRouter:
+    def run(self, _intent, *, approve=None):
+        raise RuntimeError("browser session crashed")
+
+
+def _serve_with_operation_router(db_path, signer, loads, *, approved_amount="2850.00"):
+    calls = []
+
+    def build_agent(*, approved_amount=None, approve=None):
+        calls.append(("approved_amount", approved_amount))
+        return _FakeRouterAgent(calls, approve)
+
+    router = OperationRouter(
+        lanes=freight_lanes(),
+        build_agent=build_agent,
+        approved_amount_for=lambda intent: intent.params.get("approved_amount"),
+    )
+    server = run_callback_server(
+        host="127.0.0.1",
+        port=0,
+        db_path=str(db_path),
+        signer=signer,
+        follow_up_loads=loads,
+        slack_signing_secret=_SLACK_SECRET,
+        operation_router=router,
+        allowed_slack_users=("U_OWNER",),
+        allowed_slack_channel="C_OPS",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, calls
+
+
+def _wait_for_security_event(db_path, event_type, *, timeout=5):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        store = WorkflowStore(db_path)
+        try:
+            matches = [e for e in store.security_events() if e["event_type"] == event_type]
+            if matches:
+                return matches[-1]
+        finally:
+            store.close()
+        time.sleep(0.02)
+    raise AssertionError(f"timed out waiting for {event_type}")
 
 
 def test_slack_interactivity_applies_signed_action(tmp_path):
@@ -403,6 +480,324 @@ def test_slack_interactivity_applies_signed_action(tmp_path):
         assert check.get_run(message.run_id).state == WorkflowState.REQUESTED_BACKUP
     finally:
         check.close()
+
+
+def test_slack_operation_approval_runs_router_and_returns_receipt(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+    )
+    value = build_slack_operation_approval_value(
+        intent,
+        signer,
+        action_id="op-approval-1",
+        approved_amount="2850.00",
+        expected_channel_id="C_OPS",
+        expected_thread_ts="1710000000.000100",
+    )
+    body = _slack_operation_body(value)
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert "operating in the TMS" in payload["text"]
+    assert payload["metadata"] == {
+        "action_id": "op-approval-1",
+        "status": "RUNNING",
+        "channel_id": "C_OPS",
+        "thread_ts": "1710000000.000100",
+    }
+    applied = _wait_for_security_event(db_path, "slack_operation_applied")
+    assert ("approved_amount", "2850.00") in calls
+    assert ("approval_gate_first", True) in calls
+    assert ("approval_gate_second", False) in calls
+    assert any(call[0] == "goal" and "Create a customer invoice" in call[1] for call in calls)
+    assert applied["payload"]["status"] == "DONE"
+    assert applied["payload"]["token_fingerprint"]
+
+
+def test_slack_operation_approval_token_is_single_use(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+    )
+    value = build_slack_operation_approval_value(
+        intent,
+        signer,
+        action_id="fixed-op-approval",
+        approved_amount="2850.00",
+        expected_channel_id="C_OPS",
+        expected_thread_ts="1710000000.000100",
+    )
+    body = _slack_operation_body(value)
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        first = conn.getresponse()
+        first_payload = json.loads(first.read().decode("utf-8"))
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        second = conn.getresponse()
+        second_payload = json.loads(second.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert first.status == 200 and first_payload["metadata"]["status"] == "RUNNING"
+    assert second.status == 200
+    assert "already used" in second_payload["text"]
+    assert [call[0] for call in calls].count("goal") == 1
+
+
+def test_operation_action_claim_is_atomic(tmp_path):
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        assert store.claim_operation_action("op-1", actor="a", payload={"first": True}) is True
+        assert store.claim_operation_action("op-1", actor="b", payload={"second": True}) is False
+    finally:
+        store.close()
+
+
+def test_delivery_action_claim_is_atomic(tmp_path):
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        assert store.claim_delivery_action("review-1", run_id=1, actor="a", payload={"first": True}) is True
+        assert store.claim_delivery_action("review-1", run_id=1, actor="b", payload={"second": True}) is False
+    finally:
+        store.close()
+
+
+def test_signed_review_action_token_reuse_is_idempotent_without_reapplying(tmp_path):
+    store, signer, message, loads = _delivered(tmp_path)
+    token = _token_for(message, ReviewDecision.REQUEST_BACKUP)
+
+    first = handle_signed_action_callback(store, token, signer=signer, follow_up_loads=loads)
+    second = handle_signed_action_callback(store, token, signer=signer, follow_up_loads=loads)
+
+    assert first.status == CallbackStatus.APPLIED
+    assert second.status == CallbackStatus.APPLIED
+    events = [e for e in store.audit_events(message.run_id) if e["event_type"] == "delivery_action_applied"]
+    assert len(events) == 1
+    store.close()
+
+
+def test_slack_operation_approval_rejects_unauthorized_user_before_router(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True},
+    )
+    body = _slack_operation_body(
+        build_slack_operation_approval_value(intent, signer, approved_amount="2850.00"),
+        user_id="U_STRANGER",
+    )
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert payload["replace_original"] is False
+    assert "Not authorized" in payload["text"]
+    assert calls == []
+    check = WorkflowStore(db_path)
+    try:
+        rejected = [e for e in check.security_events() if e["event_type"] == "slack_operation_rejected"]
+        assert rejected and rejected[-1]["payload"]["failure"] == "authorization"
+    finally:
+        check.close()
+
+
+def test_slack_operation_approval_rejects_wrong_message_context_before_router(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+    )
+    value = build_slack_operation_approval_value(
+        intent,
+        signer,
+        approved_amount="2850.00",
+        expected_channel_id="C_OTHER",
+        expected_thread_ts="1710000000.000100",
+    )
+    body = _slack_operation_body(value)
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert "does not belong" in payload["text"]
+    assert calls == []
+    check = WorkflowStore(db_path)
+    try:
+        rejected = [e for e in check.security_events() if e["event_type"] == "slack_operation_rejected"]
+        assert rejected and rejected[-1]["payload"]["failure"] == "channel_mismatch"
+    finally:
+        check.close()
+
+
+def test_slack_operation_router_exception_returns_receipt_and_audits(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+    )
+    value = build_slack_operation_approval_value(intent, signer, approved_amount="2850.00")
+    body = _slack_operation_body(value)
+    server = run_callback_server(
+        host="127.0.0.1",
+        port=0,
+        db_path=str(db_path),
+        signer=signer,
+        follow_up_loads=loads,
+        slack_signing_secret=_SLACK_SECRET,
+        operation_router=_BoomRouter(),
+        allowed_slack_users=("U_OWNER",),
+        allowed_slack_channel="C_OPS",
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert payload["metadata"]["status"] == "RUNNING"
+    assert "operating in the TMS" in payload["text"]
+    failed = _wait_for_security_event(db_path, "slack_operation_failed")
+    assert failed["payload"]["error_type"] == "RuntimeError"
+
+
+def test_slack_operation_approval_refuses_unapproved_money_lane_without_agent(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": False},
+    )
+    body = _slack_operation_body(build_slack_operation_approval_value(intent, signer))
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert payload["metadata"]["status"] == "RUNNING"
+    applied = _wait_for_security_event(db_path, "slack_operation_applied")
+    assert applied["payload"]["status"] == "ESCALATED"
+    assert "no human-approved amount" in applied["payload"]["note"]
+    assert calls == []
+
+
+def test_slack_operation_forged_signature_does_not_run_router(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    intent = CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary="invoice the delivered load for Acme",
+        params={"approved": True},
+    )
+    body = _slack_operation_body(build_slack_operation_approval_value(intent, signer, approved_amount="2850.00"))
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        headers = _slack_headers(body)
+        headers["X-Slack-Signature"] = "v0=deadbeef"
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=headers)
+        result = conn.getresponse()
+        result.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 401
+    assert calls == []
+
+
+def test_slack_operation_malformed_approval_returns_400_without_router(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    body = _slack_operation_body("not-a-valid-operation-token.signature")
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/actions", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 400
+    assert payload["error"] == "malformed Slack operation approval"
+    assert calls == []
 
 
 def test_slack_interactivity_rejects_forged_signature_without_state_change(tmp_path):
@@ -443,7 +838,9 @@ def test_slack_command_pause_flips_brake(tmp_path):
     store, signer, message, loads = _delivered(tmp_path)
     db_path = store.db_path
     store.close()
-    body = urlencode({"command": "/neyma", "text": "pause tms writes", "user_name": "rasheed"})
+    body = urlencode(
+        {"command": "/neyma", "text": "pause tms writes", "user_id": "U1", "user_name": "rasheed", "channel_id": "C_OPS"}
+    )
     server, thread = _serve(db_path, signer, loads)
     try:
         host, port = server.server_address
@@ -461,6 +858,75 @@ def test_slack_command_pause_flips_brake(tmp_path):
     assert OpsControl(Path(db_path).parent / "ops_control.json").is_tms_writes_paused() is True
 
 
+def test_slack_command_can_render_operation_proposal_button(tmp_path):
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    body = urlencode(
+        {
+            "command": "/neyma",
+            "text": "invoice LD-9001 for Acme amount 2850.00",
+            "user_id": "U_OWNER",
+            "user_name": "rasheed",
+            "channel_id": "C_OPS",
+        }
+    )
+    server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/commands", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert payload["response_type"] == "in_channel"
+    assert "raise_invoice" in payload["text"]
+    actions = next(block for block in payload["blocks"] if block["type"] == "actions")
+    button = actions["elements"][0]
+    assert button["text"]["text"] == "Approve $2850.00"
+    assert button["value"].count(".") == 1
+    assert calls == []
+
+
+def test_slack_command_rejects_unauthorized_user(tmp_path):
+    from pathlib import Path
+
+    from freight_recon.ops_control import OpsControl
+
+    store, signer, _message, loads = _delivered(tmp_path)
+    db_path = store.db_path
+    store.close()
+    body = urlencode(
+        {
+            "command": "/neyma",
+            "text": "pause tms writes",
+            "user_id": "U_STRANGER",
+            "user_name": "x",
+            "channel_id": "C_OPS",
+        }
+    )
+    server, thread = _serve(db_path, signer, loads)
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("POST", "/slack/commands", body=body, headers=_slack_headers(body))
+        result = conn.getresponse()
+        payload = json.loads(result.read().decode("utf-8"))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert result.status == 200
+    assert "Not authorized" in payload["text"]
+    assert OpsControl(Path(db_path).parent / "ops_control.json").is_tms_writes_paused() is False
+
+
 def test_slack_command_rejects_forged_signature(tmp_path):
     from pathlib import Path
 
@@ -469,7 +935,9 @@ def test_slack_command_rejects_forged_signature(tmp_path):
     store, signer, message, loads = _delivered(tmp_path)
     db_path = store.db_path
     store.close()
-    body = urlencode({"command": "/neyma", "text": "pause tms writes", "user_name": "x"})
+    body = urlencode(
+        {"command": "/neyma", "text": "pause tms writes", "user_id": "U1", "user_name": "x", "channel_id": "C_OPS"}
+    )
     server, thread = _serve(db_path, signer, loads)
     try:
         host, port = server.server_address
