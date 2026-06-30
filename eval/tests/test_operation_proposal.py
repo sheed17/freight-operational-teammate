@@ -1,0 +1,97 @@
+"""Tests for the inbound->Slack-button->live-browser bridge: the Approve button decodes to the exact
+gated operation and actually drives the OperationRouter."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
+from freight_recon.action_callback import _verify_operation_approval_value  # noqa: E402
+from freight_recon.delivery import DeliverySigner  # noqa: E402
+from freight_recon.inbox_brain import InboxAssessment, ThreadState  # noqa: E402
+from freight_recon.operation_proposal import (  # noqa: E402
+    APPROVE_ACTION_ID,
+    build_operation_proposal_message,
+    proposal_from_assessment,
+)
+from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operator_agent import OperatorAgent  # noqa: E402
+from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
+
+_SIGNER = DeliverySigner(b"bridge-secret")
+
+
+def _button_value(message):
+    return message["blocks"][1]["elements"][0]["value"]
+
+
+class _FakeActuator:
+    def __init__(self): self.calls = []
+    def observe(self): return {"url": "x", "interactive": [], "errors": []}
+    def navigate(self, u): return True
+    def click(self, t): self.calls.append(("click", t)); return True
+    def type(self, t, v): self.calls.append(("type", t, v)); return True
+    def select(self, t, o): return True
+    def read(self, t): return "INV-1"
+
+
+def test_proposal_button_decodes_to_the_exact_gated_operation():
+    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme for LD-9", {"lane": "raise_invoice", "customer": "Acme"})
+    msg = build_operation_proposal_message(intent, _SIGNER, approved_amount="2850.00",
+                                           channel_id="C_OPS", thread_ts="1.1")
+    assert msg["blocks"][1]["elements"][0]["action_id"] == APPROVE_ACTION_ID
+    approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
+    assert approval is not None
+    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.approved_amount == "2850.00"
+    assert approval.expected_channel_id == "C_OPS" and approval.expected_thread_ts == "1.1"
+
+
+def test_tapping_the_button_drives_the_router_money_fenced():
+    # Simulate the full bridge: emit button -> decode (the "tap") -> run the router with the bound amount.
+    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme", {"lane": "raise_invoice", "customer": "Acme"})
+    msg = build_operation_proposal_message(intent, _SIGNER, approved_amount="2850.00", channel_id="C")
+    approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
+
+    actuator = _FakeActuator()
+    seq = [{"action": "TYPE", "target": "Total Charge", "value": "9999"}, {"action": "DONE", "why": "ok"}]
+    def complete(_p):
+        return json.dumps(seq.pop(0)) if seq else json.dumps({"action": "DONE", "why": "done"})
+
+    def build_agent(*, approved_amount=None, approve=None):
+        return OperatorAgent(actuator=actuator, complete=complete, approved_amount=approved_amount, approve=approve)
+
+    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent,
+                             approved_amount_for=lambda i: i.params.get("approved_amount"))
+    # The callback injects the signed amount into params before running; mirror that.
+    intent2 = approval.intent
+    intent2.params["approved_amount"] = approval.approved_amount
+    res = router.run(intent2, approve=lambda a: True)
+    assert res.status == "DONE" and res.lane == "raise_invoice"
+    # Money fence: the bound $2,850 reached the form, never the model's 9999.
+    assert ("type", "Total Charge", "2850.00") in actuator.calls
+
+
+def test_proposal_from_ready_to_bill_assessment():
+    a = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_lane="raise_invoice",
+                        suggested_action="LD-9 is ready to invoice Acme", load_ref="LD-9",
+                        confidence=0.8, rationale="complete")
+    msg = proposal_from_assessment(a, _SIGNER, channel_id="C_OPS", approved_amount="2850.00",
+                                   params={"customer": "Acme"})
+    assert msg is not None
+    approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
+    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["customer"] == "Acme" and approval.intent.params["load_ref"] == "LD-9"
+
+
+def test_no_button_for_non_lane_or_amountless_assessments():
+    # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
+    chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,
+                            suggested_action="missing POD", load_ref="LD-1", confidence=0.9, rationale="")
+    assert proposal_from_assessment(chase, _SIGNER, channel_id="C", approved_amount="100") is None
+
+    # A money lane with no human-approvable figure -> never post a run button.
+    ready = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_lane="raise_invoice",
+                            suggested_action="ready", load_ref="LD-2", confidence=0.8, rationale="")
+    assert proposal_from_assessment(ready, _SIGNER, channel_id="C", approved_amount=None) is None
