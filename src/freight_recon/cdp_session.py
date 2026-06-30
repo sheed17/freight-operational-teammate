@@ -70,6 +70,10 @@ class CdpBrowserSession:
                     raise CdpError(f"{method} failed: {msg['error']}")
                 return msg
 
+    def command(self, method: str, params: dict | None = None) -> dict:
+        """Public passthrough to a raw CDP command (e.g. the Input domain for real keyboard/mouse)."""
+        return self._cmd(method, params)
+
     def navigate(self, url: str, *, settle_seconds: float = 3.0) -> None:
         self._cmd("Page.navigate", {"url": url})
         time.sleep(settle_seconds)  # let the page (and any XHR-rendered form) settle before reading
