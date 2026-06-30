@@ -77,8 +77,8 @@ _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "RE
 
 _HELP = (
     "Commands: `status` (what is Neyma doing) | `roi` (what Neyma recovered/did) | "
-    "`autonomy` · `graduate <lane>` · `supervise <lane>` | `pause tms writes` | "
-    "`resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
+    "`audit` (show your work) | `autonomy` · `graduate <lane>` · `supervise <lane>` | "
+    "`pause tms writes` | `resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
 )
 
 
@@ -98,6 +98,10 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         from .roi_ledger import build_value_digest, render_value_digest
 
         return render_value_digest(build_value_digest(store), period="so far")
+    if cmd in ("audit", "activity", "log", "show your work", "what did you do") and store is not None:
+        from .activity_log import build_activity, render_activity
+
+        return render_activity(build_activity(store))
     if cmd in ("autonomy", "show autonomy", "graduations", "what is autonomous") and store is not None:
         return _render_autonomy(store)
     if store is not None and (raw_first := cmd.split(None, 1)[0]) in (
