@@ -46,7 +46,7 @@ Operating an unknown system safely is split into a 4-layer loop. **The LLM does 
 
 ## 3. Repo state
 - Branch: **`demos`** (PRs target `main`). Working tree clean as of handoff (HEAD `7e65f56`).
-- Test suite: `python -m pytest eval/tests -q` — **423 tests, all green**; full run ~5–6 min (slow imports).
+- Test suite: `python -m pytest eval/tests -q` — **452 tests, all green**; full run ~5–6 min (slow imports).
   Per-module runs are sub-second — prefer those while iterating.
 - Latest commits (newest first) — the agentic stack landed in order, each tested + committed:
   - `7e65f56` **Version B: request→agent→result bridge** (`operation_router.py`, bounded lanes)
@@ -155,8 +155,9 @@ Layer → Safety Spine. (Full definitions in the conversation / project memory `
 - **Slack = the two-way delegate interface** (not a dashboard). Proactive (digests, exception cards,
   approval, "Entering→Verified→Done") AND reactive (owner converses/commands in NL: "invoice today's
   delivered loads", "what's outstanding >30 days", "dispute the detention on LD-560004" → intent →
-  Brain plans → tools act (gated) → reports in-thread). Today only a primitive exists
-  (`ops_control.handle_ops_command`: status/pause/resume). (memory: `slack-assistant-layer`)
+  Brain plans → tools act (gated) → reports in-thread). Reactive surface now: `ops_control.handle_ops_command`
+  (status/pause/resume/`roi`/`autonomy`/`graduate`) + the signed operation-approval callback. (memory:
+  `slack-assistant-layer`)
 - **Brain proposes, gates dispose.** The Brain may read/understand/plan/navigate freely, but EVERY
   consequential action (money, sends, real-host writes) routes through the Safety Spine (§2) + human
   approval — regardless of who or what requested it.
@@ -205,25 +206,25 @@ Do these in order. Each is shippable on its own. **Items 1 & 2 from the old plan
    **self-heal** it, with Rasheed approving the commit. This turns "tested bridge" into "it actually
    invoiced a load." **Accept when:** a real invoice is created at the approved amount and verified by
    readback, the receipt says ✅ Done, OR the agent escalates cleanly — no silent/fake success.
-2. **Wire `OperationRouter` into the live Slack approval callback.** Today the router is proven by tests
-   + `scripts/run_operate_request.py`; the live path is: Slack request → `BrainOperator`/delegate
-   proposes → owner taps Approve → the approval callback calls `router.run(intent, approve=...)` → the
-   receipt posts back in-thread. **Accept when:** an authenticated Slack request runs end to end through
-   the router and posts a receipt; an unauthorized sender or an injected email instruction cannot trigger
-   it; tested with a fake Slack/agent.
-3. **Supervised→autonomous graduation per lane.** A lane starts requiring approval on every commit; once
-   proven for a tenant it can relax to auto-approve *for that one lane*. **Accept when:** graduation is
-   per-(tenant,lane), defaults to supervised, is recorded, and is tested.
+2. **DONE — `OperationRouter` wired into the live Slack approval callback** (`139db78`, Codex). Slack
+   button (signed single-use token) → authorize_command (owner+channel) → message-context binding →
+   atomic claim → background agent run → proof-carrying receipt posted in-thread. Concurrency-hardened
+   (WAL store `87c6c42`). Live path is opt-in/off by default (`--enable-operation-router` + allowlist).
+3. **DONE — Supervised→autonomous graduation per lane** (`bfb5ce1`). `lane_graduation.LaneGraduation`
+   (persisted, audited, per-(tenant,lane), fail-safe default); the router runs a no-human-approval
+   consequential lane ONLY if graduated, else escalates. Owner control: `/neyma autonomy|graduate
+   <lane>|supervise <lane>`.
 4. **Persist learned self-heal repairs** — write a learned constraint (e.g. "invoice_number must be
    numeric") back into the screen-map / flow-recipe so the next run is deterministic, not re-healed.
    **Accept when:** a healed quirk is recorded and reused without a second heal; tested.
 5. **Deepen the Inbox Brain** (thinnest layer) — classify doc type (carrier invoice / POD / lumper /
    rate con) and thread state (ready-for-billing / dispute reply / missing-backup), linked to a load.
-   **Accept when:** classification is tested on the synthetic corpus with measured accuracy.
-6. **ROI instrumentation + receipts ledger** (the product-side gap from the strategy discussion) — tally
-   and surface dollars: overbilling caught, $ recovered, DSO impact, hours saved, error rate; every
-   agent run leaves an auditable receipt. **Accept when:** a running tally renders in Slack/console from
-   real run records; tested.
+   This is what AUTO-TRIGGERS a graduated lane (the consumer of item 3). **Accept when:** classification
+   is tested on the synthetic corpus with measured accuracy.
+6. **DONE (core) — ROI instrumentation + receipts ledger** (`d3b64eb`, surfaced live `5c5c71b`).
+   `roi_ledger.py`: proof-carrying receipt + value digest (caught/recovered/invoiced/hours, only on
+   DONE), reads the same audit log. Live via `/neyma roi`, the daily poster, and the operation receipt.
+   REMAINING: DSO/error-rate metrics + a richer audit/observability surface.
 7. **Slack-down secondary alert channel** — email fallback when the Slack bot token is dead (alerts are
    currently circular through Slack). **Accept when:** a simulated Slack-post failure triggers an email
    alert; tested.
