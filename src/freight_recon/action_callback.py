@@ -577,6 +577,16 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             if resumable is None:  # reply not tied to an escalated operation
                 self._write_json(200, {"ok": True})
                 return
+            # Immediate acknowledgement so the owner gets a fast reply while the (slower) run proceeds.
+            if config.operation_result_poster is not None:
+                try:
+                    config.operation_result_poster({
+                        "channel_id": channel_id, "thread_ts": thread_ts,
+                        "text": "👍 On it — resuming now…", "status": "RESUMING",
+                        "lane": resumable.get("lane"),
+                    })
+                except Exception:  # noqa: BLE001 - the ack is best-effort
+                    pass
             _start_resume_background_run(
                 db_path=config.db_path,
                 router=config.operation_router,
@@ -853,6 +863,41 @@ def _intent_with_signed_approved_amount(approval: SlackOperationApproval) -> Com
     return CommandIntent(kind=approval.intent.kind, summary=approval.intent.summary, params=params)
 
 
+def _record_run_diagnosis(store, result, *, actor, channel_id, thread_ts) -> object:
+    """Diagnose a finished run and, when it wasn't clean, record it as a learnable lesson. Returns the
+    diagnosis so the caller can append the 'why' to the receipt."""
+    from .run_diagnostics import diagnose_run
+
+    diag = diagnose_run(
+        getattr(result, "steps", None) or [],
+        status=str(getattr(result, "status", "")),
+        note=str(getattr(result, "note", "") or ""),
+    )
+    if not diag.is_clean():
+        try:
+            store.add_security_event("run_diagnosis", actor=actor, payload={
+                "channel_id": channel_id, "thread_ts": thread_ts,
+                "lane": getattr(result, "lane", None), "outcome": diag.outcome,
+                "summary": diag.summary, "repeated_failures": diag.repeated_failures,
+                "dead_ends": diag.dead_ends, "suggested_fixes": diag.suggested_fixes,
+                "exhausted": diag.exhausted_steps,
+            })
+        except Exception:  # noqa: BLE001
+            pass
+    return diag
+
+
+def _receipt_text(result, amount, diag) -> str:
+    """Owner receipt, with the 'why it struggled' appended when the run wasn't clean."""
+    from .roi_ledger import receipt_from_result, render_operation_receipt
+    from .run_diagnostics import render_diagnosis
+
+    text = render_operation_receipt(receipt_from_result(result, amount=amount))
+    if diag is not None and not diag.is_clean():
+        text += "\n" + render_diagnosis(diag)
+    return text
+
+
 def _start_operation_background_run(
     *,
     db_path: str,
@@ -900,20 +945,16 @@ def _start_operation_background_run(
             }
         try:
             store.add_security_event(event_type, actor=actor, payload=payload)
+            diag = _record_run_diagnosis(store, result, actor=actor, channel_id=channel_id, thread_ts=thread_ts)
         finally:
             store.close()
         if poster is not None:
             try:
-                from .roi_ledger import receipt_from_result, render_operation_receipt
-
-                receipt = render_operation_receipt(
-                    receipt_from_result(result, amount=approval.approved_amount)
-                )
                 poster(
                     {
                         "channel_id": channel_id,
                         "thread_ts": thread_ts,
-                        "text": receipt,
+                        "text": _receipt_text(result, approval.approved_amount, diag),
                         "status": result.status,
                         "lane": result.lane,
                     }
@@ -958,15 +999,14 @@ def _start_resume_background_run(
                 "approved_amount": amount, "summary": intent.summary, "resumed": True, **extra,
             }
             store.add_security_event(event_type, actor=actor, payload=payload)
+            diag = _record_run_diagnosis(store, result, actor=actor, channel_id=channel_id, thread_ts=thread_ts)
         finally:
             store.close()
         if poster is not None:
             try:
-                from .roi_ledger import receipt_from_result, render_operation_receipt
-
                 poster({
                     "channel_id": channel_id, "thread_ts": thread_ts,
-                    "text": render_operation_receipt(receipt_from_result(result, amount=amount)),
+                    "text": _receipt_text(result, amount, diag),
                     "status": result.status, "lane": result.lane,
                 })
             except Exception:  # noqa: BLE001
