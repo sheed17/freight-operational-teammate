@@ -140,9 +140,11 @@ def proposals_for_clean_matches(
             summary=f"Record the agreed payable to {carrier}" + (f" for {load_ref}" if load_ref else ""),
             params={"lane": "record_payable", "carrier": carrier, "load_ref": load_ref},
         )
-        proposals.append(build_operation_proposal_message(
+        message = build_operation_proposal_message(
             intent, signer, approved_amount=str(amount), channel_id=channel_id,
-        ))
+        )
+        message["load_ref"] = load_ref  # for dedup/audit by the caller (ignored when posting to Slack)
+        proposals.append(message)
     return proposals
 
 

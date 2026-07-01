@@ -201,6 +201,7 @@ def main() -> int:
         proposals_posted = 0
         if args.propose_clean_payables:
             proposals_posted = _post_clean_payable_proposals(
+                store=store,
                 workflow=workflow,
                 load_by_id=load_by_id,
                 client_config=args.client_config,
@@ -341,11 +342,15 @@ def _delivery_signer(client_config_path: str | Path, allow_local_dev_secret: boo
     )
 
 
-def _post_clean_payable_proposals(*, workflow, load_by_id, client_config, signer, live: bool) -> int:
+_PAYABLE_PROPOSED_EVENT = "payable_proposal_posted"
+
+
+def _post_clean_payable_proposals(*, store, workflow, load_by_id, client_config, signer, live: bool) -> int:
     """Auto-post a signed 'Record payable [Approve & run]' button for each cleanly matched invoice.
 
-    Best-effort and fail-safe: only clean MATCHED packets, only the deterministic rate-con amount, and
-    only actually posts when the live gate is on (otherwise it just reports how many it would post).
+    Fail-safe + idempotent: only clean MATCHED packets, only the deterministic rate-con amount, only
+    when the live gate is on, and ONCE per load — a load already proposed (recorded in the audit log) is
+    skipped so a still-matched packet doesn't re-post the same button every cycle.
     """
     from freight_recon.channels import slack_channel_for_route
     from freight_recon.delivery_dispatch import SlackApiPoster
@@ -358,12 +363,18 @@ def _post_clean_payable_proposals(*, workflow, load_by_id, client_config, signer
         print("propose-clean-payables: no Slack config; skipping.")
         return 0
     channel = slack_channel_for_route(config.slack, ReviewRoute.CHANNEL_POST)
+    already = {
+        e["payload"].get("load_ref")
+        for e in store.security_events()
+        if e["event_type"] == _PAYABLE_PROPOSED_EVENT
+    }
+    fresh = [pr for pr in workflow.packet_results if getattr(pr, "load_id", None) not in already]
     proposals = proposals_for_clean_matches(
-        workflow.packet_results, load_by_id, signer=signer, channel_id=channel,
+        fresh, load_by_id, signer=signer, channel_id=channel,
         amount_for_load=lambda load: str(agreed_rate_total(load)),
     )
     if not proposals:
-        print("propose-clean-payables: no cleanly matched invoices to propose.")
+        print("propose-clean-payables: no new cleanly matched invoices to propose.")
         return 0
     if not live:
         print(f"propose-clean-payables: would post {len(proposals)} payable button(s) (live gate off — dry).")
@@ -377,7 +388,13 @@ def _post_clean_payable_proposals(*, workflow, load_by_id, client_config, signer
     for message in proposals:
         try:
             result = post_operation_proposal(message, poster=poster)
-            posted += 1 if getattr(result, "ok", False) else 0
+            if getattr(result, "ok", False):
+                posted += 1
+                # Record so we never re-post this load's button on a later cycle.
+                store.add_security_event(
+                    _PAYABLE_PROPOSED_EVENT, actor="system",
+                    payload={"load_ref": message.get("load_ref"), "channel_id": channel},
+                )
         except Exception as exc:  # noqa: BLE001 - a posting failure must not break the loop
             print(f"propose-clean-payables: post failed: {type(exc).__name__}")
     print(f"propose-clean-payables: posted {posted}/{len(proposals)} payable approval button(s) to {channel}.")
