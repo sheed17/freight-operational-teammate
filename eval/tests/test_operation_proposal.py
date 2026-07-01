@@ -59,8 +59,9 @@ def test_tapping_the_button_drives_the_router_money_fenced():
     def complete(_p):
         return json.dumps(seq.pop(0)) if seq else json.dumps({"action": "DONE", "why": "done"})
 
-    def build_agent(*, approved_amount=None, approve=None):
-        return OperatorAgent(actuator=actuator, complete=complete, approved_amount=approved_amount, approve=approve)
+    def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
+        return OperatorAgent(actuator=actuator, complete=complete, approved_amount=approved_amount,
+                             approve=approve, prepare_only=prepare_only)
 
     router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent,
                              approved_amount_for=lambda i: i.params.get("approved_amount"))
