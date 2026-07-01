@@ -114,6 +114,8 @@ class OperatorAgent:
         repeats = 0
         last_sig: tuple | None = None
         domain = "unknown"
+        self._committed = False           # has a consequential action succeeded this run?
+        self._commit_approved: bool | None = None  # cached approval so a failed commit click can retry
         # Business knowledge about whoever/whatever this goal is about (recalled up front, from the goal).
         business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
         learned: list[str] = list(business)
@@ -163,10 +165,19 @@ class OperatorAgent:
                                        f"Everything is filled and staged; I stopped before the final "
                                        f"step ({action.target}) so you can commit it. Reply 'submit' to "
                                        "commit, or do the final action in the browser.")
-                if self.approve is None or not self.approve(action):
+                # Already committed once this run -> never repeat a consequential action (double-pay guard).
+                if self._committed:
+                    return AgentResult(goal, "DONE", history, "already committed; refusing to repeat the commit")
+                # Ask for approval ONCE and cache it — a FAILED commit click must not burn the approval,
+                # so retries of the same commit are allowed until one actually succeeds.
+                if self._commit_approved is None:
+                    self._commit_approved = bool(self.approve is not None and self.approve(action))
+                if not self._commit_approved:
                     return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
 
             ok, observed = self._execute(action)
+            if ok and self.fence.is_consequential(action):
+                self._committed = True  # a consequential action succeeded — commit is done
             entry = {"action": action.kind.value, "target": action.target,
                      "value": action.value, "why": action.why, "ok": ok}
             if observed is not None:
