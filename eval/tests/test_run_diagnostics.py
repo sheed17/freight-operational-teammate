@@ -78,3 +78,25 @@ def test_agent_prompt_guards_against_guessing_urls():
 
     p = _decide_prompt("open the record", {"url": "x"}, [])
     assert "guessed record URL" in p and "will 404" in p
+
+
+def test_agent_prompt_covers_edge_cases_and_anti_hallucination():
+    from freight_recon.operator_agent import _decide_prompt
+
+    p = _decide_prompt("record a payable", {"url": "x"}, [])
+    # fail-closed on every dangerous ambiguity
+    for token in ("record not found", "already exists", "ambiguous", "blocked", "rejected"):
+        assert token in p, f"missing edge-case guard: {token}"
+    # anti-hallucination: only DONE after a readback; never invent
+    assert "DO NOT HALLUCINATE" in p
+    assert "Only report DONE AFTER you have READ the saved record back" in p
+    assert "Never describe a record, number" in p
+
+
+def test_diagnosis_names_missing_record_as_a_data_gap_not_an_engine_bug():
+    # A "record not found" escalation is a data/precondition gap — the fix is for the owner, not the engine.
+    d = diagnose_run([], status="ESCALATED", note="record not found: LD-560001")
+    assert "isn't in this system" in d.summary
+    assert any("data gap" in f for f in d.suggested_fixes)
+    # and it is NOT blamed on click resolution / recipes
+    assert not any("click resolution" in f or "recipe" in f for f in d.suggested_fixes)

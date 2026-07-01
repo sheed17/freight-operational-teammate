@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 
 import websocket  # websocket-client
@@ -38,7 +39,21 @@ class CdpBrowserSession:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def connect(self) -> None:
+    def connect(self, *, attempts: int = 3) -> None:
+        """Attach to a Chrome page tab, retrying transient timeouts (the socket occasionally times out
+        on the first try when the browser is busy — a retry beats crashing the whole operation)."""
+        last: Exception | None = None
+        for i in range(max(1, attempts)):
+            try:
+                self._connect_once()
+                return
+            except (websocket.WebSocketException, OSError, urllib.error.URLError) as exc:
+                last = exc
+                self.close()
+                time.sleep(0.6 * (i + 1))
+        raise CdpError(f"could not connect to CDP at {self.cdp_url} after {attempts} tries: {last}")
+
+    def _connect_once(self) -> None:
         tabs = json.load(urllib.request.urlopen(f"{self.cdp_url}/json", timeout=self.timeout))
         pages = [t for t in tabs if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
         if self.url_filter:

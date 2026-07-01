@@ -29,9 +29,21 @@ class RunDiagnosis:
         return self.outcome == "DONE" and not self.repeated_failures and not self.dead_ends
 
 
+_NOT_FOUND_RE = re.compile(r"record not found|not\s+found|does\s+not\s+exist|no matching", re.IGNORECASE)
+
+
 def diagnose_run(steps: list[dict], *, status: str, note: str = "") -> RunDiagnosis:
     """Diagnose a finished run from its recorded steps + final status/note."""
     steps = steps or []
+    # A missing record is a DATA/precondition gap, not an agent/engine bug — name it as such so the fix
+    # is "create it / correct the reference / skip", not more actuator work.
+    if _NOT_FOUND_RE.search(note or ""):
+        return RunDiagnosis(
+            outcome=status,
+            summary="the record isn't in this system (it may not be entered yet, or the reference is wrong).",
+            suggested_fixes=["create the record upstream, correct the reference, or skip — a missing "
+                             "record is a data gap for the owner to resolve, not an agent fix"],
+        )
     # 1) which interactions the agent tried but that FAILED — grouped, the repeat ones are the blockers.
     failed = Counter()
     for st in steps:
