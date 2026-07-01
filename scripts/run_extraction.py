@@ -104,7 +104,7 @@ def main() -> int:
         print("\n--render-only: skipping LLM extraction. Pipeline up to extraction verified.")
         return 0
 
-    provider = (os.getenv("EXTRACTION_PROVIDER") or "anthropic").lower()
+    provider = (os.getenv("EXTRACTION_PROVIDER") or "openai").lower()
     key_var = "ANTHROPIC_API_KEY" if provider == "anthropic" else "OPENAI_API_KEY"
     if not os.getenv(key_var):
         print(f"\n{key_var} is not set. Set it (or use a .env file) to run extraction.")

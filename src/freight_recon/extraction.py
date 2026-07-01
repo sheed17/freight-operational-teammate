@@ -50,7 +50,7 @@ class ExtractionResult:
 # ----------------------------------------------------------------------------
 
 def _resolve_provider(provider: str | None) -> str:
-    provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "anthropic").lower()
+    provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "openai").lower()
     if provider not in ("anthropic", "openai"):
         raise ValueError(f"unsupported EXTRACTION_PROVIDER: {provider!r}")
     return provider

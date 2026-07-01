@@ -126,7 +126,7 @@ def main() -> int:
 
 
 def _build_real_extractor(*, provider: str | None, model: str | None, dpi: int, max_pages: int):
-    resolved_provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "anthropic").lower()
+    resolved_provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "openai").lower()
     key_var = "ANTHROPIC_API_KEY" if resolved_provider == "anthropic" else "OPENAI_API_KEY"
     if not os.getenv(key_var):
         raise SystemExit(f"{key_var} is required when --real-extraction uses provider={resolved_provider}")
