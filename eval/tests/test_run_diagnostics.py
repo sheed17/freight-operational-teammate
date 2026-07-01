@@ -51,3 +51,30 @@ def test_clean_run_reads_clean():
     steps = [{"action": "CLICK", "target": "Save", "ok": True}, {"action": "READ", "target": "inv", "ok": True}]
     d = diagnose_run(steps, status="DONE", note="invoice INV-1 created")
     assert d.is_clean() and "cleanly" in d.summary
+
+
+def test_diagnosis_corpus_universal_failure_patterns():
+    # A growing, TMS-agnostic eval: each scenario is a universal failure shape the engine must name +
+    # suggest the right internal fix. Add rows here as new failure patterns show up in the wild.
+    corpus = [
+        ("row_click", [{"action": "CLICK", "target": "REC-9", "ok": False}] * 3, "FAILED",
+         "did not finish within 20 steps", "click resolution"),
+        ("palette_search", [{"action": "TYPE", "target": "Search… ⌘K", "ok": False}] * 2, "ESCALATED",
+         "stuck", "command-palette"),
+        ("dead_end_url", [{"action": "NAVIGATE", "target": "/x/1002", "ok": True, "why": "page is a 404"}],
+         "FAILED", "did not finish within 20 steps", "id mapping"),
+        ("exhausted", [{"action": "READ", "target": "x", "ok": True}] * 5, "FAILED",
+         "did not finish within 20 steps", "recipe"),
+    ]
+    for name, steps, status, note, expected_fix in corpus:
+        d = diagnose_run(steps, status=status, note=note)
+        fixes = " ".join(d.suggested_fixes).lower()
+        assert expected_fix in fixes, f"{name}: expected '{expected_fix}' in fixes, got {d.suggested_fixes}"
+
+
+def test_agent_prompt_guards_against_guessing_urls():
+    # The universal behavior fix: never NAVIGATE to a guessed record URL.
+    from freight_recon.operator_agent import _decide_prompt
+
+    p = _decide_prompt("open the record", {"url": "x"}, [])
+    assert "guessed record URL" in p and "will 404" in p

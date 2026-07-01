@@ -188,6 +188,10 @@ def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str
         "selector), TYPE(target=field, value=text), SELECT(target=field, value=option), READ(target=field), "
         "DONE(why=...), ESCALATE(target=reason). Rules: take the minimal next step; if you are blocked or "
         "unsure, ESCALATE rather than guess. NEVER decide a monetary amount — for money fields the system "
-        "supplies the approved value, so just TYPE into the amount field and the value will be substituted.\n\n"
+        "supplies the approved value, so just TYPE into the amount field and the value will be substituted. "
+        "To open a specific record (order, load, invoice), CLICK it by its visible reference text in the "
+        "list/table — do NOT NAVIGATE to a guessed record URL like /orders/1002; you don't know the internal "
+        "id and it will 404. If an action fails twice, switch approach (a nav link, or CLICK the row by its "
+        "reference text) rather than repeating it.\n\n"
         'Respond with ONLY JSON: {"action": "...", "target": "...", "value": "...", "why": "..."}'
     )

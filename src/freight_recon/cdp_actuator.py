@@ -35,6 +35,42 @@ function __findInput(t){
 """
 
 
+# Universal click resolver: click the element that reads like `t`, wherever it lives — a button, link,
+# menu/option, or a TABLE ROW / list item / cell (the common "open this record" case that a
+# buttons-only resolver misses). Tries a raw selector, then a clickable element whose own text matches
+# (exact before contains), then any visible leaf containing the text walked UP to its nearest clickable
+# ancestor or its row. Nothing here is TMS-specific — it's generic DOM interaction.
+_CLICK_JS = r"""
+(function(t){
+  function vis(e){ return e && e.offsetParent!==null; }
+  function fire(e){ if(!e) return false; e.scrollIntoView({block:'center'}); e.click(); return true; }
+  try{ var s=document.querySelector(t); if(s) return fire(s); }catch(e){}
+  var tl=(t||'').trim().toLowerCase();
+  if(!tl) return false;
+  var CLICKABLE='a,button,[role=button],[role=link],[role=option],[role=menuitem],[role=tab],[role=row],'
+    +'input[type=submit],input[type=button],[onclick],summary,label';
+  function txt(e){ return ((e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||'').trim()).toLowerCase(); }
+  var clickables=[...document.querySelectorAll(CLICKABLE)].filter(vis);
+  var exact=clickables.find(function(e){ return txt(e)===tl; });
+  if(exact) return fire(exact);
+  var contains=clickables.find(function(e){ return txt(e).indexOf(tl)>=0; });
+  if(contains) return fire(contains);
+  // Text lives in a non-clickable node (e.g. a cell in a row): find the smallest leaf that contains it,
+  // then click the nearest clickable ancestor, else the enclosing row/list item.
+  var leaves=[...document.querySelectorAll('body *')].filter(function(e){
+    return vis(e) && e.children.length===0 && (e.innerText||'').trim().toLowerCase().indexOf(tl)>=0;
+  });
+  if(leaves.length){
+    var leaf=leaves[0];
+    var host=leaf.closest(CLICKABLE)
+      || leaf.closest('tr,li,[role=row],[class*=row],[class*=Row],[class*=item],[class*=Item]') || leaf;
+    return fire(host);
+  }
+  return false;
+})
+"""
+
+
 class CdpActuator:
     def __init__(self, session: CdpBrowserSession, *, settle_seconds: float = 1.2) -> None:
         self.session = session
@@ -48,14 +84,7 @@ class CdpActuator:
         return True
 
     def click(self, target: str) -> bool:
-        ok = self.session.evaluate(
-            "(function(t){"
-            "var el=null; try{el=document.querySelector(t);}catch(e){}"
-            "if(!el){var tl=t.toLowerCase(); el=[...document.querySelectorAll('button,a,[role=button],input[type=submit]')]"
-            ".find(e=>((e.innerText||e.value||'').trim().toLowerCase()).indexOf(tl)>=0);}"
-            "if(!el)return false; el.scrollIntoView({block:'center'}); el.click(); return true;"
-            "})(" + json.dumps(target) + ")"
-        )
+        ok = self.session.evaluate(_CLICK_JS + "(" + json.dumps(target) + ")")
         time.sleep(self.settle)
         return bool(ok)
 
