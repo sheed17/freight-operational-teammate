@@ -77,7 +77,8 @@ _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "RE
 
 _HELP = (
     "Commands: `status` (what is Neyma doing) | `roi` (what Neyma recovered/did) | "
-    "`audit` (show your work) | `autonomy` · `graduate <lane>` · `supervise <lane>` | "
+    "`audit` (show your work) | `know [about X]` · `learn <fact>` · `forget <id/words>` | "
+    "`autonomy` · `graduate <lane>` · `supervise <lane>` | "
     "`pause tms writes` | `resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
 )
 
@@ -102,6 +103,21 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         from .activity_log import build_activity, render_activity
 
         return render_activity(build_activity(store))
+    if cmd in ("know", "knowledge", "what do you know", "what have you learned") and store is not None:
+        return _knowledge_for(store).render(tenant="default")
+    if store is not None and cmd.startswith("know ") and len(raw.split(None, 1)) == 2:
+        q = raw.split(None, 1)[1].strip()
+        q = q[6:].strip() if q.lower().startswith("about ") else q
+        return _knowledge_for(store).render(tenant="default", query=q)
+    if store is not None and raw.strip().lower().startswith("learn ") and len(raw.split(None, 1)) == 2:
+        from .knowledge import FactKind
+
+        fact = raw.split(None, 1)[1].strip()
+        _knowledge_for(store).learn(fact, tenant="default", kind=FactKind.BUSINESS, source="owner")
+        return f":brain: Got it — I'll remember that: {fact}"
+    if store is not None and raw.strip().lower().startswith("forget ") and len(raw.split(None, 1)) == 2:
+        n = _knowledge_for(store).forget(raw.split(None, 1)[1].strip(), tenant="default")
+        return f":wastebasket: Forgot {n} fact(s)." if n else "Nothing matched — try `know` to see what I've learned."
     if cmd in ("autonomy", "show autonomy", "graduations", "what is autonomous") and store is not None:
         return _render_autonomy(store)
     parts = raw.split(None, 1)  # guard: empty text ("/neyma" with no args) must not IndexError
@@ -120,6 +136,13 @@ def _graduation_for(store):
     from .lane_graduation import LaneGraduation
 
     return LaneGraduation(Path(store.db_path).parent / "lane_graduation.json")
+
+
+def _knowledge_for(store):
+    from .knowledge import KnowledgeBase
+
+    # Same file the driving agent writes SYSTEM facts to, so Slack + the agent share one memory.
+    return KnowledgeBase(Path(store.db_path).parent / "agent_memory.json")
 
 
 def _known_lane_names() -> set[str]:

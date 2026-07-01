@@ -37,11 +37,15 @@ def _key(*parts: str) -> str:
 
 
 class AgentMemory:
-    """Per-(tenant, system) durable facts + per-(tenant, task) recipes, persisted to JSON."""
+    """The driving agent's memory: SYSTEM facts (delegated to the shared KnowledgeBase so every surface
+    shares them) + per-(tenant, task) crystallized recipes. One JSON file; facts live in the
+    ``knowledge`` section, recipes in ``recipes`` — each preserves the other on write."""
 
-    def __init__(self, path: str | Path, *, max_facts: int = 40) -> None:
+    def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self.max_facts = max_facts
+        from freight_recon.knowledge import KnowledgeBase
+
+        self.kb = KnowledgeBase(path)  # facts flow into the shared per-client knowledge base
 
     def _read(self) -> dict:
         if self.path.exists():
@@ -55,25 +59,17 @@ class AgentMemory:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
-    # --- facts (recalled into reasoning) ----------------------------------------------------
+    # --- facts (recalled into reasoning) — delegate to the shared knowledge base -------------
 
     def recall_facts(self, *, tenant: str, domain: str, limit: int = 12) -> list[str]:
-        facts = self._read().get("facts", {}).get(_key(tenant, domain), [])
-        return [f["text"] for f in facts[-limit:]]
+        from freight_recon.knowledge import FactKind
+
+        return self.kb.recall(tenant=tenant, kind=FactKind.SYSTEM, subject=domain, limit=limit)
 
     def learn_fact(self, fact: str, *, tenant: str, domain: str) -> None:
-        """Record a durable lesson about a system. Deduplicated; newest kept if capacity is reached."""
-        fact = " ".join((fact or "").split()).strip()
-        if not fact:
-            return
-        data = self._read()
-        bucket = data.setdefault("facts", {}).setdefault(_key(tenant, domain), [])
-        if any(f["text"].lower() == fact.lower() for f in bucket):
-            return  # already known
-        bucket.append({"text": fact})
-        if len(bucket) > self.max_facts:
-            del bucket[0 : len(bucket) - self.max_facts]
-        self._write(data)
+        from freight_recon.knowledge import FactKind
+
+        self.kb.learn(fact, tenant=tenant, kind=FactKind.SYSTEM, subject=domain, source="agent")
 
     # --- recipes (crystallized successful paths, for later replay) --------------------------
 

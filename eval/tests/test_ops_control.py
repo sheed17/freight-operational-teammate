@@ -79,6 +79,26 @@ def test_empty_and_bare_commands_do_not_crash(tmp_path):
         store.close()
 
 
+def test_handle_command_knowledge_learn_inspect_forget(tmp_path):
+    from freight_recon.workflow import WorkflowStore
+
+    oc = OpsControl(tmp_path / "ops.json")
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        assert "haven't learned" in handle_ops_command("know", actor="R", ops_control=oc, store=store)
+        out = handle_ops_command("learn Northbound Freight Brokers is order #1002",
+                                 actor="R", ops_control=oc, store=store)
+        assert "I'll remember" in out
+        know = handle_ops_command("know", actor="R", ops_control=oc, store=store)
+        assert "Northbound" in know and "order #1002" in know
+        assert "Northbound" in handle_ops_command("know about Northbound", actor="R", ops_control=oc, store=store)
+        gone = handle_ops_command("forget Northbound", actor="R", ops_control=oc, store=store)
+        assert "Forgot 1" in gone
+        assert "haven't learned" in handle_ops_command("know", actor="R", ops_control=oc, store=store)
+    finally:
+        store.close()
+
+
 def test_handle_command_graduation_flips_lane_autonomy(tmp_path):
     from freight_recon.workflow import WorkflowStore
 
