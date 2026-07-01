@@ -264,6 +264,12 @@ def _build_live_operation_router(
     """
     completer = openai_completer(model=model)
 
+    from freight_recon.agent_memory import AgentMemory
+    from freight_recon.lane_graduation import LaneGraduation
+
+    mem_path = (Path(workspace) / "agent_memory.json") if workspace else Path("agent_memory.json")
+    memory = AgentMemory(mem_path)  # recall learned facts + crystallize what works, per client
+
     def _build_agent(*, approved_amount=None, approve=None, prepare_only=False):
         session = CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter)
         session.__enter__()
@@ -283,9 +289,8 @@ def _build_live_operation_router(
             approve=approve,
             max_steps=max_steps,
             prepare_only=prepare_only,
+            memory=memory,
         )
-
-    from freight_recon.lane_graduation import LaneGraduation
 
     grad_path = (Path(workspace) / "lane_graduation.json") if workspace else Path("lane_graduation.json")
     return OperationRouter(

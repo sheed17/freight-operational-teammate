@@ -89,6 +89,9 @@ class OperatorAgent:
         max_steps: int = 20,
         stuck_after: int = 3,
         prepare_only: bool = False,
+        memory=None,
+        tenant: str = "default",
+        task: str = "",
     ) -> None:
         self.actuator = actuator
         self.complete = complete
@@ -100,20 +103,35 @@ class OperatorAgent:
         # prepare_only: drive + fill everything but STOP before the committing action, so a human does
         # the final Save. This is the safe default for a supervised lane (full-auto is the graduation).
         self.prepare_only = prepare_only
+        # Memory makes the agent improve with repetition: recall learned facts about this system, and
+        # crystallize what worked (per tenant). Optional — without it the agent just reasons fresh.
+        self.memory = memory
+        self.tenant = tenant
+        self.task = task
 
     def run(self, goal: str) -> AgentResult:
         history: list[dict] = []
         repeats = 0
         last_sig: tuple | None = None
+        learned: list[str] = []
+        domain = "unknown"
         for _ in range(self.max_steps):
             observation = self.actuator.observe()
+            # First real screen: recall what we've learned about THIS system, so the agent reasons with
+            # memory instead of from scratch (what makes it faster the tenth time than the first).
+            if self.memory is not None and domain == "unknown":
+                from freight_recon.agent_memory import domain_of
+
+                domain = domain_of(observation.get("url"))
+                if domain != "unknown":
+                    learned = self.memory.recall_facts(tenant=self.tenant, domain=domain)
             # If the agent has been repeating itself, warn it to change tack before it decides again.
             nudge = None
             if repeats >= 1:
                 nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
                          "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
                          "the page's navigation — or ESCALATE if you are stuck.")
-            action = self._decide(goal, observation, history, nudge=nudge)
+            action = self._decide(goal, observation, history, nudge=nudge, learned=learned)
 
             # No-progress guard: identical action repeated too many times -> stop, don't grind/loop.
             sig = (action.kind, action.target)
@@ -124,6 +142,7 @@ class OperatorAgent:
                                    f"stuck: repeated {action.kind.value} {action.target!r} with no progress")
 
             if action.kind == LiveActionKind.DONE:
+                self._crystallize(history, domain)  # learn from what just worked
                 return AgentResult(goal, "DONE", history, action.why or "goal achieved")
             if action.kind == LiveActionKind.ESCALATE:
                 return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
@@ -157,8 +176,24 @@ class OperatorAgent:
 
         return AgentResult(goal, "FAILED", history, f"did not finish within {self.max_steps} steps")
 
-    def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None) -> LiveAction:
-        parsed = _parse_llm_json(self.complete(_decide_prompt(goal, observation, history, nudge)))
+    def _crystallize(self, history: list[dict], domain: str) -> None:
+        """Learn from a run that just worked: save the path as a recipe + a recallable fact. Never lets
+        a memory hiccup break a successful run."""
+        if self.memory is None:
+            return
+        try:
+            from freight_recon.agent_memory import fact_from_successful_run
+
+            self.memory.save_recipe(history, tenant=self.tenant, task=self.task or "task")
+            fact = fact_from_successful_run(history, task=self.task or "the task", domain=domain)
+            if fact:
+                self.memory.learn_fact(fact, tenant=self.tenant, domain=domain)
+        except Exception:  # noqa: BLE001 - memory is best-effort; a success must still be a success
+            pass
+
+    def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None,
+                learned: list[str] | None = None) -> LiveAction:
+        parsed = _parse_llm_json(self.complete(_decide_prompt(goal, observation, history, nudge, learned)))
         raw = parsed.get("action") if isinstance(parsed, dict) else None
         if raw not in LiveActionKind._value2member_map_:
             return LiveAction(LiveActionKind.ESCALATE, why=f"model returned unknown action {raw!r}")
@@ -185,12 +220,19 @@ class OperatorAgent:
         return False, None
 
 
-def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None) -> str:
+def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None,
+                   learned: list[str] | None = None) -> str:
     warn = f"\n!!! {nudge}\n" if nudge else ""
+    # Recalled memory: what we've learned about THIS system before, so the agent reasons like an
+    # experienced hire instead of a first-day one.
+    memory = ""
+    if learned:
+        memory = ("\nWHAT YOU'VE LEARNED ABOUT THIS SYSTEM (from past runs — use it to move faster; "
+                  "still verify against the current screen):\n- " + "\n- ".join(learned[:12]) + "\n")
     return (
         "You are an autonomous back-office agent operating an unfamiliar freight TMS in a browser, one "
         "step at a time, to accomplish a goal. Decide the SINGLE next action from the current screen.\n"
-        + warn + "\n"
+        + warn + memory + "\n"
         f"GOAL: {goal}\n\n"
         f"CURRENT SCREEN (observation):\n{json.dumps(observation, indent=1)[:3500]}\n\n"
         f"RECENT ACTIONS:\n{json.dumps(history[-6:], indent=1)[:1500]}\n\n"

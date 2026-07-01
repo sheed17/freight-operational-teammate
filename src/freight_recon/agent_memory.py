@@ -1,0 +1,112 @@
+"""Agent memory: how Neyma's operators get better with repetition, like a human employee.
+
+A new hire is slow the first time through an unfamiliar system — they reason out every click. By the
+tenth time they move on muscle memory. This gives our agents the same arc, PER CLIENT:
+
+- **Facts** — durable lessons about a specific system, learned from what worked and from the owner's
+  corrections: "transporters.io nav is JS-driven; open an order by clicking its row, not a URL",
+  "Northbound Freight Brokers → order #1002". These are RECALLED into the agent's reasoning on the next
+  run, so it doesn't re-derive them — it just knows.
+- **Recipes** — the successful action sequence for a (tenant, task), crystallized so a routine flow can
+  later be replayed deterministically instead of re-reasoned (the cost + speed win).
+
+Scoped per (tenant, system) so one client's learning never leaks to another; persisted as JSON so it
+survives restarts and compounds over time. Safe by construction: memory is guidance + recorded paths —
+it never carries a money value, and the money fence / gates / anti-hallucination guards still hold.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def domain_of(url: str | None) -> str:
+    """The system a fact/recipe belongs to — the host (e.g. 'transporters.io'), stripped of subdomain
+    noise where obvious. Falls back to 'unknown' so memory never crashes a run."""
+    host = (urlsplit(url or "").netloc or "").lower()
+    if not host:
+        return "unknown"
+    parts = host.split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+
+def _key(*parts: str) -> str:
+    return "::".join(p or "" for p in parts)
+
+
+class AgentMemory:
+    """Per-(tenant, system) durable facts + per-(tenant, task) recipes, persisted to JSON."""
+
+    def __init__(self, path: str | Path, *, max_facts: int = 40) -> None:
+        self.path = Path(path)
+        self.max_facts = max_facts
+
+    def _read(self) -> dict:
+        if self.path.exists():
+            try:
+                return json.loads(self.path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                return {}
+        return {}
+
+    def _write(self, data: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+    # --- facts (recalled into reasoning) ----------------------------------------------------
+
+    def recall_facts(self, *, tenant: str, domain: str, limit: int = 12) -> list[str]:
+        facts = self._read().get("facts", {}).get(_key(tenant, domain), [])
+        return [f["text"] for f in facts[-limit:]]
+
+    def learn_fact(self, fact: str, *, tenant: str, domain: str) -> None:
+        """Record a durable lesson about a system. Deduplicated; newest kept if capacity is reached."""
+        fact = " ".join((fact or "").split()).strip()
+        if not fact:
+            return
+        data = self._read()
+        bucket = data.setdefault("facts", {}).setdefault(_key(tenant, domain), [])
+        if any(f["text"].lower() == fact.lower() for f in bucket):
+            return  # already known
+        bucket.append({"text": fact})
+        if len(bucket) > self.max_facts:
+            del bucket[0 : len(bucket) - self.max_facts]
+        self._write(data)
+
+    # --- recipes (crystallized successful paths, for later replay) --------------------------
+
+    def recall_recipe(self, *, tenant: str, task: str) -> list[dict] | None:
+        return self._read().get("recipes", {}).get(_key(tenant, task)) or None
+
+    def save_recipe(self, steps: list[dict], *, tenant: str, task: str) -> None:
+        """Crystallize the action sequence that worked, so a routine flow can be replayed, not re-reasoned.
+        Money values are never stored — only the navigation shape (action + target)."""
+        clean = [
+            {"action": s.get("action"), "target": s.get("target")}
+            for s in (steps or [])
+            if s.get("ok") and s.get("action") in ("NAVIGATE", "CLICK", "SELECT", "TYPE", "READ")
+        ]
+        if not clean:
+            return
+        data = self._read()
+        data.setdefault("recipes", {})[_key(tenant, task)] = clean
+        self._write(data)
+
+
+def fact_from_successful_run(steps: list[dict], *, task: str, domain: str) -> str:
+    """Derive a compact, reusable lesson from a run that worked — the key navigation moves — so next
+    time the agent recalls the path instead of rediscovering it."""
+    moves: list[str] = []
+    for s in steps or []:
+        if not s.get("ok") or s.get("action") not in ("NAVIGATE", "CLICK", "SELECT"):
+            continue
+        target = " ".join(str(s.get("target") or "").split())[:40]
+        if target:
+            moves.append(f"{str(s.get('action')).lower()} {target}")
+        if len(moves) >= 6:
+            break
+    if not moves:
+        return ""
+    return f"To {task or 'complete this'} on {domain}: " + " → ".join(moves) + "."
