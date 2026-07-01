@@ -226,5 +226,5 @@ def freight_lanes() -> list[OperationLane]:
 
     return [
         OperationLane("raise_invoice", ("invoice", "bill ", "raise", "receivable", " ar "), invoice_goal),
-        OperationLane("record_payable", ("payable", "settle", "carrier pay", "carrier bill", " ap "), payable_goal),
+        OperationLane("record_payable", ("payable", "settle", "carrier pay", "carrier bill", "pay ", " ap "), payable_goal),
     ]

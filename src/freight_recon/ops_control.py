@@ -117,7 +117,11 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         return _knowledge_for(store).render(tenant="default")
     if store is not None and cmd.startswith("know ") and len(raw.split(None, 1)) == 2:
         q = raw.split(None, 1)[1].strip()
-        q = q[6:].strip() if q.lower().startswith("about ") else q
+        ql = q.lower()
+        if ql == "about":            # "know about" with no subject -> show everything
+            q = ""
+        elif ql.startswith("about "):
+            q = q[6:].strip()
         return _knowledge_for(store).render(tenant="default", query=q)
     if store is not None and raw.strip().lower().startswith("learn ") and len(raw.split(None, 1)) == 2:
         from .knowledge import FactKind
