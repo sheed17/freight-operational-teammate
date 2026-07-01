@@ -26,9 +26,11 @@ def _is_operational(text: str) -> bool:
     return bool(t) and len(t) > 2 and not t.isdigit() and t not in _CHROME and "search" not in t
 
 
-def orient_system(actuator, complete, *, sections_limit: int = 8) -> list[str]:
+def orient_system(actuator, complete, *, sections_limit: int = 8, record_url: str | None = None) -> list[str]:
     """Walk the TMS's main OPERATIONAL navigation, learn what each section is for, and return reusable
-    SYSTEM facts. ``actuator`` drives the browser (observe/click); ``complete`` summarizes a screen.
+    SYSTEM facts. When ``record_url`` is given, ALSO go a level deeper — open a real record and expand
+    its action menus (an order's Billing/Transport/etc.) — which is where money actions like invoicing
+    live. ``actuator`` drives the browser (observe/click); ``complete`` summarizes/identifies menus.
     Pure/injectable so it is unit-tested with fakes; read-only (no typing, no commits)."""
     facts: list[str] = []
     home = actuator.observe() or {}
@@ -61,7 +63,61 @@ def orient_system(actuator, complete, *, sections_limit: int = 8) -> list[str]:
         summary = _summarize_section(label, obs, complete)
         if summary:
             facts.append(summary)
+
+    # Deeper: open a real record and learn the actions available ON it (where invoicing/dispatch live).
+    if record_url:
+        facts += orient_record_actions(actuator, complete, record_url=record_url)
     return facts
+
+
+def orient_record_actions(actuator, complete, *, record_url: str, menus_limit: int = 5) -> list[str]:
+    """Open a record and expand its action menus to learn what each offers — so the agent knows, e.g.,
+    that an invoice is raised from an order's Billing menu, before it ever needs to."""
+    facts: list[str] = []
+    try:
+        actuator.navigate(record_url)
+        base = actuator.observe() or {}
+    except Exception:  # noqa: BLE001
+        return facts
+    base_actions = set(base.get("actions") or [])
+    menus = _identify_menus(base, complete)[:menus_limit]
+    if menus:
+        facts.append(f"On a record ({record_url.split('/')[-2] if '/' in record_url else 'detail'} view), "
+                     f"the action menus are: {', '.join(menus)}.")
+    for menu in menus:
+        try:
+            actuator.click(menu)
+            opened = actuator.observe() or {}
+        except Exception:  # noqa: BLE001
+            continue
+        revealed = [a for a in (opened.get("actions") or []) if a not in base_actions and a != menu]
+        if revealed:
+            facts.append(f"On a record, the '{menu}' menu offers: {', '.join(revealed[:8])}.")
+    return facts
+
+
+def _identify_menus(obs: dict, complete) -> list[str]:
+    """Ask the model which of the record's visible buttons are action MENUS/dropdowns worth expanding
+    (Billing, Transport, More, ...). Falls back to common menu labels if the model can't help."""
+    from freight_recon.screen_discovery import _parse_llm_json
+
+    actions = obs.get("actions") or []
+    common = [a for a in actions if a.strip().lower() in
+              ("billing", "transport", "more", "communicate", "actions", "invoice", "finance", "documents")]
+    prompt = (
+        "You are learning a freight TMS record page. Here are its visible buttons/links:\n"
+        f"{actions}\n\n"
+        "Which of these are ACTION MENUS or dropdowns that reveal MORE options when clicked (e.g. a "
+        "Billing or Actions menu that would contain things like 'Raise invoice')? Reply with ONLY a JSON "
+        'list of the EXACT labels, most useful first, max 5: {"menus": ["...", "..."]}'
+    )
+    try:
+        parsed = _parse_llm_json(complete(prompt))
+        menus = parsed.get("menus", []) if isinstance(parsed, dict) else []
+        menus = [m for m in menus if isinstance(m, str) and m in actions]
+        return menus or common
+    except Exception:  # noqa: BLE001
+        return common
 
 
 def _summarize_section(section: str, obs: dict, complete) -> str:

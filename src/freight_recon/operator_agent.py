@@ -118,6 +118,7 @@ class OperatorAgent:
         self._commit_approved: bool | None = None  # cached approval so a failed commit click can retry
         # Business knowledge about whoever/whatever this goal is about (recalled up front, from the goal).
         business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
+        procedures = self.memory.recall_procedures(tenant=self.tenant, text=goal) if self.memory is not None else []
         learned: list[str] = list(business)
         for _ in range(self.max_steps):
             observation = self.actuator.observe()
@@ -135,7 +136,7 @@ class OperatorAgent:
                 nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
                          "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
                          "the page's navigation — or ESCALATE if you are stuck.")
-            action = self._decide(goal, observation, history, nudge=nudge, learned=learned)
+            action = self._decide(goal, observation, history, nudge=nudge, learned=learned, procedures=procedures)
 
             # No-progress guard: identical action repeated too many times -> stop, don't grind/loop.
             sig = (action.kind, action.target)
@@ -205,8 +206,9 @@ class OperatorAgent:
             pass
 
     def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None,
-                learned: list[str] | None = None) -> LiveAction:
-        parsed = _parse_llm_json(self.complete(_decide_prompt(goal, observation, history, nudge, learned)))
+                learned: list[str] | None = None, procedures: list[str] | None = None) -> LiveAction:
+        parsed = _parse_llm_json(
+            self.complete(_decide_prompt(goal, observation, history, nudge, learned, procedures)))
         raw = parsed.get("action") if isinstance(parsed, dict) else None
         if raw not in LiveActionKind._value2member_map_:
             return LiveAction(LiveActionKind.ESCALATE, why=f"model returned unknown action {raw!r}")
@@ -234,7 +236,7 @@ class OperatorAgent:
 
 
 def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None,
-                   learned: list[str] | None = None) -> str:
+                   learned: list[str] | None = None, procedures: list[str] | None = None) -> str:
     warn = f"\n!!! {nudge}\n" if nudge else ""
     # Recalled memory: what we've learned about THIS system before, so the agent reasons like an
     # experienced hire instead of a first-day one.
@@ -242,10 +244,16 @@ def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str
     if learned:
         memory = ("\nWHAT YOU'VE LEARNED ABOUT THIS SYSTEM (from past runs — use it to move faster; "
                   "still verify against the current screen):\n- " + "\n- ".join(learned[:12]) + "\n")
+    # Company SOPs from onboarding — how THIS company does things. Follow them, but they NEVER override
+    # the money fence / gates (an SOP can't authorize an unapproved amount or a duplicate).
+    sop = ""
+    if procedures:
+        sop = ("\nCOMPANY PROCEDURES (this company's way — follow these; they never override the money "
+               "fence or the safety gates):\n- " + "\n- ".join(procedures[:10]) + "\n")
     return (
         "You are an autonomous back-office agent operating an unfamiliar freight TMS in a browser, one "
         "step at a time, to accomplish a goal. Decide the SINGLE next action from the current screen.\n"
-        + warn + memory + "\n"
+        + warn + memory + sop + "\n"
         f"GOAL: {goal}\n\n"
         f"CURRENT SCREEN (observation):\n{json.dumps(observation, indent=1)[:3500]}\n\n"
         f"RECENT ACTIONS:\n{json.dumps(history[-6:], indent=1)[:1500]}\n\n"

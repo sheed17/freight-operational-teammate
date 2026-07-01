@@ -92,8 +92,17 @@ def test_handle_command_knowledge_learn_inspect_forget(tmp_path):
         know = handle_ops_command("know", actor="R", ops_control=oc, store=store)
         assert "Northbound" in know and "order #1002" in know
         assert "Northbound" in handle_ops_command("know about Northbound", actor="R", ops_control=oc, store=store)
+        # SOP onboarding: a task-scoped procedure
+        sop = handle_ops_command("sop raise_invoice: always include the load reference",
+                                 actor="R", ops_control=oc, store=store)
+        assert "procedure" in sop and "raise_invoice" in sop
+        assert "load reference" in handle_ops_command("know", actor="R", ops_control=oc, store=store)
         gone = handle_ops_command("forget Northbound", actor="R", ops_control=oc, store=store)
         assert "Forgot 1" in gone
+        # Northbound is gone, but the SOP procedure remains.
+        after = handle_ops_command("know", actor="R", ops_control=oc, store=store)
+        assert "Northbound" not in after and "load reference" in after
+        handle_ops_command("forget load reference", actor="R", ops_control=oc, store=store)
         assert "haven't learned" in handle_ops_command("know", actor="R", ops_control=oc, store=store)
     finally:
         store.close()

@@ -75,12 +75,20 @@ class AgentMemory:
         """BUSINESS facts relevant to what the agent is doing right now: general ones, plus any whose
         subject (a carrier/customer/load) is named in the goal — so "Northbound -> order #1002" surfaces
         exactly when it's working on Northbound."""
-        from freight_recon.knowledge import FactKind
+        return self._recall_relevant("business", tenant=tenant, text=text, limit=limit)
 
+    def recall_procedures(self, *, tenant: str, text: str, limit: int = 8) -> list[str]:
+        """The company's SOPs + preferences relevant to this task: how THIS company does things (from
+        onboarding), so the agent follows the handbook — general ones plus any scoped to the task."""
+        procs = self._recall_relevant("procedure", tenant=tenant, text=text, limit=limit)
+        prefs = self._recall_relevant("preference", tenant=tenant, text=text, limit=limit)
+        return (procs + prefs)[-limit:]
+
+    def _recall_relevant(self, kind: str, *, tenant: str, text: str, limit: int) -> list[str]:
         tl = (text or "").lower()
         out = []
         for f in self.kb.facts(tenant=tenant):
-            if f["kind"] != FactKind.BUSINESS.value:
+            if f["kind"] != kind:
                 continue
             subj = (f.get("subject") or "").lower()
             if not subj or subj in tl:

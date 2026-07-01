@@ -102,6 +102,23 @@ def test_agent_injects_business_facts_about_the_goal(tmp_path):
     assert "order #1002" in prompts[0]  # business fact recalled into the very first decision
 
 
+def test_agent_follows_company_sops(tmp_path):
+    # Onboarded SOPs (procedures/preferences) are recalled into the agent's reasoning as a distinct block.
+    from freight_recon.knowledge import FactKind
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.kb.learn("Always include the load reference on every invoice.", tenant="acme",
+                 kind=FactKind.PROCEDURE, subject="raise_invoice")
+    mem.kb.learn("Our payment terms are net-30.", tenant="acme", kind=FactKind.PREFERENCE)
+    got = mem.recall_procedures(tenant="acme", text="Create a customer invoice (raise_invoice) for Acme")
+    assert any("load reference" in p for p in got) and any("net-30" in p for p in got)
+
+    prompts = []
+    def llm(p): prompts.append(p); return json.dumps({"action": "DONE", "why": "ok"})
+    OperatorAgent(actuator=_Actuator(), complete=llm, memory=mem, tenant="acme",
+                  task="raise_invoice").run("Create a customer invoice (raise_invoice)")
+    assert "COMPANY PROCEDURES" in prompts[0] and "load reference" in prompts[0]
+
+
 def test_correction_becomes_a_business_fact(tmp_path):
     # The resume handler's learning: an owner's helpful reply is remembered as a business fact.
     from freight_recon.action_callback import _learn_correction

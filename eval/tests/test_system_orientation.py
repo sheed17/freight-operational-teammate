@@ -62,6 +62,33 @@ def test_orientation_is_read_only_and_never_crashes_on_a_bad_section():
     assert any("Orders" in f for f in facts)  # good section still learned
 
 
+def test_deep_orientation_learns_a_records_action_menus():
+    # A record page whose "Billing" menu, when clicked, reveals "Raise invoice" — the deeper layer.
+    from freight_recon.system_orientation import orient_record_actions
+
+    class _RecordActuator:
+        def __init__(self):
+            self.state = "record"
+            self.screens = {
+                "record": {"headings": ["Order 1002"], "actions": ["Billing", "Transport", "Overview"]},
+                "billing_open": {"headings": ["Order 1002"],
+                                 "actions": ["Billing", "Transport", "Overview", "Raise invoice", "Record payment"]},
+            }
+        def navigate(self, url): self.state = "record"; return True
+        def observe(self): return self.screens[self.state]
+        def click(self, t):
+            if t == "Billing": self.state = "billing_open"
+            return True
+
+    def menu_picker(prompt):
+        return '{"menus": ["Billing"]}'  # model identifies Billing as the action menu
+
+    facts = orient_record_actions(_RecordActuator(), menu_picker, record_url="https://x/orders/view/1002")
+    joined = " ".join(facts)
+    assert "action menus are: Billing" in joined
+    assert "Billing' menu offers" in joined and "Raise invoice" in joined  # learned the invoice path!
+
+
 def test_orientation_with_no_nav_returns_empty_gracefully():
     class _Empty:
         def observe(self): return {"url": "x", "nav": [], "actions": []}

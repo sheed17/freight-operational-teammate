@@ -31,9 +31,10 @@ from pathlib import Path
 
 
 class FactKind(str, Enum):
-    SYSTEM = "system"
-    BUSINESS = "business"
-    PREFERENCE = "preference"
+    SYSTEM = "system"          # how to operate the tools (learned by the driving agent)
+    BUSINESS = "business"      # the client's world (carriers, customers, entities)
+    PREFERENCE = "preference"  # how the owner likes things
+    PROCEDURE = "procedure"    # the company's SOPs — how THIS company does a task (from onboarding)
 
 
 def _norm(text: str) -> str:
@@ -126,7 +127,7 @@ class KnowledgeBase:
         if not rows:
             scope = f" about '{query}'" if query else ""
             return f":thinking_face: I haven't learned anything{scope} yet."
-        icon = {"system": "⚙️", "business": "🏢", "preference": "⭐"}
+        icon = {"system": "⚙️", "business": "🏢", "preference": "⭐", "procedure": "📋"}
         lines = ["*What I've learned*" + (f" about '{query}'" if query else "") + ":"]
         for f in rows[-limit:]:
             subj = f" ({f['subject']})" if f.get("subject") else ""

@@ -1069,24 +1069,20 @@ def _build_operation_command_proposal(
     router: OperationRouter,
     channel_id: str | None,
 ) -> dict | None:
+    # Only treat this as an operation request if it actually matches a known lane (e.g. "invoice ...",
+    # "record payable ..."). Otherwise it's just an unrecognized command -> return None so the caller
+    # shows the help, instead of nagging about an approved amount.
+    lane = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
+    if lane is None:
+        return None
     amount = _extract_command_amount(text)
     if amount is None:
         return {
             "response_type": "ephemeral",
-            "text": "I can propose that operation, but I need an explicit approved amount first. "
-            "Example: `invoice LD-560006 for Acme amount 2850.00`.",
+            "text": f"To run *{lane.name}* I need an approved amount. "
+            f"Example: `{text.strip()} amount 2850.00`.",
         }
-    intent = CommandIntent(
-        kind=CommandKind.OPERATE,
-        summary=text,
-        params={"approved_amount": amount},
-    )
-    lane = router.lane_for(intent)
-    if lane is None:
-        return {
-            "response_type": "ephemeral",
-            "text": "I won't improvise on that request because no known workflow lane handles it yet.",
-        }
+    intent = CommandIntent(kind=CommandKind.OPERATE, summary=text, params={"approved_amount": amount})
     value = build_slack_operation_approval_value(
         intent,
         signer,

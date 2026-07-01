@@ -76,10 +76,18 @@ class TmsWritesPausedError(Exception):
 _OPEN_STATES = {"NEEDS_REVIEW", "DISPUTED", "FAILED", "WAITING_FOR_SESSION", "REQUESTED_BACKUP"}
 
 _HELP = (
-    "Commands: `status` (what is Neyma doing) | `roi` (what Neyma recovered/did) | "
-    "`audit` (show your work) | `know [about X]` · `learn <fact>` · `forget <id/words>` | "
-    "`autonomy` · `graduate <lane>` · `supervise <lane>` | "
-    "`pause tms writes` | `resume tms writes` | `show unresolved` | `status <LOAD-ID>`"
+    "Commands:\n"
+    "• `status` — what Neyma is doing right now (health, the TMS brake, what's waiting on you)\n"
+    "• `roi` — what Neyma recovered/invoiced and the hours it saved\n"
+    "• `audit` — a timeline of what Neyma actually did\n"
+    "• `know` / `know about <X>` — what Neyma has learned (a carrier, customer, or the system)\n"
+    "• `learn <fact>` — teach it a fact, e.g. `learn Northbound is order #1002`\n"
+    "• `sop <procedure>` — add a company procedure, e.g. `sop raise_invoice: always include the load reference`\n"
+    "• `forget <id or words>` — correct or remove something it learned\n"
+    "• `autonomy` — which lanes run unattended, and their limits\n"
+    "• `graduate <lane> [$amount]` / `supervise <lane>` — full-auto a lane / put it back to staged\n"
+    "• `pause tms writes` / `resume tms writes` — the brake\n"
+    "• `show unresolved` — open items waiting on you  ·  `status <LOAD-ID>` — one load's status"
 )
 
 
@@ -87,6 +95,8 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
     """Parse one lightweight owner command from Slack into an action + reply. Channel-neutral."""
     raw = text.strip()
     cmd = " ".join(raw.lower().split())
+    if cmd in ("", "help", "commands", "command", "?", "menu", "what can you do", "what can i do"):
+        return _HELP
     if cmd in ("pause", "pause tms writes", "pause writes", "pause tms"):
         ops_control.pause_tms_writes(actor=actor, reason="paused from Slack")
         return f":lock: TMS writes *PAUSED* by {actor}. No payables will be entered until resumed."
@@ -115,6 +125,17 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         fact = raw.split(None, 1)[1].strip()
         _knowledge_for(store).learn(fact, tenant="default", kind=FactKind.BUSINESS, source="owner")
         return f":brain: Got it — I'll remember that: {fact}"
+    if store is not None and raw.strip().lower().startswith("sop ") and len(raw.split(None, 1)) == 2:
+        from .knowledge import FactKind
+
+        # An SOP scoped to a task: "sop raise_invoice: always include the load reference" -> subject=raise_invoice.
+        body = raw.split(None, 1)[1].strip()
+        subject = None
+        if ":" in body and len(body.split(":", 1)[0].split()) <= 3:
+            subject, body = body.split(":", 1)[0].strip(), body.split(":", 1)[1].strip()
+        _knowledge_for(store).learn(body, tenant="default", kind=FactKind.PROCEDURE, subject=subject, source="onboarding")
+        scope = f" for *{subject}*" if subject else ""
+        return f":clipboard: Noted the procedure{scope}: {body}"
     if store is not None and raw.strip().lower().startswith("forget ") and len(raw.split(None, 1)) == 2:
         n = _knowledge_for(store).forget(raw.split(None, 1)[1].strip(), tenant="default")
         return f":wastebasket: Forgot {n} fact(s)." if n else "Nothing matched — try `know` to see what I've learned."

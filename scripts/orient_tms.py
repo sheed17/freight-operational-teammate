@@ -42,6 +42,9 @@ def main() -> int:
     parser.add_argument("--tenant", default="default")
     parser.add_argument("--model", default="gpt-5.4", help="summary model (a cheaper one is fine here)")
     parser.add_argument("--sections", type=int, default=8)
+    parser.add_argument("--record-url", default=None,
+                        help="a sample record's detail URL (e.g. an order) to go DEEPER and learn its "
+                             "action menus — where invoicing/dispatch live")
     args = parser.parse_args()
 
     kb = KnowledgeBase(Path(args.workspace) / "agent_memory.json")
@@ -53,7 +56,7 @@ def main() -> int:
             actuator.navigate(args.start_url)
         domain = domain_of(session.evaluate("location.href"))
         print(f"Orienting on {domain} — walking the system (read-only)...\n")
-        facts = orient_system(actuator, completer, sections_limit=args.sections)
+        facts = orient_system(actuator, completer, sections_limit=args.sections, record_url=args.record_url)
 
     learned = 0
     for f in facts:
