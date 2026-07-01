@@ -79,6 +79,9 @@ class CallbackAppConfig:
     operation_result_poster: Callable[[dict], None] | None = None
     allowed_slack_users: tuple[str, ...] = ()
     allowed_slack_channel: str | None = None
+    # Optional cheap completer for natural-language routing of unrecognized /neyma commands ("what's
+    # outstanding?" -> the right read; "invoice the Northbound load" -> a gated proposal). Owner-only.
+    nl_completer: Callable[[str], str] | None = None
 
 
 def handle_signed_action_callback(
@@ -664,6 +667,25 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     if proposal is not None:
                         self._write_json(200, proposal)
                         return
+                    # Natural-language fallback: the owner asked in plain words. Route it to a read (and
+                    # answer) or a gated operation (propose). Only for an already-authorized owner.
+                    if config.nl_completer is not None:
+                        from .nl_command import interpret_slash
+
+                        routed = interpret_slash(text, complete=config.nl_completer)
+                        if routed.get("read"):
+                            reply = handle_ops_command(
+                                routed["read"], actor=actor, ops_control=ops_control,
+                                store=store, status_file=config.status_file,
+                            )
+                        elif routed.get("operate"):
+                            proposal = _build_operation_command_proposal(
+                                routed["operate"], signer=config.signer,
+                                router=config.operation_router, channel_id=channel_id,
+                            )
+                            if proposal is not None:
+                                self._write_json(200, proposal)
+                                return
             finally:
                 store.close()
             # Ephemeral: only the operator who ran the command sees the reply.
@@ -714,6 +736,7 @@ def run_callback_server(
     operation_result_poster: Callable[[dict], None] | None = None,
     allowed_slack_users: tuple[str, ...] = (),
     allowed_slack_channel: str | None = None,
+    nl_completer: Callable[[str], str] | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -731,6 +754,7 @@ def run_callback_server(
             operation_result_poster=operation_result_poster,
             allowed_slack_users=allowed_slack_users,
             allowed_slack_channel=allowed_slack_channel,
+            nl_completer=nl_completer,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
