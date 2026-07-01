@@ -14,7 +14,7 @@ def _llm(mapping):
         # match only the owner's MESSAGE line, not the prompt template (which names all the read types)
         line = prompt.split("MESSAGE:", 1)[-1].split("\n", 1)[0].lower()
         for needle, out in mapping.items():
-            if needle in line:
+            if needle.lower() in line:
                 return json.dumps(out)
         return json.dumps({"action": "unknown"})
     return complete
