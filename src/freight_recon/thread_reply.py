@@ -20,11 +20,15 @@ from .slack_delegate import CommandIntent, CommandKind
 APPLIED_EVENT = "slack_operation_applied"
 
 
-def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
-    """The most recent ESCALATED operation in this Slack thread, or None.
+RESUMABLE_STATUSES = ("ESCALATED", "FAILED")
 
-    Reads the same audit log the callback writes — an escalated run recorded its thread, summary,
-    params, and approved amount, which is everything needed to resume it.
+
+def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
+    """The most recent unfinished operation in this Slack thread (ESCALATED or FAILED), or None.
+
+    Reads the same audit log the callback writes — the run recorded its thread, summary, params, and
+    approved amount, which is everything needed to resume it. FAILED is resumable too so the owner can
+    reply "try again" (e.g. after a fix) and re-run; a DONE run is not resumable.
     """
     if not thread_ts:
         return None
@@ -33,7 +37,7 @@ def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
         if event["event_type"] != APPLIED_EVENT:
             continue
         payload = event.get("payload") or {}
-        if payload.get("thread_ts") == thread_ts and payload.get("status") == "ESCALATED":
+        if payload.get("thread_ts") == thread_ts and payload.get("status") in RESUMABLE_STATUSES:
             found = payload  # keep scanning; last match wins (newest)
     return found
 
