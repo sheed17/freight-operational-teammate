@@ -183,6 +183,13 @@ def freight_lanes() -> list[OperationLane]:
         val = (intent.params or {}).get(key)
         return str(val) if val not in (None, "") else default
 
+    def _guidance(intent: CommandIntent) -> str:
+        # An owner's in-thread reply to a prior escalation — used to get unstuck (e.g. "I'm logged in,
+        # proceed" or "it's Acme Corp"). Never a money value.
+        g = (intent.params or {}).get("operator_guidance")
+        return (f" The operator has given guidance to get past where you were stuck: \"{g}\". "
+                "Follow it, then continue.") if g else ""
+
     def invoice_goal(intent: CommandIntent) -> str:
         customer = _p(intent, "customer", "the customer on the load")
         load_ref = _p(intent, "load_ref", "the delivered load")
@@ -191,6 +198,7 @@ def freight_lanes() -> list[OperationLane]:
             "Open the new-invoice screen, set the bill-to to that customer, enter a charge description, "
             "and fill the amount field (the system supplies the approved amount — do not choose one). "
             "Save the invoice, then READ the saved invoice number back to confirm it was created."
+            + _guidance(intent)
         )
 
     def payable_goal(intent: CommandIntent) -> str:
@@ -201,6 +209,7 @@ def freight_lanes() -> list[OperationLane]:
             "Open the payable/settlement entry screen, set the carrier, enter a description, and fill the "
             "amount field (the system supplies the approved amount — do not choose one). Save it, then "
             "READ the saved record back to confirm it was created."
+            + _guidance(intent)
         )
 
     return [

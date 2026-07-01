@@ -39,6 +39,7 @@ from .operation_router import OperationResult
 from .reconciliation import FreightLoadForReconciliation
 from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
 from .slack_delegate import CommandIntent, CommandKind, authorize_command
+from .thread_reply import find_resumable_operation, intent_from_resumable
 from .workflow import WorkflowError, WorkflowStore
 
 DEFAULT_OPERATION_TOKEN_TTL_SECONDS = 3600
@@ -235,6 +236,16 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     self._write(_method_not_allowed("Use POST for Slack commands."))
                     return
                 self._handle_slack_command(body or b"")
+                return
+            if path == "/slack/events":
+                if config.slack_signing_secret is None:
+                    self._write(CallbackResponse(status=CallbackStatus.REJECTED, http_status=404,
+                                                 title="Not found", message="Unknown Neyma callback path."))
+                    return
+                if method != "POST":
+                    self._write(_method_not_allowed("Use POST for Slack events."))
+                    return
+                self._handle_slack_events(body or b"")
                 return
             if path == "/email/action" and method != "GET":
                 self._write(_method_not_allowed("Use GET for email action links."))
@@ -502,6 +513,80 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 },
             )
             return True
+
+        def _handle_slack_events(self, body: bytes) -> None:
+            """Slack Events API: an owner's reply in an escalated operation's thread resumes it.
+
+            Fast-acks (Slack's 3s rule) and does the work in the background. Only an authenticated owner
+            reply in the authorized channel, in a thread tied to an ESCALATED operation, resumes anything
+            — the reply is a trusted command; nothing here obeys arbitrary message content."""
+            body_str = body.decode("utf-8", errors="replace")
+            try:
+                payload = json.loads(body_str)
+            except json.JSONDecodeError:
+                self._write_json(400, {"error": "invalid Slack event JSON"})
+                return
+            # URL-verification handshake (Slack sends this when you set the events request URL).
+            if payload.get("type") == "url_verification":
+                self._write_json(200, {"challenge": payload.get("challenge", "")})
+                return
+            try:
+                verify_slack_signature(
+                    config.slack_signing_secret or b"",
+                    timestamp=self.headers.get("X-Slack-Request-Timestamp", ""),
+                    body=body_str,
+                    signature=self.headers.get("X-Slack-Signature", ""),
+                )
+            except SlackSignatureError:
+                self._write_json(401, {"error": "invalid Slack signature"})
+                return
+
+            event = payload.get("event") or {}
+            # Only act on a human message that is a thread reply; ack everything else fast.
+            if (
+                config.operation_router is None
+                or event.get("type") != "message"
+                or event.get("bot_id")
+                or event.get("subtype")
+                or not event.get("thread_ts")
+            ):
+                self._write_json(200, {"ok": True})
+                return
+            user_id = event.get("user")
+            channel_id = event.get("channel")
+            ok, _reason = authorize_command(
+                user_id, channel_id,
+                allowed_users=config.allowed_slack_users, allowed_channel=config.allowed_slack_channel,
+            )
+            if not ok:  # a reply from anyone but the owner in the authorized channel is ignored
+                self._write_json(200, {"ok": True})
+                return
+            thread_ts = event.get("thread_ts")
+            event_id = payload.get("event_id") or ""
+            store = WorkflowStore(config.db_path)
+            try:
+                # Dedup Slack's at-least-once event retries so a reply resumes exactly once.
+                if event_id and not store.claim_operation_action(
+                    f"evt:{event_id}", actor=str(user_id or "owner"), payload={"thread_ts": thread_ts}
+                ):
+                    self._write_json(200, {"ok": True})
+                    return
+                resumable = find_resumable_operation(store, thread_ts)
+            finally:
+                store.close()
+            if resumable is None:  # reply not tied to an escalated operation
+                self._write_json(200, {"ok": True})
+                return
+            _start_resume_background_run(
+                db_path=config.db_path,
+                router=config.operation_router,
+                intent=intent_from_resumable(resumable, str(event.get("text", ""))),
+                actor=str(user_id or "owner"),
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                poster=config.operation_result_poster,
+            )
+            self._write_json(200, {"ok": True})
 
         def _handle_slack_command(self, body: bytes) -> None:
             """Verify a Slack slash command and run it (the owner's brake + status surface).
@@ -837,6 +922,57 @@ def _start_operation_background_run(
                 return
 
     thread = threading.Thread(target=_run, name=f"neyma-operation-{approval.action_id[:8]}", daemon=True)
+    thread.start()
+    return thread
+
+
+def _start_resume_background_run(
+    *,
+    db_path: str,
+    router: OperationRouter,
+    intent,
+    actor: str,
+    channel_id: str | None,
+    thread_ts: str | None,
+    poster: Callable[[dict], None] | None,
+) -> threading.Thread:
+    """Resume an escalated operation from an owner's thread reply (intent already carries guidance)."""
+    amount = (intent.params or {}).get("approved_amount")
+
+    def _run() -> None:
+        store = WorkflowStore(db_path)
+        try:
+            try:
+                result = router.run(intent, approve=_single_consequential_approval())
+                event_type, extra = "slack_operation_applied", {
+                    "params": intent.params, "lane": result.lane, "status": result.status,
+                    "note": result.note, "steps": result.steps,
+                }
+            except Exception as exc:  # noqa: BLE001 - a resume failure must still receipt
+                result = OperationResult("FAILED", None, "resume failed before it could complete.", [])
+                event_type, extra = "slack_operation_failed", {
+                    "error_type": type(exc).__name__, "error": str(exc)[:500],
+                }
+            payload = {
+                "channel_id": channel_id, "thread_ts": thread_ts,
+                "approved_amount": amount, "summary": intent.summary, "resumed": True, **extra,
+            }
+            store.add_security_event(event_type, actor=actor, payload=payload)
+        finally:
+            store.close()
+        if poster is not None:
+            try:
+                from .roi_ledger import receipt_from_result, render_operation_receipt
+
+                poster({
+                    "channel_id": channel_id, "thread_ts": thread_ts,
+                    "text": render_operation_receipt(receipt_from_result(result, amount=amount)),
+                    "status": result.status, "lane": result.lane,
+                })
+            except Exception:  # noqa: BLE001
+                return
+
+    thread = threading.Thread(target=_run, name="neyma-resume", daemon=True)
     thread.start()
     return thread
 
