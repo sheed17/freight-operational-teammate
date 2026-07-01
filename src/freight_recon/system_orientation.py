@@ -13,15 +13,34 @@ into every later task, so orientation happens once per system and pays off on ev
 
 from __future__ import annotations
 
+# App chrome (account/AI/search/notifications) — not the operational sections a hire needs to learn.
+_CHROME = {
+    "ask ai", "enable ai power pack", "ai assistant", "ai power pack", "profile", "account", "logout",
+    "log out", "sign out", "settings", "home", "help", "search", "notifications", "neyma", "menu",
+    "toggle navigation", "skip to content",
+}
+
+
+def _is_operational(text: str) -> bool:
+    t = " ".join((text or "").split()).strip().lower()
+    return bool(t) and len(t) > 2 and not t.isdigit() and t not in _CHROME and "search" not in t
+
 
 def orient_system(actuator, complete, *, sections_limit: int = 8) -> list[str]:
-    """Walk the TMS's main navigation, learn what each section is for, and return reusable SYSTEM facts.
-
-    ``actuator`` drives the browser (observe/click); ``complete`` summarizes a screen in a sentence.
+    """Walk the TMS's main OPERATIONAL navigation, learn what each section is for, and return reusable
+    SYSTEM facts. ``actuator`` drives the browser (observe/click); ``complete`` summarizes a screen.
     Pure/injectable so it is unit-tested with fakes; read-only (no typing, no commits)."""
     facts: list[str] = []
     home = actuator.observe() or {}
-    nav = [n for n in (home.get("nav") or []) if isinstance(n, dict) and n.get("text")]
+    # Keep the operational sections (Orders/Customers/Finance/...), drop account/AI/search chrome + dupes.
+    nav, seen_nav = [], set()
+    for n in (home.get("nav") or []):
+        if not (isinstance(n, dict) and _is_operational(n.get("text"))):
+            continue
+        key = n["text"].strip().lower()
+        if key not in seen_nav:
+            seen_nav.add(key)
+            nav.append(n)
     sections = [n["text"] for n in nav][:sections_limit]
     if sections:
         facts.append("Main navigation sections: " + ", ".join(sections) + ".")
