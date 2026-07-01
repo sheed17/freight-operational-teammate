@@ -113,9 +113,16 @@ def _extract_openai(model_name: str, response_model, prompt: str, pages: list[Pa
                 "image_url": {"url": f"data:image/png;base64,{page.base64}"},
             }
         )
+    # gpt-5 / o-series reject `max_tokens` (they require `max_completion_tokens`); older models want
+    # `max_tokens`. Pick the right one so a top-quality model can be used for extraction.
+    token_kw = (
+        {"max_completion_tokens": 2048}
+        if any(model_name.startswith(p) for p in ("gpt-5", "o1", "o3", "o4"))
+        else {"max_tokens": 2048}
+    )
     return client.chat.completions.create(
         model=model_name,
-        max_tokens=2048,
+        **token_kw,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": content},

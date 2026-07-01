@@ -137,9 +137,15 @@ def _extract_openai(model_name: str, pages: list[PageImage]) -> DocumentIdentifi
                 "image_url": {"url": f"data:image/png;base64,{page.base64}"},
             }
         )
+    # gpt-5 / o-series need `max_completion_tokens`; older models use `max_tokens`.
+    token_kw = (
+        {"max_completion_tokens": 1024}
+        if any(model_name.startswith(p) for p in ("gpt-5", "o1", "o3", "o4"))
+        else {"max_tokens": 1024}
+    )
     return client.chat.completions.create(
         model=model_name,
-        max_tokens=1024,
+        **token_kw,
         messages=[
             {"role": "system", "content": IDENTIFIER_SYSTEM_PROMPT},
             {"role": "user", "content": content},
