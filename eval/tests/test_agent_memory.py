@@ -78,6 +78,47 @@ class _Actuator:
     def read(self, t): return "INV-1"
 
 
+def test_recall_business_surfaces_facts_about_the_goals_subject(tmp_path):
+    from freight_recon.knowledge import FactKind
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.kb.learn("Northbound Freight Brokers is order #1002.", tenant="acme",
+                 kind=FactKind.BUSINESS, subject="Northbound Freight Brokers")
+    mem.kb.learn("We invoice weekly.", tenant="acme", kind=FactKind.BUSINESS)  # general (no subject)
+    got = mem.recall_business(tenant="acme", text="Create a customer invoice for Northbound Freight Brokers")
+    assert any("order #1002" in f for f in got) and any("invoice weekly" in f for f in got)
+    # a goal about a different party doesn't pull the Northbound-specific fact
+    other = mem.recall_business(tenant="acme", text="Create a customer invoice for Acme Corp")
+    assert not any("order #1002" in f for f in other) and any("invoice weekly" in f for f in other)
+
+
+def test_agent_injects_business_facts_about_the_goal(tmp_path):
+    from freight_recon.knowledge import FactKind
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.kb.learn("Northbound is order #1002.", tenant="acme", kind=FactKind.BUSINESS, subject="Northbound")
+    prompts = []
+    def llm(p): prompts.append(p); return json.dumps({"action": "DONE", "why": "ok"})
+    OperatorAgent(actuator=_Actuator(), complete=llm, memory=mem, tenant="acme",
+                  task="raise_invoice").run("Create a customer invoice for Northbound")
+    assert "order #1002" in prompts[0]  # business fact recalled into the very first decision
+
+
+def test_correction_becomes_a_business_fact(tmp_path):
+    # The resume handler's learning: an owner's helpful reply is remembered as a business fact.
+    from freight_recon.action_callback import _learn_correction
+    from freight_recon.knowledge import FactKind, KnowledgeBase
+    from freight_recon.slack_delegate import CommandIntent, CommandKind
+
+    db = tmp_path / "neyma_workflow.sqlite3"
+    intent = CommandIntent(CommandKind.OPERATE, "invoice Northbound",
+                           {"customer": "Northbound", "operator_guidance": "it's order #1002"})
+
+    class _R: status = "DONE"
+    _learn_correction(str(db), intent, _R())
+    kb = KnowledgeBase(tmp_path / "agent_memory.json")
+    facts = kb.recall(tenant="default", kind=FactKind.BUSINESS, subject="Northbound")
+    assert any("order #1002" in f for f in facts)
+
+
 def test_agent_recalls_then_crystallizes_over_two_runs(tmp_path):
     mem = AgentMemory(tmp_path / "mem.json")
     seen_prompts = []

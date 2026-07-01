@@ -71,6 +71,22 @@ class AgentMemory:
 
         self.kb.learn(fact, tenant=tenant, kind=FactKind.SYSTEM, subject=domain, source="agent")
 
+    def recall_business(self, *, tenant: str, text: str, limit: int = 8) -> list[str]:
+        """BUSINESS facts relevant to what the agent is doing right now: general ones, plus any whose
+        subject (a carrier/customer/load) is named in the goal — so "Northbound -> order #1002" surfaces
+        exactly when it's working on Northbound."""
+        from freight_recon.knowledge import FactKind
+
+        tl = (text or "").lower()
+        out = []
+        for f in self.kb.facts(tenant=tenant):
+            if f["kind"] != FactKind.BUSINESS.value:
+                continue
+            subj = (f.get("subject") or "").lower()
+            if not subj or subj in tl:
+                out.append(f["text"])
+        return out[-limit:]
+
     # --- recipes (crystallized successful paths, for later replay) --------------------------
 
     def recall_recipe(self, *, tenant: str, task: str) -> list[dict] | None:

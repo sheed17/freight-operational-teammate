@@ -113,8 +113,10 @@ class OperatorAgent:
         history: list[dict] = []
         repeats = 0
         last_sig: tuple | None = None
-        learned: list[str] = []
         domain = "unknown"
+        # Business knowledge about whoever/whatever this goal is about (recalled up front, from the goal).
+        business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
+        learned: list[str] = list(business)
         for _ in range(self.max_steps):
             observation = self.actuator.observe()
             # First real screen: recall what we've learned about THIS system, so the agent reasons with
@@ -124,7 +126,7 @@ class OperatorAgent:
 
                 domain = domain_of(observation.get("url"))
                 if domain != "unknown":
-                    learned = self.memory.recall_facts(tenant=self.tenant, domain=domain)
+                    learned = self.memory.recall_facts(tenant=self.tenant, domain=domain) + business
             # If the agent has been repeating itself, warn it to change tack before it decides again.
             nudge = None
             if repeats >= 1:
