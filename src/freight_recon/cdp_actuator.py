@@ -81,12 +81,30 @@ class CdpActuator:
 
     def navigate(self, url: str) -> bool:
         self.session.navigate(url)
+        self._settle_until_ready()  # wait for the SPA to actually render, not just for a fixed sleep
         return True
 
     def click(self, target: str) -> bool:
         ok = self.session.evaluate(_CLICK_JS + "(" + json.dumps(target) + ")")
-        time.sleep(self.settle)
+        self._settle_until_ready()  # a click often triggers an SPA transition — wait for it to render
         return bool(ok)
+
+    def _settle_until_ready(self, timeout: float = 6.0) -> None:
+        """Wait until the page has actually rendered interactive controls, so observe() never catches a
+        blank mid-render screen (the transporters.io SPA renders async well after navigation). Returns
+        fast once content is present; only waits the full timeout on a genuinely empty page."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                n = self.session.evaluate(
+                    "document.querySelectorAll('a,button,input,select,textarea,[role=button]').length"
+                ) or 0
+            except Exception:  # noqa: BLE001
+                n = 0
+            if n >= 3:  # real controls are present -> rendered
+                time.sleep(self.settle * 0.5)  # a touch more for late JS
+                return
+            time.sleep(0.4)
 
     def type(self, target: str, value: str) -> bool:
         # 1) focus the field and select its current contents (so real typing replaces them)
