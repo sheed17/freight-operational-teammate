@@ -37,6 +37,23 @@ Build phases should end with a code-review handoff to the principal architect su
 [Build Supervision Protocol](docs/BUILD_SUPERVISION_PROTOCOL.md) and
 [.codex/agents/phase-code-reviewer.md](.codex/agents/phase-code-reviewer.md).
 
+## Current Focus
+
+The engine, safety spine, and learning layer are built and green (~515 tests). The product is now
+one proof and one hardening round away from a supervised daily pilot:
+
+1. **Fix round (in Codex's hands).** A four-agent review (money-safety spine, code, owner-operator,
+   roadmap) produced a consolidated, de-duplicated fix list ordered by priority:
+   **[docs/CODEX_FIX_HANDOFF.md](docs/CODEX_FIX_HANDOFF.md)**. Two P0 money-path items lead it
+   (cross-run commit-once so a resume can't double-write; value-based money fencing so the model's
+   number can never reach a differently-labeled money field), then store-concurrency and the
+   graduation guardrails, then invariant-hardening. **Do not graduate any lane to unattended
+   operation until P0–P1 land.**
+2. **The live-write gate.** The load-bearing de-risk: one clean end-to-end live write
+   (email → extract → match → Slack approve → CDP write → readback-verified → DONE) with a correct
+   dollar amount read back. Everything downstream (ROI-from-real-use, partner onboarding) is cheap
+   after this and speculative before it.
+
 ## Architecture Direction
 
 Neyma should be a deterministic workflow engine with bounded AI capabilities:
@@ -189,11 +206,49 @@ review payloads.
   ([src/freight_recon/tms_write.py](src/freight_recon/tms_write.py),
   [scripts/enter_tms_payable.py](scripts/enter_tms_payable.py)).
 
-Not yet built: a live mailbox watcher (V0 ingests local `.eml`), a vision/content document
-classifier (V0 uses filename/subject signals), POD/lumper/accessorial/carrier-packet extraction
-schemas, real Slack workspace posting / SMTP send (live egress) on top of the dispatch layer, and
-the browser-use execution layer that operates a real/sandbox TMS screen behind the write interface,
-plus deployment packaging.
+### Agentic teammate (Version B) — request → gated agent → receipt
+
+Beyond the extract/reconcile/review spine, Neyma now drives a live TMS as a bounded agent. The design
+principle is unchanged: **the LLM does human-like navigation and understanding; deterministic code owns
+money, state, and verification.** A request that matches no known workflow lane is refused, never
+improvised.
+
+- **Operation router + lanes** — a request becomes one of a small set of KNOWN, bounded goals
+  (raise an invoice, record a payable); an unknown request is REFUSED, not improvised. The
+  human-approved amount (never the model) supplies money
+  ([src/freight_recon/operation_router.py](src/freight_recon/operation_router.py)).
+- **Embedded OperatorAgent + universal CDP actuator** — an observe→reason→act driver that operates any
+  TMS through real keyboard input (`Input.insertText`), a text-based universal element resolver, and
+  render-wait settling. Money-fenced (the approved amount is substituted before any money field),
+  commit-once, and anti-hallucination guarded (only `DONE` after a real read-back; escalate on
+  not-found/ambiguous/blocked) ([src/freight_recon/operator_agent.py](src/freight_recon/operator_agent.py),
+  [src/freight_recon/cdp_actuator.py](src/freight_recon/cdp_actuator.py)).
+- **Prepare-then-graduate write model** — a supervised money lane FILLS the form and STOPS before Save;
+  the human commits. Once trusted, a lane is `graduate`d to full-auto behind a dollar ceiling, party
+  allowlist, and daily cap ([src/freight_recon/lane_graduation.py](src/freight_recon/lane_graduation.py)).
+- **Slack operate surface + natural language** — the owner talks (`"invoice the Northbound load"`,
+  `"what's outstanding over 30 days?"`) instead of memorizing commands; a cheap model routes the message
+  to a READ or a gated OPERATE, and in-thread replies resume a stuck run
+  ([src/freight_recon/nl_command.py](src/freight_recon/nl_command.py),
+  [src/freight_recon/thread_reply.py](src/freight_recon/thread_reply.py),
+  [src/freight_recon/action_callback.py](src/freight_recon/action_callback.py)).
+- **Learning layer** — a shared per-client knowledge base (SYSTEM / BUSINESS / PREFERENCE / PROCEDURE
+  facts) the agent recalls into its prompt and crystallizes on verified success; owner corrections and
+  company SOPs become facts; first immersion runs a system orientation. Memory never stores a money
+  value and is per-tenant scoped ([src/freight_recon/knowledge.py](src/freight_recon/knowledge.py),
+  [src/freight_recon/agent_memory.py](src/freight_recon/agent_memory.py),
+  [src/freight_recon/system_orientation.py](src/freight_recon/system_orientation.py)).
+- **ROI receipts + diagnostics** — proof-carrying receipts label a result `verified` only when it was
+  read back (else `reported by agent`); a value digest, `/neyma roi`/`audit`, and a plain-English
+  "why it struggled" on failures ([src/freight_recon/roi_ledger.py](src/freight_recon/roi_ledger.py),
+  [src/freight_recon/run_diagnostics.py](src/freight_recon/run_diagnostics.py)).
+
+Not yet built / in progress: the **live-write proof** (see Current Focus — supervised, not yet
+completed clean end-to-end on a live SPA TMS), the **P0–P1 safety fixes** from the review round, a live
+mailbox watcher (V0 ingests local `.eml`), a vision/content document classifier (V0 uses
+filename/subject signals), POD/lumper/accessorial extraction schemas, and multi-tenant infrastructure
+(credential vault, hosting, self-serve onboarding — deferred until customer #2), plus deployment
+packaging.
 
 The project should expand into those pieces by stage, not by one giant rewrite.
 Before any real client deployment, Neyma should pass an internal dogfood ladder: synthetic
@@ -217,13 +272,15 @@ Install the production browser-agent extra when working on Browser Use adapters:
 Set your provider + key in `.env`:
 
 ```
-EXTRACTION_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
+EXTRACTION_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 ```
 
-Model selection is configuration-driven. The current production-candidate default is
-`anthropic/claude-opus-4-8`; see [Model Strategy](docs/MODEL_STRATEGY.md) before changing model
-defaults or treating mock evals as production evidence.
+Model selection is configuration-driven and currently **all-GPT**: the agentic driving brain runs a
+purpose-built agentic GPT model (gpt-5.5, via `NEYMA_OPERATION_MODEL`); orientation, natural-language
+routing, and extraction use a cheaper GPT (gpt-5.4, via `NEYMA_NL_MODEL` / extraction config).
+Deterministic steps stay code, not a model. See [Model Strategy](docs/MODEL_STRATEGY.md) before
+changing model defaults or treating mock evals as production evidence.
 
 ## Run the Phase 1 demo
 
