@@ -104,10 +104,11 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         return render_activity(build_activity(store))
     if cmd in ("autonomy", "show autonomy", "graduations", "what is autonomous") and store is not None:
         return _render_autonomy(store)
-    if store is not None and (raw_first := cmd.split(None, 1)[0]) in (
+    parts = raw.split(None, 1)  # guard: empty text ("/neyma" with no args) must not IndexError
+    if store is not None and len(parts) == 2 and parts[0].lower() in (
         "graduate", "autonomous", "supervise", "restrict"
-    ) and len(raw.split(None, 1)) == 2:
-        return _handle_graduation(store, raw_first, raw.split(None, 1)[1].strip(), actor=actor)
+    ):
+        return _handle_graduation(store, parts[0].lower(), parts[1].strip(), actor=actor)
     if cmd in ("show unresolved", "unresolved", "show open") and store is not None:
         return _render_unresolved(store)
     if cmd.startswith("status ") and store is not None:
