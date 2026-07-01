@@ -416,7 +416,7 @@ class _BoomRouter:
 def _serve_with_operation_router(db_path, signer, loads, *, approved_amount="2850.00"):
     calls = []
 
-    def build_agent(*, approved_amount=None, approve=None):
+    def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
         calls.append(("approved_amount", approved_amount))
         return _FakeRouterAgent(calls, approve)
 

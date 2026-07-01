@@ -45,8 +45,9 @@ def _operate(summary, params=None):
 def _agent_factory(llm, actuator=None):
     act = actuator or FakeActuator()
 
-    def build_agent(*, approved_amount=None, approve=None):
-        return OperatorAgent(actuator=act, complete=llm, approved_amount=approved_amount, approve=approve)
+    def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
+        return OperatorAgent(actuator=act, complete=llm, approved_amount=approved_amount,
+                             approve=approve, prepare_only=prepare_only)
 
     build_agent.actuator = act
     return build_agent

@@ -162,6 +162,7 @@ def main() -> int:
             url_filter=args.operation_url_filter or None,
             model=args.operation_model,
             max_steps=args.operation_max_steps,
+            workspace=workspace,
         )
         operation_result_poster = _build_operation_result_poster(args.client_config)
 
@@ -254,16 +255,16 @@ def _build_live_operation_router(
     url_filter: str | None,
     model: str,
     max_steps: int,
+    workspace: "Path | None" = None,
 ) -> OperationRouter:
     """Build the real browser-agent router for Slack-approved operation runs.
 
-    The callback remains non-sending; this router can operate a real human-established browser
-    session after a signed Slack operation approval. The agent still gets only a single
-    consequential approval from the callback's safety gate.
+    Supervised lanes PREPARE (fill + stop before Save; the human commits); a graduated lane runs
+    unattended. The graduation policy is persisted per workspace so `/neyma graduate <lane>` sticks.
     """
     completer = openai_completer(model=model)
 
-    def _build_agent(*, approved_amount=None, approve=None):
+    def _build_agent(*, approved_amount=None, approve=None, prepare_only=False):
         session = CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter)
         session.__enter__()
         actuator = CdpActuator(session)
@@ -281,12 +282,17 @@ def _build_live_operation_router(
             approved_amount=approved_amount,
             approve=approve,
             max_steps=max_steps,
+            prepare_only=prepare_only,
         )
 
+    from freight_recon.lane_graduation import LaneGraduation
+
+    grad_path = (Path(workspace) / "lane_graduation.json") if workspace else Path("lane_graduation.json")
     return OperationRouter(
         lanes=freight_lanes(),
         build_agent=_build_agent,
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
+        graduation=LaneGraduation(grad_path),
     )
 
 

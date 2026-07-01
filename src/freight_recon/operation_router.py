@@ -139,8 +139,20 @@ class OperationRouter:
             approve = _autonomous_approval()
             autonomous_run = True
 
+        # PREPARE vs COMMIT: with a graduation policy present, a supervised (ungraduated) money lane
+        # PREPARES — the agent fills everything and stops before Save, and the human commits (safe on a
+        # flaky TMS; full-auto is the graduation). A graduated/autonomous run commits, and an explicit
+        # resume ("submit", params['commit']) commits. No graduation policy = old behavior (commit).
+        commit_requested = bool((intent.params or {}).get("commit"))
+        prepare_only = (
+            self.graduation is not None
+            and lane.requires_amount
+            and not autonomous_run
+            and not commit_requested
+        )
+
         goal = lane.build_goal(intent)
-        agent = self.build_agent(approved_amount=amount, approve=approve)
+        agent = self.build_agent(approved_amount=amount, approve=approve, prepare_only=prepare_only)
         result: AgentResult = agent.run(goal)
         # Count an unattended run against the daily cap only once it actually ran.
         if autonomous_run and self.graduation is not None:

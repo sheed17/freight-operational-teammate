@@ -183,6 +183,9 @@ def render_operation_receipt(receipt: OperationReceipt) -> str:
         proof = f" — {receipt.proof}" if receipt.proof else ""
         tag = (" (verified)" if receipt.verified else " (reported by agent)") if receipt.proof else ""
         return f"✅ Done — {what}{money}{proof}{tag}"
+    if receipt.status == "PREPARED":
+        return (f"🅿️ Staged — {what}{money}: filled and ready. Do the final Save in the browser, "
+                "or reply 'submit' to commit.")
     if receipt.status == "ESCALATED":
         return f"✋ I need you — {what}{money}: {receipt.summary or 'stopped and handed it to you'}"
     if receipt.status == "REFUSED":

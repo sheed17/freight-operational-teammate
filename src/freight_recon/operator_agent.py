@@ -88,6 +88,7 @@ class OperatorAgent:
         money_fence: MoneyFence | None = None,
         max_steps: int = 20,
         stuck_after: int = 3,
+        prepare_only: bool = False,
     ) -> None:
         self.actuator = actuator
         self.complete = complete
@@ -96,6 +97,9 @@ class OperatorAgent:
         self.fence = money_fence or MoneyFence()
         self.max_steps = max_steps
         self.stuck_after = stuck_after  # escalate after this many identical actions in a row
+        # prepare_only: drive + fill everything but STOP before the committing action, so a human does
+        # the final Save. This is the safe default for a supervised lane (full-auto is the graduation).
+        self.prepare_only = prepare_only
 
     def run(self, goal: str) -> AgentResult:
         history: list[dict] = []
@@ -130,8 +134,14 @@ class OperatorAgent:
                     return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
                 action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
 
-            # CONSEQUENTIAL GATE: the committing action needs human approval before it runs.
+            # CONSEQUENTIAL GATE: the committing action.
             if self.fence.is_consequential(action):
+                # PREPARE MODE: everything is filled and staged — stop here and let the human commit.
+                if self.prepare_only:
+                    return AgentResult(goal, "PREPARED", history,
+                                       f"Everything is filled and staged; I stopped before the final "
+                                       f"step ({action.target}) so you can commit it. Reply 'submit' to "
+                                       "commit, or do the final action in the browser.")
                 if self.approve is None or not self.approve(action):
                     return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
 

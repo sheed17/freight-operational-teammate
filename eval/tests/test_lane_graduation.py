@@ -35,9 +35,9 @@ def _operate(summary, params=None):
 
 
 def _agent_factory(llm):
-    def build_agent(*, approved_amount=None, approve=None):
+    def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
         return OperatorAgent(actuator=_FakeActuator(), complete=llm, approved_amount=approved_amount,
-                             approve=approve)
+                             approve=approve, prepare_only=prepare_only)
     return build_agent
 
 
@@ -126,6 +126,28 @@ def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
     assert on.status == "DONE"
     capped = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
     assert capped.status == "ESCALATED" and "daily" in capped.note
+
+
+def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):
+    grad = LaneGraduation(tmp_path / "grad.json")  # present but nothing graduated -> supervised
+    # The agent fills, then reaches the committing Save.
+    llm = _scripted_llm([{"action": "CLICK", "target": "Save invoice"}, {"action": "DONE", "why": "ok"}])
+    router = OperationRouter(
+        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
+    )
+    # Human tapped Approve, but supervised -> PREPARE: fill everything, stop before Save.
+    staged = router.run(_operate("invoice the load for Acme"), approve=lambda a: True)
+    assert staged.status == "PREPARED" and "Save invoice" in staged.note
+
+    # A resume that carries commit=True (an owner's thread reply) actually commits.
+    llm2 = _scripted_llm([{"action": "CLICK", "target": "Save invoice"}, {"action": "DONE", "why": "saved"}])
+    router2 = OperationRouter(
+        lanes=freight_lanes(), build_agent=_agent_factory(llm2),
+        approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
+    )
+    done = router2.run(_operate("invoice the load for Acme", {"commit": True}), approve=lambda a: True)
+    assert done.status == "DONE"
 
 
 def test_no_graduation_policy_keeps_old_behavior(tmp_path):

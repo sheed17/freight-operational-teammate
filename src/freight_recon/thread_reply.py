@@ -20,7 +20,7 @@ from .slack_delegate import CommandIntent, CommandKind
 APPLIED_EVENT = "slack_operation_applied"
 
 
-RESUMABLE_STATUSES = ("ESCALATED", "FAILED")
+RESUMABLE_STATUSES = ("ESCALATED", "FAILED", "PREPARED")
 
 
 def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
@@ -43,9 +43,14 @@ def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
 
 
 def intent_from_resumable(payload: dict, reply_text: str) -> CommandIntent:
-    """Rebuild the operation's intent, adding the owner's reply as guidance (never as an amount)."""
+    """Rebuild the operation's intent, adding the owner's reply as guidance (never as an amount).
+
+    A reply is the owner actively directing the run, so it authorizes COMMIT (``commit``): resuming a
+    staged/escalated op from a thread reply completes it rather than re-staging.
+    """
     params = dict(payload.get("params") or {})
     params["operator_guidance"] = reply_text
+    params["commit"] = True
     if payload.get("approved_amount"):
         params.setdefault("approved_amount", payload["approved_amount"])
     return CommandIntent(kind=CommandKind.OPERATE, summary=str(payload.get("summary", "")), params=params)
