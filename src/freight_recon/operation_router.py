@@ -321,8 +321,10 @@ def freight_lanes() -> list[OperationLane]:
         load_ref = _p(intent, "load_ref", "the delivered load")
         return (
             f"Create a customer invoice (accounts receivable) for {customer} for {load_ref}. "
-            "Open the new-invoice screen, set the bill-to to that customer, enter a charge description, "
-            "and fill the amount field (the system supplies the approved amount — do not choose one). "
+            f"Open the delivered load/order {load_ref} and use its billing/invoicing action to start the "
+            "invoice (fall back to a standalone new-invoice screen only if the record has no billing action). "
+            f"Set the bill-to to {customer}, enter a charge description, and fill the amount field (the system "
+            "supplies the approved amount — do not choose one). "
             "Save the invoice, then READ the saved invoice number back to confirm it was created."
             + _guidance(intent)
         )
@@ -332,7 +334,9 @@ def freight_lanes() -> list[OperationLane]:
         load_ref = _p(intent, "load_ref", "the load")
         return (
             f"Record a carrier payable (accounts payable) to {carrier} for {load_ref}. "
-            "Open the payable/settlement entry screen, set the carrier, enter a description, and fill the "
+            f"Open the load/order {load_ref} and use its settlement/payable action to record the payable "
+            "(fall back to a standalone payable-entry screen only if the record has no such action). "
+            "Set the carrier, enter a description, and fill the "
             "amount field (the system supplies the approved amount — do not choose one). Save it, then "
             "READ the saved record back to confirm it was created."
             + _guidance(intent)
