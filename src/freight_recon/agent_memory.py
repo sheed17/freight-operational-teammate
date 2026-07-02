@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .atomic_io import atomic_write_json
+
 
 def domain_of(url: str | None) -> str:
     """The system a fact/recipe belongs to — the host (e.g. 'transporters.io'), stripped of subdomain
@@ -56,8 +58,7 @@ class AgentMemory:
         return {}
 
     def _write(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        atomic_write_json(self.path, data, indent=2, sort_keys=True)
 
     # --- facts (recalled into reasoning) — delegate to the shared knowledge base -------------
 

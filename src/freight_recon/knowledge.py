@@ -29,6 +29,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from .atomic_io import atomic_write_json
+
 
 class FactKind(str, Enum):
     SYSTEM = "system"          # how to operate the tools (learned by the driving agent)
@@ -57,8 +59,7 @@ class KnowledgeBase:
         return {}
 
     def _write(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        atomic_write_json(self.path, data, indent=2, sort_keys=True)
 
     def learn(self, text: str, *, tenant: str, kind: FactKind = FactKind.SYSTEM,
               subject: str | None = None, source: str = "system") -> str | None:

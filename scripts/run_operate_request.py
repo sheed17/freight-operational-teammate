@@ -77,10 +77,11 @@ def main() -> int:
     with CdpBrowserSession(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as session:
         actuator = CdpActuator(session)
 
-        def build_agent(*, approved_amount=None, approve=None):
+        def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
             return OperatorAgent(
                 actuator=actuator, complete=completer, approved_amount=approved_amount,
                 approve=on_consequential if approve else None, max_steps=args.max_steps,
+                prepare_only=prepare_only,
             )
 
         router = OperationRouter(

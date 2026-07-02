@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Callable, Protocol
 
@@ -67,10 +68,33 @@ class Actuator(Protocol):
 
 @dataclass
 class MoneyFence:
-    """Keeps the model away from money. ``is_money_field`` flags fields whose value must be the approved
-    amount; ``is_consequential`` flags the committing action that needs approval."""
+    """Keeps the model away from money.
+
+    Numeric TYPE values are treated as money-risky by value inspection. They may only be written into a
+    designated money field, where the runtime substitutes the approved amount; otherwise the agent
+    escalates instead of typing a model-chosen number into an unknown field.
+    """
     is_money_field: Callable[[LiveAction], bool] = lambda a: bool(
-        a.kind == LiveActionKind.TYPE and any(k in (a.target or "").lower() for k in ("amount", "price", "total", "charge"))
+        a.kind == LiveActionKind.TYPE
+        and any(
+            k in (a.target or "").lower()
+            for k in (
+                "amount",
+                "price",
+                "total",
+                "charge",
+                "rate",
+                "line haul",
+                "linehaul",
+                "freight",
+                "settlement",
+                "balance due",
+                "cost",
+                "pay",
+                "value",
+                "accessorial",
+            )
+        )
     )
     is_consequential: Callable[[LiveAction], bool] = lambda a: bool(
         a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "create", "raise", "confirm", "pay"))
@@ -152,8 +176,16 @@ class OperatorAgent:
             if action.kind == LiveActionKind.ESCALATE:
                 return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
 
-            # MONEY FENCE: the model never supplies a monetary value — the approved amount is substituted.
-            if self.fence.is_money_field(action):
+            # MONEY FENCE: the model never supplies a monetary value. Any numeric TYPE is money-risky:
+            # allowed money fields receive the approved amount; unexpected numeric writes escalate.
+            if _looks_numeric(action.value):
+                if not self.fence.is_money_field(action):
+                    return AgentResult(
+                        goal,
+                        "ESCALATED",
+                        history,
+                        f"unexpected numeric write to non-money field: {action.target}",
+                    )
                 if not self.approved_amount:
                     return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
                 action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
@@ -233,6 +265,20 @@ class OperatorAgent:
             value = self.actuator.read(action.target)
             return True, (value or "")
         return False, None
+
+
+def _looks_numeric(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    raw = raw.replace("$", "").replace(",", "")
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = "-" + raw[1:-1]
+    try:
+        Decimal(raw)
+        return True
+    except InvalidOperation:
+        return False
 
 
 def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None,

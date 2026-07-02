@@ -15,11 +15,21 @@ from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 
 def _escalate(store, *, thread_ts, summary="Record the payable to TQL for LD-1",
-              params=None, amount="2700.00", status="ESCALATED"):
+              params=None, amount="2700.00", status="ESCALATED", token_fingerprint="tok-1",
+              record_binding=True, action_id="action-1", steps=None):
+    if token_fingerprint and record_binding:
+        store.record_operation_token_amount(
+            token_fingerprint=token_fingerprint,
+            action_id=action_id,
+            approved_amount=amount,
+        )
     store.add_security_event("slack_operation_applied", actor="U_OWNER", payload={
+        "action_id": action_id,
         "thread_ts": thread_ts, "status": status, "summary": summary,
         "params": params or {"lane": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
         "approved_amount": amount,
+        "token_fingerprint": token_fingerprint,
+        "steps": steps or [],
     })
 
 
@@ -27,11 +37,60 @@ def test_find_resumable_finds_latest_escalation_in_thread(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3")
     try:
         _escalate(store, thread_ts="T1", amount="2700.00")
-        _escalate(store, thread_ts="T2", amount="999.00", status="DONE")  # not escalated
+        _escalate(store, thread_ts="T2", amount="999.00", status="DONE", token_fingerprint="tok-2")  # not escalated
         assert find_resumable_operation(store, "T1")["approved_amount"] == "2700.00"
         assert find_resumable_operation(store, "T2") is None  # DONE, nothing to resume
         assert find_resumable_operation(store, "nope") is None
         assert find_resumable_operation(store, None) is None
+    finally:
+        store.close()
+
+
+def test_find_resumable_rejects_amount_without_verified_token_binding(tmp_path):
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        _escalate(store, thread_ts="T1", amount="2700.00", token_fingerprint=None)
+        store.record_operation_token_amount(
+            token_fingerprint="tok-mismatch",
+            action_id="action-2",
+            approved_amount="100.00",
+        )
+        _escalate(store, thread_ts="T2", amount="2700.00", token_fingerprint="tok-mismatch", record_binding=False)
+
+        assert find_resumable_operation(store, "T1") is None
+        assert find_resumable_operation(store, "T2") is None
+    finally:
+        store.close()
+
+
+def test_find_resumable_requires_action_scope_when_thread_has_multiple_open_operations(tmp_path):
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        _escalate(store, thread_ts="T1", action_id="action-1", token_fingerprint="tok-1", amount="2700.00")
+        _escalate(
+            store,
+            thread_ts="T1",
+            action_id="action-2",
+            token_fingerprint="tok-2",
+            amount="3100.00",
+            params={"lane": "record_payable", "carrier": "RXO", "load_ref": "LD-2"},
+        )
+
+        assert find_resumable_operation(store, "T1") is None
+        scoped = find_resumable_operation(store, "T1", action_id="action-1")
+        assert scoped is not None
+        assert scoped["approved_amount"] == "2700.00"
+        assert scoped["params"]["carrier"] == "TQL"
+    finally:
+        store.close()
+
+
+def test_find_resumable_excludes_already_committed_operation(tmp_path):
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        _escalate(store, thread_ts="T1", steps=[{"committed": True, "commit_key": "abc"}])
+
+        assert find_resumable_operation(store, "T1", action_id="action-1") is None
     finally:
         store.close()
 
@@ -46,6 +105,22 @@ def test_intent_from_resumable_adds_guidance_keeps_amount():
     assert intent.params["operator_guidance"] == "I'm logged in now, proceed"
     assert intent.params["approved_amount"] == "2700.00"  # amount carried, never from the reply
     assert intent.params["lane"] == "record_payable"
+
+
+def test_intent_from_committed_resumable_is_verify_only_not_commit():
+    intent = intent_from_resumable(
+        {
+            "summary": "Record payable",
+            "params": {"lane": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
+            "approved_amount": "2700.00",
+            "steps": [{"committed": True, "commit_key": "abc"}],
+        },
+        "try again",
+    )
+
+    assert intent.params["verify_only"] is True
+    assert intent.params["commit"] is False
+    assert intent.params["approved_amount"] == "2700.00"
 
 
 def test_handle_thread_reply_resumes_when_authorized(tmp_path):

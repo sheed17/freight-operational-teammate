@@ -163,6 +163,7 @@ def main() -> int:
             model=args.operation_model,
             max_steps=args.operation_max_steps,
             workspace=workspace,
+            db_path=db_path,
         )
         operation_result_poster = _build_operation_result_poster(args.client_config)
 
@@ -258,6 +259,7 @@ def _build_live_operation_router(
     model: str,
     max_steps: int,
     workspace: "Path | None" = None,
+    db_path: "Path | None" = None,
 ) -> OperationRouter:
     """Build the real browser-agent router for Slack-approved operation runs.
 
@@ -268,6 +270,7 @@ def _build_live_operation_router(
 
     from freight_recon.agent_memory import AgentMemory
     from freight_recon.lane_graduation import LaneGraduation
+    from freight_recon.workflow import WorkflowStore
 
     mem_path = (Path(workspace) / "agent_memory.json") if workspace else Path("agent_memory.json")
     memory = AgentMemory(mem_path)  # recall learned facts + crystallize what works, per client
@@ -300,6 +303,7 @@ def _build_live_operation_router(
         build_agent=_build_agent,
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
         graduation=LaneGraduation(grad_path),
+        commit_store=WorkflowStore(db_path) if db_path is not None else None,
     )
 
 

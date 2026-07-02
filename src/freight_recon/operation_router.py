@@ -22,8 +22,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from freight_recon.operator_agent import AgentResult, OperatorAgent
+from freight_recon.operator_agent import AgentResult, LiveActionKind, OperatorAgent
 from freight_recon.slack_delegate import CommandIntent
+from freight_recon.workflow import WorkflowStore, normalize_money_amount
 
 GoalBuilder = Callable[[CommandIntent], str]
 
@@ -87,6 +88,7 @@ class OperationRouter:
         approved_amount_for: Callable[[CommandIntent], str | None] | None = None,
         graduation=None,
         tenant: str = "default",
+        commit_store: WorkflowStore | None = None,
     ) -> None:
         self.lanes = lanes
         self.build_agent = build_agent
@@ -95,6 +97,7 @@ class OperationRouter:
         # per-run human approval. Absent/ungraduated => supervised (fail-safe).
         self.graduation = graduation
         self.tenant = tenant
+        self.commit_store = commit_store
 
     def lane_for(self, intent: CommandIntent) -> OperationLane | None:
         for lane in self.lanes:
@@ -119,11 +122,14 @@ class OperationRouter:
                 "this is a money action but no human-approved amount is bound to it yet — approve an "
                 "amount and I'll run it through the gates.",
             )
+        commit_identity = _commit_identity(self.tenant, lane.name, intent, amount)
 
         # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may only
         # proceed if it is graduated AND the run is within the owner's guardrails (dollar ceiling, party
         # allowlist, daily cap). Otherwise it stops and asks — crossing a limit escalates, never slips.
         autonomous_run = False
+        # Autonomous entry point: callers deliberately pass approve=None. The normal Slack approval
+        # callback passes an explicit approver, so it stays supervised and never consumes autonomy caps.
         if approve is None and lane.requires_amount:
             party = _party_of(intent)
             allowed, reason = (
@@ -136,6 +142,23 @@ class OperationRouter:
                     f"needs your approval — {reason}. Graduate it (with limits) once you trust it and "
                     "I'll handle it unattended.",
                 )
+            if self.commit_store is not None and commit_identity is None:
+                return OperationResult(
+                    "ESCALATED",
+                    lane.name,
+                    "needs your approval — missing load reference or party for commit-once protection",
+                )
+            if self.graduation is not None and self.commit_store is not None:
+                cap = self.graduation.guardrails(self.tenant, lane.name).get("daily_cap")
+                if cap is not None:
+                    claimed, used = self.commit_store.claim_autonomous_run(self.tenant, lane.name, cap=int(cap))
+                    if not claimed:
+                        return OperationResult(
+                            "ESCALATED",
+                            lane.name,
+                            f"needs your approval — daily autonomous cap of {cap} for {lane.name} reached",
+                            [{"autonomous_runs_today": used}],
+                        )
             approve = _autonomous_approval()
             autonomous_run = True
 
@@ -144,20 +167,74 @@ class OperationRouter:
         # flaky TMS; full-auto is the graduation). A graduated/autonomous run commits, and an explicit
         # resume ("submit", params['commit']) commits. No graduation policy = old behavior (commit).
         commit_requested = bool((intent.params or {}).get("commit"))
+        verify_only = bool((intent.params or {}).get("verify_only"))
+        if verify_only and lane.requires_amount:
+            return OperationResult(
+                "DONE",
+                lane.name,
+                "operation was already committed; resume is verify-only and will not repeat the TMS commit",
+                [{"committed": True, "verify_only": True}],
+            )
         prepare_only = (
             self.graduation is not None
             and lane.requires_amount
             and not autonomous_run
             and not commit_requested
         )
+        will_commit = lane.requires_amount and not prepare_only
+        commit_reserved = False
+        if will_commit and self.commit_store is not None and commit_identity is None:
+            return OperationResult(
+                "ESCALATED",
+                lane.name,
+                "needs your approval — missing load reference or party for commit-once protection",
+            )
+        if will_commit and self.commit_store is not None and commit_identity is not None:
+            reserved_payload = {"status": "RESERVED", "summary": intent.summary, "params": intent.params or {}}
+            commit_reserved = self.commit_store.claim_operation_commit(**commit_identity, payload=reserved_payload)
+            if not commit_reserved:
+                existing = self.commit_store.operation_commit_claim(**commit_identity)
+                return OperationResult(
+                    "DONE",
+                    lane.name,
+                    "already committed or reserved; refusing to repeat the TMS commit",
+                    [
+                        {
+                            "committed": True,
+                            "commit_key": existing["commit_key"] if existing else None,
+                            "reused_commit_claim": True,
+                        }
+                    ],
+                )
 
         goal = lane.build_goal(intent)
-        agent = self.build_agent(approved_amount=amount, approve=approve, prepare_only=prepare_only)
+        agent = self.build_agent(
+            approved_amount=amount,
+            approve=approve,
+            prepare_only=prepare_only,
+        )
         result: AgentResult = agent.run(goal)
+        steps = list(result.steps)
+        committed = _result_committed(result)
+        if committed and commit_identity is not None:
+            commit_payload = {"status": result.status, "note": result.note, "steps": steps[-5:]}
+            if self.commit_store is not None:
+                self.commit_store.update_operation_commit_payload(**commit_identity, payload=commit_payload)
+                existing = self.commit_store.operation_commit_claim(**commit_identity)
+                steps.append(
+                    {
+                        "committed": True,
+                        "commit_key": existing["commit_key"] if existing else None,
+                    }
+                )
+            else:
+                steps.append({"committed": True})
+        elif commit_reserved and self.commit_store is not None and commit_identity is not None:
+            self.commit_store.release_operation_commit(**commit_identity)
         # Count an unattended run against the daily cap only once it actually ran.
-        if autonomous_run and self.graduation is not None:
+        if autonomous_run and self.graduation is not None and self.commit_store is None:
             self.graduation.record_autonomous_run(self.tenant, lane.name)
-        return OperationResult(result.status, lane.name, result.note, list(result.steps))
+        return OperationResult(result.status, lane.name, result.note, steps)
 
 
 def _party_of(intent: CommandIntent) -> str | None:
@@ -167,6 +244,43 @@ def _party_of(intent: CommandIntent) -> str | None:
         if params.get(key):
             return str(params[key])
     return None
+
+
+def _load_ref_of(intent: CommandIntent) -> str | None:
+    params = intent.params or {}
+    for key in ("load_ref", "load_id", "pro", "invoice_number"):
+        if params.get(key):
+            return str(params[key])
+    return None
+
+
+def _commit_identity(tenant: str, lane: str, intent: CommandIntent, amount: str | None) -> dict | None:
+    if not amount:
+        return None
+    load_ref = _load_ref_of(intent)
+    party = _party_of(intent)
+    if not load_ref or not party:
+        return None
+    return {
+        "tenant": tenant,
+        "lane": lane,
+        "load_ref": load_ref,
+        "party": party,
+        "approved_amount": normalize_money_amount(amount),
+    }
+
+
+def _result_committed(result: AgentResult) -> bool:
+    for step in result.steps:
+        if step.get("committed") is True:
+            return True
+        if (
+            step.get("ok") is True
+            and step.get("action") == LiveActionKind.CLICK.value
+            and any(k in str(step.get("target", "")).lower() for k in ("save", "submit", "create", "raise", "confirm", "pay"))
+        ):
+            return True
+    return False
 
 
 def _autonomous_approval() -> Callable[[object], bool]:

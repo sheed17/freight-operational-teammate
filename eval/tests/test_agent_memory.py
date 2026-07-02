@@ -136,6 +136,27 @@ def test_correction_becomes_a_business_fact(tmp_path):
     assert any("order #1002" in f for f in facts)
 
 
+def test_correction_learning_redacts_currency_amounts(tmp_path):
+    from freight_recon.action_callback import _learn_correction
+    from freight_recon.knowledge import FactKind, KnowledgeBase
+    from freight_recon.slack_delegate import CommandIntent, CommandKind
+
+    db = tmp_path / "neyma_workflow.sqlite3"
+    intent = CommandIntent(
+        CommandKind.OPERATE,
+        "invoice Northbound",
+        {"customer": "Northbound", "operator_guidance": "it's order #1002, pay $4,500"},
+    )
+
+    class _R: status = "DONE"
+    _learn_correction(str(db), intent, _R())
+    kb = KnowledgeBase(tmp_path / "agent_memory.json")
+    facts = kb.recall(tenant="default", kind=FactKind.BUSINESS, subject="Northbound")
+    assert any("order #1002" in f for f in facts)
+    assert all("$" not in f and "4,500" not in f for f in facts)
+    assert any("[amount redacted]" in f for f in facts)
+
+
 def test_agent_recalls_then_crystallizes_over_two_runs(tmp_path):
     mem = AgentMemory(tmp_path / "mem.json")
     seen_prompts = []

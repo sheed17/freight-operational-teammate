@@ -13,6 +13,7 @@ import sqlite3
 from types import SimpleNamespace
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
@@ -107,13 +108,18 @@ class WorkflowStore:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path, timeout=30.0)
+        self.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         # The callback now runs concurrent threads (background agent operations + Slack reads + the
         # loop), all sharing this on-disk store. WAL lets a reader and the writer proceed at once
         # instead of blocking each other, and an explicit busy timeout turns a transient lock into a
         # short wait rather than an OperationalError that would kill a background operation mid-write.
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            # Another process/thread may be initializing the same store. The busy timeout still protects
+            # normal transactions; this connection can proceed with the existing journal mode.
+            pass
         self.conn.execute("PRAGMA busy_timeout=30000")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self._migrate()
@@ -169,6 +175,34 @@ class WorkflowStore:
                 action_id TEXT PRIMARY KEY,
                 run_id INTEGER NOT NULL,
                 actor TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS operation_commit_claims (
+                commit_key TEXT PRIMARY KEY,
+                tenant TEXT NOT NULL,
+                lane TEXT NOT NULL,
+                load_ref TEXT NOT NULL,
+                party TEXT NOT NULL,
+                approved_amount TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS autonomous_run_counters (
+                tenant TEXT NOT NULL,
+                lane TEXT NOT NULL,
+                day TEXT NOT NULL,
+                runs INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (tenant, lane, day)
+            );
+
+            CREATE TABLE IF NOT EXISTS operation_token_amounts (
+                token_fingerprint TEXT PRIMARY KEY,
+                action_id TEXT NOT NULL,
+                approved_amount TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -497,6 +531,214 @@ class WorkflowStore:
         except sqlite3.IntegrityError:
             return False
 
+    def operation_commit_claim(
+        self,
+        *,
+        tenant: str,
+        lane: str,
+        load_ref: str,
+        party: str,
+        approved_amount: str,
+    ) -> dict[str, Any] | None:
+        key = operation_commit_key(
+            tenant=tenant,
+            lane=lane,
+            load_ref=load_ref,
+            party=party,
+            approved_amount=approved_amount,
+        )
+        row = self.conn.execute(
+            "SELECT * FROM operation_commit_claims WHERE commit_key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "commit_key": row["commit_key"],
+            "tenant": row["tenant"],
+            "lane": row["lane"],
+            "load_ref": row["load_ref"],
+            "party": row["party"],
+            "approved_amount": row["approved_amount"],
+            "payload": json.loads(row["payload_json"]),
+            "created_at": row["created_at"],
+        }
+
+    def claim_operation_commit(
+        self,
+        *,
+        tenant: str,
+        lane: str,
+        load_ref: str,
+        party: str,
+        approved_amount: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically reserve/record this freight money operation.
+
+        The reservation happens before the browser agent can click a committing button. A crash after
+        reservation fails closed and blocks a blind retry instead of risking a double-write.
+        """
+        key = operation_commit_key(
+            tenant=tenant,
+            lane=lane,
+            load_ref=load_ref,
+            party=party,
+            approved_amount=approved_amount,
+        )
+        try:
+            self.conn.execute(
+                """
+                INSERT INTO operation_commit_claims (
+                    commit_key, tenant, lane, load_ref, party, approved_amount, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    key,
+                    tenant,
+                    lane,
+                    load_ref,
+                    party,
+                    approved_amount,
+                    json.dumps(payload, sort_keys=True),
+                    utc_now(),
+                ),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def update_operation_commit_payload(
+        self,
+        *,
+        tenant: str,
+        lane: str,
+        load_ref: str,
+        party: str,
+        approved_amount: str,
+        payload: dict[str, Any],
+    ) -> None:
+        key = operation_commit_key(
+            tenant=tenant,
+            lane=lane,
+            load_ref=load_ref,
+            party=party,
+            approved_amount=approved_amount,
+        )
+        self.conn.execute(
+            """
+            UPDATE operation_commit_claims
+            SET payload_json = ?
+            WHERE commit_key = ?
+            """,
+            (json.dumps(payload, sort_keys=True), key),
+        )
+        self.conn.commit()
+
+    def release_operation_commit(
+        self,
+        *,
+        tenant: str,
+        lane: str,
+        load_ref: str,
+        party: str,
+        approved_amount: str,
+    ) -> None:
+        key = operation_commit_key(
+            tenant=tenant,
+            lane=lane,
+            load_ref=load_ref,
+            party=party,
+            approved_amount=approved_amount,
+        )
+        self.conn.execute("DELETE FROM operation_commit_claims WHERE commit_key = ?", (key,))
+        self.conn.commit()
+
+    def claim_autonomous_run(
+        self,
+        tenant: str,
+        lane: str,
+        *,
+        cap: int,
+        day: str | None = None,
+    ) -> tuple[bool, int]:
+        """Atomically reserve one autonomous run within the daily cap."""
+        if cap < 1:
+            return False, 0
+        run_day = day or datetime.now(timezone.utc).date().isoformat()
+        try:
+            self.conn.execute("BEGIN IMMEDIATE")
+            row = self.conn.execute(
+                """
+                SELECT runs FROM autonomous_run_counters
+                WHERE tenant = ? AND lane = ? AND day = ?
+                """,
+                (tenant, lane, run_day),
+            ).fetchone()
+            current = int(row["runs"]) if row else 0
+            if current >= cap:
+                self.conn.rollback()
+                return False, current
+            updated = current + 1
+            self.conn.execute(
+                """
+                INSERT INTO autonomous_run_counters (tenant, lane, day, runs, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(tenant, lane, day)
+                DO UPDATE SET runs = excluded.runs, updated_at = excluded.updated_at
+                """,
+                (tenant, lane, run_day, updated, utc_now()),
+            )
+            self.conn.commit()
+            return True, updated
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def autonomous_runs_today(self, tenant: str, lane: str, *, day: str | None = None) -> int:
+        run_day = day or datetime.now(timezone.utc).date().isoformat()
+        row = self.conn.execute(
+            """
+            SELECT runs FROM autonomous_run_counters
+            WHERE tenant = ? AND lane = ? AND day = ?
+            """,
+            (tenant, lane, run_day),
+        ).fetchone()
+        return int(row["runs"]) if row else 0
+
+    def record_operation_token_amount(
+        self,
+        *,
+        token_fingerprint: str,
+        action_id: str,
+        approved_amount: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        normalized_amount = normalize_money_amount(approved_amount)
+        self.conn.execute(
+            """
+            INSERT INTO operation_token_amounts (
+                token_fingerprint, action_id, approved_amount, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(token_fingerprint)
+            DO UPDATE SET approved_amount = excluded.approved_amount,
+                          action_id = excluded.action_id,
+                          payload_json = excluded.payload_json
+            """,
+            (token_fingerprint, action_id, normalized_amount, json.dumps(payload or {}, sort_keys=True), utc_now()),
+        )
+        self.conn.commit()
+
+    def operation_token_amount(self, token_fingerprint: str | None) -> str | None:
+        if not token_fingerprint:
+            return None
+        row = self.conn.execute(
+            "SELECT approved_amount FROM operation_token_amounts WHERE token_fingerprint = ?",
+            (token_fingerprint,),
+        ).fetchone()
+        return str(row["approved_amount"]) if row else None
+
     def audit_events(self, run_id: int | None = None) -> list[dict[str, Any]]:
         if run_id is None:
             rows = self.conn.execute("SELECT * FROM audit_events ORDER BY id").fetchall()
@@ -628,3 +870,33 @@ def _direction_scoped_document_hash(document_hash: str, direction: WorkflowDirec
     """
     prefix = f"{direction.value}:"
     return document_hash if document_hash.startswith(prefix) else f"{prefix}{document_hash}"
+
+
+def operation_commit_key(
+    *,
+    tenant: str,
+    lane: str,
+    load_ref: str,
+    party: str,
+    approved_amount: str,
+) -> str:
+    raw = "|".join(
+        [
+            tenant.strip().lower(),
+            lane.strip().lower(),
+            load_ref.strip().lower(),
+            party.strip().lower(),
+            normalize_money_amount(approved_amount),
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def normalize_money_amount(amount: str) -> str:
+    raw = str(amount or "").strip().replace("$", "").replace(",", "")
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = "-" + raw[1:-1]
+    try:
+        return f"{Decimal(raw).quantize(Decimal('0.01'))}"
+    except (InvalidOperation, ValueError):
+        return str(amount or "").strip()

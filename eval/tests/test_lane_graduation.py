@@ -2,6 +2,7 @@
 
 import json
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -10,6 +11,7 @@ from freight_recon.lane_graduation import LaneGraduation  # noqa: E402
 from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
+from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 
 def _scripted_llm(actions):
@@ -126,6 +128,94 @@ def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
     assert on.status == "DONE"
     capped = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
     assert capped.status == "ESCALATED" and "daily" in capped.note
+
+
+def test_sqlite_autonomous_daily_cap_claim_is_atomic(tmp_path):
+    db_path = tmp_path / "w.sqlite3"
+    WorkflowStore(db_path).close()
+    results = []
+
+    def claim_once():
+        store = WorkflowStore(db_path)
+        try:
+            results.append(store.claim_autonomous_run("acme", "raise_invoice", cap=1)[0])
+        finally:
+            store.close()
+
+    threads = [threading.Thread(target=claim_once) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    store = WorkflowStore(db_path)
+    try:
+        assert sorted(results) == [False, True]
+        assert store.autonomous_runs_today("acme", "raise_invoice") == 1
+    finally:
+        store.close()
+
+
+def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
+    grad = LaneGraduation(tmp_path / "grad.json")
+    grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
+    db_path = tmp_path / "w.sqlite3"
+    WorkflowStore(db_path).close()
+    barrier = threading.Barrier(2)
+    results = []
+
+    def run_once():
+        store = WorkflowStore(db_path)
+        try:
+            router = OperationRouter(
+                lanes=freight_lanes(),
+                build_agent=_agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}])),
+                approved_amount_for=lambda _i: "100.00",
+                graduation=grad,
+                tenant="acme",
+                commit_store=store,
+            )
+            barrier.wait(timeout=5)
+            result = router.run(_operate("invoice the load", {"customer": "Acme Corp", "load_ref": "LD-1"}))
+            results.append(result.status)
+        finally:
+            store.close()
+
+    threads = [threading.Thread(target=run_once) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    store = WorkflowStore(db_path)
+    try:
+        assert sorted(results) == ["DONE", "ESCALATED"]
+        assert store.autonomous_runs_today("acme", "raise_invoice") == 1
+    finally:
+        store.close()
+
+
+def test_router_does_not_consume_sqlite_daily_cap_when_commit_identity_is_missing(tmp_path):
+    grad = LaneGraduation(tmp_path / "grad.json")
+    grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
+    store = WorkflowStore(tmp_path / "w.sqlite3")
+    try:
+        router = OperationRouter(
+            lanes=freight_lanes(),
+            build_agent=_agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}])),
+            approved_amount_for=lambda _i: "100.00",
+            graduation=grad,
+            tenant="acme",
+            commit_store=store,
+        )
+
+        result = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
+
+        assert result.status == "ESCALATED"
+        assert "commit-once" in result.note
+        assert store.autonomous_runs_today("acme", "raise_invoice") == 0
+    finally:
+        store.close()
 
 
 def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):

@@ -14,6 +14,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .atomic_io import atomic_write_json
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -34,8 +36,7 @@ class OpsControl:
         return {"tms_writes_paused": False, "paused_by": None, "paused_at": None, "reason": None, "log": []}
 
     def _write(self, state: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        atomic_write_json(self.path, state, indent=2, sort_keys=False)
 
     # --- TMS-writes brake -------------------------------------------------
 

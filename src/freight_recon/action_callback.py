@@ -458,6 +458,13 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             assert config.operation_router is not None
             store = WorkflowStore(config.db_path)
             try:
+                if approval.approved_amount:
+                    store.record_operation_token_amount(
+                        token_fingerprint=_token_fingerprint(action_value or ""),
+                        action_id=approval.action_id,
+                        approved_amount=approval.approved_amount,
+                        payload={"summary": approval.intent.summary, "params": approval.intent.params},
+                    )
                 claimed = store.claim_operation_action(
                     approval.action_id,
                     actor=str(user_id or "unknown"),
@@ -680,8 +687,11 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                             )
                         elif routed.get("operate"):
                             proposal = _build_operation_command_proposal(
-                                routed["operate"], signer=config.signer,
-                                router=config.operation_router, channel_id=channel_id,
+                                routed["operate"],
+                                signer=config.signer,
+                                router=config.operation_router,
+                                channel_id=channel_id,
+                                amount_source_text=text,
                             )
                             if proposal is not None:
                                 self._write_json(200, proposal)
@@ -1005,8 +1015,11 @@ def _learn_correction(db_path: str, intent, result) -> None:
 
         from .knowledge import FactKind, KnowledgeBase
 
+        scrubbed = _scrub_money_from_text(str(guidance))
+        if not scrubbed.strip():
+            return
         KnowledgeBase(_Path(db_path).parent / "agent_memory.json").learn(
-            str(guidance), tenant="default", kind=FactKind.BUSINESS, subject=subject, source="correction",
+            scrubbed, tenant="default", kind=FactKind.BUSINESS, subject=subject, source="correction",
         )
     except Exception:  # noqa: BLE001 - learning must never break the run
         pass
@@ -1092,6 +1105,7 @@ def _build_operation_command_proposal(
     signer: DeliverySigner,
     router: OperationRouter,
     channel_id: str | None,
+    amount_source_text: str | None = None,
 ) -> dict | None:
     # Only treat this as an operation request if it actually matches a known lane (e.g. "invoice ...",
     # "record payable ..."). Otherwise it's just an unrecognized command -> return None so the caller
@@ -1099,7 +1113,7 @@ def _build_operation_command_proposal(
     lane = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
     if lane is None:
         return None
-    amount = _extract_command_amount(text)
+    amount = _extract_command_amount(amount_source_text if amount_source_text is not None else text)
     if amount is None:
         return {
             "response_type": "ephemeral",
@@ -1156,6 +1170,16 @@ def _extract_command_amount(text: str) -> str | None:
     if not match:
         return None
     return f"{float(match.group(1).replace(',', '')):.2f}"
+
+
+def _scrub_money_from_text(text: str) -> str:
+    scrubbed = re.sub(
+        r"(?<!\w)(?:usd\s*\$?\s*|\$)\d[\d,]*(?:\.\d{1,2})?\b",
+        "[amount redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\s+", " ", scrubbed).strip()
 
 
 def _operation_context_mismatch(

@@ -61,6 +61,31 @@ def test_money_fence_substitutes_approved_amount_for_the_models_number():
     assert typed == [("type", "Total Charge", "2850.00")]
 
 
+def test_money_fence_substitutes_approved_amount_for_rate_and_line_haul_labels():
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "TYPE", "target": "Line Haul Rate", "value": "9999.00"},
+        {"action": "DONE", "why": "done"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
+
+    assert res.status == "DONE"
+    assert ("type", "Line Haul Rate", "2850.00") in act.calls
+    assert ("type", "Line Haul Rate", "9999.00") not in act.calls
+
+
+def test_money_fence_escalates_unexpected_numeric_write():
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "TYPE", "target": "Reference Code", "value": "9999.00"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
+
+    assert res.status == "ESCALATED"
+    assert "unexpected numeric write" in res.note
+    assert not [c for c in act.calls if c[0] == "type"]
+
+
 def test_money_field_without_approved_amount_escalates():
     act = FakeActuator()
     llm = _scripted_llm([{"action": "TYPE", "target": "Amount", "value": "5"}])
@@ -84,6 +109,51 @@ def test_consequential_action_runs_when_approved():
     res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
     assert res.status == "DONE"
     assert ("click", "Submit") in act.calls
+
+
+def test_failed_commit_click_retries_without_second_approval_then_reaches_done():
+    class FlakySaveActuator(FakeActuator):
+        def __init__(self):
+            super().__init__()
+            self.clicks = 0
+
+        def click(self, target):
+            self.calls.append(("click", target))
+            self.clicks += 1
+            return self.clicks > 1
+
+    approvals = []
+    act = FlakySaveActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Save invoice"},
+        {"action": "CLICK", "target": "Save invoice"},
+        {"action": "DONE", "why": "saved"},
+    ])
+
+    res = OperatorAgent(
+        actuator=act,
+        complete=llm,
+        approve=lambda a: approvals.append(a) or True,
+    ).run("invoice")
+
+    assert res.status == "DONE"
+    assert approvals and len(approvals) == 1
+    assert act.calls.count(("click", "Save invoice")) == 2
+
+
+def test_second_consequential_action_after_success_is_not_clicked():
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Save invoice"},
+        {"action": "CLICK", "target": "Submit payable"},
+    ])
+
+    res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
+
+    assert res.status == "DONE"
+    assert "already committed" in res.note
+    assert ("click", "Save invoice") in act.calls
+    assert ("click", "Submit payable") not in act.calls
 
 
 def test_escalate_and_max_steps_fail_closed():

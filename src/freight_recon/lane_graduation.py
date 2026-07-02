@@ -21,6 +21,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from .atomic_io import atomic_write_json
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -49,8 +51,7 @@ class LaneGraduation:
         return {}
 
     def _write(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        atomic_write_json(self.path, data, indent=2, sort_keys=True)
 
     def is_autonomous(self, tenant: str, lane: str) -> bool:
         """True only if this exact (tenant, lane) has been explicitly graduated. Fail-safe default."""

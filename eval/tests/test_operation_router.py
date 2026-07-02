@@ -2,6 +2,8 @@
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -13,6 +15,7 @@ from freight_recon.operation_router import (  # noqa: E402
 )
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
+from freight_recon.workflow import WorkflowStore, operation_commit_key  # noqa: E402
 
 
 class FakeActuator:
@@ -125,3 +128,113 @@ def test_non_money_lane_runs_without_an_amount():
     router = OperationRouter(lanes=[lane], build_agent=build_agent, approved_amount_for=lambda _i: None)
     res = router.run(_operate("check status of LD-5001"))
     assert res.status == "DONE" and res.lane == "status_check"
+
+
+def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        first_llm = _scripted_llm([
+            {"action": "CLICK", "target": "Save invoice"},
+            {"action": "ESCALATE", "target": "readback was slow"},
+        ])
+        first_agent = _agent_factory(first_llm)
+        router = OperationRouter(
+            lanes=freight_lanes(),
+            build_agent=first_agent,
+            approved_amount_for=lambda _i: "2850.00",
+            tenant="acme",
+            commit_store=store,
+        )
+        intent = _operate(
+            "invoice the delivered load for Acme",
+            {"customer": "Acme", "load_ref": "LD-9001", "commit": True},
+        )
+
+        first = router.run(intent, approve=lambda a: True)
+        assert first.status == "ESCALATED"
+        assert ("click", "Save invoice") in first_agent.actuator.calls
+        assert any(step.get("committed") is True for step in first.steps)
+
+        second_llm = _scripted_llm([
+            {"action": "CLICK", "target": "Save invoice"},
+            {"action": "DONE", "why": "saved again"},
+        ])
+        second_agent = _agent_factory(second_llm)
+        resumed = OperationRouter(
+            lanes=freight_lanes(),
+            build_agent=second_agent,
+            approved_amount_for=lambda _i: "2850.00",
+            tenant="acme",
+            commit_store=store,
+        ).run(intent, approve=lambda a: True)
+
+        assert resumed.status == "DONE"
+        assert "already committed" in resumed.note
+        assert ("click", "Save invoice") not in second_agent.actuator.calls
+    finally:
+        store.close()
+
+
+def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
+    db_path = tmp_path / "workflow.sqlite3"
+    WorkflowStore(db_path).close()
+    start = threading.Barrier(2)
+    lock = threading.Lock()
+    saves = []
+    results = []
+
+    class SlowSaveActuator(FakeActuator):
+        def click(self, target):
+            with lock:
+                saves.append(target)
+            time.sleep(0.05)
+            return super().click(target)
+
+    def run_once():
+        store = WorkflowStore(db_path)
+        try:
+            actuator = SlowSaveActuator()
+            build_agent = _agent_factory(
+                _scripted_llm([
+                    {"action": "CLICK", "target": "Save invoice"},
+                    {"action": "DONE", "why": "saved"},
+                ]),
+                actuator=actuator,
+            )
+            router = OperationRouter(
+                lanes=freight_lanes(),
+                build_agent=build_agent,
+                approved_amount_for=lambda _i: "2850.00",
+                tenant="acme",
+                commit_store=store,
+            )
+            intent = _operate(
+                "invoice the delivered load for Acme",
+                {"customer": "Acme", "load_ref": "LD-9001", "commit": True},
+            )
+            start.wait(timeout=5)
+            results.append(router.run(intent, approve=lambda a: True).status)
+        finally:
+            store.close()
+
+    threads = [threading.Thread(target=run_once) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results) == ["DONE", "DONE"]
+    assert saves == ["Save invoice"]
+
+
+def test_operation_commit_key_normalizes_equivalent_money_amounts():
+    base = {
+        "tenant": "acme",
+        "lane": "record_payable",
+        "load_ref": "LD-1",
+        "party": "TQL",
+    }
+    assert operation_commit_key(**base, approved_amount="$2,850") == operation_commit_key(
+        **base,
+        approved_amount="2850.00",
+    )

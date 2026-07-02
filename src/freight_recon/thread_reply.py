@@ -16,6 +16,7 @@ Structural safety (unchanged):
 from __future__ import annotations
 
 from .slack_delegate import CommandIntent, CommandKind
+from .workflow import normalize_money_amount
 
 APPLIED_EVENT = "slack_operation_applied"
 
@@ -23,7 +24,7 @@ APPLIED_EVENT = "slack_operation_applied"
 RESUMABLE_STATUSES = ("ESCALATED", "FAILED", "PREPARED")
 
 
-def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
+def find_resumable_operation(store, thread_ts: str | None, *, action_id: str | None = None) -> dict | None:
     """The most recent unfinished operation in this Slack thread (ESCALATED or FAILED), or None.
 
     Reads the same audit log the callback writes — the run recorded its thread, summary, params, and
@@ -32,13 +33,25 @@ def find_resumable_operation(store, thread_ts: str | None) -> dict | None:
     """
     if not thread_ts:
         return None
-    found = None
+    found: dict | None = None
+    found_action_ids: set[str] = set()
     for event in store.security_events():
         if event["event_type"] != APPLIED_EVENT:
             continue
         payload = event.get("payload") or {}
         if payload.get("thread_ts") == thread_ts and payload.get("status") in RESUMABLE_STATUSES:
-            found = payload  # keep scanning; last match wins (newest)
+            payload_action_id = payload.get("action_id")
+            if action_id is not None and payload_action_id != action_id:
+                continue
+            if _payload_already_committed(payload):
+                continue
+            verified_amount = store.operation_token_amount(payload.get("token_fingerprint"))
+            if verified_amount and verified_amount == normalize_money_amount(str(payload.get("approved_amount"))):
+                if payload_action_id:
+                    found_action_ids.add(str(payload_action_id))
+                found = {**payload, "approved_amount": verified_amount}  # keep scanning; newest verified match wins
+    if action_id is None and len(found_action_ids) > 1:
+        return None
     return found
 
 
@@ -50,10 +63,23 @@ def intent_from_resumable(payload: dict, reply_text: str) -> CommandIntent:
     """
     params = dict(payload.get("params") or {})
     params["operator_guidance"] = reply_text
-    params["commit"] = True
+    if _payload_already_committed(payload):
+        params["verify_only"] = True
+        params["commit"] = False
+    else:
+        params["commit"] = True
     if payload.get("approved_amount"):
         params.setdefault("approved_amount", payload["approved_amount"])
     return CommandIntent(kind=CommandKind.OPERATE, summary=str(payload.get("summary", "")), params=params)
+
+
+def _payload_already_committed(payload: dict) -> bool:
+    if payload.get("committed") is True:
+        return True
+    for step in payload.get("steps") or []:
+        if isinstance(step, dict) and step.get("committed") is True:
+            return True
+    return False
 
 
 def handle_thread_reply(

@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.action_callback import (  # noqa: E402
     CallbackStatus,
+    _build_operation_command_proposal,
+    _scrub_money_from_text,
     build_slack_operation_approval_value,
     handle_signed_action_callback,
     parse_callback_token,
@@ -67,6 +69,17 @@ def _delivered(tmp_path, load_id="LD-560008"):
 
 def _token_for(message, decision):
     return next(button.signed_token for button in message.actions if button.decision == decision)
+
+
+def _noop_router():
+    def build_agent(*, approved_amount=None, approve=None, prepare_only=False):
+        return None
+
+    return OperationRouter(
+        lanes=freight_lanes(),
+        build_agent=build_agent,
+        approved_amount_for=lambda intent: (intent.params or {}).get("approved_amount"),
+    )
 
 
 def test_direct_callback_applies_signed_action_and_formats_confirmation(tmp_path):
@@ -140,6 +153,46 @@ def test_gmail_workflow_report_redacts_signed_tokens(tmp_path):
     assert raw_token not in report
     assert "redacted:" in report
     store.close()
+
+
+def test_operation_proposal_extracts_amount_from_original_owner_text_not_model_rewrite():
+    signer = DeliverySigner(b"callback-secret")
+    proposal = _build_operation_command_proposal(
+        "invoice the delivered load for Acme for 9999.00",
+        signer=signer,
+        router=_noop_router(),
+        channel_id="C1",
+        amount_source_text="invoice the delivered load for Acme",
+    )
+
+    assert proposal is not None
+    assert "need an approved amount" in proposal["text"]
+
+
+def test_operation_proposal_uses_original_text_amount_even_when_model_rewrite_changes_it():
+    signer = DeliverySigner(b"callback-secret")
+    proposal = _build_operation_command_proposal(
+        "invoice the delivered load for Acme for 9999.00",
+        signer=signer,
+        router=_noop_router(),
+        channel_id="C1",
+        amount_source_text="invoice the delivered load for Acme for 2850.00",
+    )
+
+    assert proposal is not None
+    assert "Approve $2850.00" in json.dumps(proposal)
+    assert "9999.00" in json.dumps(proposal)
+    assert "Approve $9999.00" not in json.dumps(proposal)
+
+
+def test_scrub_money_from_text_removes_currency_but_keeps_order_reference():
+    scrubbed = _scrub_money_from_text("it's order #1002, pay $4,500 and USD 25.50 lumper")
+
+    assert "$" not in scrubbed
+    assert "4,500" not in scrubbed
+    assert "25.50" not in scrubbed
+    assert "order #1002" in scrubbed
+    assert scrubbed.count("[amount redacted]") == 2
 
 
 def test_direct_callback_does_not_auto_enter_for_backup_request(tmp_path):
