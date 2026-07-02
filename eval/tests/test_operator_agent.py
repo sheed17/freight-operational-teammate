@@ -156,6 +156,51 @@ def test_second_consequential_action_after_success_is_not_clicked():
     assert ("click", "Submit payable") not in act.calls
 
 
+def test_money_fence_substitutes_a_nonnumeric_placeholder_in_a_money_field():
+    # LIVE-CAUGHT REGRESSION: the model types the placeholder "approved amount" (not a number) into the
+    # amount field, expecting the runtime to swap in the real figure. The fence must substitute — an
+    # earlier value-only check let the literal string through, writing $0.00 to a live invoice.
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "TYPE", "target": "Invoice Amount", "value": "approved amount"},
+        {"action": "DONE", "why": "done"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
+    assert res.status == "DONE"
+    assert ("type", "Invoice Amount", "2850.00") in act.calls
+    assert ("type", "Invoice Amount", "approved amount") not in act.calls
+
+
+def test_form_opener_is_not_treated_as_the_commit():
+    # LIVE-CAUGHT REGRESSION: "Create Invoice" only OPENS the entry modal, but it matched the commit
+    # keyword "create" — burning the single-use approval and the commit-once guard, so the real Submit
+    # was refused as "already committed" and the agent reported DONE having never saved.
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Create Invoice"},              # opener — must NOT be the commit
+        {"action": "TYPE", "target": "Invoice Amount", "value": "x"},
+        {"action": "CLICK", "target": "Submit"},                      # the real commit
+        {"action": "DONE", "why": "saved"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
+    assert res.status == "DONE"
+    assert ("click", "Create Invoice") in act.calls   # the opener ran
+    assert ("click", "Submit") in act.calls           # the real commit ran (not blocked as "already committed")
+
+
+def test_form_opener_runs_without_approval_but_real_commit_gates():
+    # The opener must run even with no approver; only the true commit (Submit) escalates.
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Create Invoice"},
+        {"action": "CLICK", "target": "Submit"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=None).run("invoice")
+    assert res.status == "ESCALATED" and "needs approval" in res.note
+    assert ("click", "Create Invoice") in act.calls   # opener ran unauthenticated (it's not consequential)
+    assert ("click", "Submit") not in act.calls       # the real commit was gated
+
+
 def test_escalate_and_max_steps_fail_closed():
     act = FakeActuator()
     esc = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "ESCALATE", "target": "cannot find screen"}])).run("x")

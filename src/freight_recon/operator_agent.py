@@ -96,8 +96,11 @@ class MoneyFence:
             )
         )
     )
+    # The COMMIT is the final write button, not a form-opener. "create"/"raise"/"new" commonly OPEN an
+    # entry form (e.g. "Create Invoice" opens the New Invoice modal) — matching them here burns the
+    # single-use approval and the commit-once guard before the real Save. Match only true commit verbs.
     is_consequential: Callable[[LiveAction], bool] = lambda a: bool(
-        a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "create", "raise", "confirm", "pay"))
+        a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "confirm", "post", "pay"))
     )
 
 
@@ -176,19 +179,21 @@ class OperatorAgent:
             if action.kind == LiveActionKind.ESCALATE:
                 return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
 
-            # MONEY FENCE: the model never supplies a monetary value. Any numeric TYPE is money-risky:
-            # allowed money fields receive the approved amount; unexpected numeric writes escalate.
-            if _looks_numeric(action.value):
-                if not self.fence.is_money_field(action):
-                    return AgentResult(
-                        goal,
-                        "ESCALATED",
-                        history,
-                        f"unexpected numeric write to non-money field: {action.target}",
-                    )
+            # MONEY FENCE: the model never supplies a monetary value.
+            if self.fence.is_money_field(action):
+                # A designated money field ALWAYS receives the human-approved amount. The model's own
+                # value is discarded whether it's a number OR a placeholder like "approved amount" (the
+                # prompt tells the model to type into the field and let the runtime substitute).
                 if not self.approved_amount:
                     return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
                 action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
+            elif _looks_numeric(action.value):
+                # A number typed into a NON-money field: the model is trying to write a figure somewhere
+                # it shouldn't. Fail closed rather than let a model-chosen number through (P0-2).
+                return AgentResult(
+                    goal, "ESCALATED", history,
+                    f"unexpected numeric write to non-money field: {action.target}",
+                )
 
             # CONSEQUENTIAL GATE: the committing action.
             if self.fence.is_consequential(action):
