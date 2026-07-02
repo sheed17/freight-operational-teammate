@@ -141,8 +141,11 @@ class OperatorAgent:
         repeats = 0
         last_sig: tuple | None = None
         domain = "unknown"
+        forced_nudge: str | None = None   # a one-off instruction injected into the next decision
         self._committed = False           # has a consequential action succeeded this run?
         self._commit_approved: bool | None = None  # cached approval so a failed commit click can retry
+        self._readback_confirmed = False  # did a READ after the commit confirm the saved record?
+        self._forced_readback = False     # have we already made it read the record back before DONE?
         # Business knowledge about whoever/whatever this goal is about (recalled up front, from the goal).
         business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
         procedures = self.memory.recall_procedures(tenant=self.tenant, text=goal) if self.memory is not None else []
@@ -157,9 +160,11 @@ class OperatorAgent:
                 domain = domain_of(observation.get("url"))
                 if domain != "unknown":
                     learned = self.memory.recall_facts(tenant=self.tenant, domain=domain) + business
-            # If the agent has been repeating itself, warn it to change tack before it decides again.
-            nudge = None
-            if repeats >= 1:
+            # A forced instruction (e.g. "read the record back to confirm") takes priority; otherwise, if
+            # the agent has been repeating itself, warn it to change tack before it decides again.
+            nudge = forced_nudge
+            forced_nudge = None
+            if nudge is None and repeats >= 1:
                 nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
                          "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
                          "the page's navigation — or ESCALATE if you are stuck.")
@@ -174,6 +179,21 @@ class OperatorAgent:
                                    f"stuck: repeated {action.kind.value} {action.target!r} with no progress")
 
             if action.kind == LiveActionKind.DONE:
+                # VERIFY-BEFORE-DONE: a money write may not be declared DONE until a READ has confirmed the
+                # saved record. If it committed but never read back, force one confirm-read (this catches a
+                # slow/unsaved write AND a falsely-assumed commit). If it still can't confirm, it is NOT a
+                # verified success — surface it to the human rather than reporting a green DONE.
+                if self._committed and not self._readback_confirmed:
+                    if not self._forced_readback:
+                        self._forced_readback = True
+                        forced_nudge = (
+                            "You have not confirmed the write saved. READ the saved record now (e.g. the "
+                            "invoice number and total) to verify it exists with the correct amount. If you "
+                            "cannot find the saved record, ESCALATE — do NOT declare DONE without confirming.")
+                        continue
+                    return AgentResult(
+                        goal, "ESCALATED", history,
+                        "committed the write but could not confirm it saved — please verify the record")
                 self._crystallize(history, domain)  # learn from what just worked
                 return AgentResult(goal, "DONE", history, action.why or "goal achieved")
             if action.kind == LiveActionKind.ESCALATE:
@@ -204,8 +224,21 @@ class OperatorAgent:
                                        f"step ({action.target}) so you can commit it. Reply 'submit' to "
                                        "commit, or do the final action in the browser.")
                 # Already committed once this run -> never repeat a consequential action (double-pay guard).
+                # But do not declare DONE until a readback has confirmed it saved (this is the exact path
+                # that falsely reported DONE when a form-opener was mis-taken for the commit).
                 if self._committed:
-                    return AgentResult(goal, "DONE", history, "already committed; refusing to repeat the commit")
+                    if self._readback_confirmed:
+                        return AgentResult(goal, "DONE", history, "committed and confirmed; not repeating the commit")
+                    if not self._forced_readback:
+                        self._forced_readback = True
+                        forced_nudge = (
+                            "You have not confirmed the write saved. READ the saved record now (e.g. the "
+                            "invoice number and total) to verify it exists with the correct amount. If you "
+                            "cannot find the saved record, ESCALATE — do NOT declare DONE without confirming.")
+                        continue
+                    return AgentResult(
+                        goal, "ESCALATED", history,
+                        "committed the write but could not confirm it saved — please verify the record")
                 # Ask for approval ONCE and cache it — a FAILED commit click must not burn the approval,
                 # so retries of the same commit are allowed until one actually succeeds.
                 if self._commit_approved is None:
@@ -216,6 +249,9 @@ class OperatorAgent:
             ok, observed = self._execute(action)
             if ok and self.fence.is_consequential(action):
                 self._committed = True  # a consequential action succeeded — commit is done
+            # A READ after the commit that returns something is the confirmation the write actually saved.
+            if action.kind == LiveActionKind.READ and self._committed and ok and observed:
+                self._readback_confirmed = True
             entry = {"action": action.kind.value, "target": action.target,
                      "value": action.value, "why": action.why, "ok": ok}
             if observed is not None:

@@ -105,10 +105,14 @@ def test_consequential_action_requires_approval():
 
 def test_consequential_action_runs_when_approved():
     act = FakeActuator()
-    llm = _scripted_llm([{"action": "CLICK", "target": "Submit"}, {"action": "DONE", "why": "ok"}])
+    # A committed write must be read back before DONE (verify-before-done).
+    llm = _scripted_llm([{"action": "CLICK", "target": "Submit"},
+                         {"action": "READ", "target": "Invoice #"},
+                         {"action": "DONE", "why": "ok"}])
     res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
     assert res.status == "DONE"
     assert ("click", "Submit") in act.calls
+    assert ("read", "Invoice #") in act.calls
 
 
 def test_failed_commit_click_retries_without_second_approval_then_reaches_done():
@@ -127,6 +131,7 @@ def test_failed_commit_click_retries_without_second_approval_then_reaches_done()
     llm = _scripted_llm([
         {"action": "CLICK", "target": "Save invoice"},
         {"action": "CLICK", "target": "Save invoice"},
+        {"action": "READ", "target": "Invoice #"},
         {"action": "DONE", "why": "saved"},
     ])
 
@@ -150,8 +155,10 @@ def test_second_consequential_action_after_success_is_not_clicked():
 
     res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
 
-    assert res.status == "DONE"
-    assert "already committed" in res.note
+    # Double-pay guard still holds (the second commit never clicks); and because nothing was read back
+    # to confirm, it escalates for the human to verify rather than reporting a green DONE.
+    assert res.status == "ESCALATED"
+    assert "could not confirm" in res.note
     assert ("click", "Save invoice") in act.calls
     assert ("click", "Submit payable") not in act.calls
 
@@ -180,6 +187,7 @@ def test_form_opener_is_not_treated_as_the_commit():
         {"action": "CLICK", "target": "Create Invoice"},              # opener — must NOT be the commit
         {"action": "TYPE", "target": "Invoice Amount", "value": "x"},
         {"action": "CLICK", "target": "Submit"},                      # the real commit
+        {"action": "READ", "target": "Invoice #"},                    # confirm it saved
         {"action": "DONE", "why": "saved"},
     ])
     res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
@@ -199,6 +207,35 @@ def test_form_opener_runs_without_approval_but_real_commit_gates():
     assert res.status == "ESCALATED" and "needs approval" in res.note
     assert ("click", "Create Invoice") in act.calls   # opener ran unauthenticated (it's not consequential)
     assert ("click", "Submit") not in act.calls       # the real commit was gated
+
+
+def test_committed_write_without_readback_is_forced_to_confirm_before_done():
+    # The agent commits then tries to declare DONE without reading anything back. The runtime forces a
+    # confirm-read; once it reads the saved record, DONE is accepted.
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Submit"},          # commit
+        {"action": "DONE", "why": "assumed saved"},        # premature — no readback yet
+        {"action": "READ", "target": "Invoice #"},         # forced confirm-read
+        {"action": "DONE", "why": "confirmed"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
+    assert res.status == "DONE"
+    assert ("read", "Invoice #") in act.calls   # it was made to read back before DONE was accepted
+
+
+def test_committed_write_that_cannot_be_confirmed_escalates_not_done():
+    # It commits, is asked to confirm, but never reads back (keeps declaring DONE). That is NOT a verified
+    # success — it must surface for a human, never a green DONE. (This is the false-DONE the live run hit.)
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Submit"},
+        {"action": "DONE", "why": "assumed saved"},
+        {"action": "DONE", "why": "still assuming"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
+    assert res.status == "ESCALATED"
+    assert "could not confirm" in res.note
 
 
 def test_escalate_and_max_steps_fail_closed():

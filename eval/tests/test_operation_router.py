@@ -197,6 +197,7 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
             build_agent = _agent_factory(
                 _scripted_llm([
                     {"action": "CLICK", "target": "Save invoice"},
+                    {"action": "READ", "target": "Invoice #"},   # verify-before-done: confirm it saved
                     {"action": "DONE", "why": "saved"},
                 ]),
                 actuator=actuator,
