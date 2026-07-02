@@ -17,6 +17,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from .email_triage import ROUTE_IGNORE, ROUTE_PROCESS, Completer, triage_email
 from .ingestion import (
     AttachmentTextExtractor,
     IngestedPacket,
@@ -52,6 +53,10 @@ class MailboxMessageRecord(BaseModel):
     linked_load_ids: list[str] = Field(default_factory=list)
     packet_load_id: str | None = None
     duplicate_of: str | None = None
+    # Set only when a triage completer is supplied (the relevance gate for a real inbox).
+    triage_route: str | None = None       # process | ask | ignore
+    triage_relevance: str | None = None   # freight_ops | noise | uncertain
+    triage_reason: str | None = None
 
 
 class MailboxState(BaseModel):
@@ -80,6 +85,7 @@ class MailboxPollResult(BaseModel):
     duplicates: list[MailboxMessageRecord] = Field(default_factory=list)
     packet_runs: list[MailboxPacketRun] = Field(default_factory=list)
     unlinked_messages: list[MailboxMessageRecord] = Field(default_factory=list)
+    noise_ignored: list[MailboxMessageRecord] = Field(default_factory=list)
 
 
 def run_mailbox_intake(
@@ -89,6 +95,7 @@ def run_mailbox_intake(
     state_path: str | Path,
     loads: list[FreightLoadForReconciliation],
     attachment_text_extractor: AttachmentTextExtractor | None = None,
+    triage_completer: Completer | None = None,
 ) -> MailboxPollResult:
     """Poll a controlled inbound mailbox directory and reprocess touched packet groups.
 
@@ -96,6 +103,11 @@ def run_mailbox_intake(
     updates durable state, then groups all preserved messages by linked load and runs the existing
     packet ingestion over each group. Reprocessing all preserved messages for a touched load lets
     trickle-in documents update an existing packet without losing context.
+
+    When ``triage_completer`` is supplied, every new message passes through the email-triage relevance
+    gate (see :mod:`freight_recon.email_triage`): noise is recorded and excluded from packet assembly,
+    and a confident model fuzzy-link fills ``packet_load_id`` for a freight email that carried no clean
+    identifier. Without it, behavior is unchanged (deterministic identifier linking only).
     """
 
     inbox = Path(inbox_dir)
@@ -139,6 +151,8 @@ def run_mailbox_intake(
             parsed=parsed,
             index=index,
         )
+        if triage_completer is not None:
+            _apply_triage(record, parsed, index, loads, triage_completer)
         state.messages.append(record)
         new_records.append(record)
         processed.update(keys)
@@ -146,7 +160,7 @@ def run_mailbox_intake(
     state.processed_keys = sorted(processed)
     state_file.write_text(json.dumps(state.model_dump(mode="json"), indent=2), encoding="utf-8")
 
-    packet_runs, unlinked = _assemble_packets(
+    packet_runs, unlinked, noise = _assemble_packets(
         state.messages,
         loads,
         attachment_text_extractor=attachment_text_extractor,
@@ -160,6 +174,7 @@ def run_mailbox_intake(
         duplicates=duplicates,
         packet_runs=packet_runs,
         unlinked_messages=unlinked,
+        noise_ignored=noise,
     )
 
 
@@ -174,10 +189,15 @@ def _assemble_packets(
     records: list[MailboxMessageRecord],
     loads: list[FreightLoadForReconciliation],
     attachment_text_extractor: AttachmentTextExtractor | None = None,
-) -> tuple[list[MailboxPacketRun], list[MailboxMessageRecord]]:
+) -> tuple[list[MailboxPacketRun], list[MailboxMessageRecord], list[MailboxMessageRecord]]:
     by_load: dict[str, list[MailboxMessageRecord]] = {}
     unlinked: list[MailboxMessageRecord] = []
+    noise: list[MailboxMessageRecord] = []
     for record in records:
+        # Triage noise never enters packet assembly — it is recorded (audit) and dropped, not acted on.
+        if record.triage_route == ROUTE_IGNORE:
+            noise.append(record)
+            continue
         load_id = record.packet_load_id
         if not load_id:
             unlinked.append(record)
@@ -200,7 +220,25 @@ def _assemble_packets(
                 packet=ingest_emails(parsed, loads),
             )
         )
-    return packets, unlinked
+    return packets, unlinked, noise
+
+
+def _apply_triage(
+    record: MailboxMessageRecord,
+    parsed: ParsedEmail,
+    index: LoadIndex,
+    loads: list[FreightLoadForReconciliation],
+    complete: Completer,
+) -> None:
+    """Run the relevance gate on one message and fold its verdict into the record (mutates in place)."""
+    decision = triage_email(parsed, index, loads, complete=complete)
+    record.triage_route = decision.route
+    record.triage_relevance = decision.relevance
+    record.triage_reason = decision.reason
+    # A confident model fuzzy-link supplies the load a clean identifier could not (the whole point of
+    # the layer). The deterministic identifier link, when present, is never overridden.
+    if decision.route == ROUTE_PROCESS and not record.packet_load_id and decision.load_id:
+        record.packet_load_id = decision.load_id
 
 
 def _record_for_message(

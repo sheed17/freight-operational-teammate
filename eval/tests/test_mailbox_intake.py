@@ -55,6 +55,47 @@ def test_mailbox_intake_preserves_new_messages_and_builds_packets(tmp_path):
     assert run.packet.needs_human is False
 
 
+def _write_eml(path: Path, subject: str, from_addr: str = "sender@example.com") -> None:
+    path.write_text(
+        f"From: {from_addr}\nTo: ap@broker.com\nSubject: {subject}\n"
+        f"Message-ID: <{abs(hash(subject))}@example.com>\nDate: Mon, 22 Jun 2026 09:00:00 +0000\n\n"
+        "body\n",
+        encoding="utf-8",
+    )
+
+
+def test_mailbox_intake_triage_ignores_noise_and_processes_freight(tmp_path):
+    _, loads, _ = _email_corpus(tmp_path, count=8)
+    known = loads[0].load_id
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    # A freight email naming a known load (links deterministically) and a newsletter (noise).
+    _write_eml(inbox / "freight.eml", f"Carrier invoice for {known}", from_addr="ap@redline.com")
+    _write_eml(inbox / "newsletter.eml", "Logistics Weekly top stories", from_addr="news@logisticsweekly.com")
+
+    # The model is only consulted for the message with no identifier (the newsletter); it calls it noise.
+    def triage_model(_prompt: str) -> str:
+        return json.dumps({"relevance": "noise", "load_id": None, "confidence": 0.96, "reason": "newsletter"})
+
+    result = run_mailbox_intake(
+        inbox_dir=inbox,
+        preserve_dir=tmp_path / "mailbox",
+        state_path=tmp_path / "mailbox" / "mailbox_state.json",
+        loads=loads,
+        triage_completer=triage_model,
+    )
+
+    # Noise is recorded and excluded from packet assembly; it never becomes work.
+    assert len(result.noise_ignored) == 1
+    assert result.noise_ignored[0].subject.startswith("Logistics Weekly")
+    assert result.noise_ignored[0].triage_route == "ignore"
+    # The freight email linked to its known load and produced a packet run.
+    assert any(run.load_id == known for run in result.packet_runs)
+    # The freight message was routed to processing (identifier link), not ignored.
+    freight = next(m for m in result.new_messages if m.packet_load_id == known)
+    assert freight.triage_route == "process"
+
+
 def test_mailbox_intake_dedupes_by_message_id_and_hash(tmp_path):
     _, loads, email_corpus = _email_corpus(tmp_path, count=8)
     inbox = tmp_path / "inbox"
