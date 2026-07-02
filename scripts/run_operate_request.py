@@ -12,7 +12,7 @@ Boundaries enforced (all reused, none new):
 
 Example (supervised):
   python scripts/run_operate_request.py --request "invoice today's delivered load for Acme" \
-      --customer Acme --model gpt-4o --approved-amount 2850.00 --url-filter transporters \
+      --customer Acme --model gpt-5.5 --approved-amount 2850.00 --url-filter transporters \
       --approve-consequential
 """
 
@@ -45,12 +45,12 @@ def main() -> int:
     parser.add_argument("--request", required=True, help="the owner's natural-language request")
     parser.add_argument("--cdp-url", default="http://localhost:9222")
     parser.add_argument("--url-filter", default="", help="substring to pick the right tab (e.g. 'transporters')")
-    parser.add_argument("--model", default="gpt-4o", help="the DRIVER (brain) model — use a frontier model")
+    parser.add_argument("--model", default="gpt-5.5", help="the DRIVER (brain) model — use a frontier agentic model")
     parser.add_argument("--customer", default=None, help="customer param for an invoice lane")
     parser.add_argument("--carrier", default=None, help="carrier param for a payable lane")
     parser.add_argument("--load-ref", default=None, help="the load reference")
     parser.add_argument("--approved-amount", default=None, help="the human-approved amount (binds the money fence)")
-    parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-steps", type=int, default=40)
     parser.add_argument(
         "--approve-consequential", action="store_true",
         help="SUPERVISED ONLY: auto-approve the committing action. Off = the agent escalates instead.",

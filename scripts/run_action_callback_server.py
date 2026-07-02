@@ -78,8 +78,8 @@ def main() -> int:
     )
     parser.add_argument("--operation-cdp-url", default=os.getenv("NEYMA_OPERATION_CDP_URL", "http://localhost:9222"))
     parser.add_argument("--operation-url-filter", default=os.getenv("NEYMA_OPERATION_URL_FILTER", ""))
-    parser.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-4o"))
-    parser.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "20")))
+    parser.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-5.5"))
+    parser.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "40")))
     parser.add_argument(
         "--allowed-slack-user",
         action="append",

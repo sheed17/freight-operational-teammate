@@ -11,7 +11,7 @@ Safety defaults are conservative:
 
 Example (supervised, frontier driver):
   python scripts/run_operator_agent.py --goal "Create a customer invoice for Northbound at the approved amount" \
-      --model gpt-4o --approved-amount 2850.00 --url-filter transporters --approve-consequential
+      --model gpt-5.5 --approved-amount 2850.00 --url-filter transporters --approve-consequential
 """
 
 from __future__ import annotations
@@ -41,10 +41,10 @@ def main() -> int:
     parser.add_argument("--goal", required=True, help="what the agent should accomplish")
     parser.add_argument("--cdp-url", default="http://localhost:9222")
     parser.add_argument("--url-filter", default="", help="substring to pick the right tab (e.g. 'transporters')")
-    parser.add_argument("--model", default="gpt-4o", help="the DRIVER (brain) model — use a frontier model")
+    parser.add_argument("--model", default="gpt-5.5", help="the DRIVER (brain) model — use a frontier agentic model")
     parser.add_argument("--start-url", default=None, help="navigate here before the agent starts")
     parser.add_argument("--approved-amount", default=None, help="the human-approved amount the money fence binds")
-    parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--max-steps", type=int, default=40)
     parser.add_argument(
         "--approve-consequential",
         action="store_true",

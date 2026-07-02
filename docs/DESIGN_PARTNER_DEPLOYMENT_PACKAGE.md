@@ -10,7 +10,7 @@ default until the partner-specific gates prove they are safe.
 - Internal pilot summary: `data/active_workspace/pilot_session/pilot_session_summary.txt`
 - Client config template: `configs/clients/design_partner_template.yaml`
 - Channel runbook: `docs/CHANNEL_ONBOARDING.md`
-- Screen mapping reference: `docs/ASCENDTMS_MAPPING.md`
+- Screen mapping reference: `docs/TMS_ONBOARDING.md`
 - Data-arrival execution plan: `docs/WHEN_DESIGN_PARTNER_DATA_ARRIVES.md`
 
 ## Pilot Scope

@@ -73,7 +73,7 @@ def extract_pdf_identifiers(
     except Exception as exc:  # noqa: BLE001 - bad scans/PDFs must fail closed into unlinked review
         return DocumentIdentifierResult(
             provider=provider or os.getenv("EXTRACTION_PROVIDER") or "openai",
-            model=model or os.getenv("OPENAI_IDENTIFIER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o",
+            model=model or os.getenv("OPENAI_IDENTIFIER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4",
             extraction=None,
             raw_pages=0,
             error=f"{type(exc).__name__}: {exc}",
@@ -96,7 +96,7 @@ def extract_identifiers_from_pages(
             raw_pages=len(pages),
             error="document identifier vision currently supports provider=openai",
         )
-    model_name = model or os.getenv("OPENAI_IDENTIFIER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
+    model_name = model or os.getenv("OPENAI_IDENTIFIER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4"
     try:
         obj = _extract_openai(model_name, pages)
     except Exception as exc:  # noqa: BLE001 - caller routes failures to safe unlinked review

@@ -30,8 +30,8 @@ For the broader product map, see:
 - [When Design Partner Data Arrives](docs/WHEN_DESIGN_PARTNER_DATA_ARRIVES.md)
 - [Build Supervision Protocol](docs/BUILD_SUPERVISION_PROTOCOL.md)
 - [Synthetic Freight Corpus](docs/SYNTHETIC_CORPUS.md)
-- [Model Strategy](docs/MODEL_STRATEGY.md)
 - [Internal Dogfood Pilot](docs/INTERNAL_DOGFOOD_PILOT.md)
+- [Live-Write Proof](docs/LIVE_WRITE_PROOF.md)
 
 Build phases should end with a code-review handoff to the principal architect supervisor. See
 [Build Supervision Protocol](docs/BUILD_SUPERVISION_PROTOCOL.md) and
@@ -279,8 +279,7 @@ OPENAI_API_KEY=sk-...
 Model selection is configuration-driven and currently **all-GPT**: the agentic driving brain runs a
 purpose-built agentic GPT model (gpt-5.5, via `NEYMA_OPERATION_MODEL`); orientation, natural-language
 routing, and extraction use a cheaper GPT (gpt-5.4, via `NEYMA_NL_MODEL` / extraction config).
-Deterministic steps stay code, not a model. See [Model Strategy](docs/MODEL_STRATEGY.md) before
-changing model defaults or treating mock evals as production evidence.
+Deterministic steps stay code, not a model. Don't treat mock evals as production evidence.
 
 ## Run the Phase 1 demo
 

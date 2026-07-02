@@ -61,7 +61,7 @@ def _resolve_model(provider: str, model: str | None) -> str:
         return model
     if provider == "anthropic":
         return os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
-    return os.getenv("OPENAI_MODEL", "gpt-4o")
+    return os.getenv("OPENAI_MODEL", "gpt-5.4")
 
 
 def _build_user_prompt(config: DocTypeConfig) -> str:
