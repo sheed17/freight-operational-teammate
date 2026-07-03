@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Callable, Protocol
 
@@ -261,6 +262,15 @@ class OperatorAgent:
                 if not self._commit_approved:
                     return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
 
+                # AMOUNT RECONCILIATION: the human-approved amount must be authoritative before money is
+                # written. A TMS that DEFAULTED an amount (e.g. pre-filled a payment = balance) must not
+                # commit a figure the human didn't approve. Make every ACTIVE (non-zero) money field equal
+                # the approved amount; if one can't be set, stop rather than write the wrong number.
+                if self.approved_amount:
+                    reconcile_err = self._reconcile_money_fields()
+                    if reconcile_err:
+                        return AgentResult(goal, "ESCALATED", history, reconcile_err)
+
             ok, observed = self._execute(action)
             if ok and consequential:
                 self._committed = True  # a consequential action succeeded — commit is done
@@ -295,6 +305,36 @@ class OperatorAgent:
         except Exception:  # noqa: BLE001 - memory is best-effort; a success must still be a success
             pass
 
+    def _reconcile_money_fields(self) -> str | None:
+        """Make the human-approved amount authoritative in every ACTIVE money field before committing.
+
+        Handles the DEFAULTED case (a TMS pre-fills the amount): any visible money field holding a
+        non-zero currency value that differs from the approved amount is re-set to the approved amount
+        and re-read to confirm. Empty/zero money fields (an optional expense/late-charge line) are left
+        alone — they are not this operation's amount. Returns an error string to escalate on if a field
+        can't be set, else None. No-ops when the actuator can't enumerate money fields (fakes/tests)."""
+        getter = getattr(self.actuator, "money_field_values", None)
+        if not callable(getter):
+            return None
+        approved = _money_value(self.approved_amount)
+        if approved is None:
+            return None
+        try:
+            fields = getter() or []
+        except Exception:  # noqa: BLE001
+            return None
+        for f in fields:
+            target = (f or {}).get("target") or ""
+            current = _money_value((f or {}).get("value"))
+            if current is None or current == 0 or current == approved:
+                continue  # empty / non-numeric / zero / already correct -> leave it
+            # A defaulted amount that differs from what the human approved -> make approved authoritative.
+            self.actuator.type(target, self.approved_amount)
+            if _money_value(self.actuator.read(target)) != approved:
+                return (f"could not set the approved amount in the money field {target!r} — it still does "
+                        "not match the approved amount, so I stopped rather than write the wrong figure")
+        return None
+
     def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None,
                 learned: list[str] | None = None, procedures: list[str] | None = None) -> LiveAction:
         parsed = _parse_llm_json(
@@ -323,6 +363,20 @@ class OperatorAgent:
             value = self.actuator.read(action.target)
             return True, (value or "")
         return False, None
+
+
+def _money_value(value) -> Decimal | None:
+    """Parse a currency-ish string to a normalized Decimal, or None if it isn't a number. '$3,200.00',
+    '3200', '(50.00)' -> Decimal; a date '07/03/2026' or '' -> None (so non-amount fields are ignored)."""
+    raw = str(value or "").strip().replace("$", "").replace(",", "")
+    if not raw:
+        return None
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = "-" + raw[1:-1]
+    try:
+        return Decimal(raw)
+    except InvalidOperation:
+        return None
 
 
 def _looks_like_money(value: str) -> bool:

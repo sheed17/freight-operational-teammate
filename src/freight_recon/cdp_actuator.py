@@ -141,6 +141,29 @@ _IS_SUBMIT_JS = r"""
 """
 
 
+# Money-labelled visible text inputs and their current values — so the runtime can reconcile a
+# DEFAULTED amount (a TMS that pre-fills the payment/invoice amount) against the human-approved amount
+# before committing. Returns the field NAME as ``target`` (which __findInput resolves).
+_MONEY_FIELDS_JS = r"""
+(function(){
+  function vis(e){ return e.offsetParent!==null && !e.disabled; }
+  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()); }
+  var moneyRe=/(amount|price|total|charge|\brate\b|linehaul|line.haul|freight|settlement|balance|cost|payment|\bpay\b)/i;
+  var out=[];
+  document.querySelectorAll('input').forEach(function(e){
+    if(['hidden','checkbox','radio','submit','button','image'].indexOf(e.type)>=0||!vis(e)) return;
+    var lab='';
+    if(e.id){var l=document.querySelector('label[for="'+e.id+'"]'); if(l) lab=l.innerText;}
+    if(!lab){var p=e.closest('.form-group,.field,td,tr,div'); if(p){var ll=p.querySelector('label'); if(ll) lab=ll.innerText;}}
+    var hay=(e.name||'')+' '+lab+' '+(e.getAttribute('placeholder')||'');
+    if(!moneyRe.test(hay)) return;
+    out.push({target:(e.name||clean(lab)||e.getAttribute('placeholder')||''), value:clean(e.value)});
+  });
+  return out;
+})()
+"""
+
+
 class CdpActuator:
     def __init__(self, session: CdpBrowserSession, *, settle_seconds: float = 1.2) -> None:
         self.session = session
@@ -165,6 +188,16 @@ class CdpActuator:
         )
         self._settle_until_ready()
         return bool(ok)
+
+    def money_field_values(self) -> list[dict]:
+        """Visible money-labelled text inputs on the current form, with their current values, as
+        [{target, value}]. Used by the agent to reconcile a TMS-DEFAULTED amount against the approved
+        amount before committing. ``target`` is the field name (which __findInput resolves), so the
+        agent can re-set the field if needed."""
+        try:
+            return self.session.evaluate(_MONEY_FIELDS_JS) or []
+        except Exception:  # noqa: BLE001
+            return []
 
     def is_submit_target(self, target: str) -> bool:
         """True if clicking this target would SUBMIT a form (commit). Used by the agent's consequential

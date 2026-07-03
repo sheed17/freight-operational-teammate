@@ -282,6 +282,75 @@ def test_non_submit_click_with_same_label_is_not_gated():
     assert ("click", "Coyote -> Create Invoice") in act.calls
 
 
+class MoneyFormActuator(FakeActuator):
+    """A fake form that exposes money fields and reflects typed values (for amount-reconciliation)."""
+    def __init__(self, fields):
+        super().__init__()
+        self._fields = dict(fields)  # target -> current value string
+
+    def money_field_values(self):
+        return [{"target": t, "value": v} for t, v in self._fields.items()]
+
+    def _match(self, target):
+        for t in self._fields:
+            if t.lower() in (target or "").lower() or (target or "").lower() in t.lower():
+                return t
+        return None
+
+    def type(self, target, value):
+        self.calls.append(("type", target, value))
+        t = self._match(target)
+        if t is not None:
+            self._fields[t] = value
+        return True
+
+    def read(self, target):
+        self.calls.append(("read", target))
+        t = self._match(target)
+        return self._fields[t] if t is not None else "read-value"
+
+
+def test_amount_reconciliation_substitutes_a_defaulted_amount_before_commit():
+    # TruckingOffice pre-fills the payment amount with the balance ($3,200). The human approved $2,000
+    # (a partial). Before the commit, the runtime must make the field equal the approved amount.
+    act = MoneyFormActuator({"invoice_payment[amount]": "3200.00"})
+    llm = _scripted_llm([{"action": "CLICK", "target": "Save"},
+                         {"action": "READ", "target": "balance"}, {"action": "DONE", "why": "paid"}])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("pay")
+    assert res.status == "DONE"
+    assert ("type", "invoice_payment[amount]", "2000.00") in act.calls  # defaulted 3200 -> approved 2000
+
+
+def test_amount_reconciliation_is_noop_when_default_already_matches():
+    act = MoneyFormActuator({"invoice_payment[amount]": "2,000.00"})  # equals approved (comma-formatted)
+    llm = _scripted_llm([{"action": "CLICK", "target": "Save"},
+                         {"action": "READ", "target": "balance"}, {"action": "DONE", "why": "paid"}])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("pay")
+    assert res.status == "DONE"
+    assert not [c for c in act.calls if c[0] == "type"]  # already correct -> nothing re-typed
+
+
+def test_amount_reconciliation_ignores_zero_and_empty_money_fields():
+    act = MoneyFormActuator({"expense[amount]": "0.00", "late_charge": ""})  # optional lines, not the amount
+    llm = _scripted_llm([{"action": "CLICK", "target": "Save"},
+                         {"action": "READ", "target": "balance"}, {"action": "DONE", "why": "paid"}])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("pay")
+    assert res.status == "DONE"
+    assert not [c for c in act.calls if c[0] == "type"]  # zero/empty money fields left alone
+
+
+def test_amount_reconciliation_escalates_if_field_cannot_be_set():
+    class Stubborn(MoneyFormActuator):
+        def type(self, target, value):  # pretend to type but never actually change the field
+            self.calls.append(("type", target, value)); return True
+
+    act = Stubborn({"invoice_payment[amount]": "3200.00"})
+    llm = _scripted_llm([{"action": "CLICK", "target": "Save"}])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("pay")
+    assert res.status == "ESCALATED" and "could not set the approved amount" in res.note
+    assert ("click", "Save") not in act.calls  # never committed the wrong figure
+
+
 def test_escalate_and_max_steps_fail_closed():
     act = FakeActuator()
     esc = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "ESCALATE", "target": "cannot find screen"}])).run("x")
