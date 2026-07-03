@@ -393,6 +393,38 @@ def test_success_via_already_committed_path_still_crystallizes_a_recipe(tmp_path
     assert mem.recall_recipe(tenant="acme", task="raise_invoice")  # the successful path WAS learned
 
 
+def test_recipe_is_parameterized_by_record_ref_on_capture(tmp_path):
+    from freight_recon.agent_memory import AgentMemory
+    mem = AgentMemory(tmp_path / "mem.json")
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "560003 -> Enter Payment"},
+        {"action": "READ", "target": "Balance Due"},
+        {"action": "DONE", "why": "done"},
+    ])
+    OperatorAgent(actuator=FakeActuator(), complete=llm, approved_amount="100.00", approve=lambda a: True,
+                  memory=mem, tenant="niron", task="record_payment", record_ref="560003").run("pay")
+    targets = [s["target"] for s in mem.recall_recipe(tenant="niron", task="record_payment")]
+    assert "{record} -> Enter Payment" in targets      # the literal record ref was parameterized out
+    assert not any("560003" in t for t in targets)     # so the path is per-workflow, not per-record
+
+
+def test_recipe_record_placeholder_is_substituted_on_replay(tmp_path):
+    from freight_recon.agent_memory import AgentMemory
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.save_recipe([  # a path learned on some other record, stored parameterized (target AND search value)
+        {"action": "TYPE", "target": "search", "value": "{record}", "ok": True},
+        {"action": "CLICK", "target": "{record} -> Enter Payment", "ok": True},
+        {"action": "READ", "target": "Balance Due", "ok": True},
+    ], tenant="niron", task="record_payment")
+    act = FakeActuator()
+    res = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "DONE", "why": "ok"}]),
+                        approved_amount="100.00", approve=lambda a: True, memory=mem,
+                        tenant="niron", task="record_payment", record_ref="560006").run("pay")
+    assert res.status == "DONE"
+    assert ("type", "search", "560006") in act.calls          # the search box is re-filled with THIS record
+    assert ("click", "560006 -> Enter Payment") in act.calls  # placeholder specialized to THIS run's record
+
+
 def test_replay_aborts_and_hands_back_to_the_model_when_a_step_fails(tmp_path):
     from freight_recon.agent_memory import AgentMemory
     mem = AgentMemory(tmp_path / "mem.json")

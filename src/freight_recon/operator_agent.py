@@ -124,6 +124,7 @@ class OperatorAgent:
         tenant: str = "default",
         task: str = "",
         trace_dir=None,
+        record_ref: str = "",
     ) -> None:
         self.actuator = actuator
         self.complete = complete
@@ -143,6 +144,10 @@ class OperatorAgent:
         # When set, a screenshot of the screen the agent stopped on is captured on any non-clean finish
         # (ESCALATED/FAILED) — so a human debugging or unblocking has the actual visual, not just a note.
         self.trace_dir = trace_dir
+        # The specific record this run operates on (invoice/load ref). Used to PARAMETERIZE crystallized
+        # recipes: the literal ref is stored as "{record}" so the path learned on one record replays on
+        # any other (learn once per WORKFLOW, not once per record).
+        self.record_ref = str(record_ref or "")
 
     def run(self, goal: str) -> AgentResult:
         result = self._run_inner(goal)
@@ -220,8 +225,13 @@ class OperatorAgent:
             replayed_step = bool(replay) and forced_nudge is None
             if replayed_step:
                 s = replay.pop(0)
-                action = LiveAction(LiveActionKind(s["action"]), target=str(s.get("target") or ""),
-                                    value="", why="replaying crystallized path")
+                target = str(s.get("target") or "")
+                value = str(s.get("value") or "")  # only ever the "{record}" placeholder; money is never replayed
+                if self.record_ref:
+                    target = target.replace("{record}", self.record_ref)
+                    value = value.replace("{record}", self.record_ref)  # e.g. re-fill a search box with the record
+                action = LiveAction(LiveActionKind(s["action"]), target=target,
+                                    value=value, why="replaying crystallized path")
             else:
                 action = self._decide(goal, observation, history, nudge=nudge, learned=learned, procedures=procedures)
 
@@ -353,7 +363,15 @@ class OperatorAgent:
         try:
             from freight_recon.agent_memory import fact_from_successful_run
 
-            self.memory.save_recipe(history, tenant=self.tenant, task=self.task or "task")
+            # Parameterize the record ref out of the path so the recipe is per-WORKFLOW, not per-record:
+            # "560003 -> Enter Payment" is stored as "{record} -> Enter Payment" and re-specialized on replay.
+            steps = history
+            if self.record_ref:
+                steps = [{**s,
+                          "target": str(s.get("target", "")).replace(self.record_ref, "{record}"),
+                          "value": str(s.get("value", "")).replace(self.record_ref, "{record}")}
+                         for s in history]
+            self.memory.save_recipe(steps, tenant=self.tenant, task=self.task or "task")
             fact = fact_from_successful_run(history, task=self.task or "the task", domain=domain)
             if fact:
                 self.memory.learn_fact(fact, tenant=self.tenant, domain=domain)

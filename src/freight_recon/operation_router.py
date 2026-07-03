@@ -213,6 +213,10 @@ class OperationRouter:
             approve=approve,
             prepare_only=prepare_only,
         )
+        # Tell the agent which record it's on so crystallized recipes parameterize the ref out (learn a
+        # workflow once, replay across records). Set post-build so no build_agent factory needs changing.
+        if hasattr(agent, "record_ref"):
+            agent.record_ref = _load_ref_of(intent) or ""
         result: AgentResult = agent.run(goal)
         steps = list(result.steps)
         committed = _result_committed(result)

@@ -58,6 +58,7 @@ def main() -> int:
     parser.add_argument("--memory", default=None, help="AgentMemory JSON path — enables learn/crystallize + macro-replay")
     parser.add_argument("--tenant", default="default")
     parser.add_argument("--task", default=None, help="task key for recipe capture/replay (e.g. 'record_payment')")
+    parser.add_argument("--record-ref", default=None, help="the record (invoice/load ref) — parameterizes recipes so a path learned on one record replays on any")
     parser.add_argument("--trace-dir", default=None, help="dir for a screenshot of the screen on escalation")
     args = parser.parse_args()
 
@@ -87,6 +88,7 @@ def main() -> int:
             tenant=args.tenant,
             task=args.task or "",
             trace_dir=args.trace_dir,
+            record_ref=args.record_ref or "",
         )
         print(f"Agent driving (model={args.model}) toward: {args.goal}\n")
         result = agent.run(args.goal)

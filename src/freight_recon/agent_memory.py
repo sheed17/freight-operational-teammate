@@ -104,11 +104,16 @@ class AgentMemory:
     def save_recipe(self, steps: list[dict], *, tenant: str, task: str) -> None:
         """Crystallize the action sequence that worked, so a routine flow can be replayed, not re-reasoned.
         Money values are never stored — only the navigation shape (action + target)."""
-        clean = [
-            {"action": s.get("action"), "target": s.get("target")}
-            for s in (steps or [])
-            if s.get("ok") and s.get("action") in ("NAVIGATE", "CLICK", "SELECT", "TYPE", "READ")
-        ]
+        clean = []
+        for s in (steps or []):
+            if not (s.get("ok") and s.get("action") in ("NAVIGATE", "CLICK", "SELECT", "TYPE", "READ")):
+                continue
+            item = {"action": s.get("action"), "target": s.get("target")}
+            # Values are NEVER stored (money-safety) — EXCEPT the "{record}" placeholder, which is a record
+            # identifier, never an amount, and is needed to re-fill a search/filter step on replay.
+            if s.get("value") == "{record}":
+                item["value"] = "{record}"
+            clean.append(item)
         if not clean:
             return
         data = self._read()
