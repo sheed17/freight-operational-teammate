@@ -26,6 +26,7 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Callable, Protocol
 
+from freight_recon.browser_failures import FailureClass, classify_page
 from freight_recon.screen_discovery import _parse_llm_json
 
 Completer = Callable[[str], str]
@@ -176,6 +177,15 @@ class OperatorAgent:
                 domain = domain_of(observation.get("url"))
                 if domain != "unknown":
                     learned = self.memory.recall_facts(tenant=self.tenant, domain=domain) + business
+            # FAILURE TAXONOMY: read the ACTUAL page state and stop with a precise, categorized reason on a
+            # clear failure — a login wall or a permission wall is terminal for the agent (a human must
+            # act); a rejected form is escalated only once we've actually attempted the commit (so a
+            # pre-existing warning banner doesn't false-trip). Deterministic, not model-dependent.
+            fclass, freason = classify_page(observation)
+            if fclass in (FailureClass.SESSION_EXPIRED, FailureClass.PERMISSION_DENIED):
+                return AgentResult(goal, "ESCALATED", history, freason)
+            if fclass == FailureClass.VALIDATION_ERROR and self._commit_approved is not None:
+                return AgentResult(goal, "ESCALATED", history, freason)
             # A forced instruction (e.g. "read the record back to confirm") takes priority; otherwise, if
             # the agent has been repeating itself, warn it to change tack before it decides again.
             nudge = forced_nudge

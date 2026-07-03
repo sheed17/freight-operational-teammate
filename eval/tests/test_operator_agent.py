@@ -397,6 +397,24 @@ def test_replay_aborts_and_hands_back_to_the_model_when_a_step_fails(tmp_path):
     assert ("click", "Stale Button") in act.calls  # the stale step was attempted, then abandoned
 
 
+def test_agent_escalates_deterministically_on_a_session_expired_page():
+    # The actuator lands on a login screen; the runtime must stop with a precise reason, not ask the
+    # model to notice, and NEVER try to type into the login form.
+    class LoginPageActuator(FakeActuator):
+        def observe(self):
+            return {"url": "https://tms.test/users/sign_in", "inputs": [{"type": "password"}],
+                    "body_text": "Please sign in", "errors": []}
+
+    called = {"model": False}
+    def llm(_p):
+        called["model"] = True
+        return json.dumps({"action": "TYPE", "target": "password", "value": "hunter2"})
+
+    res = OperatorAgent(actuator=LoginPageActuator(), complete=llm).run("do a task")
+    assert res.status == "ESCALATED" and "log in" in res.note.lower()
+    assert called["model"] is False  # classified deterministically, before the model ever ran
+
+
 def test_escalate_and_max_steps_fail_closed():
     act = FakeActuator()
     esc = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "ESCALATE", "target": "cannot find screen"}])).run("x")
