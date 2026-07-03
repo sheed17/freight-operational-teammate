@@ -55,6 +55,10 @@ def main() -> int:
         action="store_true",
         help="SUPERVISED ONLY: auto-approve the committing action. Off = the agent escalates instead of committing.",
     )
+    parser.add_argument("--memory", default=None, help="AgentMemory JSON path — enables learn/crystallize + macro-replay")
+    parser.add_argument("--tenant", default="default")
+    parser.add_argument("--task", default=None, help="task key for recipe capture/replay (e.g. 'record_payment')")
+    parser.add_argument("--trace-dir", default=None, help="dir for a screenshot of the screen on escalation")
     args = parser.parse_args()
 
     approve = (lambda action: True) if args.approve_consequential else None
@@ -69,12 +73,20 @@ def main() -> int:
         actuator = CdpActuator(session)
         if args.start_url:
             actuator.navigate(args.start_url)
+        memory = None
+        if args.memory:
+            from freight_recon.agent_memory import AgentMemory
+            memory = AgentMemory(args.memory)
         agent = OperatorAgent(
             actuator=actuator,
             complete=openai_completer(model=args.model),
             approved_amount=args.approved_amount,
             approve=on_consequential if args.approve_consequential else None,
             max_steps=args.max_steps,
+            memory=memory,
+            tenant=args.tenant,
+            task=args.task or "",
+            trace_dir=args.trace_dir,
         )
         print(f"Agent driving (model={args.model}) toward: {args.goal}\n")
         result = agent.run(args.goal)

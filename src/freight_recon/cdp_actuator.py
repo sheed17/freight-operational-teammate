@@ -199,6 +199,10 @@ class CdpActuator:
         except Exception:  # noqa: BLE001
             return []
 
+    def capture_screenshot(self, path) -> str:
+        """Save a PNG of the current screen (passthrough to the session) — used for escalation evidence."""
+        return self.session.capture_screenshot(path)
+
     def is_submit_target(self, target: str) -> bool:
         """True if clicking this target would SUBMIT a form (commit). Used by the agent's consequential
         gate so a form's save button is gated even when its label ("Create Invoice") collides with a

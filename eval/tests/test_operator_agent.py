@@ -377,6 +377,22 @@ def test_agent_replays_a_crystallized_recipe_instead_of_re_reasoning(tmp_path):
     assert llm_calls["n"] <= 1
 
 
+def test_success_via_already_committed_path_still_crystallizes_a_recipe(tmp_path):
+    # LIVE-CAUGHT: the agent committed, read back (confirmed), then tried one more submit -> the DONE
+    # came through the "already committed" guard, which skipped crystallization -> no macro was learned.
+    from freight_recon.agent_memory import AgentMemory
+    mem = AgentMemory(tmp_path / "mem.json")
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Save invoice"},   # commit
+        {"action": "READ", "target": "invoice number"},  # confirm
+        {"action": "CLICK", "target": "Save invoice"},    # second submit -> already-committed DONE
+    ])
+    res = OperatorAgent(actuator=FakeActuator(), complete=llm, approved_amount="100.00", approve=lambda a: True,
+                        memory=mem, tenant="acme", task="raise_invoice").run("invoice")
+    assert res.status == "DONE" and "not repeating" in res.note
+    assert mem.recall_recipe(tenant="acme", task="raise_invoice")  # the successful path WAS learned
+
+
 def test_replay_aborts_and_hands_back_to_the_model_when_a_step_fails(tmp_path):
     from freight_recon.agent_memory import AgentMemory
     mem = AgentMemory(tmp_path / "mem.json")
@@ -413,6 +429,36 @@ def test_agent_escalates_deterministically_on_a_session_expired_page():
     res = OperatorAgent(actuator=LoginPageActuator(), complete=llm).run("do a task")
     assert res.status == "ESCALATED" and "log in" in res.note.lower()
     assert called["model"] is False  # classified deterministically, before the model ever ran
+
+
+def test_screenshot_is_captured_on_escalation_when_trace_dir_is_set(tmp_path):
+    class ShotActuator(FakeActuator):
+        def capture_screenshot(self, path):
+            from pathlib import Path
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"png")
+            return str(path)
+
+    act = ShotActuator()
+    res = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "ESCALATE", "target": "stuck"}]),
+                        trace_dir=tmp_path).run("x")
+    assert res.status == "ESCALATED"
+    shots = [s for s in res.steps if isinstance(s, dict) and s.get("screenshot")]
+    assert shots and Path(shots[0]["screenshot"]).exists()
+
+
+def test_no_screenshot_without_trace_dir_or_on_clean_done(tmp_path):
+    captured = {"n": 0}
+    class ShotActuator(FakeActuator):
+        def capture_screenshot(self, path):
+            captured["n"] += 1; return str(path)
+
+    # no trace_dir -> no capture even on escalation
+    OperatorAgent(actuator=ShotActuator(), complete=_scripted_llm([{"action": "ESCALATE", "target": "x"}])).run("x")
+    # trace_dir set but a clean DONE -> no escalation screenshot
+    OperatorAgent(actuator=ShotActuator(), complete=_scripted_llm([{"action": "DONE", "why": "ok"}]),
+                  trace_dir=tmp_path).run("x")
+    assert captured["n"] == 0
 
 
 def test_escalate_and_max_steps_fail_closed():

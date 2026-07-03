@@ -123,6 +123,7 @@ class OperatorAgent:
         memory=None,
         tenant: str = "default",
         task: str = "",
+        trace_dir=None,
     ) -> None:
         self.actuator = actuator
         self.complete = complete
@@ -139,8 +140,28 @@ class OperatorAgent:
         self.memory = memory
         self.tenant = tenant
         self.task = task
+        # When set, a screenshot of the screen the agent stopped on is captured on any non-clean finish
+        # (ESCALATED/FAILED) — so a human debugging or unblocking has the actual visual, not just a note.
+        self.trace_dir = trace_dir
 
     def run(self, goal: str) -> AgentResult:
+        result = self._run_inner(goal)
+        # OBSERVABILITY: on a stuck/failed finish, grab a screenshot of the exact screen it stopped on
+        # (the loop returns immediately, so the browser is still there). Best-effort — never let capture
+        # failure change the outcome.
+        if self.trace_dir and result.status in ("ESCALATED", "FAILED"):
+            shot = getattr(self.actuator, "capture_screenshot", None)
+            if callable(shot):
+                try:
+                    from pathlib import Path
+                    stamp = f"{result.status.lower()}_{abs(hash(result.note)) % 10_000_000}.png"
+                    path = shot(Path(self.trace_dir) / "escalations" / stamp)
+                    result.steps.append({"screenshot": str(path), "why": "screen at escalation"})
+                except Exception:  # noqa: BLE001 - evidence is best-effort
+                    pass
+        return result
+
+    def _run_inner(self, goal: str) -> AgentResult:
         history: list[dict] = []
         repeats = 0
         last_sig: tuple | None = None
@@ -275,6 +296,7 @@ class OperatorAgent:
                 # that falsely reported DONE when a form-opener was mis-taken for the commit).
                 if self._committed:
                     if self._readback_confirmed:
+                        self._crystallize(history, domain)  # a success via THIS path must learn too
                         return AgentResult(goal, "DONE", history, "committed and confirmed; not repeating the commit")
                     if not self._forced_readback:
                         self._forced_readback = True
