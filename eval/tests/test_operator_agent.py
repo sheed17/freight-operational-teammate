@@ -351,6 +351,52 @@ def test_amount_reconciliation_escalates_if_field_cannot_be_set():
     assert ("click", "Save") not in act.calls  # never committed the wrong figure
 
 
+def test_agent_replays_a_crystallized_recipe_instead_of_re_reasoning(tmp_path):
+    from freight_recon.agent_memory import AgentMemory
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.save_recipe([
+        {"action": "NAVIGATE", "target": "https://tms/new", "ok": True},
+        {"action": "CLICK", "target": "Save invoice", "ok": True},   # consequential -> still gated on replay
+        {"action": "READ", "target": "invoice number", "ok": True},  # confirms -> verify-before-done satisfied
+    ], tenant="acme", task="raise_invoice")
+
+    llm_calls = {"n": 0}
+    def llm(_p):
+        llm_calls["n"] += 1
+        return json.dumps({"action": "DONE", "why": "confirmed"})
+
+    act = FakeActuator()
+    agent = OperatorAgent(actuator=act, complete=llm, approved_amount="100.00", approve=lambda a: True,
+                          memory=mem, tenant="acme", task="raise_invoice")
+    res = agent.run("raise an invoice")
+    assert res.status == "DONE"
+    # the crystallized path was executed (navigation replayed), and the model was consulted only for the
+    # final DONE — not for every step. Safety still applied: the Save was gated + approved on replay.
+    assert ("navigate", "https://tms/new") in act.calls
+    assert ("click", "Save invoice") in act.calls
+    assert llm_calls["n"] <= 1
+
+
+def test_replay_aborts_and_hands_back_to_the_model_when_a_step_fails(tmp_path):
+    from freight_recon.agent_memory import AgentMemory
+    mem = AgentMemory(tmp_path / "mem.json")
+    mem.save_recipe([{"action": "CLICK", "target": "Stale Button", "ok": True}], tenant="acme", task="t")
+
+    class FailClick(FakeActuator):
+        def click(self, t):
+            self.calls.append(("click", t)); return False  # UI changed -> replayed step fails
+
+    seq = [{"action": "ESCALATE", "target": "model took over after stale macro"}]
+    def llm(_p):
+        return json.dumps(seq.pop(0)) if seq else json.dumps({"action": "DONE", "why": "x"})
+
+    act = FailClick()
+    agent = OperatorAgent(actuator=act, complete=llm, memory=mem, tenant="acme", task="t")
+    res = agent.run("do the task")
+    assert res.status == "ESCALATED" and "took over" in res.note
+    assert ("click", "Stale Button") in act.calls  # the stale step was attempted, then abandoned
+
+
 def test_escalate_and_max_steps_fail_closed():
     act = FakeActuator()
     esc = OperatorAgent(actuator=act, complete=_scripted_llm([{"action": "ESCALATE", "target": "cannot find screen"}])).run("x")

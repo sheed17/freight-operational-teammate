@@ -153,6 +153,19 @@ class OperatorAgent:
         business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
         procedures = self.memory.recall_procedures(tenant=self.tenant, text=goal) if self.memory is not None else []
         learned: list[str] = list(business)
+        # MACRO REPLAY: if we've crystallized a working path for this exact task, replay its navigation
+        # skeleton instead of re-reasoning every step — the expensive reasoning was done once, on the
+        # first success. A macro is a NAVIGATION shortcut, never an AUTHORITY shortcut: each replayed
+        # action still passes through the money fence, the consequential gate, amount reconciliation, and
+        # verify-before-DONE. The moment a replayed step fails (stale UI), we abandon the macro and hand
+        # back to the model from the current screen.
+        replay: list[dict] = []
+        if self.memory is not None and self.task:
+            try:
+                replay = [s for s in (self.memory.recall_recipe(tenant=self.tenant, task=self.task) or [])
+                          if s.get("action") in LiveActionKind._value2member_map_]
+            except Exception:  # noqa: BLE001
+                replay = []
         for _ in range(self.max_steps):
             observation = self.actuator.observe()
             # First real screen: recall what we've learned about THIS system, so the agent reasons with
@@ -171,7 +184,15 @@ class OperatorAgent:
                 nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
                          "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
                          "the page's navigation — or ESCALATE if you are stuck.")
-            action = self._decide(goal, observation, history, nudge=nudge, learned=learned, procedures=procedures)
+            # Take the next crystallized step if replaying, else ask the model. A replayed step carries no
+            # value — money fields are filled by the fence/reconciliation, so the amount is never replayed.
+            replayed_step = bool(replay) and forced_nudge is None
+            if replayed_step:
+                s = replay.pop(0)
+                action = LiveAction(LiveActionKind(s["action"]), target=str(s.get("target") or ""),
+                                    value="", why="replaying crystallized path")
+            else:
+                action = self._decide(goal, observation, history, nudge=nudge, learned=learned, procedures=procedures)
 
             # No-progress guard: identical action repeated too many times -> stop, don't grind/loop.
             sig = (action.kind, action.target)
@@ -272,6 +293,8 @@ class OperatorAgent:
                         return AgentResult(goal, "ESCALATED", history, reconcile_err)
 
             ok, observed = self._execute(action)
+            if replayed_step and not ok:
+                replay = []  # the crystallized path no longer fits (UI changed) -> hand back to the model
             if ok and consequential:
                 self._committed = True  # a consequential action succeeded — commit is done
             # A READ that returns real content is the confirmation the record exists. Not coupled to
