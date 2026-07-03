@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="https://secure.truckingoffice.com/no_load_invoice/new")
     parser.add_argument("--cdp-url", default="http://localhost:9222")
-    parser.add_argument("--model", default="gpt-4.1-mini")
+    parser.add_argument("--model", default=os.getenv("NEYMA_SCREEN_DISCOVERY_MODEL", "gpt-4.1-mini"))
     args = parser.parse_args()
 
     with CdpBrowserSession(cdp_url=args.cdp_url, url_filter="truckingoffice") as session:

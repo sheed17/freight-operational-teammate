@@ -20,8 +20,8 @@ unit-tested with fakes; the real Actuator drives Chrome over CDP (with real keyb
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Callable, Protocol
 
@@ -207,12 +207,14 @@ class OperatorAgent:
                 if not self.approved_amount:
                     return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
                 action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
-            elif _looks_numeric(action.value):
-                # A number typed into a NON-money field: the model is trying to write a figure somewhere
-                # it shouldn't. Fail closed rather than let a model-chosen number through (P0-2).
+            elif _looks_like_money(action.value):
+                # A CURRENCY-shaped value typed into a NON-money field: the model may be trying to write a
+                # dollar figure somewhere it shouldn't. Fail closed (P0-2). Bare integers/refs (a load
+                # number, a search query, a quantity, a zip) are NOT money-shaped and pass through — the
+                # fence must not block legitimate typing like searching for load "100".
                 return AgentResult(
                     goal, "ESCALATED", history,
-                    f"unexpected numeric write to non-money field: {action.target}",
+                    f"unexpected monetary write to non-money field: {action.target}",
                 )
 
             # CONSEQUENTIAL GATE: the committing action.
@@ -308,18 +310,26 @@ class OperatorAgent:
         return False, None
 
 
-def _looks_numeric(value: str) -> bool:
+def _looks_like_money(value: str) -> bool:
+    """True only for values shaped like a CURRENCY amount — not every number.
+
+    A dollar figure carries money signals: a ``$``, cents (``2000.00``), or comma-grouped thousands
+    (``2,850``). A bare integer or reference — a load number ``100``, a search query, a quantity, a
+    zip — is NOT money and must pass through the fence, or the agent can't even search for a record.
+    """
     raw = str(value or "").strip()
     if not raw:
         return False
-    raw = raw.replace("$", "").replace(",", "")
-    if raw.startswith("(") and raw.endswith(")"):
-        raw = "-" + raw[1:-1]
-    try:
-        Decimal(raw)
+    if "$" in raw:
         return True
-    except InvalidOperation:
-        return False
+    core = raw.replace("$", "").strip()
+    if core.startswith("(") and core.endswith(")"):
+        core = core[1:-1]
+    if re.fullmatch(r"-?\d+\.\d{1,2}", core.replace(",", "")):  # has cents -> looks like an amount
+        return True
+    if re.fullmatch(r"-?\d{1,3}(,\d{3})+", core):               # comma-grouped thousands -> money
+        return True
+    return False
 
 
 def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None,
@@ -344,15 +354,17 @@ def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str
         f"GOAL: {goal}\n\n"
         f"CURRENT SCREEN (observation):\n{json.dumps(observation, indent=1)[:3500]}\n\n"
         f"RECENT ACTIONS:\n{json.dumps(history[-6:], indent=1)[:1500]}\n\n"
-        "Allowed actions (use exactly these): NAVIGATE(target=url), CLICK(target=button/link text or "
-        "selector), TYPE(target=field, value=text), SELECT(target=field, value=option), READ(target=field), "
+        "Allowed actions (use exactly these): NAVIGATE(target=url), CLICK(target=button/link text, selector, "
+        "or row/action target like 'Coyote Logistics -> Create Invoice'), TYPE(target=field, value=text), "
+        "SELECT(target=field, value=option), READ(target=field), "
         "DONE(why=...), ESCALATE(target=reason). Rules: take the minimal next step; if you are blocked or "
         "unsure, ESCALATE rather than guess. NEVER decide a monetary amount — for money fields the system "
         "supplies the approved value, so just TYPE into the amount field and the value will be substituted. "
-        "To open a specific record (order, load, invoice), CLICK it by its visible reference text in the "
-        "list/table — do NOT NAVIGATE to a guessed record URL like /orders/1002; you don't know the internal "
-        "id and it will 404. If an action fails twice, switch approach (a nav link, or CLICK the row by its "
-        "reference text) rather than repeating it. "
+        "To use a table row action, target it explicitly as '<row visible text> -> <action text>' so the "
+        "actuator clicks the action inside that row. To open a specific record (order, load, invoice), CLICK "
+        "it by its visible reference text in the list/table — do NOT NAVIGATE to a guessed record URL like "
+        "/orders/1002; you don't know the internal id and it will 404. If an action fails twice, switch "
+        "approach (a nav link, or CLICK the row/action shown in tables) rather than repeating it. "
         "If you search for the record and it is NOT in this system (the search returns no matching results), "
         "ESCALATE with target 'record not found: <reference>' — do NOT keep hunting, invent a record, or act "
         "on a different one; a missing record is the human's decision (create it, correct the reference, or "

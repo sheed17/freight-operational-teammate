@@ -13,9 +13,11 @@ connects with the origin suppressed (the connection is a local tool, not a web p
 from __future__ import annotations
 
 import json
+import base64
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import websocket  # websocket-client
 
@@ -96,3 +98,21 @@ class CdpBrowserSession:
     def evaluate(self, expression: str):
         result = self._cmd("Runtime.evaluate", {"expression": expression, "returnByValue": True})
         return result.get("result", {}).get("result", {}).get("value")
+
+    def capture_screenshot(self, path: str | Path, *, full_page: bool = False) -> str:
+        """Capture a PNG screenshot to disk for audit/debug evidence.
+
+        This is cheap browser observability. It does not call a vision model; callers decide separately
+        whether a failure warrants expensive visual inference.
+        """
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        result = self._cmd(
+            "Page.captureScreenshot",
+            {"format": "png", "captureBeyondViewport": bool(full_page)},
+        )
+        data = result.get("result", {}).get("data")
+        if not data:
+            raise CdpError("Page.captureScreenshot returned no data")
+        target.write_bytes(base64.b64decode(data))
+        return str(target)

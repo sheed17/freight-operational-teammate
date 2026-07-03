@@ -74,16 +74,29 @@ def test_money_fence_substitutes_approved_amount_for_rate_and_line_haul_labels()
     assert ("type", "Line Haul Rate", "9999.00") not in act.calls
 
 
-def test_money_fence_escalates_unexpected_numeric_write():
+def test_money_fence_escalates_currency_shaped_write_to_nonmoney_field():
     act = FakeActuator()
     llm = _scripted_llm([
-        {"action": "TYPE", "target": "Reference Code", "value": "9999.00"},
+        {"action": "TYPE", "target": "Reference Code", "value": "9999.00"},  # cents -> looks like money
     ])
     res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
 
     assert res.status == "ESCALATED"
-    assert "unexpected numeric write" in res.note
+    assert "monetary write" in res.note
     assert not [c for c in act.calls if c[0] == "type"]
+
+
+def test_bare_integer_search_query_is_allowed_not_a_money_write():
+    # LIVE-CAUGHT REGRESSION: the agent typed load number "100" into a search box to FIND the load.
+    # A bare integer is not currency-shaped — the fence must let it through, not escalate.
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "TYPE", "target": "load_search_query", "value": "100"},
+        {"action": "DONE", "why": "searched"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("find load")
+    assert res.status == "DONE"
+    assert ("type", "load_search_query", "100") in act.calls  # the search typed through, unfenced
 
 
 def test_money_field_without_approved_amount_escalates():

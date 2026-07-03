@@ -203,7 +203,7 @@ def main() -> int:
         allowed_slack_users=allowed_slack_users,
         allowed_slack_channel=args.allowed_slack_channel,
         # Natural-language routing for /neyma (cheap model — it only picks which read/operate, never money).
-        nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-5.4")) if operation_router else None,
+        nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")

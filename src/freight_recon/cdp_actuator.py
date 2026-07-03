@@ -44,16 +44,34 @@ _CLICK_JS = r"""
 (function(t){
   function vis(e){ return e && e.offsetParent!==null; }
   function fire(e){ if(!e) return false; e.scrollIntoView({block:'center'}); e.click(); return true; }
+  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).toLowerCase(); }
+  function text(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
+  function clickRowAction(rowNeedle, actionNeedle){
+    var rn=clean(rowNeedle), an=clean(actionNeedle);
+    if(!rn || !an) return false;
+    var CLICKABLE='a,button,[role=button],[role=link],[role=option],[role=menuitem],[role=tab],'
+      +'input[type=submit],input[type=button],[onclick],summary,label';
+    var rows=[...document.querySelectorAll('tr,[role=row],li,[class*=row],[class*=Row]')].filter(vis);
+    var row=rows.find(function(r){ return text(r).indexOf(rn)>=0; });
+    if(!row) return false;
+    var actions=[...row.querySelectorAll(CLICKABLE)].filter(vis);
+    var exact=actions.find(function(a){ return text(a)===an; });
+    if(exact) return fire(exact);
+    var contains=actions.find(function(a){ return text(a).indexOf(an)>=0; });
+    if(contains) return fire(contains);
+    return false;
+  }
   try{ var s=document.querySelector(t); if(s) return fire(s); }catch(e){}
-  var tl=(t||'').trim().toLowerCase();
+  var arrow=(t||'').split(/\s*(?:->|=>|::)\s*/);
+  if(arrow.length>=2 && clickRowAction(arrow[0], arrow.slice(1).join(' -> '))) return true;
+  var tl=clean(t);
   if(!tl) return false;
   var CLICKABLE='a,button,[role=button],[role=link],[role=option],[role=menuitem],[role=tab],[role=row],'
     +'input[type=submit],input[type=button],[onclick],summary,label';
-  function txt(e){ return ((e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||'').trim()).toLowerCase(); }
   var clickables=[...document.querySelectorAll(CLICKABLE)].filter(vis);
-  var exact=clickables.find(function(e){ return txt(e)===tl; });
+  var exact=clickables.find(function(e){ return text(e)===tl; });
   if(exact) return fire(exact);
-  var contains=clickables.find(function(e){ return txt(e).indexOf(tl)>=0; });
+  var contains=clickables.find(function(e){ return text(e).indexOf(tl)>=0; });
   if(contains) return fire(contains);
   // Text lives in a non-clickable node (e.g. a cell in a row): find the smallest leaf that contains it,
   // then click the nearest clickable ancestor, else the enclosing row/list item.
@@ -66,6 +84,29 @@ _CLICK_JS = r"""
       || leaf.closest('tr,li,[role=row],[class*=row],[class*=Row],[class*=item],[class*=Item]') || leaf;
     return fire(host);
   }
+  return false;
+})
+"""
+
+
+_CLICK_ROW_ACTION_JS = r"""
+(function(rowNeedle, actionNeedle){
+  function vis(e){ return e && e.offsetParent!==null; }
+  function fire(e){ if(!e) return false; e.scrollIntoView({block:'center'}); e.click(); return true; }
+  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).toLowerCase(); }
+  function text(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
+  var rn=clean(rowNeedle), an=clean(actionNeedle);
+  if(!rn || !an) return false;
+  var rows=[...document.querySelectorAll('tr,[role=row],li,[class*=row],[class*=Row]')].filter(vis);
+  var row=rows.find(function(r){ return text(r).indexOf(rn)>=0; });
+  if(!row) return false;
+  var CLICKABLE='a,button,[role=button],[role=link],[role=option],[role=menuitem],[role=tab],'
+    +'input[type=submit],input[type=button],[onclick],summary,label';
+  var actions=[...row.querySelectorAll(CLICKABLE)].filter(vis);
+  var exact=actions.find(function(a){ return text(a)===an; });
+  if(exact) return fire(exact);
+  var contains=actions.find(function(a){ return text(a).indexOf(an)>=0; });
+  if(contains) return fire(contains);
   return false;
 })
 """
@@ -87,6 +128,13 @@ class CdpActuator:
     def click(self, target: str) -> bool:
         ok = self.session.evaluate(_CLICK_JS + "(" + json.dumps(target) + ")")
         self._settle_until_ready()  # a click often triggers an SPA transition — wait for it to render
+        return bool(ok)
+
+    def click_row_action(self, row_contains: str, action_text: str) -> bool:
+        ok = self.session.evaluate(
+            _CLICK_ROW_ACTION_JS + "(" + json.dumps(row_contains) + "," + json.dumps(action_text) + ")"
+        )
+        self._settle_until_ready()
         return bool(ok)
 
     def _settle_until_ready(self, timeout: float = 6.0) -> None:
@@ -147,6 +195,9 @@ class CdpActuator:
 
 _OBSERVE_JS = r"""
 (function(){
+  function vis(e){ return e && e.offsetParent!==null; }
+  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).trim(); }
+  function txt(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
   function lbl(el){
     if(el.id){var l=document.querySelector('label[for="'+el.id+'"]'); if(l) return l.innerText.trim();}
     var p=el.closest('.form-group,.field,td,tr,div'); if(p){var ll=p.querySelector('label'); if(ll) return ll.innerText.trim();}
@@ -154,8 +205,10 @@ _OBSERVE_JS = r"""
   }
   var inputs=[...document.querySelectorAll('input,select,textarea')].filter(e=>e.type!=='hidden').slice(0,40)
     .map(e=>({kind:e.tagName.toLowerCase(), type:e.type||'', label:lbl(e).slice(0,40), name:e.name||'', value:(e.value||'').slice(0,40)}));
-  var actions=[...document.querySelectorAll('button,a[href],[role=button],input[type=submit]')]
-    .map(e=>((e.innerText||e.value||'').trim())).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,30);
+  var actionEls=[...document.querySelectorAll('button,a[href],[role=button],input[type=submit],input[type=button],[onclick]')].filter(vis);
+  var actions=actionEls.map(e=>txt(e)).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,40);
+  var interactive=inputs.map(function(i){ return {kind:i.kind, label:i.label, name:i.name, value:i.value}; })
+    .concat(actions.map(function(a){ return {kind:'action', label:a}; })).slice(0,80);
   // Navigation targets (text -> url) so the agent can NAVIGATE directly instead of fumbling clicks.
   var navSeen={}, nav=[];
   [...document.querySelectorAll('a[href]')].forEach(function(a){
@@ -164,7 +217,38 @@ _OBSERVE_JS = r"""
   });
   var errors=[...document.querySelectorAll('.alert-danger,.error,.invalid-feedback,.is-invalid,.field_with_errors')]
     .map(e=>e.innerText.trim()).filter(Boolean).slice(0,6);
+  function rowActions(row){
+    return [...row.querySelectorAll('a,button,[role=button],input[type=submit],input[type=button],[onclick]')]
+      .filter(vis).map(e=>txt(e)).filter(Boolean).slice(0,8);
+  }
+  var tables=[...document.querySelectorAll('table')].filter(vis).slice(0,8).map(function(table){
+    var headers=[...table.querySelectorAll('thead th, thead td, tr:first-child th')]
+      .map(e=>clean(e.innerText)).filter(Boolean).slice(0,12);
+    var rows=[...table.querySelectorAll('tbody tr, tr')].filter(vis).slice(0,20).map(function(row){
+      var cells=[...row.children].map(e=>clean(e.innerText)).filter(Boolean).slice(0,12);
+      return {text:clean(row.innerText).slice(0,240), cells:cells, actions:rowActions(row)};
+    }).filter(r=>r.text);
+    return {caption:clean((table.caption&&table.caption.innerText)||''), headers:headers, rows:rows};
+  }).filter(t=>t.rows.length);
+  var rowLike=[...document.querySelectorAll('[role=row],li,[class*=row],[class*=Row]')].filter(vis).slice(0,30)
+    .map(function(row){ return {text:clean(row.innerText).slice(0,240), actions:rowActions(row)}; })
+    .filter(r=>r.text && r.actions.length);
+  var frames=[...document.querySelectorAll('iframe')].slice(0,10).map(function(f,i){
+    var info={index:i, src:(f.getAttribute('src')||'').slice(0,120), accessible:false, actions:[], text:''};
+    try{
+      var d=f.contentDocument;
+      if(d){
+        info.accessible=true;
+        info.actions=[...d.querySelectorAll('a,button,[role=button],input[type=submit],input[type=button]')]
+          .map(e=>clean(e.innerText||e.value||'')).filter(Boolean).slice(0,20);
+        info.text=clean(d.body ? d.body.innerText : '').slice(0,300);
+      }
+    }catch(e){ info.error=String(e).slice(0,80); }
+    return info;
+  });
   return {url:location.href, headings:[...document.querySelectorAll('h1,h2,h3')].map(e=>e.innerText.trim()).filter(Boolean).slice(0,6),
-          inputs:inputs, actions:actions, nav:nav.slice(0,30), errors:errors};
+          inputs:inputs, actions:actions, interactive:interactive, nav:nav.slice(0,30), tables:tables,
+          rows:rowLike, iframes:frames, body_text:clean(document.body ? document.body.innerText : '').slice(0,900),
+          errors:errors};
 })()
 """

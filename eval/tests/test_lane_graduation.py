@@ -71,8 +71,11 @@ def test_supervised_lane_escalates_without_human_approval(tmp_path):
 def test_graduated_lane_runs_unattended(tmp_path):
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R")
-    llm = _scripted_llm([{"action": "CLICK", "target": "Save invoice"},
-                         {"action": "DONE", "why": "invoice INV-1 created"}])
+    llm = _scripted_llm([
+        {"action": "CLICK", "target": "Save invoice"},
+        {"action": "READ", "target": "invoice number"},
+        {"action": "DONE", "why": "invoice INV-1 created"},
+    ])
     router = OperationRouter(
         lanes=freight_lanes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
@@ -231,7 +234,11 @@ def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):
     assert staged.status == "PREPARED" and "Save invoice" in staged.note
 
     # A resume that carries commit=True (an owner's thread reply) actually commits.
-    llm2 = _scripted_llm([{"action": "CLICK", "target": "Save invoice"}, {"action": "DONE", "why": "saved"}])
+    llm2 = _scripted_llm([
+        {"action": "CLICK", "target": "Save invoice"},
+        {"action": "READ", "target": "invoice number"},
+        {"action": "DONE", "why": "saved"},
+    ])
     router2 = OperationRouter(
         lanes=freight_lanes(), build_agent=_agent_factory(llm2),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",

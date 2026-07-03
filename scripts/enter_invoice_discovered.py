@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -53,7 +54,7 @@ def main() -> int:
     parser.add_argument("--cdp-url", default="http://localhost:9222")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--invoice-form-url", default=DEFAULT_BASE_URL + "/no_load_invoice/new")
-    parser.add_argument("--model", default="gpt-4.1-mini")
+    parser.add_argument("--model", default=os.getenv("NEYMA_SCREEN_DISCOVERY_MODEL", "gpt-4.1-mini"))
     parser.add_argument("--acknowledge-real-write", action="store_true")
     parser.add_argument("--induce-heal", action="store_true",
                         help="feed a naive invoice-number value (raw load id) to trigger a real TMS validation error and prove self-heal")

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -97,7 +98,7 @@ def main() -> int:
     parser.add_argument("--map", default=str(DEFAULT_MAP), help="TMS screen-map catalog")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT), help="Where observation artifacts are stored")
     parser.add_argument("--cdp-url", default="http://localhost:9222", help="CDP URL of human-logged-in Chrome")
-    parser.add_argument("--model", default="gpt-4.1-mini")
+    parser.add_argument("--model", default=os.getenv("NEYMA_BROWSER_USE_MODEL", "gpt-4.1-mini"))
     parser.add_argument("--max-steps", type=int, default=15)
     parser.add_argument(
         "--allow-seed-observation",

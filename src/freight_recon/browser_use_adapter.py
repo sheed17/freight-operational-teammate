@@ -146,9 +146,9 @@ class NativeBrowserUseRunner:
             return ChatBrowserUse()
         from browser_use import ChatOpenAI
 
-        # gpt-4.1-mini is the validated default: it reliably operates forms here. gpt-4o / gpt-4.1
-        # throw a browser-use SDK provider error; gpt-4o-mini flails on multi-step interaction.
-        return ChatOpenAI(model=self.model or "gpt-4.1-mini")
+        # gpt-4.1-mini is the validated default for the native browser-use wrapper here. Keep it
+        # configurable so live evals can route known-screen runs cheaper without touching code.
+        return ChatOpenAI(model=self.model or os.getenv("NEYMA_BROWSER_USE_MODEL", "gpt-4.1-mini"))
 
     async def run(self, task: str, *, allowed_domains: list[str], headless: bool) -> str:
         try:
