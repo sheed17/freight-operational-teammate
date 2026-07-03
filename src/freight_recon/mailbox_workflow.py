@@ -111,6 +111,7 @@ def run_mailbox_workflow(
     extractor: Callable[[str | Path], Any] | None = None,
     confidence_threshold: float = 0.85,
     attachment_text_extractor: AttachmentTextExtractor | None = None,
+    triage_completer: Callable[[str], str] | None = None,
 ) -> MailboxWorkflowResult:
     """Run the controlled mailbox intake through workflow, review, and delivery.
 
@@ -125,6 +126,7 @@ def run_mailbox_workflow(
         state_path=mailbox_state_path,
         loads=loads,
         attachment_text_extractor=attachment_text_extractor,
+        triage_completer=triage_completer,
     )
     load_by_id = {load.load_id: load for load in loads}
     store = WorkflowStore(workflow_db_path)

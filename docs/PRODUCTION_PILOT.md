@@ -10,7 +10,7 @@ live with a design partner.
 |---|---|---|
 | **Browser agent** | drives the client's TMS to write invoices/payments | ✅ **production-grade, live-validated** on TruckingOffice — perception, settle, commit-gating, verify-before-DONE, read-back, **amount reconciliation**, **macro-replay (learn once, replay across records)**, failure taxonomy, screenshot-on-escalation. Real committed money writes; safety held throughout. |
 | **Slack** | proposals, approvals, thread-reply resume, status | ✅ **production-ready** — signed actions, single-use tokens, channel/user allowlist, proven live |
-| **Watcher (inbox)** | read mail → extract → reconcile → propose | ⚠️ **wired, not yet run continuously** — Inbox Brain + reconciliation + clean-payable proposals exist; **email-triage relevance gate is built but not activated**; needs mailbox creds |
+| **Watcher (inbox)** | read mail → **triage** → extract → reconcile → propose | ⚠️ **wired + triage now activatable, not yet run continuously** — Inbox Brain + reconciliation + clean-payable proposals; the **email-triage relevance gate is now wired into the live path** (`--enable-triage`); runs on the existing Gmail creds |
 
 ## The one command (runs all three as one)
 
@@ -51,10 +51,9 @@ button in Slack → owner taps → callback → OperationRouter → the proven b
 
 ## Remaining autonomous work (ordered) — before "continuous, hands-off"
 
-1. **Activate email-triage on the inner processing** — pass a `triage_completer` (gpt-5.4) into the live
-   intake so noise is filtered and fuzzy carrier/customer links resolve (built in `email_triage.py`,
-   opt-in; the live dogfood processor doesn't pass it yet). Turns "works on a labeled test inbox" into
-   "survives a real billing inbox."
+1. ~~Activate email-triage~~ **DONE** — the dogfood processor takes `--enable-triage` and threads a
+   gpt-5.4 completer through `run_mailbox_workflow` → `run_mailbox_intake`. Add `--enable-triage` to the
+   loop's inner args for a real inbox (noise dropped, fuzzy carrier/customer links resolved).
 2. **Prove the full loop end-to-end, continuously** — one real document: mail → triaged → proposed →
    approved → written → receipt, unattended across a cycle. Every segment is proven; the *chain as a
    running service* is not.

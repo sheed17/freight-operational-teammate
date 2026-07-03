@@ -37,6 +37,7 @@ from freight_recon.extraction import extract_from_pdf  # noqa: E402
 from freight_recon.config import load_config  # noqa: E402
 from freight_recon.imap_mailbox import ImapCredentials, pull_imap_messages  # noqa: E402
 from freight_recon.mailbox_workflow import run_mailbox_workflow  # noqa: E402
+from freight_recon.screen_discovery import openai_completer  # noqa: E402
 from freight_recon.packet_page import build_packet_site  # noqa: E402
 from freight_recon.review import DogfoodClientProfile  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
@@ -78,6 +79,13 @@ def main() -> int:
         "button to Slack (the agreed rate-con amount). Requires --dispatch-mode LIVE + "
         "--enable-live-slack-outbound, and the teammate running with --enable-operation-router.",
     )
+    parser.add_argument(
+        "--enable-triage",
+        action="store_true",
+        help="Run the email-triage relevance gate on every inbound message (relevant-vs-noise + fuzzy "
+        "link when no clean id). Turns a labeled test inbox into a real billing inbox; noise is dropped.",
+    )
+    parser.add_argument("--triage-model", default=os.getenv("NEYMA_NL_MODEL", "gpt-5.4"))
     parser.add_argument("--age-hours", type=int, default=0)
     parser.add_argument("--actor", default="Rasheed")
     parser.add_argument("--real-extraction", action="store_true")
@@ -165,6 +173,10 @@ def main() -> int:
         )
         if args.vision_linking
         else None,
+        triage_completer=(
+            openai_completer(model=args.triage_model)
+            if args.enable_triage else None
+        ),
     )
 
     workflow_report_path.write_text(_redacted_workflow_json(workflow), encoding="utf-8")
