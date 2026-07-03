@@ -148,6 +148,52 @@ def proposals_for_clean_matches(
     return proposals
 
 
+def _delivered_and_billable(load) -> bool:
+    """Default 'ready to bill' signal: the load has been delivered (has a delivery date). Callers that
+    know the TMS/workflow state (e.g. POD present, not yet invoiced) should pass a stricter predicate."""
+    return bool(getattr(load, "delivery_date", None))
+
+
+def proposals_for_ready_to_bill(
+    loads,
+    *,
+    signer: DeliverySigner,
+    channel_id: str,
+    amount_for_load,
+    is_ready=None,
+) -> list[dict]:
+    """Auto-emit a 'raise invoice' Approve button for each DELIVERED, ready-to-bill load — the AR mirror
+    of :func:`proposals_for_clean_matches`. This is the cash-flow half: when a load is delivered (POD in,
+    not yet invoiced), Neyma proposes invoicing the customer unattended-pending-tap.
+
+    Conservative, same as the AP side: ``amount_for_load`` supplies the deterministic agreed amount (the
+    customer rate); None -> no button (never bind a money button to an amount we can't stand behind).
+    ``is_ready`` decides which loads are billable (default: delivered) — the caller can pass the real
+    TMS/workflow signal (delivered + POD present + no existing invoice).
+    """
+    ready = is_ready or _delivered_and_billable
+    proposals: list[dict] = []
+    for load in loads:
+        if not ready(load):
+            continue
+        amount = amount_for_load(load)
+        if amount in (None, ""):
+            continue
+        customer = getattr(load, "customer", None) or "the customer"
+        load_ref = getattr(load, "load_id", None)
+        intent = CommandIntent(
+            kind=CommandKind.OPERATE,
+            summary=f"Invoice {customer}" + (f" for {load_ref}" if load_ref else ""),
+            params={"lane": "raise_invoice", "customer": customer, "load_ref": load_ref},
+        )
+        message = build_operation_proposal_message(
+            intent, signer, approved_amount=str(amount), channel_id=channel_id,
+        )
+        message["load_ref"] = load_ref  # for dedup/audit by the caller (ignored when posting to Slack)
+        proposals.append(message)
+    return proposals
+
+
 def post_operation_proposal(message: dict, *, poster) -> "object":
     """Post a built proposal message (with its Approve button) to Slack via an injected poster.
 

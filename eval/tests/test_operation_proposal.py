@@ -114,6 +114,28 @@ def test_auto_emit_only_for_clean_matches_with_a_deterministic_amount():
     assert approval.intent.params["carrier"] == "TQL" and approval.approved_amount == "2700.00"
 
 
+def test_proposals_for_ready_to_bill_makes_an_ar_invoice_button_per_delivered_load():
+    from types import SimpleNamespace
+
+    from freight_recon.operation_proposal import proposals_for_ready_to_bill
+
+    loads = [
+        SimpleNamespace(load_id="LD-1", customer="Coyote Logistics", delivery_date="2026-06-20"),  # delivered -> button
+        SimpleNamespace(load_id="LD-2", customer="Echo", delivery_date=None),                      # not delivered -> none
+        SimpleNamespace(load_id="LD-3", customer="TQL", delivery_date="2026-06-21"),               # delivered, amount None
+    ]
+    amounts = {"LD-1": "2450.00", "LD-3": None}
+    proposals = proposals_for_ready_to_bill(
+        loads, signer=_SIGNER, channel_id="C_OPS",
+        amount_for_load=lambda load: amounts.get(load.load_id),
+    )
+    assert len(proposals) == 1  # only the delivered load with a known agreed amount
+    approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
+    assert approval.intent.params["lane"] == "raise_invoice"          # AR lane, not AP
+    assert approval.intent.params["customer"] == "Coyote Logistics"   # bill the CUSTOMER
+    assert approval.approved_amount == "2450.00"
+
+
 def test_no_button_for_non_lane_or_amountless_assessments():
     # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
     chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,

@@ -80,6 +80,13 @@ def main() -> int:
         "--enable-live-slack-outbound, and the teammate running with --enable-operation-router.",
     )
     parser.add_argument(
+        "--propose-ar-invoices",
+        action="store_true",
+        help="For each DELIVERED, ready-to-bill load, auto-post a signed 'Invoice [Approve & run]' button "
+        "to Slack at the agreed customer amount (the AR half — bill customers, get paid). Same live gate "
+        "as --propose-clean-payables; the teammate must run with --enable-operation-router.",
+    )
+    parser.add_argument(
         "--enable-triage",
         action="store_true",
         help="Run the email-triage relevance gate on every inbound message (relevant-vs-noise + fuzzy "
@@ -211,6 +218,7 @@ def main() -> int:
             enable_live_slack_outbound=args.enable_live_slack_outbound,
         )
         proposals_posted = 0
+        live_gate = DispatchMode(args.dispatch_mode) == DispatchMode.LIVE and args.enable_live_slack_outbound
         if args.propose_clean_payables:
             proposals_posted = _post_clean_payable_proposals(
                 store=store,
@@ -218,7 +226,15 @@ def main() -> int:
                 load_by_id=load_by_id,
                 client_config=args.client_config,
                 signer=_delivery_signer(args.client_config, args.allow_local_dev_secret),
-                live=DispatchMode(args.dispatch_mode) == DispatchMode.LIVE and args.enable_live_slack_outbound,
+                live=live_gate,
+            )
+        if args.propose_ar_invoices:
+            proposals_posted += _post_ready_to_bill_proposals(
+                store=store,
+                load_by_id=load_by_id,
+                client_config=args.client_config,
+                signer=_delivery_signer(args.client_config, args.allow_local_dev_secret),
+                live=live_gate,
             )
     finally:
         store.close()
@@ -410,6 +426,61 @@ def _post_clean_payable_proposals(*, store, workflow, load_by_id, client_config,
         except Exception as exc:  # noqa: BLE001 - a posting failure must not break the loop
             print(f"propose-clean-payables: post failed: {type(exc).__name__}")
     print(f"propose-clean-payables: posted {posted}/{len(proposals)} payable approval button(s) to {channel}.")
+    return posted
+
+
+_INVOICE_PROPOSED_EVENT = "invoice_proposal_posted"
+
+
+def _post_ready_to_bill_proposals(*, store, load_by_id, client_config, signer, live: bool) -> int:
+    """Auto-post a signed 'Invoice [Approve & run]' button for each delivered, ready-to-bill load — the
+    AR mirror of :func:`_post_clean_payable_proposals`. Bills the CUSTOMER at the deterministic agreed
+    amount; fail-safe + idempotent (once per load, recorded in the audit log)."""
+    from freight_recon.channels import slack_channel_for_route
+    from freight_recon.delivery_dispatch import SlackApiPoster
+    from freight_recon.operation_proposal import post_operation_proposal, proposals_for_ready_to_bill
+    from freight_recon.reconciliation import agreed_rate_total
+    from freight_recon.review import ReviewRoute
+
+    config = load_delivery_config(client_config)
+    if config is None or config.slack is None:
+        print("propose-ar-invoices: no Slack config; skipping.")
+        return 0
+    channel = slack_channel_for_route(config.slack, ReviewRoute.CHANNEL_POST)
+    already = {
+        e["payload"].get("load_ref")
+        for e in store.security_events()
+        if e["event_type"] == _INVOICE_PROPOSED_EVENT
+    }
+    fresh = [ld for ld in load_by_id.values() if getattr(ld, "load_id", None) not in already]
+    proposals = proposals_for_ready_to_bill(
+        fresh, signer=signer, channel_id=channel,
+        amount_for_load=lambda load: str(agreed_rate_total(load)),
+    )
+    if not proposals:
+        print("propose-ar-invoices: no new ready-to-bill loads to propose.")
+        return 0
+    if not live:
+        print(f"propose-ar-invoices: would post {len(proposals)} invoice button(s) (live gate off — dry).")
+        return 0
+    token = os.environ.get(config.slack.bot_token_env or "")
+    if not token:
+        print("propose-ar-invoices: no Slack bot token; skipping.")
+        return 0
+    poster = SlackApiPoster(token)
+    posted = 0
+    for message in proposals:
+        try:
+            result = post_operation_proposal(message, poster=poster)
+            if getattr(result, "ok", False):
+                posted += 1
+                store.add_security_event(
+                    _INVOICE_PROPOSED_EVENT, actor="system",
+                    payload={"load_ref": message.get("load_ref"), "channel_id": channel},
+                )
+        except Exception as exc:  # noqa: BLE001 - a posting failure must not break the loop
+            print(f"propose-ar-invoices: post failed: {type(exc).__name__}")
+    print(f"propose-ar-invoices: posted {posted}/{len(proposals)} invoice approval button(s) to {channel}.")
     return posted
 
 
