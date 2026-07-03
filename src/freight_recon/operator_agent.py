@@ -96,11 +96,13 @@ class MoneyFence:
             )
         )
     )
-    # The COMMIT is the final write button, not a form-opener. "create"/"raise"/"new" commonly OPEN an
-    # entry form (e.g. "Create Invoice" opens the New Invoice modal) — matching them here burns the
-    # single-use approval and the commit-once guard before the real Save. Match only true commit verbs.
+    # PRIMARY commit signal is form-submit detection (see OperatorAgent: is_submit_target) — it is
+    # label-independent and correct. This keyword check is only a NARROW fallback for JS commits that
+    # aren't real form submits. Keep it to the least-ambiguous verbs: "pay"/"post"/"create"/"raise"
+    # are excluded because they match OPENERS and fields ("Enter Payment", "Create Invoice", "Pay
+    # Later") and false-positive-gated them, stalling the agent before it could even open a form.
     is_consequential: Callable[[LiveAction], bool] = lambda a: bool(
-        a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "confirm", "post", "pay"))
+        a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "confirm"))
     )
 
 
@@ -179,11 +181,14 @@ class OperatorAgent:
                                    f"stuck: repeated {action.kind.value} {action.target!r} with no progress")
 
             if action.kind == LiveActionKind.DONE:
-                # VERIFY-BEFORE-DONE: a money write may not be declared DONE until a READ has confirmed the
-                # saved record. If it committed but never read back, force one confirm-read (this catches a
-                # slow/unsaved write AND a falsely-assumed commit). If it still can't confirm, it is NOT a
-                # verified success — surface it to the human rather than reporting a green DONE.
-                if self._committed and not self._readback_confirmed:
+                # VERIFY-BEFORE-DONE: a money operation may not be declared DONE until a READ has confirmed
+                # the saved record. Crucially this is gated on the run being a MONEY LANE (an approved
+                # amount is bound) OR a detected commit — NOT on commit-detection alone. A live run showed
+                # why: when the commit button's label didn't match the consequential keywords, _committed
+                # stayed False, the gate never fired, and the agent reported a hallucinated total off an
+                # EMPTY readback. Decoupling from _committed closes that: any money run must read back.
+                must_confirm = self._committed or bool(self.approved_amount)
+                if must_confirm and not self._readback_confirmed:
                     if not self._forced_readback:
                         self._forced_readback = True
                         forced_nudge = (
@@ -193,7 +198,8 @@ class OperatorAgent:
                         continue
                     return AgentResult(
                         goal, "ESCALATED", history,
-                        "committed the write but could not confirm it saved — please verify the record")
+                        "could not confirm the record actually saved with the right details — please "
+                        "verify it in the system before trusting this")
                 self._crystallize(history, domain)  # learn from what just worked
                 return AgentResult(goal, "DONE", history, action.why or "goal achieved")
             if action.kind == LiveActionKind.ESCALATE:
@@ -217,8 +223,15 @@ class OperatorAgent:
                     f"unexpected monetary write to non-money field: {action.target}",
                 )
 
-            # CONSEQUENTIAL GATE: the committing action.
-            if self.fence.is_consequential(action):
+            # CONSEQUENTIAL GATE: the committing action. A click is consequential if its label matches a
+            # commit verb OR it actually SUBMITS a form — the label-independent signal that catches a
+            # save button ("Create Invoice") whose text collides with a non-committing link elsewhere.
+            consequential = self.fence.is_consequential(action)
+            if not consequential and action.kind == LiveActionKind.CLICK:
+                is_submit = getattr(self.actuator, "is_submit_target", None)
+                if callable(is_submit) and is_submit(action.target):
+                    consequential = True
+            if consequential:
                 # PREPARE MODE: everything is filled and staged — stop here and let the human commit.
                 if self.prepare_only:
                     return AgentResult(goal, "PREPARED", history,
@@ -249,10 +262,12 @@ class OperatorAgent:
                     return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
 
             ok, observed = self._execute(action)
-            if ok and self.fence.is_consequential(action):
+            if ok and consequential:
                 self._committed = True  # a consequential action succeeded — commit is done
-            # A READ after the commit that returns something is the confirmation the write actually saved.
-            if action.kind == LiveActionKind.READ and self._committed and ok and observed:
+            # A READ that returns real content is the confirmation the record exists. Not coupled to
+            # commit-detection (which can miss a label like "Create Invoice") — an EMPTY readback never
+            # confirms, so a hallucinated "it saved" off a blank read cannot reach DONE.
+            if action.kind == LiveActionKind.READ and ok and observed:
                 self._readback_confirmed = True
             entry = {"action": action.kind.value, "target": action.target,
                      "value": action.value, "why": action.why, "ok": ok}

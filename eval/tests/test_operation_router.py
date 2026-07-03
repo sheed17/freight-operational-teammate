@@ -105,7 +105,8 @@ def test_agent_escalation_propagates_as_result():
 
 
 def test_payable_lane_matches_and_binds_amount():
-    llm = _scripted_llm([{"action": "DONE", "why": "payable recorded"}])
+    # a money run must read the record back before DONE (verify-before-done)
+    llm = _scripted_llm([{"action": "READ", "target": "saved payable"}, {"action": "DONE", "why": "payable recorded"}])
     build_agent = _agent_factory(llm)
     router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: "1200.00")
     res = router.run(_operate("record the carrier payable for load LD-5001"), approve=lambda a: True)

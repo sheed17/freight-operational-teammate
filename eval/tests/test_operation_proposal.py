@@ -55,7 +55,9 @@ def test_tapping_the_button_drives_the_router_money_fenced():
     approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
 
     actuator = _FakeActuator()
-    seq = [{"action": "TYPE", "target": "Total Charge", "value": "9999"}, {"action": "DONE", "why": "ok"}]
+    seq = [{"action": "TYPE", "target": "Total Charge", "value": "9999"},
+           {"action": "READ", "target": "invoice"},  # money run confirms before DONE
+           {"action": "DONE", "why": "ok"}]
     def complete(_p):
         return json.dumps(seq.pop(0)) if seq else json.dumps({"action": "DONE", "why": "done"})
 

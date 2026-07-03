@@ -65,6 +65,7 @@ def test_money_fence_substitutes_approved_amount_for_rate_and_line_haul_labels()
     act = FakeActuator()
     llm = _scripted_llm([
         {"action": "TYPE", "target": "Line Haul Rate", "value": "9999.00"},
+        {"action": "READ", "target": "saved total"},  # money run must confirm before DONE
         {"action": "DONE", "why": "done"},
     ])
     res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
@@ -94,7 +95,8 @@ def test_bare_integer_search_query_is_allowed_not_a_money_write():
         {"action": "TYPE", "target": "load_search_query", "value": "100"},
         {"action": "DONE", "why": "searched"},
     ])
-    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=lambda a: True).run("find load")
+    # a pure search (no approved amount bound) is not a money run, so no readback gate applies here
+    res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("find load")
     assert res.status == "DONE"
     assert ("type", "load_search_query", "100") in act.calls  # the search typed through, unfenced
 
@@ -183,6 +185,7 @@ def test_money_fence_substitutes_a_nonnumeric_placeholder_in_a_money_field():
     act = FakeActuator()
     llm = _scripted_llm([
         {"action": "TYPE", "target": "Invoice Amount", "value": "approved amount"},
+        {"action": "READ", "target": "saved invoice"},  # money run must confirm before DONE
         {"action": "DONE", "why": "done"},
     ])
     res = OperatorAgent(actuator=act, complete=llm, approved_amount="2850.00", approve=lambda a: True).run("invoice")
@@ -249,6 +252,34 @@ def test_committed_write_that_cannot_be_confirmed_escalates_not_done():
     res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("invoice")
     assert res.status == "ESCALATED"
     assert "could not confirm" in res.note
+
+
+def test_form_submit_click_is_gated_even_when_label_is_not_a_commit_keyword():
+    # LIVE-CAUGHT: TruckingOffice's SAVE button is labelled "Create Invoice" (not a commit keyword, and
+    # "create" is deliberately excluded because elsewhere it OPENS a form). The label-independent signal
+    # is that it SUBMITS a form. With no approver, that submit must be gated, not committed.
+    class SubmitAwareActuator(FakeActuator):
+        def is_submit_target(self, target):
+            return "create invoice" in (target or "").lower()
+
+    act = SubmitAwareActuator()
+    llm = _scripted_llm([{"action": "CLICK", "target": "Create Invoice"}])  # the form's submit button
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=None).run("invoice")
+    assert res.status == "ESCALATED" and "needs approval" in res.note
+    assert ("click", "Create Invoice") not in act.calls  # the commit was gated, never clicked
+
+
+def test_non_submit_click_with_same_label_is_not_gated():
+    # The SAME text as a non-submit (a row link that opens a form) must NOT be gated.
+    class RowLinkActuator(FakeActuator):
+        def is_submit_target(self, target):
+            return False  # this "Create Invoice" is a link, not a form submit
+
+    act = RowLinkActuator()
+    llm = _scripted_llm([{"action": "CLICK", "target": "Coyote -> Create Invoice"}, {"action": "ESCALATE", "target": "stop"}])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=None).run("invoice")
+    # it opened the form (clicked) and only stopped on the later ESCALATE, not on an approval gate
+    assert ("click", "Coyote -> Create Invoice") in act.calls
 
 
 def test_escalate_and_max_steps_fail_closed():

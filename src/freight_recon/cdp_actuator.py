@@ -112,6 +112,35 @@ _CLICK_ROW_ACTION_JS = r"""
 """
 
 
+# Would clicking this target SUBMIT a form (i.e. commit)? Resolves the same element CLICK would, then
+# reports whether it is a submit control. This is the label-independent commit signal: a row action
+# like an <a> "Create Invoice" that OPENS a form is not a submit, while the form's "Create Invoice"
+# submit button is — so the same visible text is gated in one place and not the other, correctly.
+_IS_SUBMIT_JS = r"""
+(function(t){
+  function vis(e){ return e && e.offsetParent!==null; }
+  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).toLowerCase(); }
+  function text(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
+  function isSubmit(e){
+    if(!e) return false;
+    var tag=e.tagName, type=(e.getAttribute('type')||'').toLowerCase();
+    if((tag==='INPUT'||tag==='BUTTON') && (type==='submit'||type==='image')) return true;
+    if(tag==='BUTTON' && !type && e.closest('form')) return true;  // a <button> with no type in a form defaults to submit
+    return false;
+  }
+  var el=null;
+  try{ el=document.querySelector(t); }catch(e){}
+  if(!el){
+    var tl=clean(t);
+    var CLICKABLE='a,button,[role=button],input[type=submit],input[type=button],[onclick]';
+    var cs=[...document.querySelectorAll(CLICKABLE)].filter(vis);
+    el=cs.find(function(e){return text(e)===tl;}) || cs.find(function(e){return text(e).indexOf(tl)>=0;});
+  }
+  return isSubmit(el);
+})
+"""
+
+
 class CdpActuator:
     def __init__(self, session: CdpBrowserSession, *, settle_seconds: float = 1.2) -> None:
         self.session = session
@@ -137,22 +166,48 @@ class CdpActuator:
         self._settle_until_ready()
         return bool(ok)
 
-    def _settle_until_ready(self, timeout: float = 6.0) -> None:
-        """Wait until the page has actually rendered interactive controls, so observe() never catches a
-        blank mid-render screen (the transporters.io SPA renders async well after navigation). Returns
-        fast once content is present; only waits the full timeout on a genuinely empty page."""
+    def is_submit_target(self, target: str) -> bool:
+        """True if clicking this target would SUBMIT a form (commit). Used by the agent's consequential
+        gate so a form's save button is gated even when its label ("Create Invoice") collides with a
+        non-committing link elsewhere. Best-effort: any error resolves to False (fail-open on detection,
+        but the keyword gate and verify-before-DONE still apply)."""
+        try:
+            return bool(self.session.evaluate(_IS_SUBMIT_JS + "(" + json.dumps(target) + ")"))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _settle_until_ready(self, timeout: float = 8.0) -> None:
+        """Wait until the page has STOPPED rendering, so observe() never catches a mid-render screen.
+
+        A plain 'has >=3 controls' check is useless here: the persistent nav chrome (Dashboard, Loads,
+        Invoices...) satisfies it instantly, so after a navigating click it returned before the actual
+        FORM/CONTENT rendered — the agent then saw a 'blank' page. Instead we wait for the page to
+        stabilize: ``readyState==='complete'`` AND the URL + interactive-element count unchanged across
+        consecutive polls. That catches a full navigation (URL/count change, then settle) and an async
+        SPA render (count grows, then settles) alike. A short initial wait lets a transition kick off
+        before we start sampling."""
+        time.sleep(0.4)  # let a navigation / SPA transition begin before we sample stability
         deadline = time.time() + timeout
+        last_sig = None
+        stable = 0
         while time.time() < deadline:
             try:
-                n = self.session.evaluate(
-                    "document.querySelectorAll('a,button,input,select,textarea,[role=button]').length"
-                ) or 0
+                sig = self.session.evaluate(
+                    "(function(){return document.readyState+'|'+location.href+'|'+"
+                    "document.querySelectorAll('a,button,input,select,textarea,[role=button]').length;})()"
+                )
             except Exception:  # noqa: BLE001
-                n = 0
-            if n >= 3:  # real controls are present -> rendered
-                time.sleep(self.settle * 0.5)  # a touch more for late JS
-                return
-            time.sleep(0.4)
+                sig = None
+            ready = bool(sig) and str(sig).split("|", 1)[0] == "complete"
+            if ready and sig == last_sig:
+                stable += 1
+                if stable >= 2:  # loaded and unchanged across polls -> rendered
+                    time.sleep(self.settle * 0.4)  # a touch more for late JS
+                    return
+            else:
+                stable = 0
+            last_sig = sig
+            time.sleep(0.35)
 
     def type(self, target: str, value: str) -> bool:
         # 1) focus the field and select its current contents (so real typing replaces them)
@@ -185,10 +240,32 @@ class CdpActuator:
         return bool(ok)
 
     def read(self, target: str) -> str:
+        """Read a value back for verification — from a form field OR from DISPLAYED text.
+
+        A readback usually happens on a saved-record page where the value (e.g. "Balance Due: $0.00",
+        an invoice total, a status) is rendered TEXT, not an input. Reading only input fields returned
+        empty there — so the agent couldn't confirm a write it had actually made. This resolves, in
+        order: the input value, then the smallest visible element mentioning the target that also
+        carries a number, then the target's table row / adjacent value."""
         val = self.session.evaluate(
-            _FIND_INPUT + "(function(t){var el=__findInput(t); if(el)return (el.value!==undefined?el.value:el.innerText)||'';"
-            "try{var s=document.querySelector(t); if(s)return s.innerText||'';}catch(e){} return '';})("
-            + json.dumps(target) + ")"
+            _FIND_INPUT + r"""(function(t){
+  function vis(e){return e && e.offsetParent!==null;}
+  function clean(s){return ((s||'').replace(/\s+/g,' ').trim());}
+  var needle=clean(t).toLowerCase();
+  if(!needle) return '';
+  try{ var inp=__findInput(t); if(inp){ var v=clean(inp.value!==undefined?inp.value:inp.innerText); if(v) return v; } }catch(e){}
+  var cands=[...document.querySelectorAll('td,th,dd,dt,label,span,div,p,li,strong,b,h1,h2,h3')].filter(vis)
+    .map(function(e){return {e:e, txt:clean(e.innerText)};})
+    .filter(function(o){return o.txt && o.txt.length<=200 && o.txt.toLowerCase().indexOf(needle)>=0;})
+    .sort(function(a,b){return a.txt.length-b.txt.length;});
+  for(var i=0;i<cands.length;i++){
+    var o=cands[i];
+    if(/\d/.test(o.txt)) return o.txt.slice(0,160);
+    var row=o.e.closest('tr'); if(row){var c=[...row.children].map(x=>clean(x.innerText)).filter(Boolean); if(c.length>1) return c.join(' | ').slice(0,160);}
+    var sib=o.e.nextElementSibling; if(sib&&vis(sib)){var sv=clean(sib.innerText); if(sv) return (o.txt+': '+sv).slice(0,160);}
+  }
+  return '';
+})(""" + json.dumps(target) + ")"
         )
         return val or ""
 

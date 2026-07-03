@@ -16,9 +16,14 @@ from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 def _scripted_llm(actions):
     seq = list(actions)
+    # When the script runs out, a money run READs back (confirming record) then declares DONE — the
+    # verify-before-done invariant. _FakeActuator.read() returns a value, so the readback confirms.
+    tail = [{"action": "READ", "target": "record"}, {"action": "DONE", "why": "done"}]
 
     def complete(_p):
-        return json.dumps(seq.pop(0)) if seq else json.dumps({"action": "DONE", "why": "done"})
+        if seq:
+            return json.dumps(seq.pop(0))
+        return json.dumps(tail.pop(0) if tail else {"action": "DONE", "why": "done"})
 
     return complete
 
@@ -86,7 +91,7 @@ def test_graduated_lane_runs_unattended(tmp_path):
 
 def test_human_approval_still_works_regardless_of_graduation(tmp_path):
     grad = LaneGraduation(tmp_path / "grad.json")  # supervised
-    llm = _scripted_llm([{"action": "DONE", "why": "ok"}])
+    llm = _scripted_llm([])
     router = OperationRouter(
         lanes=freight_lanes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
@@ -99,7 +104,7 @@ def test_human_approval_still_works_regardless_of_graduation(tmp_path):
 def test_guardrails_block_over_ceiling_and_record_within_limit(tmp_path):
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "record_payable", actor="R", max_amount="2500.00", daily_cap=2)
-    llm = _scripted_llm([{"action": "DONE", "why": "payable recorded"}])
+    llm = _scripted_llm([])
     router = OperationRouter(
         lanes=freight_lanes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda i: i.params.get("amount", "1000.00"),
@@ -118,7 +123,7 @@ def test_guardrails_block_over_ceiling_and_record_within_limit(tmp_path):
 def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", allowed_parties=["Acme Corp"], daily_cap=1)
-    llm = _scripted_llm([{"action": "DONE", "why": "ok"}])
+    llm = _scripted_llm([])
     router = OperationRouter(
         lanes=freight_lanes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
@@ -172,7 +177,7 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
         try:
             router = OperationRouter(
                 lanes=freight_lanes(),
-                build_agent=_agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}])),
+                build_agent=_agent_factory(_scripted_llm([])),
                 approved_amount_for=lambda _i: "100.00",
                 graduation=grad,
                 tenant="acme",
@@ -205,7 +210,7 @@ def test_router_does_not_consume_sqlite_daily_cap_when_commit_identity_is_missin
     try:
         router = OperationRouter(
             lanes=freight_lanes(),
-            build_agent=_agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}])),
+            build_agent=_agent_factory(_scripted_llm([])),
             approved_amount_for=lambda _i: "100.00",
             graduation=grad,
             tenant="acme",
