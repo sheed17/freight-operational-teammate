@@ -33,6 +33,33 @@ button in Slack → owner taps → callback → OperationRouter → the proven b
 → readback-verified receipt.** Every seam in that chain is individually proven; what's unproven is the
 *whole chain running continuously on a real inbox* (below).
 
+### The AR loop (real-TMS sourced — this is the write that's proven live)
+
+Add `--enable-ar-trigger` to source proposals from the **live TMS** instead of (or alongside) the
+inbox: a supervised child periodically reads the TMS `/loads`, and posts one **`Invoice [Approve &
+run]`** button per delivered-but-un-invoiced load at that load's Total. A tap drives the exact
+`raise_invoice` write that's already proven live on TruckingOffice (invoice #560009, partial payments,
+cross-record replay).
+
+```bash
+set -a; source .env; set +a          # so IMAP/Slack/ngrok/OpenAI secrets are present
+.venv/bin/python scripts/run_teammate.py \
+  --client-config configs/clients/<partner>.yaml \
+  --enable-operation-router \
+  --allowed-slack-user <SLACK_USER_ID> \
+  --allowed-slack-channel <SLACK_CHANNEL_ID> \
+  --operation-url-filter truckingoffice \
+  --enable-ar-trigger \
+  --tms-loads-url https://secure.truckingoffice.com/loads \
+  --ar-interval-seconds 300
+```
+
+**Shared-browser coordination is built in:** the write agent marks `workspace/browser.busy` while it
+operates; the AR trigger reads the same marker and *defers* a cycle rather than navigating the tab
+mid-write. Both share the workspace `workflow.sqlite3`, so a still-un-invoiced load isn't re-proposed
+every cycle. Prereq for the demo: one delivered-but-un-invoiced load in the TMS, and a Chrome on
+`--remote-debugging-port=9222` logged in.
+
 ## What YOU must supply to go live (the gate)
 
 1. **Mailbox credentials** — ALREADY SATISFIED for dogfood. The preflight and the processor both fall
@@ -70,5 +97,9 @@ button in Slack → owner taps → callback → OperationRouter → the proven b
 risk. What remains is integration + activation + deployment + the user-gated inputs above — normal work,
 not novel capability.
 
-**The single highest-leverage next move: get mailbox creds + a partner channel in, then run
-`run_teammate` and prove the full loop once, continuously.** Everything upstream of that is ready.
+**The single highest-leverage next move: prove the full loop once, continuously.** The **AR loop
+(`--enable-ar-trigger`) is the shortest path to that proof** — it needs no inbox, just the TMS the
+write is already proven against: create one un-invoiced load, run `run_teammate`, and the trigger →
+Slack button → tap → money-fenced write → receipt chain runs as one supervised service (reader and
+writer already coordinated on the shared browser). The mail-sourced AP loop follows the same spine
+once a partner channel + creds are in.
