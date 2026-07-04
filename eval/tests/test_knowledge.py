@@ -67,3 +67,52 @@ def test_no_money_and_agent_memory_shares_the_store(tmp_path):
     mem.save_recipe([{"action": "CLICK", "target": "View Orders", "ok": True}], tenant="acme", task="raise_invoice")
     assert mem.recall_recipe(tenant="acme", task="raise_invoice")
     assert kb.recall(tenant="acme", kind=FactKind.SYSTEM, subject="transporters.io")  # still there
+
+
+# --- content moderation: the shared, Slack-rendered, prompt-injected store must never carry abuse ---
+
+def test_local_floor_refuses_slurs_and_is_scunthorpe_safe():
+    from freight_recon.knowledge import content_rejection_reason as r
+    assert r("n1gger") is not None                 # leet
+    assert r("f a g g o t") is not None            # letter-spaced
+    for ok in ("always attach the POD before billing", "classify the cocoon shipment",
+               "pass the analysis to accounting", "Coyote often short-pays detention"):
+        assert r(ok) is None                       # legit business text with no slur-as-substring
+
+
+def test_learn_refuses_abusive_content_on_every_path(tmp_path):
+    kb = KnowledgeBase(tmp_path / "k.json")
+    assert kb.learn("n1gger", tenant="acme", kind=FactKind.BUSINESS, source="owner") is None
+    assert kb.recall(tenant="acme") == []          # nothing stored
+    assert kb.learn("always attach the POD", tenant="acme", kind=FactKind.PROCEDURE) is not None
+
+
+def test_deep_without_api_is_the_local_floor():
+    from freight_recon.knowledge import deep_content_rejection_reason as deep
+    assert deep("n1gger", use_api=False) is not None
+    assert deep("always attach the POD before billing", use_api=False) is None
+
+
+def test_deep_maps_api_categories_to_reasons(monkeypatch):
+    # Mock the OpenAI moderation client so the mapping is locked without a network call.
+    import types
+    from freight_recon import knowledge
+
+    class _Cats:
+        def model_dump(self):
+            return {"violence": True, "harassment": False, "sexual/minors": False}
+
+    class _Result:
+        flagged = True
+        categories = _Cats()
+
+    class _Mods:
+        def create(self, **_):
+            return types.SimpleNamespace(results=[_Result()])
+
+    class _FakeOpenAI:
+        def __init__(self, *a, **k): self.moderations = _Mods()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=_FakeOpenAI))
+    assert knowledge.deep_content_rejection_reason("...") == "it contains violent content"

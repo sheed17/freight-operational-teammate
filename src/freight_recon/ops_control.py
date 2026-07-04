@@ -125,19 +125,25 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
             q = q[6:].strip()
         return _knowledge_for(store).render(tenant="default", query=q)
     if store is not None and raw.strip().lower().startswith("learn ") and len(raw.split(None, 1)) == 2:
-        from .knowledge import FactKind
+        from .knowledge import FactKind, deep_content_rejection_reason as content_rejection_reason
 
         fact = raw.split(None, 1)[1].strip()
+        reason = content_rejection_reason(fact)
+        if reason:
+            return f":no_entry: I won't store that — {reason}."
         _knowledge_for(store).learn(fact, tenant="default", kind=FactKind.BUSINESS, source="owner")
         return f":brain: Got it — I'll remember that: {fact}"
     if store is not None and raw.strip().lower().startswith("sop ") and len(raw.split(None, 1)) == 2:
-        from .knowledge import FactKind
+        from .knowledge import FactKind, deep_content_rejection_reason as content_rejection_reason
 
         # An SOP scoped to a task: "sop raise_invoice: always include the load reference" -> subject=raise_invoice.
         body = raw.split(None, 1)[1].strip()
         subject = None
         if ":" in body and len(body.split(":", 1)[0].split()) <= 3:
             subject, body = body.split(":", 1)[0].strip(), body.split(":", 1)[1].strip()
+        reason = content_rejection_reason(body)
+        if reason:
+            return f":no_entry: I won't store that — {reason}."
         _knowledge_for(store).learn(body, tenant="default", kind=FactKind.PROCEDURE, subject=subject, source="onboarding")
         scope = f" for *{subject}*" if subject else ""
         return f":clipboard: Noted the procedure{scope}: {body}"
