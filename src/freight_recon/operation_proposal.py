@@ -218,7 +218,10 @@ def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
             amount = _row_amount(cells, i_total)  # currency cell nearest Total (robust to column drift)
             if not amount or not any(c.isdigit() for c in amount):
                 continue
-            customer = str(cells[i_cust]).strip()
+            # TMS list views truncate long names with a trailing ellipsis ("Echo Global L..."). Strip it
+            # so the bill-to step gets a clean search prefix (a contains-match still finds the customer);
+            # the invoice is anchored to the load anyway, so the TMS auto-carries the exact bill-to.
+            customer = re.sub(r"[.…]+$", "", str(cells[i_cust]).strip()).strip()
             key = (load_ref, customer)
             if key in seen:
                 continue

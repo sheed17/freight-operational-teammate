@@ -169,6 +169,19 @@ def test_ready_to_bill_reads_amount_when_total_column_drifts():
     assert len(ready) == 1 and ready[0]["amount"] == "1200.00"  # money cell found despite the drift
 
 
+def test_ready_to_bill_strips_truncation_ellipsis_from_customer():
+    # TMS list views truncate long names ("Echo Global Logistics" -> "Echo Global L..."); the trailing
+    # ellipsis must not reach the bill-to search step.
+    from freight_recon.operation_proposal import ready_to_bill_from_loads_table
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global L...", "$2,500.00"]}],
+    }]}
+    ready = ready_to_bill_from_loads_table(obs)
+    assert ready[0]["customer"] == "Echo Global L"  # ellipsis stripped, clean search prefix
+
+
 def test_proposals_from_tms_loads_builds_ar_buttons_from_a_loads_table():
     from freight_recon.operation_proposal import proposals_from_tms_loads
 
