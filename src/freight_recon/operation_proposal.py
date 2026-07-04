@@ -148,6 +148,70 @@ def proposals_for_clean_matches(
     return proposals
 
 
+def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
+    """Extract ready-to-bill loads from a TMS 'loads' table observation — the REAL-TMS trigger source.
+
+    Finds the loads table by its Customer + Total (and Load/Status) columns, maps cells by header, and
+    returns ``[{load_ref, customer, amount}]`` for rows whose status is NOT already 'invoiced'. The Total
+    column supplies the deterministic bill amount (in TruckingOffice the invoice amount derives from the
+    load = its Total), so no amount is ever guessed. TMS-shaped but header-driven, not position-hardcoded.
+    """
+    out: list[dict] = []
+    seen: set = set()
+    for table in (observation or {}).get("tables") or []:
+        headers = [str(h).strip().lower() for h in (table.get("headers") or [])]
+        if not headers:
+            continue
+
+        def col(opts, hs=headers):
+            for i, h in enumerate(hs):
+                if any(o in h for o in opts):
+                    return i
+            return None
+
+        i_load, i_status = col(["load #", "load#", "load"]), col(["status"])
+        i_cust, i_total = col(["customer"]), col(["total", "amount"])
+        if i_load is None or i_cust is None or i_total is None:
+            continue  # not a loads table
+        need = max(i for i in (i_load, i_status, i_cust, i_total) if i is not None)
+        for row in table.get("rows") or []:
+            cells = row.get("cells") or []
+            if len(cells) <= need:
+                continue
+            load_ref = str(cells[i_load]).strip()
+            if not load_ref or load_ref.lower() in ("load #", "load", "load#"):  # header echoed as a row
+                continue
+            status = str(cells[i_status]).strip().lower() if i_status is not None else ""
+            if "invoiced" in status:  # already billed -> not ready to bill
+                continue
+            amount = str(cells[i_total]).replace("$", "").replace(",", "").strip()
+            if not amount or not any(c.isdigit() for c in amount):
+                continue
+            customer = str(cells[i_cust]).strip()
+            key = (load_ref, customer)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"load_ref": load_ref, "customer": customer, "amount": amount})
+    return out
+
+
+def proposals_from_tms_loads(observation: dict | None, *, signer: DeliverySigner, channel_id: str) -> list[dict]:
+    """The AR trigger, end to end from the REAL TMS: read ready-to-bill loads off a loads-table
+    observation and build a raise_invoice Approve button for each, at that load's Total. This is what
+    makes the proposed load_ref match a WRITABLE TMS record (vs the synthetic corpus)."""
+    from types import SimpleNamespace
+
+    ready = ready_to_bill_from_loads_table(observation)
+    if not ready:
+        return []
+    loads = [SimpleNamespace(load_id=r["load_ref"], customer=r["customer"], delivery_date="ready") for r in ready]
+    amounts = {r["load_ref"]: r["amount"] for r in ready}
+    return proposals_for_ready_to_bill(
+        loads, signer=signer, channel_id=channel_id, amount_for_load=lambda load: amounts.get(load.load_id),
+    )
+
+
 def _delivered_and_billable(load) -> bool:
     """Default 'ready to bill' signal: the load has been delivered (has a delivery date). Callers that
     know the TMS/workflow state (e.g. POD present, not yet invoiced) should pass a stricter predicate."""

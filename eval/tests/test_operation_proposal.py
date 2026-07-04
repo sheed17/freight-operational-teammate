@@ -136,6 +136,43 @@ def test_proposals_for_ready_to_bill_makes_an_ar_invoice_button_per_delivered_lo
     assert approval.approved_amount == "2450.00"
 
 
+def test_ready_to_bill_from_loads_table_extracts_non_invoiced_loads():
+    from freight_recon.operation_proposal import ready_to_bill_from_loads_table
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Trip #", "Status", "Customer", "Total"],
+        "rows": [
+            {"cells": ["Load #", "Trip #", "Status", "Customer", "Total"]},           # header echoed as a row
+            {"cells": ["100", "1000", "Invoiced", "Coyote Logistics", "$2,000.00"]},  # already billed -> skip
+            {"cells": ["101", "1001", "Dispatched", "Acme Foods", "$3,450.50"]},      # ready to bill
+            {"cells": ["102", "1002", "Delivered", "Echo Global", "$1,200.00"]},      # ready to bill
+        ],
+    }]}
+    ready = ready_to_bill_from_loads_table(obs)
+    assert {r["load_ref"] for r in ready} == {"101", "102"}      # invoiced + header row excluded
+    r101 = next(r for r in ready if r["load_ref"] == "101")
+    assert r101["customer"] == "Acme Foods" and r101["amount"] == "3450.50"  # $ and comma stripped
+
+
+def test_proposals_from_tms_loads_builds_ar_buttons_from_a_loads_table():
+    from freight_recon.operation_proposal import proposals_from_tms_loads
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [
+            {"cells": ["100", "Invoiced", "Coyote", "$2,000.00"]},        # already billed -> no button
+            {"cells": ["101", "Dispatched", "Acme Foods", "$3,450.50"]},  # ready to bill -> button
+        ],
+    }]}
+    proposals = proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C")
+    assert len(proposals) == 1
+    approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
+    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["customer"] == "Acme Foods"
+    assert approval.intent.params["load_ref"] == "101"
+    assert approval.approved_amount == "3450.50"        # the load's Total, deterministic
+
+
 def test_no_button_for_non_lane_or_amountless_assessments():
     # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
     chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,
