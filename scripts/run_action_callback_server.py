@@ -298,12 +298,15 @@ def _build_live_operation_router(
         )
 
     grad_path = (Path(workspace) / "lane_graduation.json") if workspace else Path("lane_graduation.json")
+    from freight_recon.browser_lock import BrowserLock
+    lock_path = (Path(workspace) / "browser.busy") if workspace else Path("browser.busy")
     return OperationRouter(
         lanes=freight_lanes(),
         build_agent=_build_agent,
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
         graduation=LaneGraduation(grad_path),
         commit_store=WorkflowStore(db_path) if db_path is not None else None,
+        browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
     )
 
 

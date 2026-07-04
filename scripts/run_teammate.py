@@ -87,6 +87,9 @@ def build_process_commands(
     allowed_slack_channel: str | None = None,
     operation_url_filter: str | None = None,
     propose_clean_payables: bool = False,
+    enable_ar_trigger: bool = False,
+    ar_interval_seconds: int = 300,
+    tms_loads_url: str = "https://secure.truckingoffice.com/loads",
     ngrok_domain: str | None = None,
     ngrok_bin: str | None = "ngrok",
     python: str = sys.executable,
@@ -139,6 +142,19 @@ def build_process_commands(
         loop.append("--propose-clean-payables")
     commands = {"site": site, "callback": callback, "loop": loop}
 
+    if enable_ar_trigger:
+        # The AR trigger: periodically read the TMS /loads and post 'Invoice [Approve & run]' buttons for
+        # ready-to-bill loads. Shares the workspace DB (dedup) and the browser.busy marker (defers while a
+        # write is in progress), and drives the SAME Chrome the operation agent uses.
+        commands["ar_trigger"] = [
+            python, str(ROOT / "scripts" / "propose_ar_from_tms.py"),
+            "--client-config", client_config,
+            "--url-filter", operation_url_filter or "truckingoffice",
+            "--loads-url", tms_loads_url,
+            "--db", str(db), "--lock-path", str(ws / "browser.busy"),
+            "--interval-seconds", str(ar_interval_seconds),
+        ]
+
     if ngrok_domain and ngrok_bin:
         # ngrok reads NGROK_AUTHTOKEN from the environment, so no prior `ngrok config` is required.
         # Use the modern --url=https://<domain> form: the deprecated --domain flag on ngrok 3.39+
@@ -170,6 +186,9 @@ def main() -> int:
     parser.add_argument("--allowed-slack-channel", default=os.environ.get("NEYMA_ALLOWED_SLACK_CHANNEL"))
     parser.add_argument("--operation-url-filter", default=os.environ.get("NEYMA_OPERATION_URL_FILTER"))
     parser.add_argument("--propose-clean-payables", action="store_true", help="auto-post a 'Record payable [Approve & run]' button for each cleanly matched carrier invoice")
+    parser.add_argument("--enable-ar-trigger", action="store_true", help="supervise the AR trigger: periodically read the live TMS /loads and post an 'Invoice [Approve & run]' button per ready-to-bill load")
+    parser.add_argument("--ar-interval-seconds", type=int, default=300, help="how often the AR trigger reads the TMS /loads (defers while a write holds the browser)")
+    parser.add_argument("--tms-loads-url", default="https://secure.truckingoffice.com/loads", help="the live TMS loads page the AR trigger reads")
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
     parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
@@ -212,6 +231,9 @@ def main() -> int:
         allowed_slack_channel=args.allowed_slack_channel,
         operation_url_filter=args.operation_url_filter,
         propose_clean_payables=args.propose_clean_payables,
+        enable_ar_trigger=args.enable_ar_trigger,
+        ar_interval_seconds=args.ar_interval_seconds,
+        tms_loads_url=args.tms_loads_url,
         ngrok_domain=ngrok_domain,
         ngrok_bin=ngrok_bin,
     )

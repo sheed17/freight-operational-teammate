@@ -89,6 +89,7 @@ class OperationRouter:
         graduation=None,
         tenant: str = "default",
         commit_store: WorkflowStore | None = None,
+        browser_lock=None,
     ) -> None:
         self.lanes = lanes
         self.build_agent = build_agent
@@ -98,6 +99,9 @@ class OperationRouter:
         self.graduation = graduation
         self.tenant = tenant
         self.commit_store = commit_store
+        # Marks the shared browser busy while the agent operates, so the periodic AR-trigger (which
+        # reads /loads in the SAME Chrome) defers instead of navigating away mid-write.
+        self.browser_lock = browser_lock
 
     def lane_for(self, intent: CommandIntent) -> OperationLane | None:
         for lane in self.lanes:
@@ -217,7 +221,12 @@ class OperationRouter:
         # workflow once, replay across records). Set post-build so no build_agent factory needs changing.
         if hasattr(agent, "record_ref"):
             agent.record_ref = _load_ref_of(intent) or ""
-        result: AgentResult = agent.run(goal)
+        # Hold the shared browser for the duration of the write so the periodic AR-trigger defers.
+        if self.browser_lock is not None:
+            with self.browser_lock.hold(holder=f"{lane.name}:{_load_ref_of(intent) or ''}"):
+                result: AgentResult = agent.run(goal)
+        else:
+            result = agent.run(goal)
         steps = list(result.steps)
         committed = _result_committed(result)
         if committed and commit_identity is not None:
