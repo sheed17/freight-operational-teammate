@@ -229,6 +229,26 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
     assert saves == ["Save invoice"]
 
 
+def test_staged_run_with_create_invoice_opener_is_not_read_as_committed():
+    # Regression: a PREPARED run clicks the load's "Create Invoice" OPENER link, then stops before the
+    # form's Save. The old keyword heuristic saw "create" in the target and stamped the run committed —
+    # which poisoned the payload so its 'submit' resume was refused. A commit is real only when the agent
+    # tags the actually-executed submit step committed=True.
+    from freight_recon.operation_router import _result_committed
+    from freight_recon.operator_agent import AgentResult
+
+    staged = AgentResult("goal", "PREPARED", [
+        {"action": "CLICK", "target": "101", "ok": True, "why": "open load"},
+        {"action": "CLICK", "target": "Create Invoice", "ok": True, "why": "open the invoice form"},
+    ], "filled and staged; stopped before Save")
+    assert _result_committed(staged) is False           # opener label must not read as a commit
+
+    real = AgentResult("goal", "DONE", [
+        {"action": "CLICK", "target": "Create Invoice", "ok": True, "committed": True, "why": "submit"},
+    ], "committed and confirmed")
+    assert _result_committed(real) is True               # the real tagged commit does count
+
+
 def test_operation_commit_key_normalizes_equivalent_money_amounts():
     base = {
         "tenant": "acme",

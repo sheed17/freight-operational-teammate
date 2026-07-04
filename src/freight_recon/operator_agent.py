@@ -337,7 +337,8 @@ class OperatorAgent:
             ok, observed = self._execute(action)
             if replayed_step and not ok:
                 replay = []  # the crystallized path no longer fits (UI changed) -> hand back to the model
-            if ok and consequential:
+            committed_now = ok and consequential  # the REAL commit signal: a gated submit actually succeeded
+            if committed_now:
                 self._committed = True  # a consequential action succeeded — commit is done
             # A READ that returns real content is the confirmation the record exists. Not coupled to
             # commit-detection (which can miss a label like "Create Invoice") — an EMPTY readback never
@@ -346,6 +347,8 @@ class OperatorAgent:
                 self._readback_confirmed = True
             entry = {"action": action.kind.value, "target": action.target,
                      "value": action.value, "why": action.why, "ok": ok}
+            if committed_now:
+                entry["committed"] = True  # real signal for _result_committed — never inferred from a label
             if observed is not None:
                 # Feed the result back so the model can actually USE what it read (it was blind to this).
                 entry["observed"] = str(observed)[:300]

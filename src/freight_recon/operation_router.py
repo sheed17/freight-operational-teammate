@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from freight_recon.operator_agent import AgentResult, LiveActionKind, OperatorAgent
+from freight_recon.operator_agent import AgentResult, OperatorAgent
 from freight_recon.slack_delegate import CommandIntent
 from freight_recon.workflow import WorkflowStore, normalize_money_amount
 
@@ -284,16 +284,11 @@ def _commit_identity(tenant: str, lane: str, intent: CommandIntent, amount: str 
 
 
 def _result_committed(result: AgentResult) -> bool:
-    for step in result.steps:
-        if step.get("committed") is True:
-            return True
-        if (
-            step.get("ok") is True
-            and step.get("action") == LiveActionKind.CLICK.value
-            and any(k in str(step.get("target", "")).lower() for k in ("save", "submit", "create", "raise", "confirm", "pay"))
-        ):
-            return True
-    return False
+    # A commit is real ONLY when a gated consequential/submit action actually succeeded — the agent tags
+    # that step ``committed=True`` (real signal). We must NOT infer a commit from a label like "Create
+    # Invoice"/"Save": those words also name the form-OPENER link, and that false positive stamped a
+    # staged (PREPARED, never-saved) run as committed — poisoning it so its 'submit' resume was refused.
+    return any(isinstance(step, dict) and step.get("committed") is True for step in result.steps)
 
 
 def _autonomous_approval() -> Callable[[object], bool]:
