@@ -17,6 +17,8 @@ Pure: it returns the Slack message dict; posting it is the caller's job (inject 
 
 from __future__ import annotations
 
+import re
+
 from .action_callback import build_slack_operation_approval_value
 from .delivery import DeliverySigner
 from .inbox_brain import InboxAssessment
@@ -148,6 +150,35 @@ def proposals_for_clean_matches(
     return proposals
 
 
+# A load is ready to BILL only once it is delivered (or otherwise marked billable) and not yet
+# invoiced. We require a POSITIVE billable signal — never "anything that isn't invoiced" — so an
+# in-transit / dispatched load is never proposed for billing. Fail-closed: no status => not proposed.
+_BILLABLE_STATUS_HINTS = ("delivered", "completed", "ready to bill", "ready to invoice", "to invoice", "uninvoiced")
+# Currency-shaped cell: a '$' amount, or a bare decimal with 2 places / comma-thousands. Dates like
+# 07/14/2026 use '/', so they never match the '.dd' or '$' shapes — they won't be mistaken for money.
+_MONEY_CELL = re.compile(r"\$\s*\d|\d[\d,]*\.\d{2}\b")
+
+
+def _is_billable_status(status: str) -> bool:
+    s = (status or "").lower()
+    if not s or "invoiced" in s:  # empty (unknown) or already billed -> not billable
+        return False
+    return any(h in s for h in _BILLABLE_STATUS_HINTS)
+
+
+def _row_amount(cells: list, i_total: int | None) -> str | None:
+    """The load Total, robust to column drift. Some TMS loads tables render the amount one column off
+    from the 'Total' header (the header cell holds the row's action links instead). So we don't trust
+    the header position blindly: we find the currency-shaped cell nearest the Total column and use it.
+    """
+    money_idx = [i for i, c in enumerate(cells) if _MONEY_CELL.search(str(c))]
+    if not money_idx:
+        return None
+    anchor = i_total if i_total is not None else len(cells)
+    best = min(money_idx, key=lambda i: (abs(i - anchor), -i))  # nearest to Total; tie -> rightmost
+    return str(cells[best]).replace("$", "").replace(",", "").strip()
+
+
 def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
     """Extract ready-to-bill loads from a TMS 'loads' table observation — the REAL-TMS trigger source.
 
@@ -181,10 +212,10 @@ def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
             load_ref = str(cells[i_load]).strip()
             if not load_ref or load_ref.lower() in ("load #", "load", "load#"):  # header echoed as a row
                 continue
-            status = str(cells[i_status]).strip().lower() if i_status is not None else ""
-            if "invoiced" in status:  # already billed -> not ready to bill
+            status = str(cells[i_status]).strip() if i_status is not None else ""
+            if not _is_billable_status(status):  # only delivered-and-not-invoiced loads are ready to bill
                 continue
-            amount = str(cells[i_total]).replace("$", "").replace(",", "").strip()
+            amount = _row_amount(cells, i_total)  # currency cell nearest Total (robust to column drift)
             if not amount or not any(c.isdigit() for c in amount):
                 continue
             customer = str(cells[i_cust]).strip()
