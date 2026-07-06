@@ -80,8 +80,12 @@ Each slice: **pure parse (tested) → proposal/digest → gated action → live-
 
 ## Changelog (most recent first)
 
+- **2026-07-06** — AR collections shipped (reader + aged digest, live-validated: 13 unpaid, $27,681.50
+  aged) and wired to the conversational surface ("who owes us / what's outstanding" → live aged-AR
+  digest). Full suite 619 green.
 - **2026-07-06** — Conversational front door shipped: reply in plain English → answer or gated proposal
-  (`152b259`); "bill load N" resolves the amount from the TMS itself (`fa7…`→resolver). Started AR collections.
+  (`152b259`); "bill load N" resolves the amount from the TMS itself (resolver). Owner-operator roadmap
+  locked as the source of truth (`7085358`).
 - **2026-07-06** — Autonomous AR runner: graduated loads auto-invoice unattended, fenced+capped+receipted (`714a774`).
 - **2026-07-05** — Run receipts show the full path (`2b1eaff`); detail-page POD decision logic (`fa7d502`).
 - **2026-07-05** — POD-gated billing (`174e3c4`); knowledge-base content moderation (`61dbc2b`).
@@ -91,5 +95,6 @@ Each slice: **pure parse (tested) → proposal/digest → gated action → live-
 
 ## Where are we, in one line
 
-**The spine is proven and the assistant front door is live; we're now building breadth across the back
-office, starting with AR collections. ~40% of owner-desired operations covered, on ~80%-built machinery.**
+**Spine proven + assistant front door live + AR collections reading live (invoice + aging both work).
+Building breadth across the back office. ~45% of owner-desired operations covered, on ~80%-built
+machinery. Next: gated dunning reminders (outward-facing → draft-then-approve), then exception radar.**
