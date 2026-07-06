@@ -178,3 +178,59 @@ def test_proof_extraction_distinguishes_readback_from_prose():
     assert _extract_proof("saved invoice INV-5 ok", []) == ("INV-5", False)
     # Nothing -> none.
     assert _extract_proof("all good, saved it", []) == (None, False)
+
+
+# --- run trace: the receipt shows the PATH (read -> clicked -> filled -> committed -> verified) ------
+
+def test_build_run_trace_renders_owner_legible_actions_and_folds_bookkeeping():
+    from freight_recon.roi_ledger import build_run_trace
+
+    steps = [
+        {"action": "CLICK", "target": "101", "ok": True},
+        {"action": "TYPE", "target": "Amount", "value": "2500.00", "ok": True},
+        {"action": "SELECT", "target": "Customer", "value": "Echo Global", "ok": True},
+        {"action": "CLICK", "target": "Create Invoice", "committed": True, "ok": True},
+        {"action": "READ", "target": "invoice", "observed": "Invoice #560010, $2,500.00", "ok": True},
+        {"committed": True, "commit_key": "abc"},   # bookkeeping-only -> folded away
+        {"screenshot": "/tmp/x.png"},               # bookkeeping-only -> folded away
+    ]
+    trace = build_run_trace(steps)
+    assert trace == [
+        "Clicked 101",
+        "Filled Amount = 2500.00",
+        "Selected Customer = Echo Global",
+        "Committed: Create Invoice",
+        "Read invoice → Invoice #560010, $2,500.00",
+    ]
+
+
+def test_failed_click_is_marked_in_the_trace():
+    from freight_recon.roi_ledger import build_run_trace
+    assert build_run_trace([{"action": "CLICK", "target": "Save", "ok": False}]) == ["Clicked Save (failed)"]
+
+
+def test_receipt_from_result_carries_and_renders_the_trace():
+    from types import SimpleNamespace
+    from freight_recon.roi_ledger import receipt_from_result
+
+    steps = [
+        {"action": "CLICK", "target": "Create Invoice", "committed": True, "ok": True},
+        {"action": "READ", "target": "invoice", "observed": "#560010", "ok": True},
+    ]
+    receipt = receipt_from_result(
+        SimpleNamespace(lane="raise_invoice", status="DONE", note="Invoice #560010 saved", steps=steps),
+        amount="2500.00",
+    )
+    assert receipt.trace == ["Committed: Create Invoice", "Read invoice → #560010"]
+    rendered = render_operation_receipt(receipt)
+    assert rendered.splitlines()[0].startswith("✅ Done")
+    assert "   • Committed: Create Invoice" in rendered
+    assert "   • Read invoice → #560010" in rendered
+    # show_trace=False keeps the one-line headline for compact surfaces
+    assert "\n" not in render_operation_receipt(receipt, show_trace=False)
+
+
+def test_refused_receipt_has_no_trace_since_nothing_ran():
+    r = OperationReceipt(lane=None, status="REFUSED", summary="unknown request",
+                         trace=["should-not-render"])
+    assert render_operation_receipt(r) == "🚫 I won't improvise — unknown request"

@@ -61,6 +61,9 @@ class OperationReceipt(BaseModel):
     # A receipt may show an id without claiming "verified"; "verified" must mean we read it back.
     verified: bool = False
     summary: str = ""
+    # Owner-legible "what Neyma did" trace: read -> clicked -> filled -> committed -> verified. The
+    # receipt shows the OUTCOME; the trace shows the PATH, so a supervising owner can audit the run.
+    trace: list[str] = Field(default_factory=list)
     channel_id: str | None = None
     thread_ts: str | None = None
     created_at: str | None = None
@@ -89,7 +92,8 @@ def build_operation_receipts(store: WorkflowStore) -> list[OperationReceipt]:
         if event["event_type"] != APPLIED_EVENT:
             continue
         payload = event.get("payload") or {}
-        proof, verified = _extract_proof(str(payload.get("note", "")), payload.get("steps") or [])
+        steps = payload.get("steps") or []
+        proof, verified = _extract_proof(str(payload.get("note", "")), steps)
         receipts.append(
             OperationReceipt(
                 lane=payload.get("lane"),
@@ -98,6 +102,7 @@ def build_operation_receipts(store: WorkflowStore) -> list[OperationReceipt]:
                 proof=proof,
                 verified=verified,
                 summary=str(payload.get("summary", "")),
+                trace=build_run_trace(steps),
                 channel_id=payload.get("channel_id"),
                 thread_ts=payload.get("thread_ts"),
                 created_at=event.get("created_at"),
@@ -159,11 +164,40 @@ def build_value_digest(
     )
 
 
+def _short(value, limit: int = 30) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def build_run_trace(steps) -> list[str]:
+    """Owner-legible 'what Neyma did' trace from the agent's raw steps: read → clicked → filled →
+    committed → verified. Bookkeeping-only steps (screenshots, bare commit markers) are folded away —
+    this is the audit surface a supervising owner reads, so it stays plain-language, not a step dump."""
+    lines: list[str] = []
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        action = str(step.get("action") or "").upper()
+        target, value, observed = _short(step.get("target")), _short(step.get("value"), 40), _short(step.get("observed"), 60)
+        if action == "READ":
+            lines.append(f"Read {target}" + (f" → {observed}" if observed else "") if target else f"Read back → {observed}")
+        elif action == "CLICK":
+            verb = "Committed:" if step.get("committed") is True else "Clicked"
+            lines.append(f"{verb} {target}" + (" (failed)" if step.get("ok") is False else ""))
+        elif action == "TYPE":
+            lines.append(f"Filled {target}" + (f" = {value}" if value else ""))
+        elif action == "SELECT":
+            lines.append(f"Selected {target}" + (f" = {value}" if value else ""))
+        # else: bookkeeping-only steps ({committed: True} marker, {screenshot: …}) are intentionally omitted
+    return lines
+
+
 def receipt_from_result(result, *, amount: str | None = None) -> OperationReceipt:
     """Build an owner receipt straight from an OperationRouter result (duck-typed: lane/status/note/
     steps), so the live Slack post can be proof-carrying without re-reading the audit log."""
     note = str(getattr(result, "note", "") or "")
-    proof, verified = _extract_proof(note, getattr(result, "steps", None) or [])
+    steps = getattr(result, "steps", None) or []
+    proof, verified = _extract_proof(note, steps)
     return OperationReceipt(
         lane=getattr(result, "lane", None),
         status=str(getattr(result, "status", "")) or "UNKNOWN",
@@ -171,26 +205,33 @@ def receipt_from_result(result, *, amount: str | None = None) -> OperationReceip
         proof=proof,
         verified=verified,
         summary=note,
+        trace=build_run_trace(steps),
     )
 
 
-def render_operation_receipt(receipt: OperationReceipt) -> str:
+def render_operation_receipt(receipt: OperationReceipt, *, show_trace: bool = True) -> str:
     """Shape #3: the proof-carrying receipt shown right after a run. Proof, not a bare claim — and it
-    only says 'verified' when the id was actually read back, otherwise it says 'reported'."""
+    only says 'verified' when the id was actually read back, otherwise it says 'reported'. When the run
+    took real steps, an owner-legible trace (read → clicked → filled → committed → verified) is appended
+    so the owner can audit exactly what Neyma did, not just the outcome."""
     money = f" · ${receipt.amount}" if receipt.amount else ""
     what = _lane_label(receipt.lane)
     if receipt.status == "DONE":
         proof = f" — {receipt.proof}" if receipt.proof else ""
         tag = (" (verified)" if receipt.verified else " (reported by agent)") if receipt.proof else ""
-        return f"✅ Done — {what}{money}{proof}{tag}"
-    if receipt.status == "PREPARED":
-        return (f"🅿️ Staged — {what}{money}: filled and ready. Do the final Save in the browser, "
-                "or reply 'submit' to commit.")
-    if receipt.status == "ESCALATED":
-        return f"✋ I need you — {what}{money}: {receipt.summary or 'stopped and handed it to you'}"
-    if receipt.status == "REFUSED":
-        return f"🚫 I won't improvise — {receipt.summary or what}"
-    return f"⚠️ Couldn't finish — {what}{money}: {receipt.summary or 'see the audit log'}"
+        headline = f"✅ Done — {what}{money}{proof}{tag}"
+    elif receipt.status == "PREPARED":
+        headline = (f"🅿️ Staged — {what}{money}: filled and ready. Do the final Save in the browser, "
+                    "or reply 'submit' to commit.")
+    elif receipt.status == "ESCALATED":
+        headline = f"✋ I need you — {what}{money}: {receipt.summary or 'stopped and handed it to you'}"
+    elif receipt.status == "REFUSED":
+        return f"🚫 I won't improvise — {receipt.summary or what}"  # nothing was done -> no trace
+    else:
+        headline = f"⚠️ Couldn't finish — {what}{money}: {receipt.summary or 'see the audit log'}"
+    if show_trace and receipt.trace:
+        return headline + "\n" + "\n".join(f"   • {line}" for line in receipt.trace)
+    return headline
 
 
 def render_value_digest(digest: ValueDigest, *, period: str = "this week") -> str:
