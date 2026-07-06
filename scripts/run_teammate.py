@@ -90,6 +90,7 @@ def build_process_commands(
     enable_ar_trigger: bool = False,
     ar_interval_seconds: int = 300,
     ar_require_pod: bool = True,
+    ar_autonomous: bool = False,
     tms_loads_url: str = "https://secure.truckingoffice.com/loads",
     ngrok_domain: str | None = None,
     ngrok_bin: str | None = "ngrok",
@@ -160,6 +161,10 @@ def build_process_commands(
         # until detail-page POD verification exists — pass ar_require_pod=False to bill on delivery alone.
         if not ar_require_pod:
             commands["ar_trigger"].append("--no-require-pod")
+        # Autonomy: graduated loads (within the owner's ceiling/allowlist/daily-cap) are invoiced
+        # unattended by the trigger itself; ungraduated/over-cap loads still get a supervised button.
+        if ar_autonomous:
+            commands["ar_trigger"].append("--autonomous")
 
     if ngrok_domain and ngrok_bin:
         # ngrok reads NGROK_AUTHTOKEN from the environment, so no prior `ngrok config` is required.
@@ -196,6 +201,7 @@ def main() -> int:
     parser.add_argument("--ar-interval-seconds", type=int, default=300, help="how often the AR trigger reads the TMS /loads (defers while a write holds the browser)")
     parser.add_argument("--tms-loads-url", default="https://secure.truckingoffice.com/loads", help="the live TMS loads page the AR trigger reads")
     parser.add_argument("--ar-no-require-pod", action="store_true", help="dev/demo only: let the AR trigger bill delivered loads without proven POD (default requires POD per owner SOP)")
+    parser.add_argument("--ar-autonomous", action="store_true", help="the AR trigger invoices GRADUATED loads unattended (money-fenced + within your ceiling/allowlist/daily-cap); ungraduated/over-cap loads still post a button")
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
     parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
@@ -240,6 +246,7 @@ def main() -> int:
         propose_clean_payables=args.propose_clean_payables,
         enable_ar_trigger=args.enable_ar_trigger,
         ar_require_pod=not args.ar_no_require_pod,
+        ar_autonomous=args.ar_autonomous,
         ar_interval_seconds=args.ar_interval_seconds,
         tms_loads_url=args.tms_loads_url,
         ngrok_domain=ngrok_domain,

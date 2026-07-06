@@ -40,25 +40,113 @@ from freight_recon.operation_proposal import (  # noqa: E402
     loads_missing_pod,
     loads_unknown_pod,
     post_operation_proposal,
-    proposals_from_tms_loads,
+    ready_to_bill_from_loads_table,
 )
 from freight_recon.review import ReviewRoute  # noqa: E402
+from freight_recon.roi_ledger import receipt_from_result, render_operation_receipt  # noqa: E402
+from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
+from run_action_callback_server import _build_live_operation_router  # noqa: E402
 from run_gmail_to_slack_dogfood import _delivery_signer  # noqa: E402
 
 _INVOICE_PROPOSED_EVENT = "invoice_proposal_posted"
 _INVOICE_BLOCKED_EVENT = "invoice_proposal_blocked"
+_INVOICE_AUTOCOMMITTED_EVENT = "invoice_autocommitted"
 
 
-def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, require_pod: bool = True) -> int:
-    """One pass: defer if the browser is busy; else read /loads, build + post AR invoice buttons."""
+def _raise_invoice_intent(row: dict) -> CommandIntent:
+    """The raise_invoice intent for one ready-to-bill load. The approved amount is the load's Total
+    (deterministic) — never a model-chosen figure, so the money fence holds even unattended."""
+    return CommandIntent(
+        kind=CommandKind.OPERATE,
+        summary=f"Invoice {row.get('customer')} for {row.get('load_ref')}",
+        params={
+            "lane": "raise_invoice",
+            "customer": row.get("customer"),
+            "load_ref": row.get("load_ref"),
+            "approved_amount": row.get("amount"),
+        },
+    )
+
+
+def autonomy_split(rows, *, graduation, tenant: str = "default"):
+    """Pure decision (unit-tested): split ready-to-bill rows into (autonomous, supervised) by the owner's
+    graduation guardrails. A load runs UNATTENDED only if autonomy_allows says yes for its amount+party —
+    over the ceiling, off the allowlist, or past the daily cap falls back to a supervised Approve button."""
+    autonomous, supervised = [], []
+    for row in rows:
+        allowed = False
+        if graduation is not None:
+            allowed, _reason = graduation.autonomy_allows(
+                tenant, "raise_invoice", amount=row.get("amount"), party=row.get("customer"),
+            )
+        (autonomous if allowed else supervised).append(row)
+    return autonomous, supervised
+
+
+def _buttons_for_rows(rows, *, signer, channel) -> list[dict]:
+    """Build supervised 'Invoice [Approve & run]' buttons for a specific set of ready-to-bill rows."""
+    from types import SimpleNamespace
+
+    from freight_recon.operation_proposal import proposals_for_ready_to_bill
+    loads = [SimpleNamespace(load_id=r["load_ref"], customer=r["customer"], delivery_date="ready") for r in rows]
+    amounts = {r["load_ref"]: r["amount"] for r in rows}
+    return proposals_for_ready_to_bill(
+        loads, signer=signer, channel_id=channel, amount_for_load=lambda load: amounts.get(load.load_id),
+    )
+
+
+def _run_autonomous(rows, *, router, store, live, poster, channel) -> int:
+    """Run graduated loads UNATTENDED through the money-fenced router, then receipt each to Slack. The
+    router enforces the guardrails (ceiling/allowlist/daily-cap) and commit-once; a per-load dedup guard
+    here stops a re-run in the window before the TMS status flips to Invoiced."""
+    if not rows:
+        return 0
+    already = set()
+    if store is not None:
+        already = {e["payload"].get("load_ref") for e in store.security_events()
+                   if e["event_type"] == _INVOICE_AUTOCOMMITTED_EVENT}
+    committed = 0
+    for row in rows:
+        if row.get("load_ref") in already:
+            continue
+        if not live:
+            print(f"   - AUTONOMOUS: would invoice {row.get('load_ref')} for {row.get('customer')} ${row.get('amount')}")
+            continue
+        result = router.run(_raise_invoice_intent(row), approve=None)  # fenced + capped + commit-once
+        status = str(getattr(result, "status", "?"))
+        if poster is not None:
+            text = render_operation_receipt(receipt_from_result(result, amount=row.get("amount")))
+            poster.post_message(channel=channel, payload={"text": text})
+        if status.upper() == "DONE":
+            committed += 1
+            if store is not None:
+                store.add_security_event(
+                    _INVOICE_AUTOCOMMITTED_EVENT, actor="system",
+                    payload={"load_ref": row.get("load_ref"), "channel_id": channel},
+                )
+        print(f"propose-ar-from-tms: autonomous invoice {row.get('load_ref')} -> {status}")
+    return committed
+
+
+def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, require_pod: bool = True, router=None) -> int:
+    """One pass: defer if the browser is busy; else read /loads. Graduated loads run UNATTENDED through
+    the router (when one is given); the rest get a supervised Approve button; POD-unproven loads get an
+    exception. Falls back cleanly to propose-only when no router is wired."""
     if lock is not None and lock.is_busy():
         print("propose-ar-from-tms: browser busy (a write is in progress) — deferring this cycle.")
         return 0
     act.session.evaluate(f"location.href={loads_url!r}")
     time.sleep(2.5)
     observation = act.observe()
-    proposals = proposals_from_tms_loads(observation, signer=signer, channel_id=channel, require_pod=require_pod)
+    ready = ready_to_bill_from_loads_table(observation)
+    billable = [r for r in ready if r.get("has_pod")] if require_pod else ready
+    autonomous_rows, supervised_rows = [], billable
+    if router is not None:
+        autonomous_rows, supervised_rows = autonomy_split(billable, graduation=getattr(router, "graduation", None))
+    # Autonomous first — each write holds the browser lock and may flip its load to Invoiced.
+    autocommitted = _run_autonomous(autonomous_rows, router=router, store=store, live=live, poster=poster, channel=channel)
+    proposals = _buttons_for_rows(supervised_rows, signer=signer, channel=channel)
     blocked = _pod_block_messages(observation, channel=channel) if require_pod else []
     if store is not None:
         already = {
@@ -76,7 +164,7 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
             m for m in blocked
             if (m.get("load_ref"), m.get("reason")) not in already_blocked
         ]
-    if not proposals and not blocked:
+    if not proposals and not blocked and not autonomous_rows:
         print("propose-ar-from-tms: no new ready-to-bill loads.")
         return 0
     if not live:
@@ -84,7 +172,8 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
             print("   -", m.get("text"))
         for m in blocked:
             print("   - BLOCKED:", m.get("text"))
-        print(f"(dry-run: would post {len(proposals)} button(s), {len(blocked)} POD exception(s))")
+        print(f"(dry-run: {len(autonomous_rows)} autonomous, would post {len(proposals)} button(s), "
+              f"{len(blocked)} POD exception(s))")
         return 0
     posted = 0
     for message in proposals:
@@ -114,8 +203,8 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
                     },
                 )
     print(
-        f"propose-ar-from-tms: posted {posted}/{len(proposals)} invoice button(s) and "
-        f"{blocked_posted}/{len(blocked)} POD exception(s) to {channel}."
+        f"propose-ar-from-tms: auto-invoiced {autocommitted}, posted {posted}/{len(proposals)} "
+        f"invoice button(s) and {blocked_posted}/{len(blocked)} POD exception(s) to {channel}."
     )
     return posted
 
@@ -166,7 +255,12 @@ def main() -> int:
     p.add_argument("--db", default=None, help="WorkflowStore path for dedup (don't re-propose a load)")
     p.add_argument("--lock-path", default=None, help="browser-busy marker to defer to an in-progress write")
     p.add_argument("--interval-seconds", type=int, default=0, help="0 = run once; >0 = loop on this interval")
+    p.add_argument("--autonomous", action="store_true", help="run GRADUATED loads unattended (money-fenced + capped) instead of only posting a button; ungraduated/over-cap loads still get a button")
+    p.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-5.5"), help="model for the autonomous write agent")
+    p.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "40")))
     args = p.parse_args()
+    if args.autonomous and not args.db:
+        p.error("--autonomous requires --db (graduation policy + commit-once + autonomous-run cap live in the workspace DB)")
 
     config = load_delivery_config(args.client_config)
     if config is None or config.slack is None:
@@ -182,6 +276,17 @@ def main() -> int:
         poster = SlackApiPoster(token)
     lock = BrowserLock(args.lock_path) if args.lock_path else None
 
+    from pathlib import Path as _Path
+    router = None
+    if args.autonomous:
+        # The SAME money-fenced router the Slack callback uses — graduation, commit-once, verify-by-
+        # readback, browser-lock, all identical. Autonomy just means we call it with approve=None.
+        router = _build_live_operation_router(
+            cdp_url=args.cdp_url, url_filter=args.url_filter or None,
+            model=args.operation_model, max_steps=args.operation_max_steps,
+            workspace=_Path(args.db).parent, db_path=_Path(args.db),
+        )
+
     with CdpBrowserSession(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as session:
         act = CdpActuator(session)
         while True:
@@ -190,7 +295,7 @@ def main() -> int:
                 _cycle(
                     act=act, signer=signer, channel=channel, loads_url=args.loads_url,
                     store=store, lock=lock, live=live, poster=poster,
-                    require_pod=not args.no_require_pod,
+                    require_pod=not args.no_require_pod, router=router,
                 )
             finally:
                 if store is not None:
