@@ -384,6 +384,24 @@ def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():
     assert "Approve & run" in json.dumps(poster.messages[0])
 
 
+def test_detail_page_pod_classifier_counts_delivery_proof_not_rate_con():
+    # When the loads list can't show POD, the load's FileSafe attachments resolve it. On TruckingOffice
+    # a signed BOL is the delivery proof; a rate con is only the booking agreement and must NOT satisfy
+    # the billing gate.
+    from freight_recon.operation_proposal import pod_present_in_attachments, has_pod_from_detail
+
+    assert pod_present_in_attachments(["Signed BOL - load 102.pdf"]) is True
+    assert pod_present_in_attachments(["proof of delivery.pdf"]) is True
+    assert pod_present_in_attachments(["POD_102.jpg", "Rate Confirmation.pdf"]) is True   # POD among others
+    assert pod_present_in_attachments(["Rate Confirmation.pdf"]) is False                  # booking doc only
+    assert pod_present_in_attachments(["ratecon.pdf"]) is False
+    assert pod_present_in_attachments([]) is False                                          # nothing attached
+    # tri-state: an unreadable detail page stays unknown (None), never a billing-greenlight False
+    assert has_pod_from_detail([], page_readable=False) is None
+    assert has_pod_from_detail(["POD.pdf"], page_readable=True) is True
+    assert has_pod_from_detail(["Rate Con.pdf"], page_readable=True) is False
+
+
 def test_no_button_for_non_lane_or_amountless_assessments():
     # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
     chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,

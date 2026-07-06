@@ -254,6 +254,42 @@ def loads_unknown_pod(observation: dict | None) -> list[dict]:
     return [r for r in ready_to_bill_from_loads_table(observation) if r.get("has_pod") is None]
 
 
+# When the loads LIST can't show POD (has_pod is None), the detail page's document area resolves it.
+# On TruckingOffice, docs live in FileSafe at /loads/<id>/attachments; the attach categories are Rate
+# Con and (signed) BOL — there is no native "POD" type, and a signed BOL at delivery IS the proof of
+# delivery. So delivery proof = a POD or a BOL attachment; a rate con alone is the booking agreement,
+# NOT proof the freight was delivered, so it never satisfies the billing gate.
+_POD_DOC_HINTS = ("pod", "proof of delivery", "proof-of-delivery", "delivery receipt", "signed", "bol",
+                  "bill of lading", "delivered")
+_RATE_CON_HINTS = ("rate con", "rate confirmation", "ratecon", "rate-con")
+
+
+def _is_rate_con(label: str) -> bool:
+    return any(h in label for h in _RATE_CON_HINTS)
+
+
+def pod_present_in_attachments(doc_labels) -> bool:
+    """Pure decision: does this load's attachment set include delivery proof (a POD or signed BOL)?
+    Separated from browser I/O so the rule is unit-tested. A rate con alone does NOT count — it's the
+    booking agreement, not proof of delivery. Empty attachment set => no proof => False."""
+    for label in doc_labels or []:
+        text = " ".join(str(label).split()).lower()
+        if not text or _is_rate_con(text):
+            continue  # a rate con is not delivery proof
+        if any(hint in text for hint in _POD_DOC_HINTS):
+            return True
+    return False
+
+
+def has_pod_from_detail(doc_labels, *, page_readable: bool = True) -> bool | None:
+    """Resolve the tri-state POD signal from a load's detail/attachments page. ``page_readable`` is
+    False when the detail page couldn't be read (nav failed / not the right page) -> stay unknown (None)
+    and fail closed under a POD gate, rather than fabricate a False that would greenlight billing."""
+    if not page_readable:
+        return None
+    return pod_present_in_attachments(doc_labels)
+
+
 def proposals_from_tms_loads(observation: dict | None, *, signer: DeliverySigner, channel_id: str,
                              require_pod: bool = False) -> list[dict]:
     """The AR trigger, end to end from the REAL TMS: read ready-to-bill loads off a loads-table
