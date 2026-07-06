@@ -38,8 +38,14 @@ button in Slack → owner taps → callback → OperationRouter → the proven b
 Add `--enable-ar-trigger` to source proposals from the **live TMS** instead of (or alongside) the
 inbox: a supervised child periodically reads the TMS `/loads`, and posts one **`Invoice [Approve &
 run]`** button per delivered-but-un-invoiced load at that load's Total. A tap drives the exact
-`raise_invoice` write that's already proven live on TruckingOffice (invoice #560009, partial payments,
-cross-record replay).
+`raise_invoice` write that's already proven live on TruckingOffice (invoice #560009, #560010, partial
+payments, cross-record replay).
+
+**POD gate (owner SOP):** by default the trigger will **not** bill a load until its POD (Proof of
+Delivery) is proven — a delivered load without a POD column reads as *POD unknown* and posts a
+"attach the POD first" exception instead of a money button. TruckingOffice's `/loads` list doesn't
+expose POD status, so for the demo pass **`--ar-no-require-pod`** to bill on delivery alone. Keep the
+gate ON in production once detail-page POD verification lands (see "still not solved" below).
 
 ```bash
 set -a; source .env; set +a          # so IMAP/Slack/ngrok/OpenAI secrets are present
@@ -50,6 +56,7 @@ set -a; source .env; set +a          # so IMAP/Slack/ngrok/OpenAI secrets are pr
   --allowed-slack-channel <SLACK_CHANNEL_ID> \
   --operation-url-filter truckingoffice \
   --enable-ar-trigger \
+  --ar-no-require-pod \
   --tms-loads-url https://secure.truckingoffice.com/loads \
   --ar-interval-seconds 300
 ```

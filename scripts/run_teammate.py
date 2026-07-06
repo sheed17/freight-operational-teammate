@@ -89,6 +89,7 @@ def build_process_commands(
     propose_clean_payables: bool = False,
     enable_ar_trigger: bool = False,
     ar_interval_seconds: int = 300,
+    ar_require_pod: bool = True,
     tms_loads_url: str = "https://secure.truckingoffice.com/loads",
     ngrok_domain: str | None = None,
     ngrok_bin: str | None = "ngrok",
@@ -154,6 +155,11 @@ def build_process_commands(
             "--db", str(db), "--lock-path", str(ws / "browser.busy"),
             "--interval-seconds", str(ar_interval_seconds),
         ]
+        # POD gate is ON by default (owner SOP: never bill before POD is proven). On a TMS whose loads
+        # list doesn't expose POD (e.g. TruckingOffice), every load reads as 'POD unknown' and is blocked
+        # until detail-page POD verification exists — pass ar_require_pod=False to bill on delivery alone.
+        if not ar_require_pod:
+            commands["ar_trigger"].append("--no-require-pod")
 
     if ngrok_domain and ngrok_bin:
         # ngrok reads NGROK_AUTHTOKEN from the environment, so no prior `ngrok config` is required.
@@ -189,6 +195,7 @@ def main() -> int:
     parser.add_argument("--enable-ar-trigger", action="store_true", help="supervise the AR trigger: periodically read the live TMS /loads and post an 'Invoice [Approve & run]' button per ready-to-bill load")
     parser.add_argument("--ar-interval-seconds", type=int, default=300, help="how often the AR trigger reads the TMS /loads (defers while a write holds the browser)")
     parser.add_argument("--tms-loads-url", default="https://secure.truckingoffice.com/loads", help="the live TMS loads page the AR trigger reads")
+    parser.add_argument("--ar-no-require-pod", action="store_true", help="dev/demo only: let the AR trigger bill delivered loads without proven POD (default requires POD per owner SOP)")
     parser.add_argument("--skip-preflight", action="store_true", help="start even if the credential preflight finds problems (not recommended)")
     parser.add_argument("--ngrok-domain", default=os.environ.get("NGROK_STATIC_DOMAIN"), help="supervise an ngrok tunnel from this fixed domain to the callback port (defaults to $NGROK_STATIC_DOMAIN)")
     parser.add_argument("--no-ngrok", action="store_true", help="do not supervise ngrok (run stable ingress separately)")
@@ -232,6 +239,7 @@ def main() -> int:
         operation_url_filter=args.operation_url_filter,
         propose_clean_payables=args.propose_clean_payables,
         enable_ar_trigger=args.enable_ar_trigger,
+        ar_require_pod=not args.ar_no_require_pod,
         ar_interval_seconds=args.ar_interval_seconds,
         tms_loads_url=args.tms_loads_url,
         ngrok_domain=ngrok_domain,

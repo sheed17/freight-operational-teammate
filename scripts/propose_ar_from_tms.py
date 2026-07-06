@@ -36,22 +36,30 @@ from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
 from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.channels import load_delivery_config, slack_channel_for_route  # noqa: E402
 from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
-from freight_recon.operation_proposal import post_operation_proposal, proposals_from_tms_loads  # noqa: E402
+from freight_recon.operation_proposal import (  # noqa: E402
+    loads_missing_pod,
+    loads_unknown_pod,
+    post_operation_proposal,
+    proposals_from_tms_loads,
+)
 from freight_recon.review import ReviewRoute  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 from run_gmail_to_slack_dogfood import _delivery_signer  # noqa: E402
 
 _INVOICE_PROPOSED_EVENT = "invoice_proposal_posted"
+_INVOICE_BLOCKED_EVENT = "invoice_proposal_blocked"
 
 
-def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster) -> int:
+def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, require_pod: bool = True) -> int:
     """One pass: defer if the browser is busy; else read /loads, build + post AR invoice buttons."""
     if lock is not None and lock.is_busy():
         print("propose-ar-from-tms: browser busy (a write is in progress) — deferring this cycle.")
         return 0
     act.session.evaluate(f"location.href={loads_url!r}")
     time.sleep(2.5)
-    proposals = proposals_from_tms_loads(act.observe(), signer=signer, channel_id=channel)
+    observation = act.observe()
+    proposals = proposals_from_tms_loads(observation, signer=signer, channel_id=channel, require_pod=require_pod)
+    blocked = _pod_block_messages(observation, channel=channel) if require_pod else []
     if store is not None:
         already = {
             e["payload"].get("load_ref")
@@ -59,13 +67,24 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster) -> int
             if e["event_type"] == _INVOICE_PROPOSED_EVENT
         }
         proposals = [m for m in proposals if m.get("load_ref") not in already]
-    if not proposals:
+        already_blocked = {
+            (e["payload"].get("load_ref"), e["payload"].get("reason"))
+            for e in store.security_events()
+            if e["event_type"] == _INVOICE_BLOCKED_EVENT
+        }
+        blocked = [
+            m for m in blocked
+            if (m.get("load_ref"), m.get("reason")) not in already_blocked
+        ]
+    if not proposals and not blocked:
         print("propose-ar-from-tms: no new ready-to-bill loads.")
         return 0
     if not live:
         for m in proposals:
             print("   -", m.get("text"))
-        print(f"(dry-run: would post {len(proposals)} button(s))")
+        for m in blocked:
+            print("   - BLOCKED:", m.get("text"))
+        print(f"(dry-run: would post {len(proposals)} button(s), {len(blocked)} POD exception(s))")
         return 0
     posted = 0
     for message in proposals:
@@ -77,8 +96,62 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster) -> int
                     _INVOICE_PROPOSED_EVENT, actor="system",
                     payload={"load_ref": message.get("load_ref"), "channel_id": channel},
                 )
-    print(f"propose-ar-from-tms: posted {posted}/{len(proposals)} invoice button(s) to {channel}.")
+    blocked_posted = 0
+    for message in blocked:
+        result = poster.post_message(
+            channel=message["channel"],
+            payload={"text": message["text"], "blocks": message["blocks"]},
+        )
+        if getattr(result, "ok", False):
+            blocked_posted += 1
+            if store is not None:
+                store.add_security_event(
+                    _INVOICE_BLOCKED_EVENT, actor="system",
+                    payload={
+                        "load_ref": message.get("load_ref"),
+                        "reason": message.get("reason"),
+                        "channel_id": channel,
+                    },
+                )
+    print(
+        f"propose-ar-from-tms: posted {posted}/{len(proposals)} invoice button(s) and "
+        f"{blocked_posted}/{len(blocked)} POD exception(s) to {channel}."
+    )
     return posted
+
+
+def _pod_block_messages(observation: dict | None, *, channel: str) -> list[dict]:
+    messages: list[dict] = []
+    for row in loads_missing_pod(observation):
+        messages.append(_pod_block_message(row, channel=channel, reason="missing_pod"))
+    for row in loads_unknown_pod(observation):
+        messages.append(_pod_block_message(row, channel=channel, reason="unknown_pod"))
+    return messages
+
+
+def _pod_block_message(row: dict, *, channel: str, reason: str) -> dict:
+    load_ref = row.get("load_ref")
+    customer = row.get("customer") or "customer"
+    label = "Missing POD" if reason == "missing_pod" else "POD status unknown"
+    text = f"{label}: {load_ref} for {customer} is delivered but not ready for customer invoicing."
+    return {
+        "channel": channel,
+        "text": text,
+        "load_ref": load_ref,
+        "reason": reason,
+        "blocks": [
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*{label}*\n{text}"}},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "No money button was posted. Attach or verify the POD first, then rerun Neyma.",
+                    }
+                ],
+            },
+        ],
+    }
 
 
 def main() -> int:
@@ -89,6 +162,7 @@ def main() -> int:
     p.add_argument("--loads-url", default="https://secure.truckingoffice.com/loads")
     p.add_argument("--allow-local-dev-secret", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="read + build proposals but do not post")
+    p.add_argument("--no-require-pod", action="store_true", help="unsafe/dev only: allow AR invoice proposals without proven POD")
     p.add_argument("--db", default=None, help="WorkflowStore path for dedup (don't re-propose a load)")
     p.add_argument("--lock-path", default=None, help="browser-busy marker to defer to an in-progress write")
     p.add_argument("--interval-seconds", type=int, default=0, help="0 = run once; >0 = loop on this interval")
@@ -113,8 +187,11 @@ def main() -> int:
         while True:
             store = WorkflowStore(args.db) if args.db else None
             try:
-                _cycle(act=act, signer=signer, channel=channel, loads_url=args.loads_url,
-                       store=store, lock=lock, live=live, poster=poster)
+                _cycle(
+                    act=act, signer=signer, channel=channel, loads_url=args.loads_url,
+                    store=store, lock=lock, live=live, poster=poster,
+                    require_pod=not args.no_require_pod,
+                )
             finally:
                 if store is not None:
                     store.close()

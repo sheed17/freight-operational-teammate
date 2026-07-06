@@ -202,6 +202,7 @@ def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
 
         i_load, i_status = col(["load #", "load#", "load"]), col(["status"])
         i_cust, i_total = col(["customer"]), col(["total", "amount"])
+        i_doc = col(["pod", "proof of delivery"])  # POD evidence; BOL/docs alone are not enough to bill
         if i_load is None or i_cust is None or i_total is None:
             continue  # not a loads table
         need = max(i for i in (i_load, i_status, i_cust, i_total) if i is not None)
@@ -226,17 +227,46 @@ def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            out.append({"load_ref": load_ref, "customer": customer, "amount": amount})
+            # POD/delivery-document present? Tri-state: True/False when the list shows a paperwork column,
+            # None when it doesn't (can't tell from the list — a POD gate would need the load detail page).
+            has_pod = None
+            if i_doc is not None and len(cells) > i_doc:
+                doc_cell = str(cells[i_doc]).strip()
+                # Some TMS tables drift: the money cell can render under a BOL/POD-looking header. A
+                # currency value is not proof of paperwork, so leave it unknown and fail closed when a
+                # POD gate is required.
+                has_pod = None if _MONEY_CELL.search(doc_cell) else bool(doc_cell)
+            out.append({"load_ref": load_ref, "customer": customer, "amount": amount, "has_pod": has_pod})
     return out
 
 
-def proposals_from_tms_loads(observation: dict | None, *, signer: DeliverySigner, channel_id: str) -> list[dict]:
+def loads_missing_pod(observation: dict | None) -> list[dict]:
+    """Delivered-but-not-invoiced loads whose delivery paperwork (POD/BOL) is NOT attached — the ones a
+    POD-gated biller must NOT invoice yet. Enforces the owner SOP 'always attach the POD before billing a
+    customer': these become an exception ('attach the POD first'), never a money button. Only loads the
+    list can PROVE lack paperwork (has_pod is False) count; unknown (no paperwork column) is not flagged."""
+    return [r for r in ready_to_bill_from_loads_table(observation) if r.get("has_pod") is False]
+
+
+def loads_unknown_pod(observation: dict | None) -> list[dict]:
+    """Ready-to-bill candidates where the list view cannot prove POD status. These should not get AR
+    money buttons when POD is required; the operator needs a document-tab/detail-page check first."""
+    return [r for r in ready_to_bill_from_loads_table(observation) if r.get("has_pod") is None]
+
+
+def proposals_from_tms_loads(observation: dict | None, *, signer: DeliverySigner, channel_id: str,
+                             require_pod: bool = False) -> list[dict]:
     """The AR trigger, end to end from the REAL TMS: read ready-to-bill loads off a loads-table
     observation and build a raise_invoice Approve button for each, at that load's Total. This is what
-    makes the proposed load_ref match a WRITABLE TMS record (vs the synthetic corpus)."""
+    makes the proposed load_ref match a WRITABLE TMS record (vs the synthetic corpus).
+
+    ``require_pod`` enforces the owner SOP 'always attach the POD before billing': a delivered load whose
+    delivery paperwork isn't attached gets no money button (surface it via :func:`loads_missing_pod`)."""
     from types import SimpleNamespace
 
     ready = ready_to_bill_from_loads_table(observation)
+    if require_pod:
+        ready = [r for r in ready if r.get("has_pod")]  # only loads with delivery paperwork attached
     if not ready:
         return []
     loads = [SimpleNamespace(load_id=r["load_ref"], customer=r["customer"], delivery_date="ready") for r in ready]

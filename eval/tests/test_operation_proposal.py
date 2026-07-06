@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from freight_recon.action_callback import _verify_operation_approval_value  # noqa: E402
 from freight_recon.delivery import DeliverySigner  # noqa: E402
@@ -24,6 +25,32 @@ _SIGNER = DeliverySigner(b"bridge-secret")
 
 def _button_value(message):
     return message["blocks"][1]["elements"][0]["value"]
+
+
+class _Result:
+    ok = True
+
+
+class _Poster:
+    def __init__(self):
+        self.messages = []
+
+    def post_message(self, *, channel, payload):
+        self.messages.append({"channel": channel, **payload})
+        return _Result()
+
+
+class _LoadsActuator:
+    def __init__(self, observation):
+        self._observation = observation
+        self.session = self
+        self.evaluated = []
+
+    def evaluate(self, expression):
+        self.evaluated.append(expression)
+
+    def observe(self):
+        return self._observation
 
 
 class _FakeActuator:
@@ -160,7 +187,7 @@ def test_ready_to_bill_reads_amount_when_total_column_drifts():
     from freight_recon.operation_proposal import ready_to_bill_from_loads_table
 
     obs = {"tables": [{
-        "headers": ["Load #", "Status", "Customer", "BOL", "Total"],
+        "headers": ["Load #", "Status", "Customer", "POD", "Total"],
         "rows": [
             {"cells": ["102", "Delivered", "Echo Global", "$1,200.00", "View Edit Copy"]},  # $ under BOL
         ],
@@ -200,6 +227,161 @@ def test_proposals_from_tms_loads_builds_ar_buttons_from_a_loads_table():
     assert approval.intent.params["customer"] == "Acme Foods"
     assert approval.intent.params["load_ref"] == "102"
     assert approval.approved_amount == "3450.50"        # the load's Total, deterministic
+
+
+def test_pod_gate_only_bills_delivered_loads_with_paperwork_attached():
+    # Owner SOP: "always attach the POD before billing a customer." With require_pod, a delivered load
+    # whose delivery-document column is empty gets NO money button; one with paperwork does.
+    from freight_recon.operation_proposal import (
+        loads_missing_pod, proposals_from_tms_loads, ready_to_bill_from_loads_table,
+    )
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "POD", "Total"],
+        "rows": [
+            {"cells": ["101", "Delivered", "Echo Global", "", "$2,500.00"]},          # no POD attached
+            {"cells": ["102", "Delivered", "Acme Foods", "POD.pdf", "$3,450.50"]},     # POD attached
+        ],
+    }]}
+    # reader records the tri-state paperwork signal
+    by_ref = {r["load_ref"]: r for r in ready_to_bill_from_loads_table(obs)}
+    assert by_ref["101"]["has_pod"] is False and by_ref["102"]["has_pod"] is True
+
+    # require_pod: only the load with paperwork is billed
+    gated = proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C", require_pod=True)
+    assert len(gated) == 1
+    assert _verify_operation_approval_value(_button_value(gated[0]), _SIGNER).intent.params["load_ref"] == "102"
+
+    # the un-paperworked delivered load surfaces as an exception, never a money button
+    missing = loads_missing_pod(obs)
+    assert [m["load_ref"] for m in missing] == ["101"]
+
+    # without the gate (default), both delivered loads bill as before — no behavior change
+    assert len(proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C")) == 2
+
+
+def test_pod_gate_is_noop_when_the_list_has_no_paperwork_column():
+    # If the loads list can't show POD status, has_pod is unknown (None) — the gate can't fabricate a
+    # signal. require_pod then bills nothing (fail-closed to the SOP); default still bills.
+    from freight_recon.operation_proposal import (
+        loads_missing_pod, proposals_from_tms_loads, ready_to_bill_from_loads_table,
+    )
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["102", "Delivered", "Acme Foods", "$3,450.50"]}],
+    }]}
+    assert ready_to_bill_from_loads_table(obs)[0]["has_pod"] is None
+    assert loads_missing_pod(obs) == []                                   # unknown != proven-missing
+    assert len(proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C")) == 1
+    assert len(proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C", require_pod=True)) == 0
+
+
+def test_pod_gate_treats_money_under_paperwork_header_as_unknown_not_attached():
+    # Column drift can put the Total amount under a BOL/POD-looking header. A dollar value is not proof
+    # of delivery paperwork; with require_pod, this must fail closed instead of creating a money button.
+    from freight_recon.operation_proposal import proposals_from_tms_loads, ready_to_bill_from_loads_table
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "BOL", "Total"],
+        "rows": [{"cells": ["102", "Delivered", "Echo Global", "$1,200.00", "View Edit Copy"]}],
+    }]}
+
+    ready = ready_to_bill_from_loads_table(obs)
+    assert ready[0]["amount"] == "1200.00"
+    assert ready[0]["has_pod"] is None
+    assert len(proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C", require_pod=True)) == 0
+
+
+def test_bol_or_generic_docs_column_does_not_satisfy_pod_gate():
+    from freight_recon.operation_proposal import proposals_from_tms_loads, ready_to_bill_from_loads_table
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "BOL", "Total"],
+        "rows": [{"cells": ["102", "Delivered", "Echo Global", "BOL.pdf", "$1,200.00"]}],
+    }]}
+
+    ready = ready_to_bill_from_loads_table(obs)
+    assert ready[0]["has_pod"] is None
+    assert len(proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C", require_pod=True)) == 0
+
+
+def test_live_ar_cycle_requires_pod_and_posts_missing_pod_exception():
+    from propose_ar_from_tms import _cycle
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "POD", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global", "", "$2,500.00"]}],
+    }]}
+    poster = _Poster()
+
+    posted = _cycle(
+        act=_LoadsActuator(obs),
+        signer=_SIGNER,
+        channel="C",
+        loads_url="https://tms.test/loads",
+        store=None,
+        lock=None,
+        live=True,
+        poster=poster,
+    )
+
+    assert posted == 0
+    assert len(poster.messages) == 1
+    assert "Missing POD" in poster.messages[0]["text"]
+    assert "Approve & run" not in json.dumps(poster.messages[0])
+
+
+def test_live_ar_cycle_default_pod_gate_blocks_unknown_pod_status():
+    from propose_ar_from_tms import _cycle
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global", "$2,500.00"]}],
+    }]}
+    poster = _Poster()
+
+    posted = _cycle(
+        act=_LoadsActuator(obs),
+        signer=_SIGNER,
+        channel="C",
+        loads_url="https://tms.test/loads",
+        store=None,
+        lock=None,
+        live=True,
+        poster=poster,
+    )
+
+    assert posted == 0
+    assert len(poster.messages) == 1
+    assert "POD status unknown" in poster.messages[0]["text"]
+    assert "Approve & run" not in json.dumps(poster.messages[0])
+
+
+def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():
+    from propose_ar_from_tms import _cycle
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global", "$2,500.00"]}],
+    }]}
+    poster = _Poster()
+
+    posted = _cycle(
+        act=_LoadsActuator(obs),
+        signer=_SIGNER,
+        channel="C",
+        loads_url="https://tms.test/loads",
+        store=None,
+        lock=None,
+        live=True,
+        poster=poster,
+        require_pod=False,
+    )
+
+    assert posted == 1
+    assert len(poster.messages) == 1
+    assert "Approve & run" in json.dumps(poster.messages[0])
 
 
 def test_no_button_for_non_lane_or_amountless_assessments():
