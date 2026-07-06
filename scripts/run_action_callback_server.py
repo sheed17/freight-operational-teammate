@@ -172,8 +172,15 @@ def main() -> int:
             loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
             lock_path=(workspace / "browser.busy") if workspace else None,
         )
+        receivables_reader = _build_receivables_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
     else:
         load_amount_resolver = None
+        receivables_reader = None
 
     # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
     # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
@@ -213,6 +220,7 @@ def main() -> int:
         # Natural-language routing for /neyma (cheap model — it only picks which read/operate, never money).
         nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
         load_amount_resolver=load_amount_resolver,
+        receivables_reader=receivables_reader,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")
@@ -317,6 +325,32 @@ def _build_live_operation_router(
         commit_store=WorkflowStore(db_path) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
     )
+
+
+def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
+    """A reader so "what's outstanding / who owes us" answers with a live aged-AR digest. Reads the TMS
+    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy."""
+    import time as _time
+
+    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _read():
+        if lock is not None and lock.is_busy():
+            return []
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                session.evaluate(f"location.href={invoices_url!r}")
+                _time.sleep(2.5)
+                return receivables_from_invoices_table(CdpActuator(session).observe())
+        except Exception:  # noqa: BLE001 - a read miss just yields an empty digest, never a crash
+            return []
+
+    return _read
 
 
 def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):

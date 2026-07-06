@@ -110,3 +110,19 @@ def test_extract_load_ref_variants():
     assert _extract_load_ref("invoice LD-4471 please") == "LD-4471"
     assert _extract_load_ref("handle order #88") == "88"
     assert _extract_load_ref("what's outstanding") is None
+
+
+def test_aging_query_answers_with_a_live_receivables_digest(tmp_path):
+    # "who owes us money?" -> a live aged-AR digest (a read), not the workflow 'unresolved' list.
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.receivables_reader = lambda: [
+        {"invoice": "560003", "customer": "Maple Leaf Transport", "total": "3634.50",
+         "balance_due": "184.50", "invoiced_on": "2020-01-01"},   # long overdue
+    ]
+    cfg.ar_aging_min_days = 1
+    out = route_conversational_message(
+        "who owes us money?", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    assert "text" in out and "#560003 Maple Leaf Transport" in out["text"] and "past due" in out["text"]
+    store.close()

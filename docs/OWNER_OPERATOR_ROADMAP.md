@@ -63,8 +63,9 @@ Each slice: **pure parse (tested) → proposal/digest → gated action → live-
 - [ ] **1. AR collections** ← _in progress_
   - [x] `receivables_from_invoices_table` — reads `/invoices` by content (drift-safe); unpaid = Balance Due > 0. **Live-validated: 13 unpaid receivables read correctly, incl. partial payments.**
   - [x] `aged_unpaid` + `render_aging_digest` — aged-AR digest ("10 invoices, $27,681.50 past due, worst first"). **Live-validated.**
-  - [ ] Wire the digest to Slack (conversational "what's outstanding / aging" read + optional periodic surface)
+  - [x] Wired to the conversational surface: "what's outstanding / who owes us / aging" → live aged-AR digest (read-only, via `receivables_reader`)
   - [ ] Gated reminder action (draft-then-approve dunning note)
+  - [ ] Live-prove the digest through Slack (ask "who owes us" → digest in-thread)
 - [ ] **2. Exception radar** — on the same reads: delivered-not-invoiced, invoice overdue, duplicates, (later) insurance/authority expiry → one "needs your attention" surface
 - [ ] **3. AP reconciliation** — prove the built rate-con-vs-carrier-invoice → record_payable path live (needs a broker TMS account)
 - [ ] **4. Document auto-filing + compliance** — file POD/BOL to FileSafe, match rate cons, monitor carrier packet expiries

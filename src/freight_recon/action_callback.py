@@ -86,6 +86,10 @@ class CallbackAppConfig:
     # fetch the deterministic amount itself instead of asking the owner to type it. The amount still
     # comes from the TMS record, never the model — the money fence is unchanged.
     load_amount_resolver: Callable[[str], "str | None"] | None = None
+    # Optional reader of unpaid receivables from the TMS /invoices list, so "what's outstanding / who
+    # owes us / aging" answers with a live aged-AR digest. Read-only — never sends a dunning note.
+    receivables_reader: Callable[[], list] | None = None
+    ar_aging_min_days: int = 1
 
 
 def handle_signed_action_callback(
@@ -759,6 +763,7 @@ def run_callback_server(
     allowed_slack_channel: str | None = None,
     nl_completer: Callable[[str], str] | None = None,
     load_amount_resolver: Callable[[str], "str | None"] | None = None,
+    receivables_reader: Callable[[], list] | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -778,6 +783,7 @@ def run_callback_server(
             allowed_slack_channel=allowed_slack_channel,
             nl_completer=nl_completer,
             load_amount_resolver=load_amount_resolver,
+            receivables_reader=receivables_reader,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
@@ -951,6 +957,17 @@ def _extract_load_ref(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+_AGING_HINTS = (
+    "aging", "receivable", "past due", "overdue", "who owes", "owe us", "owes us",
+    "unpaid", "collections", "outstanding invoice", "outstanding ar", "outstanding balance",
+)
+
+
+def _is_aging_query(text: str) -> bool:
+    t = (text or "").lower()
+    return any(h in t for h in _AGING_HINTS)
+
+
 def route_conversational_message(text, *, actor, channel_id, config, ops_control, store) -> dict:
     """The conversational assistant surface: interpret a free-text owner message and produce a response —
     an immediate ANSWER for a read/control, or a gated PROPOSAL (money actions carry the same signed
@@ -959,6 +976,15 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
     Reuses the exact interpreter + gates the ``/neyma`` slash path uses, so nothing here bypasses them —
     the owner just no longer needs the slash prefix; they reply to Neyma in plain English and it acts.
     """
+    # AR aging is a read: "what's outstanding / who owes us / aging" -> a live aged-receivables digest.
+    if _is_aging_query(text) and getattr(config, "receivables_reader", None) is not None:
+        from datetime import date
+
+        from .ar_collections import aged_unpaid, render_aging_digest
+        receivables = config.receivables_reader() or []
+        aged = aged_unpaid(receivables, as_of=date.today(),
+                           min_days=getattr(config, "ar_aging_min_days", 1))
+        return {"text": render_aging_digest(aged)}
     reply = handle_ops_command(
         text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
     )
