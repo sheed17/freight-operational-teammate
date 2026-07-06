@@ -126,3 +126,13 @@ def test_aging_query_answers_with_a_live_receivables_digest(tmp_path):
     )
     assert "text" in out and "#560003 Maple Leaf Transport" in out["text"] and "past due" in out["text"]
     store.close()
+
+
+def test_resume_signal_distinguishes_continue_from_a_new_question():
+    # The bug we shipped: a question in a thread with a pending op got hijacked into a resume.
+    from freight_recon.action_callback import _is_resume_signal
+    for yes in ["submit", "go ahead", "yes", "approve", "do it", "send it", "try again", "confirm", "yep run it"]:
+        assert _is_resume_signal(yes), yes
+    for no in ["who owes us money?", "what have you done today", "what's our aging",
+               "bill load 105", "how did we do", "status", "resume tms writes"]:
+        assert not _is_resume_signal(no), no

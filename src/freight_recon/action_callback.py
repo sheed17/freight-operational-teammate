@@ -592,12 +592,13 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 resumable = find_resumable_operation(store, thread_ts)
             finally:
                 store.close()
-            if resumable is None:
-                # Not a resume -> treat the thread reply as a conversational command (the assistant
-                # surface): the owner replies in plain English and Neyma answers a read or proposes a
-                # gated action, through the SAME interpreter + gates the /neyma slash path uses.
+            reply_text = str(event.get("text", ""))
+            # Resume ONLY when there's a pending op AND the reply is a resume signal ("submit"/"go"/…).
+            # Any other message — a question, a new command — is answered conversationally, even inside a
+            # thread that has a staged op, so "who owes us money?" is never hijacked into a resume.
+            if resumable is None or not _is_resume_signal(reply_text):
                 _respond_conversationally(
-                    text=str(event.get("text", "")), actor=str(user_id or "owner"),
+                    text=reply_text, actor=str(user_id or "owner"),
                     channel_id=channel_id, thread_ts=thread_ts, config=config,
                 )
                 self._write_json(200, {"ok": True})
@@ -673,48 +674,22 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     store.close()
                 self._write_json(200, {"response_type": "ephemeral", "text": f"Not authorized: {reason}."})
                 return
+            # /neyma uses the SAME conversational recognizer as a thread reply — reads, controls, AR
+            # aging, and gated operations all work, so the owner gets an answer, not a command dump.
             ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
             store = WorkflowStore(config.db_path)
             try:
-                reply = handle_ops_command(
-                    text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
+                routed = route_conversational_message(
+                    text, actor=actor, channel_id=channel_id, config=config,
+                    ops_control=ops_control, store=store,
                 )
-                if reply.startswith("Commands:") and config.operation_router is not None:
-                    proposal = _build_operation_command_proposal(
-                        text,
-                        signer=config.signer,
-                        router=config.operation_router,
-                        channel_id=channel_id,
-                    )
-                    if proposal is not None:
-                        self._write_json(200, proposal)
-                        return
-                    # Natural-language fallback: the owner asked in plain words. Route it to a read (and
-                    # answer) or a gated operation (propose). Only for an already-authorized owner.
-                    if config.nl_completer is not None:
-                        from .nl_command import interpret_slash
-
-                        routed = interpret_slash(text, complete=config.nl_completer)
-                        if routed.get("read"):
-                            reply = handle_ops_command(
-                                routed["read"], actor=actor, ops_control=ops_control,
-                                store=store, status_file=config.status_file,
-                            )
-                        elif routed.get("operate"):
-                            proposal = _build_operation_command_proposal(
-                                routed["operate"],
-                                signer=config.signer,
-                                router=config.operation_router,
-                                channel_id=channel_id,
-                                amount_source_text=text,
-                            )
-                            if proposal is not None:
-                                self._write_json(200, proposal)
-                                return
             finally:
                 store.close()
+            if routed.get("proposal") is not None:
+                self._write_json(200, routed["proposal"])   # an operation -> its Approve-button proposal
+                return
             # Ephemeral: only the operator who ran the command sees the reply.
-            self._write_json(200, {"response_type": "ephemeral", "text": reply})
+            self._write_json(200, {"response_type": "ephemeral", "text": routed.get("text", "")})
 
         def _write_json(self, http_status: int, data: dict) -> None:
             payload = json.dumps(data).encode("utf-8")
@@ -966,6 +941,25 @@ _AGING_HINTS = (
 def _is_aging_query(text: str) -> bool:
     t = (text or "").lower()
     return any(h in t for h in _AGING_HINTS)
+
+
+_RESUME_WORDS = {
+    "submit", "commit", "approve", "approved", "confirm", "confirmed", "proceed",
+    "yes", "yep", "yeah", "okay", "retry",   # note: NOT "resume" (that's the 'resume tms writes' control)
+}
+_RESUME_PHRASES = ("go ahead", "do it", "send it", "try again", "run it", "go for it", "commit it")
+
+
+def _is_resume_signal(text: str) -> bool:
+    """Does this thread reply mean 'continue/commit the pending operation' (vs a new question)? Only a
+    resume signal should resume — otherwise a plain question like 'who owes us money?' would hijack the
+    staged op instead of being answered."""
+    t = " ".join((text or "").lower().split())
+    if not t:
+        return False
+    if set(re.findall(r"[a-z']+", t)) & _RESUME_WORDS:
+        return True
+    return any(p in t for p in _RESUME_PHRASES)
 
 
 def route_conversational_message(text, *, actor, channel_id, config, ops_control, store) -> dict:
