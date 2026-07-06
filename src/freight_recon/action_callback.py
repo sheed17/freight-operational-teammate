@@ -584,7 +584,14 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 resumable = find_resumable_operation(store, thread_ts)
             finally:
                 store.close()
-            if resumable is None:  # reply not tied to an escalated operation
+            if resumable is None:
+                # Not a resume -> treat the thread reply as a conversational command (the assistant
+                # surface): the owner replies in plain English and Neyma answers a read or proposes a
+                # gated action, through the SAME interpreter + gates the /neyma slash path uses.
+                _respond_conversationally(
+                    text=str(event.get("text", "")), actor=str(user_id or "owner"),
+                    channel_id=channel_id, thread_ts=thread_ts, config=config,
+                )
                 self._write_json(200, {"ok": True})
                 return
             # Immediate acknowledgement so the owner gets a fast reply while the (slower) run proceeds.
@@ -919,6 +926,72 @@ def _record_run_diagnosis(store, result, *, actor, channel_id, thread_ts) -> obj
         except Exception:  # noqa: BLE001
             pass
     return diag
+
+
+def route_conversational_message(text, *, actor, channel_id, config, ops_control, store) -> dict:
+    """The conversational assistant surface: interpret a free-text owner message and produce a response —
+    an immediate ANSWER for a read/control, or a gated PROPOSAL (money actions carry the same signed
+    Approve button + fence as everywhere else). Returns ``{'text': str}`` and/or ``{'proposal': dict}``.
+
+    Reuses the exact interpreter + gates the ``/neyma`` slash path uses, so nothing here bypasses them —
+    the owner just no longer needs the slash prefix; they reply to Neyma in plain English and it acts.
+    """
+    reply = handle_ops_command(
+        text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
+    )
+    if not reply.startswith("Commands:"):
+        return {"text": reply}  # a recognized read/control -> answer immediately (no gates needed)
+    if config.operation_router is None:
+        return {"text": reply}
+    proposal = _build_operation_command_proposal(
+        text, signer=config.signer, router=config.operation_router, channel_id=channel_id
+    )
+    if proposal is not None:
+        return {"proposal": proposal}
+    if config.nl_completer is not None:  # plain words -> route to a read (answer) or an operation (propose)
+        from .nl_command import interpret_slash
+
+        routed = interpret_slash(text, complete=config.nl_completer)
+        if routed.get("read"):
+            return {"text": handle_ops_command(
+                routed["read"], actor=actor, ops_control=ops_control, store=store,
+                status_file=config.status_file,
+            )}
+        if routed.get("operate"):
+            proposal = _build_operation_command_proposal(
+                routed["operate"], signer=config.signer, router=config.operation_router,
+                channel_id=channel_id, amount_source_text=text,
+            )
+            if proposal is not None:
+                return {"proposal": proposal}
+    return {"text": reply}
+
+
+def _respond_conversationally(*, text, actor, channel_id, thread_ts, config) -> None:
+    """Route a non-resume owner thread reply through the conversational surface and post the result to
+    the thread (an answer, or a proposal carrying its Approve button in blocks)."""
+    if config.operation_result_poster is None or not (text or "").strip():
+        return
+    ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
+    store = WorkflowStore(config.db_path)
+    try:
+        routed = route_conversational_message(
+            text, actor=actor, channel_id=channel_id, config=config, ops_control=ops_control, store=store
+        )
+    finally:
+        store.close()
+    proposal = routed.get("proposal")
+    post = {"channel_id": channel_id, "thread_ts": thread_ts}
+    if proposal is not None:
+        post["text"] = proposal.get("text", "Neyma proposal")
+        if proposal.get("blocks"):
+            post["blocks"] = proposal["blocks"]
+    else:
+        post["text"] = routed.get("text") or "I didn't catch that — try \"what's outstanding?\" or \"invoice load …\"."
+    try:
+        config.operation_result_poster(post)
+    except Exception:  # noqa: BLE001 - a conversational reply must never crash the events endpoint
+        return
 
 
 def _receipt_text(result, amount, diag) -> str:

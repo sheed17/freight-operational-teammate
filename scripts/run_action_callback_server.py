@@ -326,6 +326,8 @@ def _build_operation_result_poster(client_config: str | None):
         if not channel:
             return
         payload = {"text": receipt.get("text", "Neyma operation finished.")}
+        if receipt.get("blocks"):  # a conversational proposal carries its Approve button in blocks
+            payload["blocks"] = receipt["blocks"]
         if receipt.get("thread_ts"):
             payload["thread_ts"] = receipt["thread_ts"]
         poster.post_message(channel=channel, payload=payload)
