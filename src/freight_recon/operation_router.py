@@ -350,7 +350,54 @@ def freight_lanes() -> list[OperationLane]:
             + _guidance(intent)
         )
 
+    def payment_goal(intent: CommandIntent) -> str:
+        invoice_ref = _p(intent, "invoice_ref", _p(intent, "load_ref", "the invoice"))
+        customer = _p(intent, "customer", "the customer")
+        return (
+            f"Record a received customer payment (accounts receivable) against invoice {invoice_ref} for "
+            f"{customer}. Open invoice {invoice_ref} and use its Enter Payment / receive-payment action "
+            "(fall back to a standalone payment-entry screen only if the invoice has no such action). Enter "
+            "the payment amount (the system supplies the approved amount — do not choose one) and save it, "
+            "then READ the invoice's updated Balance Due (or the recorded payment) back to confirm it applied."
+            + _guidance(intent)
+        )
+
+    def credit_goal(intent: CommandIntent) -> str:
+        invoice_ref = _p(intent, "invoice_ref", _p(intent, "load_ref", "the invoice"))
+        customer = _p(intent, "customer", "the customer")
+        return (
+            f"Apply a credit / short-pay adjustment (accounts receivable) to invoice {invoice_ref} for "
+            f"{customer}, reducing the balance by the approved amount (the system supplies it — do not choose "
+            "one). Open the invoice and use its adjust/credit action, or add a credit-memo / negative line if "
+            "that is how this TMS records it. Save it, then READ the updated invoice balance back to confirm."
+            + _guidance(intent)
+        )
+
+    def file_document_goal(intent: CommandIntent) -> str:
+        doc = _p(intent, "doc_type", "the delivery document (POD/BOL)")
+        load_ref = _p(intent, "load_ref", "the load")
+        return (
+            f"File {doc} on load {load_ref}. Open load {load_ref} and use its document/attachment (FileSafe) "
+            "action to attach the document, then READ the load's document list back to confirm it is attached. "
+            "If there is no document available to attach, ESCALATE and ask for it — never fabricate an attachment."
+            + _guidance(intent)
+        )
+
+    # Order matters: more specific lanes first, so "record payment on invoice 5" isn't caught by the
+    # invoice lane's "invoice" keyword. Money lanes require a human-approved amount; filing a doc doesn't.
     return [
+        OperationLane("record_payment",
+                      ("record payment", "apply payment", "apply the payment", "enter payment",
+                       "received payment", "payment received", "customer paid", "mark paid", "paid invoice"),
+                      payment_goal),
+        OperationLane("adjust_invoice",
+                      ("credit", "short-pay", "short pay", "shortpay", "adjust invoice", "credit memo",
+                       "write off", "write-off", "adjustment"),
+                      credit_goal),
         OperationLane("raise_invoice", ("invoice", "bill ", "raise", "receivable", " ar "), invoice_goal),
         OperationLane("record_payable", ("payable", "settle", "carrier pay", "carrier bill", "pay ", " ap "), payable_goal),
+        OperationLane("file_document",
+                      ("attach", "file pod", "file the pod", "file bol", "file document", "upload pod",
+                       "upload bol", "attach pod", "attach bol"),
+                      file_document_goal, requires_amount=False),
     ]

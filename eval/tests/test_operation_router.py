@@ -260,3 +260,26 @@ def test_operation_commit_key_normalizes_equivalent_money_amounts():
         **base,
         approved_amount="2850.00",
     )
+
+
+def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
+    # The back-office operations an owner requests each resolve to a distinct bounded lane. Ordering +
+    # keywords keep overlaps ("payment on invoice" vs "invoice ...") from mis-routing.
+    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+
+    def lane(text):
+        got = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
+        return got.name if got else None
+
+    assert lane("invoice Great Lakes for load 105") == "raise_invoice"
+    assert lane("bill load 105") == "raise_invoice"
+    assert lane("record payment on invoice 560003 for 184.50") == "record_payment"
+    assert lane("apply the payment to invoice 560009") == "record_payment"
+    assert lane("credit invoice 560003 by 200 short pay") == "adjust_invoice"
+    assert lane("record payable to Iron Horse for LD-5") == "record_payable"
+    assert lane("attach the POD to load 105") == "file_document"
+
+    # file_document is not a money lane; the AR/AP lanes are
+    lanes = {l.name: l for l in freight_lanes()}
+    assert lanes["file_document"].requires_amount is False
+    assert lanes["record_payment"].requires_amount is True
