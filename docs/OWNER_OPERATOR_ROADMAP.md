@@ -61,10 +61,10 @@ Each slice: **pure parse (tested) → proposal/digest → gated action → live-
 (emailing a customer) default to **draft-then-approve**; money actions keep the fence + graduation.
 
 - [ ] **1. AR collections** ← _in progress_
-  - [ ] `aged_receivables_from_invoices_table` — read `/invoices` (Number|Customer|Total|Balance Due|Invoiced On|Paid On); unpaid = Balance Due > 0 & no Paid On, aged past a threshold
-  - [ ] Aged-AR digest to Slack ("3 invoices, $12k, 30+ days out")
-  - [ ] Gated reminder action (draft-then-approve dunning email)
-  - [ ] Live-prove on TruckingOffice
+  - [x] `receivables_from_invoices_table` — reads `/invoices` by content (drift-safe); unpaid = Balance Due > 0. **Live-validated: 13 unpaid receivables read correctly, incl. partial payments.**
+  - [x] `aged_unpaid` + `render_aging_digest` — aged-AR digest ("10 invoices, $27,681.50 past due, worst first"). **Live-validated.**
+  - [ ] Wire the digest to Slack (conversational "what's outstanding / aging" read + optional periodic surface)
+  - [ ] Gated reminder action (draft-then-approve dunning note)
 - [ ] **2. Exception radar** — on the same reads: delivered-not-invoiced, invoice overdue, duplicates, (later) insurance/authority expiry → one "needs your attention" surface
 - [ ] **3. AP reconciliation** — prove the built rate-con-vs-carrier-invoice → record_payable path live (needs a broker TMS account)
 - [ ] **4. Document auto-filing + compliance** — file POD/BOL to FileSafe, match rate cons, monitor carrier packet expiries
