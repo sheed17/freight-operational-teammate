@@ -166,6 +166,14 @@ def main() -> int:
             db_path=db_path,
         )
         operation_result_poster = _build_operation_result_poster(args.client_config)
+        load_amount_resolver = _build_load_amount_resolver(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+    else:
+        load_amount_resolver = None
 
     # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
     # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
@@ -204,6 +212,7 @@ def main() -> int:
         allowed_slack_channel=args.allowed_slack_channel,
         # Natural-language routing for /neyma (cheap model — it only picks which read/operate, never money).
         nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
+        load_amount_resolver=load_amount_resolver,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")
@@ -308,6 +317,37 @@ def _build_live_operation_router(
         commit_store=WorkflowStore(db_path) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
     )
+
+
+def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
+    """A resolver so "bill load 105" can fetch the load's Total from the TMS itself. Reads /loads and
+    returns the billable amount for that load ref (deterministic — the model never supplies it). Defers
+    if the shared browser is busy, and fails soft (None -> the assistant just asks for the amount)."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.operation_proposal import ready_to_bill_from_loads_table
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _resolve(load_ref: str) -> "str | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(2.5)
+                rows = ready_to_bill_from_loads_table(CdpActuator(session).observe())
+            for row in rows:
+                if str(row.get("load_ref")) == str(load_ref):
+                    return row.get("amount")
+        except Exception:  # noqa: BLE001 - resolution is best-effort; asking for the amount is the fallback
+            return None
+        return None
+
+    return _resolve
 
 
 def _build_operation_result_poster(client_config: str | None):

@@ -89,3 +89,24 @@ def test_nl_routing_reads_when_the_model_classifies_a_query(tmp_path):
     )
     assert "text" in out and not out["text"].startswith("Commands:")
     store.close()
+
+
+def test_bill_load_resolves_amount_from_tms_so_owner_neednt_type_it(tmp_path):
+    # "bill load 105" with no amount: the resolver fetches load 105's Total from the TMS and the
+    # proposal is built at that deterministic amount — the owner doesn't have to type it.
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.load_amount_resolver = lambda ref: "2400.00" if ref == "105" else None
+    out = route_conversational_message(
+        "bill load 105", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    assert "proposal" in out and "2400.00" in out["proposal"]["text"]   # resolved, not asked
+    store.close()
+
+
+def test_extract_load_ref_variants():
+    from freight_recon.action_callback import _extract_load_ref
+    assert _extract_load_ref("bill load 105") == "105"
+    assert _extract_load_ref("invoice LD-4471 please") == "LD-4471"
+    assert _extract_load_ref("handle order #88") == "88"
+    assert _extract_load_ref("what's outstanding") is None

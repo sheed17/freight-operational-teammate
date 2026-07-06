@@ -82,6 +82,10 @@ class CallbackAppConfig:
     # Optional cheap completer for natural-language routing of unrecognized /neyma commands ("what's
     # outstanding?" -> the right read; "invoice the Northbound load" -> a gated proposal). Owner-only.
     nl_completer: Callable[[str], str] | None = None
+    # Optional resolver: given a load ref, return that load's Total from the TMS. Lets "bill load 105"
+    # fetch the deterministic amount itself instead of asking the owner to type it. The amount still
+    # comes from the TMS record, never the model — the money fence is unchanged.
+    load_amount_resolver: Callable[[str], "str | None"] | None = None
 
 
 def handle_signed_action_callback(
@@ -754,6 +758,7 @@ def run_callback_server(
     allowed_slack_users: tuple[str, ...] = (),
     allowed_slack_channel: str | None = None,
     nl_completer: Callable[[str], str] | None = None,
+    load_amount_resolver: Callable[[str], "str | None"] | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -772,6 +777,7 @@ def run_callback_server(
             allowed_slack_users=allowed_slack_users,
             allowed_slack_channel=allowed_slack_channel,
             nl_completer=nl_completer,
+            load_amount_resolver=load_amount_resolver,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
@@ -928,6 +934,23 @@ def _record_run_diagnosis(store, result, *, actor, channel_id, thread_ts) -> obj
     return diag
 
 
+def _extract_load_ref(text: str) -> str | None:
+    """Pull a load reference out of a plain-English request ("bill load 105" -> "105"; "invoice LD-4471"
+    -> "LD-4471"). Prefers an explicit load/order/# marker; falls back to a standalone 2–6 digit number."""
+    text = text or ""
+    m = re.search(r"\b([A-Za-z]{2,4}-?\d{2,6})\b", text)      # a lettered ref: LD-4471, INV-5, PO1234
+    if m:
+        return m.group(1)
+    m = re.search(r"\b(?:load|order)\s*#?\s*(\d{2,6})\b", text, re.I)   # "load 105", "order #88"
+    if m:
+        return m.group(1)
+    m = re.search(r"#\s*(\d{2,6})\b", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"\b(\d{2,6})\b", text)   # a bare number, only reached when no amount is present
+    return m.group(1) if m else None
+
+
 def route_conversational_message(text, *, actor, channel_id, config, ops_control, store) -> dict:
     """The conversational assistant surface: interpret a free-text owner message and produce a response —
     an immediate ANSWER for a read/control, or a gated PROPOSAL (money actions carry the same signed
@@ -943,8 +966,18 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
         return {"text": reply}  # a recognized read/control -> answer immediately (no gates needed)
     if config.operation_router is None:
         return {"text": reply}
+    # "bill load 105" with no amount: fetch the load's Total from the TMS (deterministic, not model-
+    # chosen) so the owner doesn't have to type it. Falls back to asking if it can't be resolved.
+    amount_source = text
+    if _extract_command_amount(text) is None and getattr(config, "load_amount_resolver", None) is not None:
+        load_ref = _extract_load_ref(text)
+        if load_ref:
+            resolved = config.load_amount_resolver(load_ref)
+            if resolved:
+                amount_source = f"{text} amount {resolved}"
     proposal = _build_operation_command_proposal(
-        text, signer=config.signer, router=config.operation_router, channel_id=channel_id
+        text, signer=config.signer, router=config.operation_router, channel_id=channel_id,
+        amount_source_text=amount_source,
     )
     if proposal is not None:
         return {"proposal": proposal}
