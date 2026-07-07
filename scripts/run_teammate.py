@@ -27,6 +27,18 @@ sys.path.insert(0, str(ROOT / "src"))
 DEFAULT_WORKSPACE = ROOT / "data" / "active_workspace" / "gmail_to_slack_service"
 
 
+def supervision_decision(*, crashes: int, seconds_since_last_crash: float, max_rapid: int = 5,
+                         calm_window: float = 300.0, backoff_cap: float = 30.0) -> tuple[bool, float, int]:
+    """Should a crashed child be restarted, and after how long? Returns (restart, backoff_seconds,
+    new_crash_count). Keeps the teammate 'constantly up': a transient crash self-heals with exponential
+    backoff; a calm period resets the counter; too many RAPID crashes gives up (crash-loop guard) so a
+    genuinely broken child doesn't spin forever. Pure so the policy is unit-tested."""
+    crashes = 1 if seconds_since_last_crash > calm_window else crashes + 1
+    if crashes > max_rapid:
+        return (False, 0.0, crashes)
+    return (True, min(2.0 ** crashes, backoff_cap), crashes)
+
+
 def preflight_credentials(*, client_config: str, env: Mapping[str, str]) -> list[str]:
     """Return human-readable problems for any credential the teammate needs but is missing.
 
@@ -267,13 +279,34 @@ def main() -> int:
         print(f"       (tunnel/forward to 127.0.0.1:{args.callback_port} yourself). Type `status` in Slack to check health.")
     print("Ctrl-C to stop the whole group.\n")
 
+    # Self-healing supervision: a child that crashes is RESTARTED with backoff (the teammate stays up),
+    # not a reason to tear down the group. Only a crash-looping child is given up on, and the others keep
+    # running. This is what makes it safe to leave running unattended on an always-on host.
+    crashes: dict[str, int] = {name: 0 for name in procs}
+    last_crash: dict[str, float] = {name: 0.0 for name in procs}
     try:
         while True:
-            for name, proc in procs.items():
-                rc = proc.poll()
-                if rc is not None:
-                    print(f"\n{name} exited (rc={rc}) — shutting down the group.")
-                    raise KeyboardInterrupt
+            for name in list(procs):
+                rc = procs[name].poll()
+                if rc is None:
+                    continue
+                now = time.time()
+                restart, backoff, crashes[name] = supervision_decision(
+                    crashes=crashes[name], seconds_since_last_crash=now - last_crash[name],
+                )
+                last_crash[name] = now
+                if not restart:
+                    print(f"\n{name} crashed {crashes[name]}x rapidly (rc={rc}) — giving up on it; "
+                          "other children keep running. Investigate this child.")
+                    procs.pop(name)
+                    continue
+                print(f"\n{name} exited (rc={rc}) — restarting in {backoff:.0f}s (self-heal, attempt {crashes[name]}).")
+                time.sleep(backoff)
+                procs[name] = subprocess.Popen(commands[name])
+                print(f"  restarted {name} (pid {procs[name].pid})")
+            if not procs:
+                print("all children died and exhausted restarts — exiting so the OS supervisor can restart clean.")
+                break
             time.sleep(2)
     except KeyboardInterrupt:
         print("Stopping Neyma teammate...")

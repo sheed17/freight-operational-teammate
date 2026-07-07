@@ -109,9 +109,13 @@ always there. ngrok is already supervised as a child on the static domain.
 - **Browser-lock** — the periodic reader defers while a write holds the shared browser.
 - **Fail-closed everywhere** — an unreadable page, missing amount, or unproven POD stops and asks; it
   never guesses.
+- **Self-healing supervision** — a child that crashes (transient CDP/network/model blip) is RESTARTED
+  with exponential backoff; the others keep running; a crash-looping child is given up on (guard). The
+  teammate stays up instead of the whole group dying on one hiccup.
 
 ## Known gaps / risks for hands-off always-on (the honest list)
-1. **Never run for days on a server.** Longest-duration + reconnect-after-Chrome-death path is unproven.
+1. **Not yet run for days on a server.** Self-heal handles child crashes, but longest-duration and
+   reconnect-after-CHROME-death (Chrome needs its own OS supervisor) are still unproven at length.
 2. **Local browser, single tenant.** No hosted headless-browser pool; no multi-tenant DB/isolation.
 3. **Unproven operation lanes** (above) — prove each live before relying on it.
 4. **Slack Events subscription is required** for thread-reply/`submit` — a per-app setup step (documented

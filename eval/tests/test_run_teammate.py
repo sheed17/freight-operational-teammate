@@ -110,3 +110,21 @@ def test_preflight_accepts_smtp_creds_as_mail_fallback():
     env["NEYMA_SMTP_USERNAME"] = "u"
     env["NEYMA_SMTP_PASSWORD"] = "p"
     assert preflight_credentials(client_config=CLIENT_CONFIG, env=env) == []
+
+
+def test_supervision_self_heals_with_backoff_then_gives_up_on_a_crash_loop():
+    from run_teammate import supervision_decision
+
+    # first crash after a calm period -> restart quickly, counter starts at 1
+    assert supervision_decision(crashes=0, seconds_since_last_crash=9999) == (True, 2.0, 1)
+
+    # rapid consecutive crashes -> exponential backoff, capped at 30s
+    r, b, n = supervision_decision(crashes=1, seconds_since_last_crash=1); assert (r, b, n) == (True, 4.0, 2)
+    r, b, n = supervision_decision(crashes=3, seconds_since_last_crash=1); assert (r, b, n) == (True, 16.0, 4)
+    r, b, n = supervision_decision(crashes=4, seconds_since_last_crash=1); assert (r, b, n) == (True, 30.0, 5)  # 2^5=32 -> cap 30
+
+    # too many rapid crashes -> give up (crash-loop guard), don't spin forever
+    assert supervision_decision(crashes=5, seconds_since_last_crash=1) == (False, 0.0, 6)
+
+    # a calm period resets the counter, so an occasional crash always self-heals
+    assert supervision_decision(crashes=5, seconds_since_last_crash=9999) == (True, 2.0, 1)
