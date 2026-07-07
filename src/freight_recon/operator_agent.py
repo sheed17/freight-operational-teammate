@@ -173,6 +173,8 @@ class OperatorAgent:
         domain = "unknown"
         forced_nudge: str | None = None   # a one-off instruction injected into the next decision
         self._committed = False           # has a consequential action succeeded this run?
+        self._money_staged = False        # is the approved amount on the form yet? (a submit before this
+        #                                   is navigation — search/filter — not the money commit)
         self._commit_approved: bool | None = None  # cached approval so a failed commit click can retry
         self._readback_confirmed = False  # did a READ after the commit confirm the saved record?
         self._forced_readback = False     # have we already made it read the record back before DONE?
@@ -276,6 +278,7 @@ class OperatorAgent:
                 if not self.approved_amount:
                     return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
                 action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
+                self._money_staged = True  # the approved amount is now on the form -> a later submit commits it
             elif _looks_like_money(action.value):
                 # A CURRENCY-shaped value typed into a NON-money field: the model may be trying to write a
                 # dollar figure somewhere it shouldn't. Fail closed (P0-2). Bare integers/refs (a load
@@ -293,7 +296,12 @@ class OperatorAgent:
             if not consequential and action.kind == LiveActionKind.CLICK:
                 is_submit = getattr(self.actuator, "is_submit_target", None)
                 if callable(is_submit) and is_submit(action.target):
-                    consequential = True
+                    # A form-submit is the money COMMIT only when we're actually on a record form with the
+                    # amount on it — staged by us, or a money input the TMS pre-filled. Before that, a
+                    # submit is navigation (a search/filter to FIND the record, a "next") and must not be
+                    # mistaken for the commit — that false commit then blocks the real save.
+                    if (not self.approved_amount) or self._money_staged or self._form_has_money():
+                        consequential = True
             if consequential:
                 # PREPARE MODE: everything is filled and staged — stop here and let the human commit.
                 if self.prepare_only:
@@ -380,6 +388,19 @@ class OperatorAgent:
                 self.memory.learn_fact(fact, tenant=self.tenant, domain=domain)
         except Exception:  # noqa: BLE001 - memory is best-effort; a success must still be a success
             pass
+
+    def _form_has_money(self) -> bool:
+        """Is there an ACTIVE money input on the current form (typed OR TMS-defaulted)? This tells a
+        record form (a submit here can commit money) apart from a search/list page (a submit is just
+        navigation), so we still gate + reconcile a form whose amount the TMS pre-filled without a type."""
+        getter = getattr(self.actuator, "money_field_values", None)
+        if not callable(getter):
+            return False
+        try:
+            fields = getter() or []
+        except Exception:  # noqa: BLE001
+            return False
+        return any(_money_value((f or {}).get("value")) not in (None, 0) for f in fields)
 
     def _reconcile_money_fields(self) -> str | None:
         """Make the human-approved amount authoritative in every ACTIVE money field before committing.

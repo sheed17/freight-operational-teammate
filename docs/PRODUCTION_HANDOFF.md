@@ -25,8 +25,9 @@ back office unattended across many customers?" — **not yet; here's the list.**
 
 - **Invoice delivered loads** — end-to-end on TruckingOffice, 3 times (invoices #560009–560011):
   TMS trigger → Slack card → approve → the agent fills + saves → **verified by readback** → receipt.
-- **See what's owed** — "who owes us money?" returns a live aged-AR digest ($34.5k across 13 invoices),
-  read straight off `/invoices`.
+- **See what's owed** — "who owes us money?" returns a live aged-AR digest, read straight off `/invoices`.
+- **Record a customer payment** — proven live: applied $184.50 to invoice #560003, cleared it to $0,
+  verified by readback (found + fixed a search-submit-vs-commit bug in the process).
 - **Conversational control** — reply to Neyma in plain English (or `/neyma`): reads answered, controls
   work ("pause tms writes" → brake), money actions proposed with the fence intact.
 - **Safety spine** — money fence (amount never model-chosen), verify-by-readback, commit-once (no
@@ -39,7 +40,6 @@ back office unattended across many customers?" — **not yet; here's the list.**
 Each routes correctly and runs through the same safe spine, but has not been watched succeed on a
 real TMS write. **Do not represent these as proven until each is driven live once:**
 
-- `record_payment` (apply a customer payment) — routes + fenced; live drive pending.
 - `adjust_invoice` (credit / short-pay) — same.
 - `record_payable` (AP) — needs a broker TMS account to prove.
 - `file_document` (attach POD/BOL to a load) — FileSafe target mapped; drive pending.

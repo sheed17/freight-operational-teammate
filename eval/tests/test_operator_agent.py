@@ -257,16 +257,54 @@ def test_committed_write_that_cannot_be_confirmed_escalates_not_done():
 def test_form_submit_click_is_gated_even_when_label_is_not_a_commit_keyword():
     # LIVE-CAUGHT: TruckingOffice's SAVE button is labelled "Create Invoice" (not a commit keyword, and
     # "create" is deliberately excluded because elsewhere it OPENS a form). The label-independent signal
-    # is that it SUBMITS a form. With no approver, that submit must be gated, not committed.
+    # is that it SUBMITS a form. On a record form with the amount present, that submit must be gated.
     class SubmitAwareActuator(FakeActuator):
         def is_submit_target(self, target):
             return "create invoice" in (target or "").lower()
+
+        def money_field_values(self):
+            return [{"target": "Total", "value": "2000.00"}]   # the amount is on the form
 
     act = SubmitAwareActuator()
     llm = _scripted_llm([{"action": "CLICK", "target": "Create Invoice"}])  # the form's submit button
     res = OperatorAgent(actuator=act, complete=llm, approved_amount="2000.00", approve=None).run("invoice")
     assert res.status == "ESCALATED" and "needs approval" in res.note
     assert ("click", "Create Invoice") not in act.calls  # the commit was gated, never clicked
+
+
+def test_search_submit_before_money_is_staged_is_not_the_commit():
+    # LIVE-CAUGHT on record_payment: the agent SEARCHED for the invoice first, and the search box's submit
+    # button tripped is_submit_target -> was mis-counted as the money commit, which then blocked the real
+    # Enter-Payment save (double-commit guard). A submit before any money is on the form is navigation.
+    class SearchThenPayActuator(FakeActuator):
+        def __init__(self):
+            super().__init__()
+            self._on_form = False
+
+        def is_submit_target(self, target):
+            return True                                   # both the search AND the save look like submits
+
+        def type(self, target, value):
+            if "amount" in (target or "").lower():
+                self._on_form = True                      # money now staged on the payment form
+            return super().type(target, value)
+
+        def money_field_values(self):
+            return [{"target": "Amount", "value": "184.50"}] if self._on_form else []
+
+    act = SearchThenPayActuator()
+    llm = _scripted_llm([
+        {"action": "TYPE", "target": "search", "value": "560003"},
+        {"action": "CLICK", "target": "Search"},          # a SUBMIT, but pre-money -> navigation, not commit
+        {"action": "TYPE", "target": "Amount", "value": "x"},  # money staged (fence substitutes)
+        {"action": "CLICK", "target": "Record Payment"},  # the real commit
+        {"action": "READ", "target": "balance"},
+        {"action": "DONE", "why": "payment recorded"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, approved_amount="184.50", approve=lambda a: True).run("pay")
+    assert res.status == "DONE"                            # the search no longer hijacks the commit
+    assert ("click", "Search") in act.calls               # search executed as navigation
+    assert ("click", "Record Payment") in act.calls       # the real save actually happened
 
 
 def test_non_submit_click_with_same_label_is_not_gated():
