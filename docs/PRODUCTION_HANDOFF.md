@@ -40,10 +40,16 @@ back office unattended across many customers?" — **not yet; here's the list.**
 Each routes correctly and runs through the same safe spine, but has not been watched succeed on a
 real TMS write. **Do not represent these as proven until each is driven live once:**
 
-- `adjust_invoice` (credit / short-pay) — same.
+- `adjust_invoice` (credit / short-pay) — WRITE proven live (applied a fenced $50 credit to #560009 via
+  TruckingOffice's write-off; balance $2,000 -> $1,950, verified). Agent escalates on an over-strict
+  verify message instead of DONE — a tuning item, not a failure.
 - `record_payable` (AP) — needs a broker TMS account to prove.
 - `file_document` (attach POD/BOL to a load) — FileSafe target mapped; drive pending.
-- `create_load`, `update_status`, `check_call` (dispatcher ops) — routed + bounded goals; drive pending.
+- `create_load` — LIVE FINDING: TruckingOffice's Add-Load is multi-entity (customer + shipper + consignee
+  addresses via autocomplete finders, creating new ones is a sub-workflow). The agent safely ESCALATES
+  (never invents load data) but the happy path needs pre-existing addresses or a composite flow. Harder
+  op class than the clean single-form writes.
+- `update_status`, `check_call` (dispatcher ops) — routed + bounded goals; drive pending.
 - Detail-page POD verification (decision logic done; the FileSafe DOM read is pending a real attached doc).
 
 ---
