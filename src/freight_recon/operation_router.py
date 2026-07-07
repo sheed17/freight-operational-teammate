@@ -383,6 +383,38 @@ def freight_lanes() -> list[OperationLane]:
             + _guidance(intent)
         )
 
+    def create_load_goal(intent: CommandIntent) -> str:
+        customer = _p(intent, "customer", "the customer")
+        details = _p(intent, "details", intent.summary or "the load details")
+        return (
+            f"Create a new load/order in the TMS for {customer}. Open the new-load / add-order screen and "
+            f"fill it from the request ({details}) — customer, pickup and delivery stops/dates, and the rate "
+            "if one is given (the system supplies any approved amount for a money field — do not choose one). "
+            "Save it, then READ the created load/order number back to confirm it exists. If a required field "
+            "is missing from the request, ESCALATE and ask — never invent load details."
+            + _guidance(intent)
+        )
+
+    def update_status_goal(intent: CommandIntent) -> str:
+        load_ref = _p(intent, "load_ref", "the load")
+        new_status = _p(intent, "status_value", "the requested status")
+        return (
+            f"Update load {load_ref}'s status to {new_status} in the TMS. Open load {load_ref}, set its status "
+            f"(or mark the matching stop) to {new_status}, and save. Then READ the load's status back to "
+            "confirm it changed. If it can't be set as asked, ESCALATE rather than force it."
+            + _guidance(intent)
+        )
+
+    def check_call_goal(intent: CommandIntent) -> str:
+        load_ref = _p(intent, "load_ref", "the load")
+        note = _p(intent, "note", intent.summary or "the tracking update")
+        return (
+            f"Log a check-call / tracking update on load {load_ref}: '{note}'. Open load {load_ref} and add "
+            "the note via its notes/check-call action, save, then READ the saved note back to confirm it "
+            "recorded. Record only what the request says — do not embellish the update."
+            + _guidance(intent)
+        )
+
     # Order matters: more specific lanes first, so "record payment on invoice 5" isn't caught by the
     # invoice lane's "invoice" keyword. Money lanes require a human-approved amount; filing a doc doesn't.
     return [
@@ -400,4 +432,16 @@ def freight_lanes() -> list[OperationLane]:
                       ("attach", "file pod", "file the pod", "file bol", "file document", "upload pod",
                        "upload bol", "attach pod", "attach bol"),
                       file_document_goal, requires_amount=False),
+        OperationLane("create_load",
+                      ("create load", "new load", "add load", "add order", "create order", "new order",
+                       "book a load", "book load", "enter a load", "build a load"),
+                      create_load_goal, requires_amount=False),
+        OperationLane("update_status",
+                      ("update status", "set status", "change status", "status to", "mark delivered",
+                       "delivered", "dispatched", "picked up", "in transit", "mark it"),
+                      update_status_goal, requires_amount=False),
+        OperationLane("check_call",
+                      ("check call", "check-call", "tracking update", "log a call", "add a note",
+                       "driver update", "log note", "note on load"),
+                      check_call_goal, requires_amount=False),
     ]

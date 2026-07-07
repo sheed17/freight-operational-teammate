@@ -278,8 +278,17 @@ def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
     assert lane("credit invoice 560003 by 200 short pay") == "adjust_invoice"
     assert lane("record payable to Iron Horse for LD-5") == "record_payable"
     assert lane("attach the POD to load 105") == "file_document"
+    assert lane("create a new load for Acme from Dallas to Chicago") == "create_load"
+    assert lane("book a load for Coyote") == "create_load"
+    assert lane("mark load 105 delivered") == "update_status"
+    assert lane("update status of 88 to dispatched") == "update_status"
+    assert lane("log a check call on load 105 driver is 50 miles out") == "check_call"
+    # the invoice lane still wins its own phrasing even though it mentions a delivered load
+    assert lane("invoice today's delivered load for Acme") == "raise_invoice"
 
-    # file_document is not a money lane; the AR/AP lanes are
+    # operational lanes create/update/log records without money; the AR/AP lanes require an amount
     lanes = {l.name: l for l in freight_lanes()}
-    assert lanes["file_document"].requires_amount is False
-    assert lanes["record_payment"].requires_amount is True
+    for op in ("file_document", "create_load", "update_status", "check_call"):
+        assert lanes[op].requires_amount is False, op
+    for money in ("raise_invoice", "record_payment", "adjust_invoice", "record_payable"):
+        assert lanes[money].requires_amount is True, money
