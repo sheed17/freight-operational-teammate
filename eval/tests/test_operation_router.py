@@ -305,6 +305,8 @@ def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
     assert lane("bill load 105") == "raise_invoice"
     assert lane("record payment on invoice 560003 for 184.50") == "record_payment"
     assert lane("apply the payment to invoice 560009") == "record_payment"
+    # live-found mis-route: words between "record" and "payment" must not hand it to the invoice lane
+    assert lane("record a 1950 payment on invoice 560009 from Coyote") == "record_payment"
     assert lane("credit invoice 560003 by 200 short pay") == "adjust_invoice"
     assert lane("record payable to Iron Horse for LD-5") == "record_payable"
     assert lane("attach the POD to load 105") == "file_document"

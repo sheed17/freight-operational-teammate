@@ -74,7 +74,12 @@ def test_unrecognized_message_with_no_nl_falls_back_to_help(tmp_path):
         "hey what's up", actor="U1", channel_id="C", config=_config(nl_completer=None),
         ops_control=ops, store=store,
     )
-    assert "text" in out and out["text"].startswith("Commands:")   # graceful help, no action
+    # a conversational miss gets a short human reply, not a command dump (live-found trust-killer)
+    assert "text" in out and "didn't quite get that" in out["text"]
+    out2 = route_conversational_message(
+        "help", actor="U1", channel_id="C", config=_config(nl_completer=None), ops_control=ops, store=store,
+    )
+    assert out2["text"].startswith("Commands:")                    # the full list only when asked
     store.close()
 
 
@@ -242,3 +247,50 @@ def test_who_owes_us_the_most_ranks_by_customer(tmp_path):
     assert "Who owes us the most" in lines[0]
     assert "Global Tranz" in lines[1] and "$18,400.00" in lines[1]   # biggest first
     store.close()
+
+
+def test_typed_operation_binds_the_named_record_and_asks_when_missing(tmp_path):
+    # LIVE-FOUND: owner said "raise_invoice 100" and the agent drove load 101 — the proposal never
+    # carried the record. The named ref must bind into the intent; a record lane with no ref must ASK.
+    from freight_recon.action_callback import _build_operation_command_proposal, _verify_operation_approval_value
+    from freight_recon.operation_router import OperationRouter, freight_lanes
+
+    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    msg = _build_operation_command_proposal("raise_invoice 100 amount 2850.00",
+                                            signer=_SIGNER, router=router, channel_id="C")
+    btn = next(b for b in msg["blocks"] if b["type"] == "actions")["elements"][0]
+    approval = _verify_operation_approval_value(btn["value"], _SIGNER)
+    assert approval.intent.params["load_ref"] == "100"             # anchored to what the owner NAMED
+    assert approval.intent.params["lane"] == "raise_invoice"
+
+    ask = _build_operation_command_proposal("invoice the customer amount 500.00",
+                                            signer=_SIGNER, router=router, channel_id="C")
+    assert "which load/invoice" in ask["text"]                     # no ref -> ask, never freelance
+
+
+def test_non_money_lane_proposal_needs_no_amount(tmp_path):
+    # LIVE-FOUND: "…why are you attaching this to 101?" was answered with "I need an approved amount"
+    # for file_document — a non-money lane must propose without demanding a dollar figure.
+    from freight_recon.action_callback import _build_operation_command_proposal
+    from freight_recon.operation_router import OperationRouter, freight_lanes
+
+    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    msg = _build_operation_command_proposal("attach the POD to load 101",
+                                            signer=_SIGNER, router=router, channel_id="C")
+    assert msg.get("blocks"), msg                                  # a real proposal, not an amount nag
+    assert "need an approved amount" not in (msg.get("text") or "")
+
+
+def test_challenge_in_a_pending_op_thread_gets_op_context_not_a_new_lane(tmp_path):
+    # LIVE-FOUND: the owner's complaint in the escalated thread was lane-matched into file_document.
+    from freight_recon.action_callback import _render_pending_op_context
+
+    pending = {"lane": "raise_invoice", "status": "ESCALATED",
+               "summary": "Invoice the customer for 100",
+               "note": "blocked: POD/BOL attachment file is required but no file is available to upload",
+               "steps": [{"action": "CLICK", "target": "101", "ok": True},
+                         {"action": "CLICK", "target": "Attach BOL", "ok": True}]}
+    out = _render_pending_op_context(pending, "did i not say 100 why are you attaching this to 101?")
+    assert "Invoice the customer for 100" in out and "Clicked 101" in out
+    assert "fresh request" in out                                   # tells the owner how to redirect
+    assert "amount 2850.00" not in out                              # never echoes garbage examples

@@ -465,8 +465,10 @@ def freight_lanes() -> list[OperationLane]:
     # invoice lane's "invoice" keyword. Money lanes require a human-approved amount; filing a doc doesn't.
     return [
         OperationLane("record_payment",
-                      ("record payment", "apply payment", "apply the payment", "enter payment",
-                       "received payment", "payment received", "customer paid", "mark paid", "paid invoice"),
+                      # "payment" is deliberately generic and this lane is FIRST: any request mentioning a
+                      # payment ("record a $1,950 payment on invoice 560009") must win over the invoice
+                      # lane's "invoice" keyword — live-found mis-route during owner dogfooding.
+                      ("payment", "customer paid", "mark paid", "paid invoice"),
                       payment_goal),
         OperationLane("adjust_invoice",
                       ("credit", "short-pay", "short pay", "shortpay", "adjust invoice", "credit memo",

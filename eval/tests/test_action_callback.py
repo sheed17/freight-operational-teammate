@@ -163,7 +163,7 @@ def test_operation_proposal_extracts_amount_from_original_owner_text_not_model_r
         signer=signer,
         router=_noop_router(),
         channel_id="C1",
-        amount_source_text="invoice the delivered load for Acme",
+        amount_source_text="invoice load 105 for Acme",
     )
 
     assert proposal is not None
@@ -177,7 +177,7 @@ def test_operation_proposal_uses_original_text_amount_even_when_model_rewrite_ch
         signer=signer,
         router=_noop_router(),
         channel_id="C1",
-        amount_source_text="invoice the delivered load for Acme for 2850.00",
+        amount_source_text="invoice load 105 for Acme for 2850.00",
     )
 
     assert proposal is not None

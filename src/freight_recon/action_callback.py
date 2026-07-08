@@ -676,6 +676,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 _respond_conversationally(
                     text=reply_text, actor=str(user_id or "owner"),
                     channel_id=channel_id, thread_ts=thread_ts, config=config,
+                    pending_op=resumable,
                 )
                 self._write_json(200, {"ok": True})
                 return
@@ -1055,10 +1056,13 @@ def _extract_load_ref(text: str) -> str | None:
     """Pull a load reference out of a plain-English request ("bill load 105" -> "105"; "invoice LD-4471"
     -> "LD-4471"). Prefers an explicit load/order/# marker; falls back to a standalone 2–6 digit number."""
     text = text or ""
-    m = re.search(r"\b([A-Za-z]{2,4}-?\d{2,6})\b", text)      # a lettered ref: LD-4471, INV-5, PO1234
+    # Money tokens must never read as a record ref ("invoice Acme amount 500.00" is NOT load 500).
+    text = re.sub(r"(?:amount\s+|\$\s*)\$?\d[\d,]*(?:\.\d{1,2})?", " ", text, flags=re.I)
+    text = re.sub(r"\b\d[\d,]*\.\d{1,2}\b", " ", text)          # bare decimals are amounts, not refs
+    m = re.search(r"\b([A-Za-z]{2,4}-?\d{1,6})\b", text)      # a lettered ref: LD-4471, INV-5, PO1234
     if m:
         return m.group(1)
-    m = re.search(r"\b(?:load|order)\s*#?\s*(\d{2,6})\b", text, re.I)   # "load 105", "order #88"
+    m = re.search(r"\b(?:load|order|invoice)\s*#?\s*(\d{2,6})\b", text, re.I)   # "load 105", "invoice 560009"
     if m:
         return m.group(1)
     m = re.search(r"#\s*(\d{2,6})\b", text)
@@ -1224,12 +1228,44 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
             )
             if proposal is not None:
                 return {"proposal": proposal}
+    # Unrecognized: dump the full command list only when the owner ASKS for it — a conversational miss
+    # ("thats not what i mean tho") gets a short human reply, not a wall of commands (live-found).
+    if reply.startswith("Commands:") and not re.search(r"\b(help|commands?|what can you do)\b", (text or "").lower()):
+        return {"text": "I didn't quite get that. Ask me things like *who owes us money?*, *what's happening?*, "
+                        "or tell me an action like *bill load 102* — or say *help* for everything I know."}
     return {"text": reply}
 
 
-def _respond_conversationally(*, text, actor, channel_id, thread_ts, config) -> None:
+def _render_pending_op_context(pending_op: dict, reply_text: str) -> str:
+    """Answer a question/challenge about the pending operation in this thread — what it did, why it
+    stopped, and how to redirect it. LIVE-FOUND: the owner's complaint ("did i not say 100, why are you
+    attaching this to 101?") was keyword-routed into a NEW lane proposal instead of being answered."""
+    lane = pending_op.get("lane") or "operation"
+    summary = str(pending_op.get("summary") or lane)
+    note = str(pending_op.get("note") or "").strip()
+    steps = [s for s in (pending_op.get("steps") or []) if isinstance(s, dict) and s.get("action")]
+    lines = [f"About this run (*{summary}* — {pending_op.get('status', 'pending')}):"]
+    if note:
+        lines.append(f"> {note[:280]}")
+    if steps:
+        from .roi_ledger import build_run_trace
+        trace = build_run_trace(steps)
+        if trace:
+            lines.append("What I actually did:")
+            lines.extend(f"  • {t}" for t in trace[-6:])
+    lines.append(
+        "_If I worked the wrong record or you want changes: give me the correction as a fresh request "
+        "(e.g. `bill load 102 amount 2400.00`) and approve that proposal — this run stays paused. "
+        "Reply `submit` only if you want THIS run to continue as-is._"
+    )
+    return "\n".join(lines)
+
+
+def _respond_conversationally(*, text, actor, channel_id, thread_ts, config, pending_op: dict | None = None) -> None:
     """Route a non-resume owner thread reply through the conversational surface and post the result to
-    the thread (an answer, or a proposal carrying its Approve button in blocks)."""
+    the thread (an answer, or a proposal carrying its Approve button in blocks). When the thread has a
+    PENDING op and the reply isn't a clean read/control, answer about THAT op instead of lane-matching
+    the owner's words into an unrelated new proposal."""
     if config.operation_result_poster is None or not (text or "").strip():
         return
     ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
@@ -1242,12 +1278,17 @@ def _respond_conversationally(*, text, actor, channel_id, thread_ts, config) -> 
         store.close()
     proposal = routed.get("proposal")
     post = {"channel_id": channel_id, "thread_ts": thread_ts}
-    if proposal is not None:
+    routed_text = routed.get("text") or ""
+    if pending_op is not None and (proposal is not None or routed_text.startswith("Commands:") or not routed_text):
+        # In a pending-op thread, a message that would have become a new proposal or a help-dump is
+        # almost certainly ABOUT the op (a challenge, a question, a correction) — answer that.
+        post["text"] = _render_pending_op_context(pending_op, text)
+    elif proposal is not None:
         post["text"] = proposal.get("text", "Neyma proposal")
         if proposal.get("blocks"):
             post["blocks"] = proposal["blocks"]
     else:
-        post["text"] = routed.get("text") or "I didn't catch that — try \"what's outstanding?\" or \"invoice load …\"."
+        post["text"] = routed_text or "I didn't catch that — try \"what's outstanding?\" or \"invoice load …\"."
     try:
         config.operation_result_poster(post)
     except Exception:  # noqa: BLE001 - a conversational reply must never crash the events endpoint
@@ -1506,30 +1547,53 @@ def _build_operation_command_proposal(
     lane = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
     if lane is None:
         return None
-    amount = _extract_command_amount(amount_source_text if amount_source_text is not None else text)
-    if amount is None:
+    # Anchor the operation to the record the owner NAMED. Without this the goal says "...the delivered
+    # load" and the agent picks a record itself — live-found: owner said load 100, agent drove 101.
+    # The ORIGINAL owner text is the authority (same rule as the amount): a model rewrite must not be
+    # able to change which record gets operated.
+    load_ref = _extract_load_ref(amount_source_text) if amount_source_text is not None else None
+    if load_ref is None:
+        load_ref = _extract_load_ref(text)
+    if load_ref is None and lane.name != "create_load":  # every other lane acts ON a specific record
         return {
             "response_type": "ephemeral",
-            "text": f"To run *{lane.name}* I need an approved amount. "
-            f"Example: `{text.strip()} amount 2850.00`.",
+            "text": f"To run *{lane.name}* I need to know which load/invoice. "
+                    "Name the record, e.g. `bill load 102` or `record a payment on invoice 560009`.",
         }
-    intent = CommandIntent(kind=CommandKind.OPERATE, summary=text, params={"approved_amount": amount})
+    params: dict = {"lane": lane.name}
+    if load_ref is not None:
+        params["load_ref"] = load_ref
+    amount = _extract_command_amount(amount_source_text if amount_source_text is not None else text)
+    if lane.requires_amount and amount is None:
+        return {
+            "response_type": "ephemeral",
+            "text": f"To run *{lane.name}* on {load_ref or 'that record'} I need an approved amount — "
+                    "add it like `amount 2400.00` (or name a load and I'll fetch its total from the TMS).",
+        }
+    if amount is not None:
+        params["approved_amount"] = amount
+    intent = CommandIntent(kind=CommandKind.OPERATE, summary=text, params=params)
     value = build_slack_operation_approval_value(
         intent,
         signer,
         approved_amount=amount,
         expected_channel_id=channel_id,
     )
+    record_field = f"*Record*\n{load_ref}" if load_ref else "*Record*\n(new)"
+    amount_field = f"*Approved amount*\n${amount}" if amount else "*Amount*\n(none — not a money action)"
+    button_label = f"Approve ${amount}" if amount else f"Approve {lane.name}"
+    headline = f"Neyma proposal: {lane.name}" + (f" on {load_ref}" if load_ref else "") + (f" for ${amount}" if amount else "")
     return {
         "response_type": "in_channel",
-        "text": f"Neyma proposal: {lane.name} for ${amount}",
+        "text": headline,
         "blocks": [
             {"type": "header", "text": {"type": "plain_text", "text": "Neyma operation proposal"}},
             {
                 "type": "section",
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Lane*\n{lane.name}"},
-                    {"type": "mrkdwn", "text": f"*Approved amount*\n${amount}"},
+                    {"type": "mrkdwn", "text": record_field},
+                    {"type": "mrkdwn", "text": amount_field},
                 ],
             },
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*Request*\n{text}"}},
@@ -1548,7 +1612,7 @@ def _build_operation_command_proposal(
                     {
                         "type": "button",
                         "action_id": "approve_operation_0",
-                        "text": {"type": "plain_text", "text": f"Approve ${amount}"},
+                        "text": {"type": "plain_text", "text": button_label},
                         "style": "primary",
                         "value": value,
                     }
