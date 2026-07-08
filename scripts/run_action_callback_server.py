@@ -178,9 +178,17 @@ def main() -> int:
             invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
             lock_path=(workspace / "browser.busy") if workspace else None,
         )
+        tms_brief_reader = _build_tms_brief_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
     else:
         load_amount_resolver = None
         receivables_reader = None
+        tms_brief_reader = None
 
     # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
     # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
@@ -221,6 +229,7 @@ def main() -> int:
         nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
         load_amount_resolver=load_amount_resolver,
         receivables_reader=receivables_reader,
+        tms_brief_reader=tms_brief_reader,
         operation_cdp_url=args.operation_cdp_url if args.operation_url_filter else None,
         operation_url_filter=args.operation_url_filter or None,
     )
@@ -352,6 +361,42 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
                 _time.sleep(2.5)
                 return receivables_from_invoices_table(CdpActuator(session).observe())
         except Exception:  # noqa: BLE001 - a read miss must not render as a false empty receivables list
+            return None
+
+    return _read
+
+
+def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, lock_path):
+    """The 'what's happening?' snapshot reader: loads by status + ready-to-bill rows + receivables in one
+    pass. Returns None when the shared browser is busy or unreachable (never a fake all-clear)."""
+    import time as _time
+
+    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.operation_proposal import loads_status_counts, ready_to_bill_from_loads_table
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _read():
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                act = CdpActuator(session)
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(2.5)
+                loads_obs = act.observe()
+                session.evaluate(f"location.href={invoices_url!r}")
+                _time.sleep(2.5)
+                invoices_obs = act.observe()
+            return {
+                "status_counts": loads_status_counts(loads_obs),
+                "ready": ready_to_bill_from_loads_table(loads_obs),
+                "receivables": receivables_from_invoices_table(invoices_obs),
+            }
+        except Exception:  # noqa: BLE001 - unreadable TMS must surface as "couldn't read", not zeros
             return None
 
     return _read

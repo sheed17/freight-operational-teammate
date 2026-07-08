@@ -97,6 +97,9 @@ class CallbackAppConfig:
     receivables_reader: Callable[[], "list | None"] | None = None
     ar_aging_min_days: int = 0
     ar_terms_days: int | None = None
+    # Returns {"status_counts", "ready", "receivables"} for the "what's happening?" snapshot, or None
+    # when the TMS couldn't be read (never rendered as an all-clear).
+    tms_brief_reader: Callable[[], "dict | None"] | None = None
 
 
 def handle_signed_action_callback(
@@ -401,6 +404,10 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             try:
                 approval = _verify_operation_approval_value(action_value, config.signer)
                 if approval is None:
+                    # Not a single approval — is it the digest's [Approve all N] batch button?
+                    batch = _parse_operation_batch_value(action_value, config.signer)
+                    if batch is not None:
+                        return self._handle_operation_batch_approval(payload, batch, action_value or "")
                     return None
             except SlackError:
                 self._write_json(400, {"error": "malformed Slack operation approval"})
@@ -537,6 +544,68 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     },
                 },
             )
+            return True
+
+        def _handle_operation_batch_approval(self, payload: dict, batch: dict, action_value: str) -> bool:
+            """The digest's [Approve all N] tap: same authorization + single-use + channel-binding as a
+            single approval; each item then runs the full per-load fence + commit-once in one background
+            pass with ONE consolidated receipt. The tap is the owner's thumbprint on the exact signed
+            (load, customer, amount) list shown in the digest."""
+            user_id = ((payload.get("user") or {}).get("id") or (payload.get("user") or {}).get("username"))
+            channel_id = (
+                (payload.get("channel") or {}).get("id")
+                or (payload.get("container") or {}).get("channel_id")
+                or payload.get("channel_id")
+            )
+            thread_ts = _slack_thread_ts(payload)
+            ok, reason = authorize_command(
+                user_id, channel_id,
+                allowed_users=config.allowed_slack_users, allowed_channel=config.allowed_slack_channel,
+            )
+            if not ok or config.operation_router is None:
+                store = WorkflowStore(config.db_path)
+                try:
+                    store.add_security_event(
+                        "slack_operation_rejected", actor=str(user_id or "unknown"),
+                        payload={"failure": "authorization", "reason": reason, "batch": True},
+                    )
+                finally:
+                    store.close()
+                self._write_json(200, {"replace_original": False, "text": f"Not authorized: {reason}."})
+                return True
+            expected_channel = batch.get("expected_channel_id")
+            if expected_channel and channel_id and expected_channel != channel_id:
+                self._write_json(200, {"replace_original": False,
+                                       "text": "That Approve-all button belongs to a different channel."})
+                return True
+            store = WorkflowStore(config.db_path)
+            try:
+                claimed = store.claim_operation_action(
+                    str(batch["action_id"]), actor=str(user_id or "unknown"),
+                    payload={"batch": True, "items": len(batch["items"]), "channel_id": channel_id},
+                )
+                if not claimed:
+                    self._write_json(200, {"replace_original": False,
+                                           "text": "This Approve-all was already used. Wait for the next digest."})
+                    return True
+                store.add_security_event(
+                    "slack_batch_operation_started", actor=str(user_id or "unknown"),
+                    payload={"action_id": batch["action_id"], "lane": batch.get("lane"),
+                             "items": batch["items"], "channel_id": channel_id, "thread_ts": thread_ts},
+                )
+            finally:
+                store.close()
+            _start_batch_background_run(
+                db_path=config.db_path, router=config.operation_router, batch=batch,
+                actor=str(user_id or "unknown"), channel_id=channel_id, thread_ts=thread_ts,
+                poster=config.operation_result_poster,
+            )
+            n = len(batch["items"])
+            self._write_json(200, {
+                "replace_original": False, "response_type": "ephemeral",
+                "text": f"Approved — posting {n} invoice{'s' if n != 1 else ''} to the TMS now. "
+                        "One consolidated receipt will follow in-thread.",
+            })
             return True
 
         def _handle_slack_events(self, body: bytes) -> None:
@@ -746,6 +815,7 @@ def run_callback_server(
     nl_completer: Callable[[str], str] | None = None,
     load_amount_resolver: Callable[[str], "str | None"] | None = None,
     receivables_reader: Callable[[], "list | None"] | None = None,
+    tms_brief_reader: Callable[[], "dict | None"] | None = None,
     operation_cdp_url: str | None = None,
     operation_url_filter: str | None = None,
 ) -> ThreadingHTTPServer:
@@ -771,6 +841,7 @@ def run_callback_server(
             nl_completer=nl_completer,
             load_amount_resolver=load_amount_resolver,
             receivables_reader=receivables_reader,
+            tms_brief_reader=tms_brief_reader,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
@@ -812,6 +883,59 @@ def build_slack_operation_approval_value(
         expires_at=issued.timestamp() + ttl_seconds,
     ).model_dump(mode="json")
     return _encode_operation_approval(claims, signer)
+
+
+def build_slack_batch_approval_value(
+    items: list[dict],
+    signer: DeliverySigner,
+    *,
+    lane: str = "raise_invoice",
+    expected_channel_id: str | None = None,
+    issued_at: datetime | None = None,
+    ttl_seconds: int = DEFAULT_OPERATION_TOKEN_TTL_SECONDS,
+    action_id: str | None = None,
+) -> str:
+    """Encode the digest's [Approve all N] button: ONE signed, single-use, channel-bound token whose
+    items are the exact (load_ref, customer, amount) rows shown in the digest. The tap is the owner's
+    informed thumbprint on that exact list — amounts are the TMS totals baked in at signing time, so the
+    model can't alter them, and each item still runs the full per-load fence + commit-once."""
+    if not items:
+        raise ValueError("a batch approval needs at least one item")
+    issued = issued_at or datetime.now(timezone.utc)
+    claims = {
+        "type": "operate_batch_approval",
+        "action_id": action_id or uuid.uuid4().hex,
+        "lane": lane,
+        "items": [
+            {"load_ref": str(i["load_ref"]), "customer": str(i.get("customer") or ""),
+             "amount": str(i["amount"])}
+            for i in items
+        ],
+        "expected_channel_id": expected_channel_id,
+        "issued_at": issued.timestamp(),
+        "expires_at": issued.timestamp() + ttl_seconds,
+    }
+    return _encode_operation_approval(claims, signer)
+
+
+def _parse_operation_batch_value(value: str | None, signer: DeliverySigner) -> dict | None:
+    """Verify + decode an [Approve all] batch token. Returns the claims dict or None (not a batch)."""
+    if not value or value.count(".") != 1:
+        return None
+    try:
+        raw = _decode_operation_approval(value, signer)
+    except DeliverySignatureError as exc:
+        raise SlackError("Slack batch approval signature is invalid") from exc
+    if not isinstance(raw, dict) or raw.get("type") != "operate_batch_approval":
+        return None
+    items = raw.get("items")
+    if not isinstance(items, list) or not items or not all(
+        isinstance(i, dict) and i.get("load_ref") and i.get("amount") for i in items
+    ):
+        raise SlackError("Slack batch approval payload is malformed")
+    if datetime.now(timezone.utc).timestamp() > float(raw.get("expires_at") or 0):
+        raise SlackError("Slack batch approval is expired")
+    return raw
 
 
 def _parse_slack_payload(body: str) -> dict:
@@ -955,6 +1079,41 @@ def _is_aging_query(text: str) -> bool:
     return any(h in t for h in _AGING_HINTS)
 
 
+_BRIEF_HINTS = ("what's happening", "whats happening", "what is happening", "brief", "snapshot",
+                "morning update", "rundown", "run down", "how do things look", "state of the tms",
+                "tms status", "whats going on", "what's going on")
+
+
+def _is_brief_query(text: str) -> bool:
+    t = (text or "").lower()
+    return any(h in t for h in _BRIEF_HINTS)
+
+
+def render_tms_brief(status_counts: dict, ready_rows: list, aged: list) -> str:
+    """The owner's pocket snapshot: loads by status, what's ready to bill, what's outstanding. Read-only
+    and honest — sections it couldn't read say so instead of pretending zero."""
+    from decimal import Decimal
+    lines = [":truck: *TMS right now:*"]
+    if status_counts:
+        by = " · ".join(f"{n} {s}" for s, n in sorted(status_counts.items(), key=lambda kv: -kv[1]))
+        lines.append(f"• Loads: {by}")
+    else:
+        lines.append("• Loads: couldn't read the loads list just now.")
+    if ready_rows:
+        total = sum(Decimal(str(r["amount"])) for r in ready_rows)
+        lines.append(f"• Ready to bill: {len(ready_rows)} load{'s' if len(ready_rows) != 1 else ''} (${total:,.2f}) — the next digest will carry the buttons.")
+    else:
+        lines.append("• Ready to bill: nothing new.")
+    if aged:
+        out_total = sum(Decimal(r["balance_due"]) for r in aged)
+        pd = [r for r in aged if r.get("past_due")]
+        tail = f", {len(pd)} past due" if pd else ""
+        lines.append(f"• Outstanding AR: ${out_total:,.2f} across {len(aged)} invoice{'s' if len(aged) != 1 else ''}{tail} — ask *who owes us the most* for the ranking.")
+    else:
+        lines.append("• Outstanding AR: all paid (or unreadable just now — ask *who owes us* to re-check).")
+    return "\n".join(lines)
+
+
 _RESUME_WORDS = {
     "submit", "commit", "approve", "approved", "confirm", "confirmed", "proceed",
     "yes", "yep", "yeah", "okay", "retry",   # note: NOT "resume" (that's the 'resume tms writes' control)
@@ -982,6 +1141,19 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
     Reuses the exact interpreter + gates the ``/neyma`` slash path uses, so nothing here bypasses them —
     the owner just no longer needs the slash prefix; they reply to Neyma in plain English and it acts.
     """
+    # "What's happening?" -> the pocket TMS snapshot (loads by status + ready-to-bill + outstanding AR).
+    if _is_brief_query(text) and getattr(config, "tms_brief_reader", None) is not None:
+        brief = config.tms_brief_reader()
+        if brief is None:
+            return {"text": ":warning: I couldn't read the TMS just now (browser busy or unreachable) — "
+                            "ask me again in a moment."}
+        from datetime import date
+
+        from .ar_collections import aged_unpaid
+        aged = aged_unpaid(brief.get("receivables") or [], as_of=date.today(),
+                           min_days=getattr(config, "ar_aging_min_days", 0),
+                           terms_days=getattr(config, "ar_terms_days", None))
+        return {"text": render_tms_brief(brief.get("status_counts") or {}, brief.get("ready") or [], aged)}
     # AR aging is a read: "what's outstanding / who owes us / aging" -> a live aged-receivables digest.
     if _is_aging_query(text) and getattr(config, "receivables_reader", None) is not None:
         from datetime import date
@@ -996,6 +1168,11 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
         aged = aged_unpaid(receivables, as_of=date.today(),
                            min_days=getattr(config, "ar_aging_min_days", 0),
                            terms_days=getattr(config, "ar_terms_days", None))
+        # "who owes us the MOST / top / biggest debtors" -> ranked by customer (the chief-of-staff view);
+        # otherwise the per-invoice outstanding digest.
+        if re.search(r"\b(most|top|biggest|largest|rank)\b", (text or "").lower()):
+            from .ar_collections import render_top_debtors
+            return {"text": render_top_debtors(aged)}
         return {"text": render_aging_digest(aged)}
     reply = handle_ops_command(
         text,
@@ -1086,6 +1263,66 @@ def _receipt_text(result, amount, diag) -> str:
     if diag is not None and not diag.is_clean():
         text += "\n" + render_diagnosis(diag)
     return text
+
+
+def _start_batch_background_run(
+    *,
+    db_path: str,
+    router: OperationRouter,
+    batch: dict,
+    actor: str,
+    channel_id: str | None,
+    thread_ts: str | None,
+    poster: Callable[[dict], None] | None,
+) -> threading.Thread:
+    """Run the digest's approved batch: each item through the SAME per-load fence + commit-once (a
+    partial failure is contained — the rest still bill), then ONE consolidated receipt in-thread."""
+    lane = str(batch.get("lane") or "raise_invoice")
+
+    def _run() -> None:
+        outcomes: list[tuple[str, str, str]] = []  # (load_ref, status, note)
+        for item in batch["items"]:
+            load_ref, customer, amount = str(item["load_ref"]), str(item.get("customer") or ""), str(item["amount"])
+            intent = CommandIntent(
+                kind=CommandKind.OPERATE,
+                summary=f"Invoice {customer or 'the customer'} for {load_ref}",
+                params={"lane": lane, "customer": customer, "load_ref": load_ref,
+                        "approved_amount": amount, "commit": True},
+            )
+            try:
+                result = router.run(intent, approve=_single_consequential_approval())
+                status, note = result.status, result.note
+            except Exception as exc:  # noqa: BLE001 - one bad item must not sink the batch
+                status, note = "FAILED", f"{type(exc).__name__}: {exc}"[:300]
+            outcomes.append((load_ref, status, note))
+            store = WorkflowStore(db_path)
+            try:
+                store.add_security_event(
+                    "slack_operation_applied", actor=actor,
+                    payload={"batch_action_id": batch["action_id"], "lane": lane, "load_ref": load_ref,
+                             "approved_amount": amount, "status": status, "note": note,
+                             "channel_id": channel_id, "thread_ts": thread_ts,
+                             "summary": f"Invoice {customer} for {load_ref}"},
+                )
+            finally:
+                store.close()
+        if poster is not None:
+            done = [o for o in outcomes if o[1] == "DONE"]
+            rest = [o for o in outcomes if o[1] != "DONE"]
+            lines = [f"✅ Batch finished — {len(done)}/{len(outcomes)} invoiced."]
+            for ref, _s, note in done:
+                lines.append(f"  • {ref}: done — {note[:80]}")
+            for ref, s, note in rest:
+                lines.append(f"  ✋ {ref}: {s} — {note[:120]}")
+            try:
+                poster({"channel_id": channel_id, "thread_ts": thread_ts,
+                        "text": "\n".join(lines), "status": "BATCH_DONE", "lane": lane})
+            except Exception:  # noqa: BLE001 - the receipt is best-effort; the audit log has the truth
+                pass
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return thread
 
 
 def _start_operation_background_run(

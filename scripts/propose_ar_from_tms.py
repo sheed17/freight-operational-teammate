@@ -38,10 +38,10 @@ from freight_recon.channels import load_delivery_config, slack_channel_for_route
 from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.operation_proposal import (  # noqa: E402
     attachment_labels_from_detail_observation,
+    build_ready_to_bill_digest,
     has_pod_from_detail,
     loads_missing_pod,
     loads_unknown_pod,
-    post_operation_proposal,
     ready_to_bill_from_loads_table,
 )
 from freight_recon.review import ReviewRoute  # noqa: E402
@@ -150,67 +150,60 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
         autonomous_rows, supervised_rows = autonomy_split(billable, graduation=getattr(router, "graduation", None))
     # Autonomous first — each write holds the browser lock and may flip its load to Invoiced.
     autocommitted = _run_autonomous(autonomous_rows, router=router, store=store, live=live, poster=poster, channel=channel)
-    proposals = _buttons_for_rows(supervised_rows, signer=signer, channel=channel)
-    blocked = _pod_block_messages_for_rows([r for r in ready if r.get("has_pod") is not True], channel=channel) if require_pod else []
+    blocked_rows = [r for r in ready if r.get("has_pod") is not True] if require_pod else []
     if store is not None:
         already = {
             e["payload"].get("load_ref")
             for e in store.security_events()
             if e["event_type"] == _INVOICE_PROPOSED_EVENT
         }
-        proposals = [m for m in proposals if m.get("load_ref") not in already]
+        supervised_rows = [r for r in supervised_rows if r.get("load_ref") not in already]
         already_blocked = {
             (e["payload"].get("load_ref"), e["payload"].get("reason"))
             for e in store.security_events()
             if e["event_type"] == _INVOICE_BLOCKED_EVENT
         }
-        blocked = [
-            m for m in blocked
-            if (m.get("load_ref"), m.get("reason")) not in already_blocked
-        ]
-    if not proposals and not blocked and not autonomous_rows:
+        blocked_rows = [r for r in blocked_rows if (r.get("load_ref"), _pod_reason(r)) not in already_blocked]
+    if not supervised_rows and not blocked_rows and not autonomous_rows:
         print("propose-ar-from-tms: no new ready-to-bill loads.")
         return 0
+    # ONE digest instead of a wall of per-load posts (the owner narrative's summary ping). Capped per
+    # cycle, so a first-run backlog trickles in digestible batches instead of flooding the channel.
+    digest = build_ready_to_bill_digest(supervised_rows, signer=signer, channel_id=channel, blocked=blocked_rows)
     if not live:
-        for m in proposals:
-            print("   -", m.get("text"))
-        for m in blocked:
-            print("   - BLOCKED:", m.get("text"))
-        print(f"(dry-run: {len(autonomous_rows)} autonomous, would post {len(proposals)} button(s), "
-              f"{len(blocked)} POD exception(s))")
+        if digest is not None:
+            print("   - DIGEST:", digest.get("text"))
+            for r in supervised_rows[:10]:
+                print(f"       • {r.get('load_ref')} {r.get('customer')} ${r.get('amount')}")
+        print(f"(dry-run: {len(autonomous_rows)} autonomous, digest covers {len(digest.get('load_refs') or []) if digest else 0} "
+              f"button(s) + {len(blocked_rows)} POD exception(s))")
         return 0
     posted = 0
-    for message in proposals:
-        result = post_operation_proposal(message, poster=poster)
+    if digest is not None:
+        result = poster.post_message(channel=digest["channel"], payload={"text": digest["text"], "blocks": digest["blocks"]})
         if getattr(result, "ok", False):
-            posted += 1
+            shown = set(digest.get("load_refs") or [])
+            posted = len(shown)
             if store is not None:
-                store.add_security_event(
-                    _INVOICE_PROPOSED_EVENT, actor="system",
-                    payload={"load_ref": message.get("load_ref"), "channel_id": channel},
-                )
-    blocked_posted = 0
-    for message in blocked:
-        result = poster.post_message(
-            channel=message["channel"],
-            payload={"text": message["text"], "blocks": message["blocks"]},
-        )
-        if getattr(result, "ok", False):
-            blocked_posted += 1
-            if store is not None:
-                store.add_security_event(
-                    _INVOICE_BLOCKED_EVENT, actor="system",
-                    payload={
-                        "load_ref": message.get("load_ref"),
-                        "reason": message.get("reason"),
-                        "channel_id": channel,
-                    },
-                )
+                for ref in shown:  # only the loads actually SHOWN are marked proposed; the rest follow next cycle
+                    store.add_security_event(
+                        _INVOICE_PROPOSED_EVENT, actor="system",
+                        payload={"load_ref": ref, "channel_id": channel},
+                    )
+                for r in blocked_rows[:8]:
+                    store.add_security_event(
+                        _INVOICE_BLOCKED_EVENT, actor="system",
+                        payload={"load_ref": r.get("load_ref"), "reason": _pod_reason(r), "channel_id": channel},
+                    )
     print(
-        f"propose-ar-from-tms: auto-invoiced {autocommitted}, posted {posted}/{len(proposals)} "
-        f"invoice button(s) and {blocked_posted}/{len(blocked)} POD exception(s) to {channel}."
+        f"propose-ar-from-tms: auto-invoiced {autocommitted}, digest posted with {posted} approve "
+        f"button(s) + {min(len(blocked_rows), 8)} POD exception(s) to {channel}."
     )
     return posted
+
+
+def _pod_reason(row: dict) -> str:
+    return "missing_pod" if row.get("has_pod") is False else "unknown_pod"
 
 
 def _resolve_unknown_pods_from_detail(*, act, rows: list[dict], loads_url: str, list_observation: dict | None) -> list[dict]:

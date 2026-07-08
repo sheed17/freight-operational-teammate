@@ -405,6 +405,107 @@ def proposals_for_ready_to_bill(
     return proposals
 
 
+def loads_status_counts(observation: dict | None) -> dict[str, int]:
+    """Count loads by status off a /loads-table observation — the 'what's happening in the TMS' read.
+    Header-driven like :func:`ready_to_bill_from_loads_table`; rows without a readable status count as
+    '(unknown)'. Pure and deterministic."""
+    counts: dict[str, int] = {}
+    for table in (observation or {}).get("tables") or []:
+        headers = [str(h).strip().lower() for h in (table.get("headers") or [])]
+        if not headers:
+            continue
+
+        def col(opts, hs=headers):
+            for i, h in enumerate(hs):
+                if any(o in h for o in opts):
+                    return i
+            return None
+
+        i_load, i_status = col(["load #", "load#", "load"]), col(["status"])
+        if i_load is None or i_status is None:
+            continue
+        for row in table.get("rows") or []:
+            cells = [str(c).strip() for c in (row.get("cells") or [])]
+            if len(cells) <= max(i_load, i_status):
+                continue
+            ref = cells[i_load]
+            if not ref or ref.lower() in ("load #", "load", "load#") or not any(ch.isdigit() for ch in ref):
+                continue
+            status = cells[i_status] or "(unknown)"
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def build_ready_to_bill_digest(
+    rows: list[dict],
+    *,
+    signer: DeliverySigner,
+    channel_id: str,
+    blocked: list[dict] | None = None,
+    batch_limit: int = 10,
+) -> dict | None:
+    """ONE digest message instead of a wall of per-load posts — the owner narrative's 4PM summary:
+    "N delivered, ready to bill (Approve All) · M discrepancies". Each listed load keeps its own signed
+    single-use Approve button; [Approve all N] carries one signed batch token over the exact rows shown
+    (amounts are the TMS totals baked in at signing). Blocked/POD-exception loads are folded in as
+    context lines, not separate messages. Returns None when there is nothing to say."""
+    from decimal import Decimal
+
+    from .action_callback import build_slack_batch_approval_value
+
+    rows = list(rows or [])[:batch_limit]
+    blocked = list(blocked or [])
+    if not rows and not blocked:
+        return None
+    blocks: list[dict] = []
+    load_refs = [r.get("load_ref") for r in rows]
+    total = sum(Decimal(str(r["amount"])) for r in rows) if rows else Decimal("0")
+    if rows:
+        blocks.append({"type": "header", "text": {
+            "type": "plain_text",
+            "text": f"📦 {len(rows)} load{'s' if len(rows) != 1 else ''} ready to bill — ${total:,.2f}"}})
+        for r in rows:
+            intent = CommandIntent(
+                kind=CommandKind.OPERATE,
+                summary=f"Invoice {r.get('customer') or 'the customer'} for {r['load_ref']}",
+                params={"lane": "raise_invoice", "customer": r.get("customer"), "load_ref": r["load_ref"]},
+            )
+            value = build_slack_operation_approval_value(
+                intent, signer, approved_amount=str(r["amount"]), expected_channel_id=channel_id,
+            )
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn",
+                         "text": f"*{r['load_ref']}* {r.get('customer') or ''} — ${Decimal(str(r['amount'])):,.2f}"},
+                "accessory": {"type": "button", "action_id": f"{APPROVE_ACTION_ID}_{r['load_ref']}",
+                              "text": {"type": "plain_text", "text": "Approve"}, "value": value},
+            })
+        if len(rows) >= 2:
+            batch_value = build_slack_batch_approval_value(
+                [{"load_ref": r["load_ref"], "customer": r.get("customer"), "amount": str(r["amount"])}
+                 for r in rows],
+                signer, expected_channel_id=channel_id,
+            )
+            blocks.append({"type": "actions", "elements": [{
+                "type": "button", "style": "primary", "action_id": "approve_operation_batch",
+                "text": {"type": "plain_text", "text": f"✅ Approve all {len(rows)} (${total:,.2f})"},
+                "value": batch_value}]})
+            blocks.append({"type": "context", "elements": [{
+                "type": "mrkdwn",
+                "text": "_Approve all posts every listed invoice to the TMS at the shown amounts, "
+                        "verified per load; one consolidated receipt follows._"}]})
+    if blocked:
+        lines = [f"• {b.get('load_ref')} {b.get('customer') or ''} — "
+                 f"{'missing POD' if b.get('has_pod') is False else 'POD unproven'}" for b in blocked[:8]]
+        blocks.append({"type": "context", "elements": [{
+            "type": "mrkdwn",
+            "text": f"⚠️ *{len(blocked)} not billable yet (POD):*\n" + "\n".join(lines)}]})
+    text = (f"{len(rows)} ready to bill (${total:,.2f})" if rows else "") + \
+           (f" · {len(blocked)} blocked on POD" if blocked else "")
+    return {"channel": channel_id, "text": text.strip() or "Neyma billing digest",
+            "blocks": blocks, "load_refs": load_refs}
+
+
 def post_operation_proposal(message: dict, *, poster) -> "object":
     """Post a built proposal message (with its Approve button) to Slack via an injected poster.
 

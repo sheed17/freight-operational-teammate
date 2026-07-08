@@ -98,6 +98,43 @@ def aged_unpaid(receivables, *, as_of: date, min_days: int = 0, terms_days: int 
     return sorted(aged, key=lambda r: r["days_outstanding"], reverse=True)
 
 
+def receivables_by_customer(aged) -> list[dict]:
+    """Group outstanding receivables by customer, biggest debtor first — the chief-of-staff answer to
+    "who owes us the most?". Each entry: {customer, total, count, oldest_days, past_due_total}. Pure and
+    deterministic (built from an already-aged list, so terms/past-due tagging carries through)."""
+    groups: dict[str, dict] = {}
+    for r in aged:
+        key = r.get("customer") or "(unknown customer)"
+        g = groups.setdefault(key, {"customer": key, "total": Decimal("0"), "count": 0,
+                                    "oldest_days": 0, "past_due_total": Decimal("0")})
+        g["total"] += Decimal(r["balance_due"])
+        g["count"] += 1
+        g["oldest_days"] = max(g["oldest_days"], int(r.get("days_outstanding", 0)))
+        if r.get("past_due"):
+            g["past_due_total"] += Decimal(r["balance_due"])
+    out = sorted(groups.values(), key=lambda g: g["total"], reverse=True)
+    return [{**g, "total": f"{g['total']:.2f}", "past_due_total": f"{g['past_due_total']:.2f}"} for g in out]
+
+
+def render_top_debtors(aged, *, limit: int = 5) -> str:
+    """Owner-facing "who owes us the most": customers ranked by outstanding balance. Only claims
+    "past due" for amounts genuinely beyond configured terms; otherwise says "within terms"."""
+    groups = receivables_by_customer(aged)
+    if not groups:
+        return ":information_source: No outstanding receivables — every invoice is paid in full."
+    lines = [":trophy: *Who owes us the most:*"]
+    for g in groups[:limit]:
+        n = g["count"]
+        detail = f"{n} invoice{'s' if n != 1 else ''}, oldest {g['oldest_days']}d"
+        pd = Decimal(g["past_due_total"])
+        status = f" — ${pd:,.2f} past due" if pd > 0 else " — within terms" if Decimal(g["total"]) > 0 else ""
+        lines.append(f"• *{g['customer']}* — ${Decimal(g['total']):,.2f} ({detail}){status}")
+    if len(groups) > limit:
+        rest = sum(Decimal(g["total"]) for g in groups[limit:])
+        lines.append(f"…and {len(groups) - limit} more customers (${rest:,.2f}).")
+    return "\n".join(lines)
+
+
 def render_aging_digest(aged) -> str:
     """The owner-facing outstanding-AR digest. Uses NEUTRAL language ("outstanding / N days since
     invoiced") — it only says "past due" for invoices tagged genuinely beyond terms, never for merely

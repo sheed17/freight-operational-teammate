@@ -66,3 +66,32 @@ def test_aging_digest_totals_the_outstanding_balance():
 
 def test_empty_when_nothing_is_aged():
     assert "No outstanding receivables" in render_aging_digest([])
+
+
+def test_receivables_by_customer_ranks_biggest_debtor_first():
+    from freight_recon.ar_collections import receivables_by_customer
+
+    aged = [
+        {"invoice": "1", "customer": "Global Tranz", "balance_due": "4500.00", "days_outstanding": 41, "past_due": True},
+        {"invoice": "2", "customer": "Global Tranz", "balance_due": "13900.00", "days_outstanding": 12, "past_due": False},
+        {"invoice": "3", "customer": "Chiquita Brands", "balance_due": "12000.00", "days_outstanding": 9, "past_due": False},
+    ]
+    groups = receivables_by_customer(aged)
+    assert [g["customer"] for g in groups] == ["Global Tranz", "Chiquita Brands"]
+    top = groups[0]
+    assert top["total"] == "18400.00" and top["count"] == 2 and top["oldest_days"] == 41
+    assert top["past_due_total"] == "4500.00"          # only the genuinely-late piece
+
+
+def test_render_top_debtors_reads_like_the_owner_narrative():
+    from freight_recon.ar_collections import render_top_debtors
+
+    aged = [
+        {"invoice": "1", "customer": "Global Tranz", "balance_due": "18400.00", "days_outstanding": 41, "past_due": True},
+        {"invoice": "2", "customer": "Chiquita Brands", "balance_due": "12000.00", "days_outstanding": 9, "past_due": False},
+    ]
+    out = render_top_debtors(aged)
+    assert "Global Tranz" in out.splitlines()[1]        # biggest first
+    assert "$18,400.00" in out and "past due" in out
+    assert "Chiquita Brands" in out and "within terms" in out   # never mislabels in-terms money
+    assert render_top_debtors([]).startswith(":information_source:")

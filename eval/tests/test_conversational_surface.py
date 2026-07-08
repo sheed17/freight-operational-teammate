@@ -149,3 +149,96 @@ def test_resume_signal_distinguishes_continue_from_a_new_question():
     for no in ["who owes us money?", "what have you done today", "what's our aging",
                "bill load 105", "how did we do", "status", "resume tms writes"]:
         assert not _is_resume_signal(no), no
+
+
+def test_batch_background_run_fences_each_item_and_posts_one_consolidated_receipt(tmp_path):
+    # [Approve all N]: every item runs through the router with ITS signed amount (commit authorized by
+    # the tap); one consolidated receipt; per-item audit events; one bad item doesn't sink the batch.
+    import threading as _threading
+
+    from freight_recon.action_callback import _start_batch_background_run
+    from freight_recon.operation_router import OperationResult
+
+    ran = []
+
+    class _Router:
+        def run(self, intent, approve=None):
+            ran.append(dict(intent.params))
+            if intent.params["load_ref"] == "104":
+                raise RuntimeError("browser hiccup")          # one failure, contained
+            return OperationResult("DONE", "raise_invoice", f"invoice for {intent.params['load_ref']} saved", [])
+
+    posts = []
+
+    def poster(payload):
+        posts.append(payload)
+
+    store = WorkflowStore(str(tmp_path / "w.sqlite3")); store.close()
+    batch = {"action_id": "batch1", "lane": "raise_invoice", "items": [
+        {"load_ref": "103", "customer": "Acme", "amount": "2500.00"},
+        {"load_ref": "104", "customer": "Echo", "amount": "1200.00"},
+    ]}
+    t = _start_batch_background_run(db_path=str(tmp_path / "w.sqlite3"), router=_Router(), batch=batch,
+                                    actor="U1", channel_id="C", thread_ts="1.1", poster=poster)
+    t.join(timeout=10)
+    assert [p["load_ref"] for p in ran] == ["103", "104"]
+    assert all(p["approved_amount"] in ("2500.00", "1200.00") and p["commit"] is True for p in ran)
+    assert len(posts) == 1                                    # ONE consolidated receipt
+    text = posts[0]["text"]
+    assert "1/2 invoiced" in text and "103" in text and "104" in text and "FAILED" in text
+    s = WorkflowStore(str(tmp_path / "w.sqlite3"))
+    try:
+        events = [e for e in s.security_events() if e["event_type"] == "slack_operation_applied"]
+        assert len(events) == 2                               # per-item audit trail
+        assert all(e["payload"].get("batch_action_id") == "batch1" for e in events)
+    finally:
+        s.close()
+
+
+def test_whats_happening_brief_composes_loads_ready_and_ar(tmp_path):
+    # "what's happening?" -> the pocket snapshot: loads by status + ready-to-bill + outstanding AR.
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.tms_brief_reader = lambda: {
+        "status_counts": {"Delivered": 2, "Dispatched": 1, "Invoiced": 3},
+        "ready": [{"load_ref": "103", "customer": "Acme", "amount": "2500.00"}],
+        "receivables": [{"invoice": "560009", "customer": "Coyote", "total": "2000.00",
+                         "balance_due": "1950.00", "invoiced_on": "2020-01-01"}],
+    }
+    out = route_conversational_message(
+        "what's happening?", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    text = out["text"]
+    assert "2 Delivered" in text and "3 Invoiced" in text
+    assert "Ready to bill: 1 load ($2,500.00)" in text
+    assert "$1,950.00" in text                       # outstanding AR total
+    store.close()
+
+
+def test_whats_happening_brief_never_fakes_an_all_clear(tmp_path):
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.tms_brief_reader = lambda: None              # busy/unreadable TMS
+    out = route_conversational_message(
+        "what's happening", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    assert "couldn't read the TMS" in out["text"]
+    store.close()
+
+
+def test_who_owes_us_the_most_ranks_by_customer(tmp_path):
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.receivables_reader = lambda: [
+        {"invoice": "1", "customer": "Global Tranz", "balance_due": "18400.00", "total": "18400.00",
+         "invoiced_on": "2020-01-01"},
+        {"invoice": "2", "customer": "Chiquita Brands", "balance_due": "12000.00", "total": "12000.00",
+         "invoiced_on": "2020-01-02"},
+    ]
+    out = route_conversational_message(
+        "who owes us the most?", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    lines = out["text"].splitlines()
+    assert "Who owes us the most" in lines[0]
+    assert "Global Tranz" in lines[1] and "$18,400.00" in lines[1]   # biggest first
+    store.close()

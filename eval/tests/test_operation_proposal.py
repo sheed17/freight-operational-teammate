@@ -349,9 +349,10 @@ def test_live_ar_cycle_requires_pod_and_posts_missing_pod_exception():
     )
 
     assert posted == 0
-    assert len(poster.messages) == 1
-    assert "Missing POD" in poster.messages[0]["text"]
-    assert "Approve & run" not in json.dumps(poster.messages[0])
+    assert len(poster.messages) == 1                                  # ONE digest, not separate posts
+    assert "blocked on POD" in poster.messages[0]["text"]
+    assert "missing POD" in json.dumps(poster.messages[0])
+    assert "Approve" not in json.dumps(poster.messages[0]["blocks"])  # no money button for a blocked load
 
 
 def test_live_ar_cycle_default_pod_gate_blocks_unknown_pod_status():
@@ -376,8 +377,9 @@ def test_live_ar_cycle_default_pod_gate_blocks_unknown_pod_status():
 
     assert posted == 0
     assert len(poster.messages) == 1
-    assert "POD status unknown" in poster.messages[0]["text"]
-    assert "Approve & run" not in json.dumps(poster.messages[0])
+    assert "blocked on POD" in poster.messages[0]["text"]
+    assert "POD unproven" in json.dumps(poster.messages[0])
+    assert "Approve" not in json.dumps(poster.messages[0]["blocks"])
 
 
 def test_live_ar_cycle_resolves_unknown_pod_from_detail_page():
@@ -406,7 +408,8 @@ def test_live_ar_cycle_resolves_unknown_pod_from_detail_page():
 
     assert posted == 1
     assert len(poster.messages) == 1
-    assert "Approve & run" in json.dumps(poster.messages[0])
+    assert "ready to bill" in poster.messages[0]["text"]
+    assert "Approve" in json.dumps(poster.messages[0]["blocks"])      # the per-load button
 
 
 def test_live_ar_cycle_blocks_when_detail_page_has_rate_con_but_no_pod():
@@ -435,8 +438,9 @@ def test_live_ar_cycle_blocks_when_detail_page_has_rate_con_but_no_pod():
 
     assert posted == 0
     assert len(poster.messages) == 1
-    assert "Missing POD" in poster.messages[0]["text"]
-    assert "Approve & run" not in json.dumps(poster.messages[0])
+    assert "blocked on POD" in poster.messages[0]["text"]
+    assert "missing POD" in json.dumps(poster.messages[0])
+    assert "Approve" not in json.dumps(poster.messages[0]["blocks"])
 
 
 def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():
@@ -462,7 +466,8 @@ def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():
 
     assert posted == 1
     assert len(poster.messages) == 1
-    assert "Approve & run" in json.dumps(poster.messages[0])
+    assert "ready to bill" in poster.messages[0]["text"]
+    assert "Approve" in json.dumps(poster.messages[0]["blocks"])
 
 
 def test_detail_page_pod_classifier_counts_delivery_proof_not_rate_con():
@@ -506,3 +511,81 @@ def test_no_button_for_non_lane_or_amountless_assessments():
     ready = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_lane="raise_invoice",
                             suggested_action="ready", load_ref="LD-2", confidence=0.8, rationale="")
     assert proposal_from_assessment(ready, _SIGNER, channel_id="C", approved_amount=None) is None
+
+
+def test_ready_to_bill_digest_is_one_message_with_per_load_and_approve_all_buttons():
+    # The owner narrative's summary ping: ONE message — per-load Approve buttons + [Approve all N] +
+    # blocked/POD exceptions folded in as context, never separate posts.
+    from freight_recon.operation_proposal import build_ready_to_bill_digest
+
+    rows = [
+        {"load_ref": "103", "customer": "Acme", "amount": "2500.00", "has_pod": True},
+        {"load_ref": "104", "customer": "Echo", "amount": "1200.00", "has_pod": True},
+    ]
+    blocked = [{"load_ref": "105", "customer": "Zeta", "amount": "900.00", "has_pod": False}]
+    digest = build_ready_to_bill_digest(rows, signer=_SIGNER, channel_id="C", blocked=blocked)
+    assert digest["load_refs"] == ["103", "104"]
+    assert "2 ready to bill" in digest["text"] and "$3,700.00" in digest["text"]
+    kinds = [b["type"] for b in digest["blocks"]]
+    assert kinds.count("section") == 2                      # one row per load, each with its own button
+    assert "actions" in kinds                               # the Approve-all block
+    per_load = [b for b in digest["blocks"] if b["type"] == "section"]
+    assert all(b["accessory"]["type"] == "button" for b in per_load)
+    batch_btn = next(b for b in digest["blocks"] if b["type"] == "actions")["elements"][0]
+    assert "Approve all 2" in batch_btn["text"]["text"]
+    ctx = "\n".join(str(b) for b in digest["blocks"] if b["type"] == "context")
+    assert "105" in ctx and "missing POD" in ctx            # blocked folded in, not a separate message
+
+
+def test_digest_batch_token_round_trips_and_preserves_exact_amounts():
+    # The [Approve all] value must verify + carry the EXACT (load, amount) list shown — the tap is the
+    # owner's thumbprint on those amounts; nothing downstream may alter them.
+    from freight_recon.action_callback import (
+        _parse_operation_batch_value,
+        build_slack_batch_approval_value,
+    )
+
+    value = build_slack_batch_approval_value(
+        [{"load_ref": "103", "customer": "Acme", "amount": "2500.00"},
+         {"load_ref": "104", "customer": "Echo", "amount": "1200.00"}],
+        _SIGNER, expected_channel_id="C",
+    )
+    batch = _parse_operation_batch_value(value, _SIGNER)
+    assert batch["lane"] == "raise_invoice" and batch["expected_channel_id"] == "C"
+    assert [(i["load_ref"], i["amount"]) for i in batch["items"]] == [("103", "2500.00"), ("104", "1200.00")]
+    # a tampered token must not verify
+    import pytest
+    from freight_recon.action_callback import SlackError
+    tampered = value[:-4] + ("aaaa" if not value.endswith("aaaa") else "bbbb")
+    with pytest.raises(SlackError):
+        _parse_operation_batch_value(tampered, _SIGNER)
+
+
+def test_digest_caps_the_batch_so_a_backlog_trickles():
+    from freight_recon.operation_proposal import build_ready_to_bill_digest
+
+    rows = [{"load_ref": str(100 + i), "customer": "C", "amount": "10.00", "has_pod": True} for i in range(25)]
+    digest = build_ready_to_bill_digest(rows, signer=_SIGNER, channel_id="C", batch_limit=10)
+    assert len(digest["load_refs"]) == 10                   # only 10 shown/marked; the rest next cycle
+    assert digest["blocks"][0]["text"]["text"].startswith("📦 10 loads")
+
+
+def test_digest_returns_none_when_nothing_to_say():
+    from freight_recon.operation_proposal import build_ready_to_bill_digest
+    assert build_ready_to_bill_digest([], signer=_SIGNER, channel_id="C", blocked=[]) is None
+
+
+def test_loads_status_counts_by_header_not_position():
+    from freight_recon.operation_proposal import loads_status_counts
+
+    obs = {"tables": [{
+        "headers": ["Load #", "Trip #", "Status", "Customer", "Total"],
+        "rows": [
+            {"cells": ["Load #", "Trip #", "Status", "Customer", "Total"]},   # header echo -> skipped
+            {"cells": ["100", "1000", "Invoiced", "Coyote", "$2,000.00"]},
+            {"cells": ["101", "1001", "Delivered", "Echo", "$2,500.00"]},
+            {"cells": ["102", "1002", "Delivered", "Acme", "$1,200.00"]},
+        ],
+    }]}
+    assert loads_status_counts(obs) == {"Invoiced": 1, "Delivered": 2}
+    assert loads_status_counts(None) == {}
