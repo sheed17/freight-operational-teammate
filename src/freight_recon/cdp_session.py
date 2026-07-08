@@ -21,6 +21,8 @@ from pathlib import Path
 
 import websocket  # websocket-client
 
+from .browser_session_health import url_matches_filter
+
 
 class CdpError(RuntimeError):
     pass
@@ -59,7 +61,7 @@ class CdpBrowserSession:
         tabs = json.load(urllib.request.urlopen(f"{self.cdp_url}/json", timeout=self.timeout))
         pages = [t for t in tabs if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
         if self.url_filter:
-            pages = [t for t in pages if self.url_filter in (t.get("url") or "")] or pages
+            pages = [t for t in pages if url_matches_filter(t.get("url") or "", self.url_filter)]
         if not pages:
             raise CdpError(f"no attachable page tab at {self.cdp_url}")
         self._ws = websocket.create_connection(
@@ -91,7 +93,28 @@ class CdpBrowserSession:
         """Public passthrough to a raw CDP command (e.g. the Input domain for real keyboard/mouse)."""
         return self._cmd(method, params)
 
+    def host_allowed(self, url: str) -> bool:
+        """Is this navigation target on the TMS domain allowlist? A relative/same-page target stays on
+        the current (already-allowed) origin. With no ``url_filter`` configured, navigation is
+        unrestricted (dev). This is the hard guard the browser-supervision protocol requires so a
+        mis-prompted agent can't wander out of the authenticated TMS session."""
+        if not self.url_filter:
+            return True
+        u = (url or "").strip()
+        lowered = u.lower()
+        if lowered.startswith(("javascript:", "data:", "file:", "vbscript:")):
+            return False
+        if not u or u[0] in "/?#" or lowered.startswith("about:blank"):
+            return True  # relative / same-page / no-op navigation
+        return url_matches_filter(u, self.url_filter)
+
     def navigate(self, url: str, *, settle_seconds: float = 3.0) -> None:
+        if not self.host_allowed(url):
+            # Refuse to drive the authenticated TMS browser off its domain (a confused/mis-prompted
+            # NAVIGATE). Raised as CdpError; the actuator catches it into a soft failed-action so the
+            # agent adapts/escalates rather than crashing.
+            raise CdpError(f"navigation to {url!r} blocked — not on the TMS domain allowlist "
+                           f"({self.url_filter!r})")
         self._cmd("Page.navigate", {"url": url})
         time.sleep(settle_seconds)  # let the page (and any XHR-rendered form) settle before reading
 

@@ -41,18 +41,28 @@ def test_receivables_parses_unpaid_by_content_and_excludes_paid():
 def test_aged_unpaid_flags_only_past_due_worst_first():
     recv = receivables_from_invoices_table(_OBS)
     aged = aged_unpaid(recv, as_of=date(2026, 7, 6), min_days=7)
-    assert [r["invoice"] for r in aged] == ["560003"]              # 8d overdue; 560011 (1d) is within terms
-    assert aged[0]["days_overdue"] == 8
+    assert [r["invoice"] for r in aged] == ["560003"]              # 8d outstanding; 560011 (1d) is too new
+    assert aged[0]["days_outstanding"] == 8
+    assert aged[0]["past_due"] is False
+
+
+def test_aged_unpaid_only_claims_past_due_when_terms_are_configured():
+    recv = receivables_from_invoices_table(_OBS)
+    aged = aged_unpaid(recv, as_of=date(2026, 7, 6), min_days=1, terms_days=7)
+    by_invoice = {r["invoice"]: r for r in aged}
+    assert by_invoice["560003"]["past_due"] is True
+    assert by_invoice["560011"]["past_due"] is False
 
 
 def test_aging_digest_totals_the_outstanding_balance():
     aged = aged_unpaid(receivables_from_invoices_table(_OBS), as_of=date(2026, 7, 6), min_days=1)
     digest = render_aging_digest(aged)
-    assert "2 unpaid invoices past due" in digest
+    assert "2 unpaid invoices outstanding" in digest
+    assert "past due" not in digest
     assert "$2,584.50" in digest                                   # 2400.00 + 184.50 outstanding
     assert "#560003 Maple Leaf Transport" in digest
     assert "draft reminders" in digest.lower()
 
 
 def test_empty_when_nothing_is_aged():
-    assert "No aged receivables" in render_aging_digest([])
+    assert "No outstanding receivables" in render_aging_digest([])

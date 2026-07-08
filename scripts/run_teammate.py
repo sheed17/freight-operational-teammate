@@ -14,17 +14,57 @@ callback port) is a separate concern — see docs/DEPLOYMENT.md.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 DEFAULT_WORKSPACE = ROOT / "data" / "active_workspace" / "gmail_to_slack_service"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def supervisor_state_path(workspace: str | Path) -> Path:
+    return Path(workspace) / "teammate_supervisor.json"
+
+
+def write_supervisor_state(
+    workspace: str | Path,
+    *,
+    children: Mapping[str, subprocess.Popen | int],
+    degraded: bool,
+    events: list[dict] | None = None,
+) -> Path:
+    """Write the process-supervisor state into the shared workspace.
+
+    Stdout is not an operations surface. If a critical child crash-loops out, `/neyma status` and
+    postmortems need a durable file that says the service is degraded.
+    """
+    path = supervisor_state_path(workspace)
+    payload = {
+        "updated_at": _now_iso(),
+        "degraded": bool(degraded),
+        "children": {
+            name: {
+                "pid": getattr(proc, "pid", proc if isinstance(proc, int) else None),
+                "running": not isinstance(proc, int),
+            }
+            for name, proc in children.items()
+        },
+        "events": events or [],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
 
 
 def supervision_decision(*, crashes: int, seconds_since_last_crash: float, max_rapid: int = 5,
@@ -99,6 +139,8 @@ def build_process_commands(
     allowed_slack_channel: str | None = None,
     operation_url_filter: str | None = None,
     propose_clean_payables: bool = False,
+    enable_triage: bool = False,
+    triage_model: str | None = None,
     enable_ar_trigger: bool = False,
     ar_interval_seconds: int = 300,
     ar_require_pod: bool = True,
@@ -154,6 +196,10 @@ def build_process_commands(
     ]
     if propose_clean_payables:
         loop.append("--propose-clean-payables")
+    if enable_triage:
+        loop.append("--enable-triage")
+        if triage_model:
+            loop += ["--triage-model", triage_model]
     commands = {"site": site, "callback": callback, "loop": loop}
 
     if enable_ar_trigger:
@@ -209,6 +255,8 @@ def main() -> int:
     parser.add_argument("--allowed-slack-channel", default=os.environ.get("NEYMA_ALLOWED_SLACK_CHANNEL"))
     parser.add_argument("--operation-url-filter", default=os.environ.get("NEYMA_OPERATION_URL_FILTER"))
     parser.add_argument("--propose-clean-payables", action="store_true", help="auto-post a 'Record payable [Approve & run]' button for each cleanly matched carrier invoice")
+    parser.add_argument("--enable-triage", action="store_true", help="enable live inbox triage before extraction/reconciliation")
+    parser.add_argument("--triage-model", default=None, help="model for ambiguous inbox triage when --enable-triage is set")
     parser.add_argument("--enable-ar-trigger", action="store_true", help="supervise the AR trigger: periodically read the live TMS /loads and post an 'Invoice [Approve & run]' button per ready-to-bill load")
     parser.add_argument("--ar-interval-seconds", type=int, default=300, help="how often the AR trigger reads the TMS /loads (defers while a write holds the browser)")
     parser.add_argument("--tms-loads-url", default="https://secure.truckingoffice.com/loads", help="the live TMS loads page the AR trigger reads")
@@ -256,6 +304,8 @@ def main() -> int:
         allowed_slack_channel=args.allowed_slack_channel,
         operation_url_filter=args.operation_url_filter,
         propose_clean_payables=args.propose_clean_payables,
+        enable_triage=args.enable_triage,
+        triage_model=args.triage_model,
         enable_ar_trigger=args.enable_ar_trigger,
         ar_require_pod=not args.ar_no_require_pod,
         ar_autonomous=args.ar_autonomous,
@@ -271,6 +321,8 @@ def main() -> int:
     for name, cmd in commands.items():
         procs[name] = subprocess.Popen(cmd)
         print(f"  started {name} (pid {procs[name].pid})")
+    supervisor_events: list[dict] = []
+    write_supervisor_state(workspace, children=procs, degraded=False, events=supervisor_events)
     host = f"https://{ngrok_domain}" if (ngrok_domain and ngrok_bin) else "https://<stable-host>"
     print(f"\nSlack: point your app's Request URLs at {host}/slack/actions and {host}/slack/commands")
     if ngrok_domain and ngrok_bin:
@@ -296,14 +348,31 @@ def main() -> int:
                 )
                 last_crash[name] = now
                 if not restart:
+                    supervisor_events.append({
+                        "at": _now_iso(),
+                        "child": name,
+                        "event": "child_dropped_after_crash_loop",
+                        "returncode": rc,
+                        "crashes": crashes[name],
+                    })
                     print(f"\n{name} crashed {crashes[name]}x rapidly (rc={rc}) — giving up on it; "
                           "other children keep running. Investigate this child.")
                     procs.pop(name)
+                    write_supervisor_state(workspace, children=procs, degraded=True, events=supervisor_events)
                     continue
                 print(f"\n{name} exited (rc={rc}) — restarting in {backoff:.0f}s (self-heal, attempt {crashes[name]}).")
                 time.sleep(backoff)
                 procs[name] = subprocess.Popen(commands[name])
                 print(f"  restarted {name} (pid {procs[name].pid})")
+                supervisor_events.append({
+                    "at": _now_iso(),
+                    "child": name,
+                    "event": "child_restarted",
+                    "returncode": rc,
+                    "crashes": crashes[name],
+                    "backoff_seconds": backoff,
+                })
+                write_supervisor_state(workspace, children=procs, degraded=False, events=supervisor_events)
             if not procs:
                 print("all children died and exhausted restarts — exiting so the OS supervisor can restart clean.")
                 break

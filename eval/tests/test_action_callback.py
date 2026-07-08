@@ -37,6 +37,7 @@ from freight_recon.review_actions import ReviewDecision  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowState, WorkflowStore, process_load_packet  # noqa: E402
 from run_gmail_to_slack_dogfood import _redacted_workflow_json  # noqa: E402
+from run_action_callback_server import _build_receivables_reader  # noqa: E402
 
 
 def _delivered(tmp_path, load_id="LD-560008"):
@@ -944,6 +945,20 @@ def test_slack_command_can_render_operation_proposal_button(tmp_path):
     assert button["text"]["text"] == "Approve $2850.00"
     assert button["value"].count(".") == 1
     assert calls == []
+
+
+def test_receivables_reader_returns_none_when_browser_is_busy(tmp_path):
+    from freight_recon.browser_lock import BrowserLock
+
+    lock_path = tmp_path / "browser.busy"
+    reader = _build_receivables_reader(
+        cdp_url="http://localhost:1",
+        url_filter="truckingoffice",
+        invoices_url="https://secure.truckingoffice.com/invoices",
+        lock_path=lock_path,
+    )
+    with BrowserLock(lock_path).hold(holder="write"):
+        assert reader() is None
 
 
 def test_slack_command_rejects_unauthorized_user(tmp_path):

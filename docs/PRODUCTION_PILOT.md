@@ -42,10 +42,11 @@ run]`** button per delivered-but-un-invoiced load at that load's Total. A tap dr
 payments, cross-record replay).
 
 **POD gate (owner SOP):** by default the trigger will **not** bill a load until its POD (Proof of
-Delivery) is proven — a delivered load without a POD column reads as *POD unknown* and posts a
-"attach the POD first" exception instead of a money button. TruckingOffice's `/loads` list doesn't
-expose POD status, so for the demo pass **`--ar-no-require-pod`** to bill on delivery alone. Keep the
-gate ON in production once detail-page POD verification lands (see "still not solved" below).
+Delivery) is proven. It checks the loads list first; if the list cannot show POD status, it inspects the
+load detail/documents area and accepts only delivery proof such as POD or signed BOL. A rate con alone
+does not count. If the detail page is unreadable or no proof is present, Neyma posts a POD exception
+instead of a money button. For a controlled demo only, set an explicit exception and pass
+**`--ar-no-require-pod`** to bill on delivered status alone.
 
 ```bash
 set -a; source .env; set +a          # so IMAP/Slack/ngrok/OpenAI secrets are present
@@ -56,16 +57,23 @@ set -a; source .env; set +a          # so IMAP/Slack/ngrok/OpenAI secrets are pr
   --allowed-slack-channel <SLACK_CHANNEL_ID> \
   --operation-url-filter truckingoffice \
   --enable-ar-trigger \
-  --ar-no-require-pod \
+  --enable-triage \
   --tms-loads-url https://secure.truckingoffice.com/loads \
   --ar-interval-seconds 300
 ```
+
+For a demo where the owner explicitly accepts billing on delivered status even without readable
+delivery-proof documents, add `--ar-no-require-pod`.
 
 **Shared-browser coordination is built in:** the write agent marks `workspace/browser.busy` while it
 operates; the AR trigger reads the same marker and *defers* a cycle rather than navigating the tab
 mid-write. Both share the workspace `workflow.sqlite3`, so a still-un-invoiced load isn't re-proposed
 every cycle. Prereq for the demo: one delivered-but-un-invoiced load in the TMS, and a Chrome on
 `--remote-debugging-port=9222` logged in.
+
+**Session readiness is explicit:** `/neyma status` and the pilot readiness rollup check CDP reachability,
+the configured TMS URL filter, and login/session-expired pages. A missing browser, wrong tab, or expired
+session is **NO_GO**, not a soft warning; the owner must re-auth before Neyma operates the TMS.
 
 ## What YOU must supply to go live (the gate)
 
@@ -83,19 +91,47 @@ every cycle. Prereq for the demo: one delivered-but-un-invoiced load in the TMS,
    domain (`NGROK_STATIC_DOMAIN`) + `NGROK_AUTHTOKEN` are already set, so the Slack Request URL stays
    stable across restarts.
 
+Before treating Slack as the owner's live control surface, run the onboarding gate:
+
+```bash
+set -a; source .env; set +a
+.venv/bin/python scripts/verify_owner_onboarding.py \
+  --client-config configs/clients/rasheed_first_design_partner.yaml \
+  --allowed-slack-user <SLACK_USER_ID> \
+  --allowed-slack-channel <SLACK_CHANNEL_ID> \
+  --operation-url-filter <tms-domain-substring>
+```
+
+After `run_teammate` is running and Chrome is logged into the TMS on CDP, run the live gate:
+
+```bash
+.venv/bin/python scripts/verify_owner_onboarding.py \
+  --client-config configs/clients/rasheed_first_design_partner.yaml \
+  --allowed-slack-user <SLACK_USER_ID> \
+  --allowed-slack-channel <SLACK_CHANNEL_ID> \
+  --operation-url-filter <tms-domain-substring> \
+  --require-running \
+  --callback-url https://$NGROK_STATIC_DOMAIN/slack/commands \
+  --require-public-ingress
+```
+
+Only when this reports `Owner onboarding readiness: READY` should the owner start using `/neyma`
+as the daily control surface. A localhost callback probe is acceptable for local process debugging,
+but it is not owner-ready because Slack must reach Neyma through the public Request URL.
+
 ## Remaining autonomous work (ordered) — before "continuous, hands-off"
 
-1. ~~Activate email-triage~~ **DONE** — the dogfood processor takes `--enable-triage` and threads a
-   gpt-5.4 completer through `run_mailbox_workflow` → `run_mailbox_intake`. Add `--enable-triage` to the
-   loop's inner args for a real inbox (noise dropped, fuzzy carrier/customer links resolved).
+1. ~~Activate email-triage~~ **DONE** — `run_teammate.py` now exposes `--enable-triage` /
+   `--triage-model` and forwards it into the Gmail loop, which threads the triage completer through
+   `run_mailbox_workflow` → `run_mailbox_intake` for real-inbox noise rejection and fuzzy links.
 2. **Prove the full loop end-to-end, continuously** — one real document: mail → triaged → proposed →
    approved → written → receipt, unattended across a cycle. Every segment is proven; the *chain as a
    running service* is not.
 3. **Reliability at volume** — many docs + unhappy paths (session expiry mid-run, ambiguous records,
-   duplicates). The failure taxonomy + verify-before-DONE + commit-once handle these; they need real-load
-   proving.
-4. **Fix `parse_eml` on RFC2047-encoded subjects** (real carrier emails will have them) before the live
-   inbox.
+   duplicates). Browser session health now fails readiness closed before work starts; mid-run failures still
+   need real-load proving through the failure taxonomy + verify-before-DONE + commit-once spine.
+4. ~~Fix `parse_eml` on RFC2047-encoded subjects~~ **DONE** — encoded real-carrier subjects are decoded
+   before triage/linking.
 
 ## Honest readiness
 

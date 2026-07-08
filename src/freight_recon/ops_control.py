@@ -92,7 +92,18 @@ _HELP = (
 )
 
 
-def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=None, status_file=None) -> str:
+def handle_ops_command(
+    text: str,
+    *,
+    actor: str,
+    ops_control: OpsControl,
+    store=None,
+    status_file=None,
+    workspace=None,
+    db_path=None,
+    cdp_url: str | None = None,
+    url_filter: str | None = None,
+) -> str:
     """Parse one lightweight owner command from Slack into an action + reply. Channel-neutral."""
     raw = text.strip()
     cmd = " ".join(raw.lower().split())
@@ -105,7 +116,15 @@ def handle_ops_command(text: str, *, actor: str, ops_control: OpsControl, store=
         ops_control.resume_tms_writes(actor=actor)
         return f":unlock: TMS writes *RESUMED* by {actor}."
     if cmd in ("status", "ops status", "health", "what is neyma doing", "whats neyma doing", "what's neyma doing"):
-        return _render_operational_status(ops_control, store=store, status_file=status_file)
+        return _render_operational_status(
+            ops_control,
+            store=store,
+            status_file=status_file,
+            workspace=workspace,
+            db_path=db_path,
+            cdp_url=cdp_url,
+            url_filter=url_filter,
+        )
     if cmd in ("roi", "value", "what have you done", "what neyma did", "savings") and store is not None:
         from .roi_ledger import build_value_digest, render_value_digest
 
@@ -220,11 +239,28 @@ def _render_autonomy(store, tenant: str = "default") -> str:
     return "*Autonomous lanes* (run unattended on approved work):\n" + "\n".join(rows)
 
 
-def _render_operational_status(ops_control: OpsControl, *, store=None, status_file=None) -> str:
+def _render_operational_status(
+    ops_control: OpsControl,
+    *,
+    store=None,
+    status_file=None,
+    workspace=None,
+    db_path=None,
+    cdp_url: str | None = None,
+    url_filter: str | None = None,
+) -> str:
     """The owner's one-glance answer to 'what is Neyma doing right now?': service health + the TMS
     brake + how much is waiting on them."""
     parts: list[str] = []
-    if status_file is not None:
+    if workspace is not None:
+        from .teammate_health import read_pilot_readiness, render_pilot_readiness
+
+        parts.append(
+            render_pilot_readiness(
+                read_pilot_readiness(workspace, db_path=db_path, cdp_url=cdp_url, url_filter=url_filter)
+            )
+        )
+    elif status_file is not None:
         from .teammate_health import read_loop_health, render_health
 
         parts.append(render_health(read_loop_health(status_file)))

@@ -73,6 +73,9 @@ class CallbackAppConfig:
     post_action_executor: Callable[[WorkflowStore, DeliveryActionOutcome], None] | None = None
     # Loop heartbeat file, so the Slack `status` command can answer "what is Neyma doing right now?".
     status_file: str | None = None
+    workspace: str | None = None
+    operation_cdp_url: str | None = None
+    operation_url_filter: str | None = None
     # Optional fake/live Slack approval bridge for the bounded request->agent->result router. This is
     # callback-only: it returns a Slack response body and does not post or send on its own.
     operation_router: OperationRouter | None = None
@@ -88,8 +91,12 @@ class CallbackAppConfig:
     load_amount_resolver: Callable[[str], "str | None"] | None = None
     # Optional reader of unpaid receivables from the TMS /invoices list, so "what's outstanding / who
     # owes us / aging" answers with a live aged-AR digest. Read-only — never sends a dunning note.
-    receivables_reader: Callable[[], list] | None = None
-    ar_aging_min_days: int = 1
+    # Returns the unpaid receivables, or None if the TMS couldn't be read (busy/error) — None must NOT
+    # be shown as "nothing owed". ar_terms_days, if set (e.g. 30 for Net-30), lets the digest flag
+    # genuinely past-due invoices; without it the digest makes no past-due claim.
+    receivables_reader: Callable[[], "list | None"] | None = None
+    ar_aging_min_days: int = 0
+    ar_terms_days: int | None = None
 
 
 def handle_signed_action_callback(
@@ -738,7 +745,9 @@ def run_callback_server(
     allowed_slack_channel: str | None = None,
     nl_completer: Callable[[str], str] | None = None,
     load_amount_resolver: Callable[[str], "str | None"] | None = None,
-    receivables_reader: Callable[[], list] | None = None,
+    receivables_reader: Callable[[], "list | None"] | None = None,
+    operation_cdp_url: str | None = None,
+    operation_url_filter: str | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -752,6 +761,9 @@ def run_callback_server(
             slack_signing_secret=secret,
             post_action_executor=post_action_executor,
             status_file=status_file,
+            workspace=str(Path(db_path).parent),
+            operation_cdp_url=operation_cdp_url,
+            operation_url_filter=operation_url_filter,
             operation_router=operation_router,
             operation_result_poster=operation_result_poster,
             allowed_slack_users=allowed_slack_users,
@@ -975,12 +987,26 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
         from datetime import date
 
         from .ar_collections import aged_unpaid, render_aging_digest
-        receivables = config.receivables_reader() or []
+        receivables = config.receivables_reader()
+        if receivables is None:
+            # A busy/failed read must NOT render as "nothing owed" — a false all-clear on cash is worse
+            # than an error. Say we couldn't read it.
+            return {"text": ":warning: I couldn't read the invoices just now (the browser is busy with a "
+                            "write, or the TMS didn't respond) — ask me again in a moment."}
         aged = aged_unpaid(receivables, as_of=date.today(),
-                           min_days=getattr(config, "ar_aging_min_days", 1))
+                           min_days=getattr(config, "ar_aging_min_days", 0),
+                           terms_days=getattr(config, "ar_terms_days", None))
         return {"text": render_aging_digest(aged)}
     reply = handle_ops_command(
-        text, actor=actor, ops_control=ops_control, store=store, status_file=config.status_file
+        text,
+        actor=actor,
+        ops_control=ops_control,
+        store=store,
+        status_file=config.status_file,
+        workspace=getattr(config, "workspace", None),
+        db_path=getattr(config, "db_path", None),
+        cdp_url=getattr(config, "operation_cdp_url", None),
+        url_filter=getattr(config, "operation_url_filter", None),
     )
     if not reply.startswith("Commands:"):
         return {"text": reply}  # a recognized read/control -> answer immediately (no gates needed)
@@ -1009,6 +1035,10 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
             return {"text": handle_ops_command(
                 routed["read"], actor=actor, ops_control=ops_control, store=store,
                 status_file=config.status_file,
+                workspace=getattr(config, "workspace", None),
+                db_path=getattr(config, "db_path", None),
+                cdp_url=getattr(config, "operation_cdp_url", None),
+                url_filter=getattr(config, "operation_url_filter", None),
             )}
         if routed.get("operate"):
             proposal = _build_operation_command_proposal(

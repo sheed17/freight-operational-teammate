@@ -1,6 +1,7 @@
 """Tests for the owner-reachable ops brake (pause/resume TMS writes) and command handler."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -145,3 +146,48 @@ def test_status_command_answers_what_is_neyma_doing(tmp_path):
     assert "TMS writes are *ACTIVE*" in out  # brake state
     assert "waiting on you" in out  # how much needs the owner
 
+
+def test_status_command_prefers_pilot_readiness_when_workspace_is_known(tmp_path):
+    import json
+    import sqlite3
+
+    oc = OpsControl(tmp_path / "ops.json")
+    (tmp_path / "teammate_status.json").write_text(
+        json.dumps({"state": "IDLE", "iteration": 2, "consecutive_failures": 0}),
+        encoding="utf-8",
+    )
+    (tmp_path / "teammate_supervisor.json").write_text(
+        json.dumps({"degraded": False, "children": {"callback": {"pid": os.getpid(), "running": True}, "loop": {"pid": os.getpid(), "running": True}}}),
+        encoding="utf-8",
+    )
+    conn = sqlite3.connect(tmp_path / "workflow.sqlite3")
+    conn.execute("CREATE TABLE ok (id INTEGER)")
+    conn.close()
+
+    out = handle_ops_command("status", actor="R", ops_control=oc, store=_Store(), workspace=tmp_path)
+    assert "Pilot readiness" in out
+    assert "Workflow DB is readable" in out
+    assert "TMS writes are *ACTIVE*" in out
+
+
+def test_status_command_uses_explicit_db_path_for_readiness(tmp_path):
+    import json
+    import sqlite3
+
+    oc = OpsControl(tmp_path / "ops.json")
+    (tmp_path / "teammate_status.json").write_text(
+        json.dumps({"state": "IDLE", "iteration": 2, "consecutive_failures": 0}),
+        encoding="utf-8",
+    )
+    (tmp_path / "teammate_supervisor.json").write_text(
+        json.dumps({"degraded": False, "children": {"callback": {"pid": os.getpid(), "running": True}, "loop": {"pid": os.getpid(), "running": True}}}),
+        encoding="utf-8",
+    )
+    real_db = tmp_path / "custom_callback.sqlite3"
+    conn = sqlite3.connect(real_db)
+    conn.execute("CREATE TABLE ok (id INTEGER)")
+    conn.close()
+
+    out = handle_ops_command("status", actor="R", ops_control=oc, workspace=tmp_path, db_path=real_db)
+    assert "Workflow DB is readable" in out
+    assert "Workflow DB has not been created" not in out

@@ -77,9 +77,11 @@ def receivables_from_invoices_table(observation: dict | None) -> list[dict]:
     return out
 
 
-def aged_unpaid(receivables, *, as_of: date, min_days: int = 30) -> list[dict]:
-    """The receivables aged at least ``min_days`` as of ``as_of``, each tagged with ``days_overdue``,
-    worst first. ``as_of`` is injected so aging is deterministic and testable (never a hidden clock)."""
+def aged_unpaid(receivables, *, as_of: date, min_days: int = 0, terms_days: int | None = None) -> list[dict]:
+    """Unpaid receivables whose invoice is at least ``min_days`` old as of ``as_of``, each tagged with
+    ``days_outstanding`` (days since invoiced — NOT a claim of lateness), worst first. If ``terms_days``
+    is given (e.g. Net-30), a receivable is also tagged ``past_due=True`` only when it is genuinely
+    beyond terms; without terms we make NO past-due claim. ``as_of`` is injected so it's deterministic."""
     aged = []
     for r in receivables:
         raw = r.get("invoiced_on", "")
@@ -91,20 +93,29 @@ def aged_unpaid(receivables, *, as_of: date, min_days: int = 30) -> list[dict]:
             continue
         days = (as_of - d).days
         if days >= min_days:
-            aged.append({**r, "days_overdue": days})
-    return sorted(aged, key=lambda r: r["days_overdue"], reverse=True)
+            past_due = terms_days is not None and days > terms_days
+            aged.append({**r, "days_outstanding": days, "past_due": past_due})
+    return sorted(aged, key=lambda r: r["days_outstanding"], reverse=True)
 
 
 def render_aging_digest(aged) -> str:
-    """The owner-facing aged-AR digest. Proposes the next step (draft reminders) — never auto-sends."""
+    """The owner-facing outstanding-AR digest. Uses NEUTRAL language ("outstanding / N days since
+    invoiced") — it only says "past due" for invoices tagged genuinely beyond terms, never for merely
+    recent ones. Proposes the next step (draft reminders) but never auto-sends."""
     if not aged:
-        return ":white_check_mark: No aged receivables — everything billed is within terms."
+        return ":information_source: No outstanding receivables — every invoice is paid in full."
     total = sum(Decimal(r["balance_due"]) for r in aged)
+    past_due = [r for r in aged if r.get("past_due")]
     plural = "s" if len(aged) != 1 else ""
-    lines = [f":moneybag: *{len(aged)} unpaid invoice{plural} past due* — ${total:,.2f} outstanding"]
+    head = f":moneybag: *{len(aged)} unpaid invoice{plural} outstanding* — ${total:,.2f}"
+    if past_due:
+        pd_total = sum(Decimal(r["balance_due"]) for r in past_due)
+        head += f"  ·  {len(past_due)} past due (${pd_total:,.2f})"
+    lines = [head]
     for r in aged[:10]:
+        flag = " ⚠️ past due" if r.get("past_due") else ""
         lines.append(
-            f"• #{r['invoice']} {r['customer']} — ${r['balance_due']} · {r['days_overdue']}d overdue"
+            f"• #{r['invoice']} {r['customer']} — ${r['balance_due']} · {r['days_outstanding']}d since invoiced{flag}"
         )
     if len(aged) > 10:
         lines.append(f"…and {len(aged) - 10} more.")

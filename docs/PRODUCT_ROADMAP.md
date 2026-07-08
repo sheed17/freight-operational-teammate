@@ -543,6 +543,14 @@ Candidate order inside Document & Data Entry:
 
 Later teammate families:
 
+- Carrier payables fraud mesh: unapproved accessorials, duplicate-payment prevention, payout freezes,
+  and carrier dispute drafts.
+- Detention/accessorial recovery radar: telematics/geofence dwell detection, broker SOP lookup,
+  proof packet assembly, and claim-window alerts.
+- Document compliance auditor: POD/BOL readability/signature checks, bad-document refusal, and
+  driver/carrier remediation follow-up.
+- Broker credit and underwriting defense: MC/DOT checks, factoring/credit integrations, days-to-pay
+  and exposure thresholds, owner approval alerts.
 - Tracking and exception operations.
 - Quoting and sales.
 - Compliance and admin.

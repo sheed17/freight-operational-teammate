@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from run_teammate import build_process_commands, preflight_credentials  # noqa: E402
+from run_teammate import build_process_commands, preflight_credentials, write_supervisor_state  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT_CONFIG = str(ROOT / "configs" / "clients" / "rasheed_first_design_partner.yaml")
@@ -54,6 +54,18 @@ def test_operation_router_flags_are_opt_in_for_callback():
     assert _val_after(callback, "--allowed-slack-user") == "U_OWNER"
     assert _val_after(callback, "--allowed-slack-channel") == "C_OPS"
     assert _val_after(callback, "--operation-url-filter") == "transporters"
+
+
+def test_gmail_loop_can_enable_real_inbox_triage():
+    cmds = build_process_commands(
+        workspace="/tmp/ws",
+        client_config="c",
+        enable_triage=True,
+        triage_model="gpt-5.4",
+    )
+    loop = cmds["loop"]
+    assert "--enable-triage" in loop
+    assert _val_after(loop, "--triage-model") == "gpt-5.4"
 
 
 def test_ngrok_supervised_forwards_fixed_domain_to_callback_port():
@@ -128,3 +140,15 @@ def test_supervision_self_heals_with_backoff_then_gives_up_on_a_crash_loop():
 
     # a calm period resets the counter, so an occasional crash always self-heals
     assert supervision_decision(crashes=5, seconds_since_last_crash=9999) == (True, 2.0, 1)
+
+
+def test_supervisor_state_records_degraded_child_drop(tmp_path):
+    p = write_supervisor_state(
+        tmp_path,
+        children={"callback": 1234},
+        degraded=True,
+        events=[{"event": "child_dropped_after_crash_loop", "child": "loop"}],
+    )
+    blob = p.read_text(encoding="utf-8")
+    assert "child_dropped_after_crash_loop" in blob
+    assert '"degraded": true' in blob

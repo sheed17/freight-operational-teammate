@@ -18,6 +18,7 @@ from freight_recon.ingestion import (  # noqa: E402
     ingest_eml_paths,
     link_attachment,
     parse_eml,
+    subject_load_hint,
 )
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 
@@ -164,6 +165,37 @@ def test_parse_eml_preserves_reply_thread_metadata():
     assert parsed.in_reply_to == "<root-1@carrier.test>"
     assert parsed.references == ["<root-1@carrier.test>", "<middle-1@carrier.test>"]
     assert parsed.thread_key == "<root-1@carrier.test>"
+
+
+def test_parse_eml_decodes_rfc2047_subject_before_linking():
+    raw = "\n".join(
+        [
+            "From: Carrier AP <ap@example.com>",
+            "To: broker@example.com",
+            "Subject: =?utf-8?b?SW52b2ljZSBmb3IgTG9hZCBMRC01NjAwMDE=?=",
+            "",
+            "attached",
+        ]
+    )
+    parsed = parse_eml(raw)
+    assert parsed.subject == "Invoice for Load LD-560001"
+
+    load = FreightLoadForReconciliation(
+        load_id="LD-560001",
+        carrier="Carrier",
+        customer="Customer",
+        lane="A -> B",
+        invoice_number="INV-1",
+        rate_confirmation_amount="100.00",
+        invoice_total_amount="100.00",
+        rate_linehaul="100.00",
+        rate_fuel="0.00",
+        invoice_linehaul="100.00",
+        invoice_fuel="0.00",
+        accessorials=[],
+        documents={},
+    )
+    assert subject_load_hint(parsed.subject, LoadIndex([load])) == "LD-560001"
 
 
 def test_complete_packet_links_and_has_no_missing(tmp_path):

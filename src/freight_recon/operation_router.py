@@ -90,6 +90,7 @@ class OperationRouter:
         tenant: str = "default",
         commit_store: WorkflowStore | None = None,
         browser_lock=None,
+        browser_health_check: Callable[[], object] | None = None,
     ) -> None:
         self.lanes = lanes
         self.build_agent = build_agent
@@ -102,6 +103,7 @@ class OperationRouter:
         # Marks the shared browser busy while the agent operates, so the periodic AR-trigger (which
         # reads /loads in the SAME Chrome) defers instead of navigating away mid-write.
         self.browser_lock = browser_lock
+        self.browser_health_check = browser_health_check
 
     def lane_for(self, intent: CommandIntent) -> OperationLane | None:
         for lane in self.lanes:
@@ -186,6 +188,20 @@ class OperationRouter:
             and not commit_requested
         )
         will_commit = lane.requires_amount and not prepare_only
+        if self.browser_health_check is not None:
+            health = self.browser_health_check()
+            if not bool(getattr(health, "healthy", False)):
+                return OperationResult(
+                    "ESCALATED",
+                    lane.name,
+                    f"TMS browser session is not ready: {getattr(health, 'detail', 'unknown session state')}",
+                    [
+                        {
+                            "browser_preflight": str(getattr(health, "status", "UNKNOWN")),
+                            "active_url": getattr(health, "active_url", None),
+                        }
+                    ],
+                )
         commit_reserved = False
         if will_commit and self.commit_store is not None and commit_identity is None:
             return OperationResult(
@@ -198,10 +214,25 @@ class OperationRouter:
             commit_reserved = self.commit_store.claim_operation_commit(**commit_identity, payload=reserved_payload)
             if not commit_reserved:
                 existing = self.commit_store.operation_commit_claim(**commit_identity)
+                prior_status = str(((existing or {}).get("payload") or {}).get("status", "")).upper()
+                # A leaked reservation (a prior run crashed / was killed by the supervisor AFTER reserving
+                # but BEFORE it could confirm a write) is NOT a real commit — we do not know whether the
+                # TMS was written. Reporting DONE here would be a false receipt (and would silently un-bill
+                # in the autonomous lane). Escalate for a human to check, rather than guess.
+                if prior_status in ("RESERVED", "NEEDS_VERIFICATION", ""):
+                    return OperationResult(
+                        "ESCALATED",
+                        lane.name,
+                        f"a prior or concurrent attempt to {lane.name} "
+                        f"{commit_identity.get('load_ref') or 'this record'} has not confirmed it saved — "
+                        "check the TMS whether it already happened before retrying (it is NOT confirmed done).",
+                        [{"reserved_but_unconfirmed": True,
+                          "commit_key": existing.get("commit_key") if existing else None}],
+                    )
                 return OperationResult(
                     "DONE",
                     lane.name,
-                    "already committed or reserved; refusing to repeat the TMS commit",
+                    "already committed; refusing to repeat the TMS commit",
                     [
                         {
                             "committed": True,
@@ -222,11 +253,26 @@ class OperationRouter:
         if hasattr(agent, "record_ref"):
             agent.record_ref = _load_ref_of(intent) or ""
         # Hold the shared browser for the duration of the write so the periodic AR-trigger defers.
-        if self.browser_lock is not None:
-            with self.browser_lock.hold(holder=f"{lane.name}:{_load_ref_of(intent) or ''}"):
-                result: AgentResult = agent.run(goal)
-        else:
-            result = agent.run(goal)
+        try:
+            if self.browser_lock is not None:
+                with self.browser_lock.hold(holder=f"{lane.name}:{_load_ref_of(intent) or ''}"):
+                    result: AgentResult = agent.run(goal)
+            else:
+                result = agent.run(goal)
+        except BaseException:
+            # The agent crashed mid-run (CDP disconnect, or the process being torn down). We do NOT know
+            # whether the commit landed, so we must not leave an opaque RESERVED claim that a later retry
+            # could mistake for a real commit (false DONE) or blindly repeat (double-write). Mark it
+            # NEEDS_VERIFICATION so the retry escalates for a human check. (A hard kill can't run this;
+            # the duplicate-guard above treats a bare RESERVED the same way.)
+            if commit_reserved and self.commit_store is not None and commit_identity is not None:
+                try:
+                    self.commit_store.update_operation_commit_payload(
+                        **commit_identity, payload={"status": "NEEDS_VERIFICATION", "summary": intent.summary},
+                    )
+                except Exception:  # noqa: BLE001 - never mask the original crash
+                    pass
+            raise
         steps = list(result.steps)
         committed = _result_committed(result)
         if committed and commit_identity is not None:

@@ -124,7 +124,20 @@ def test_aging_query_answers_with_a_live_receivables_digest(tmp_path):
     out = route_conversational_message(
         "who owes us money?", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
     )
-    assert "text" in out and "#560003 Maple Leaf Transport" in out["text"] and "past due" in out["text"]
+    assert "text" in out and "#560003 Maple Leaf Transport" in out["text"]
+    assert "outstanding" in out["text"] and "past due" not in out["text"]
+    store.close()
+
+
+def test_aging_query_does_not_false_clear_when_tms_read_fails(tmp_path):
+    ops, store = _ctx(tmp_path)
+    cfg = _config()
+    cfg.receivables_reader = lambda: None
+    out = route_conversational_message(
+        "who owes us money?", actor="U1", channel_id="C", config=cfg, ops_control=ops, store=store
+    )
+    assert "couldn't read the invoices" in out["text"]
+    assert "No outstanding receivables" not in out["text"]
     store.close()
 
 

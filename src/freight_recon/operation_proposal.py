@@ -290,6 +290,53 @@ def has_pod_from_detail(doc_labels, *, page_readable: bool = True) -> bool | Non
     return pod_present_in_attachments(doc_labels)
 
 
+def attachment_labels_from_detail_observation(observation: dict | None) -> list[str]:
+    """Extract document/attachment labels from a load detail observation.
+
+    This is intentionally heuristic but deterministic: browser adapters expose tables, row-like items,
+    nav labels, iframe text, and body text. We keep any line/cell that looks document-related and let
+    ``pod_present_in_attachments`` decide whether it is delivery proof. No LLM and no money fields.
+    """
+    obs = observation or {}
+    labels: list[str] = []
+
+    def add(value) -> None:
+        text = " ".join(str(value or "").split())
+        if text and text not in labels:
+            labels.append(text)
+
+    doc_words = ("document", "docs", "attachment", "filesafe", "file", "pod", "proof", "bol", "bill of lading")
+    for table in obs.get("tables") or []:
+        headers = " ".join(str(h).lower() for h in (table.get("headers") or []))
+        table_docish = any(word in headers for word in doc_words)
+        for row in table.get("rows") or []:
+            row_text = str(row.get("text") or "")
+            cells = row.get("cells") or []
+            hay = " ".join([headers, row_text, " ".join(str(c) for c in cells)]).lower()
+            if table_docish or any(word in hay for word in doc_words):
+                for cell in cells:
+                    add(cell)
+                add(row_text)
+    for row in obs.get("rows") or []:
+        text = str(row.get("text") or "")
+        if any(word in text.lower() for word in doc_words):
+            add(text)
+    for nav in obs.get("nav") or []:
+        text = str(nav.get("text") or "")
+        if any(word in text.lower() for word in doc_words):
+            add(text)
+    for frame in obs.get("iframes") or []:
+        text = str(frame.get("text") or "")
+        for line in text.splitlines():
+            if any(word in line.lower() for word in doc_words):
+                add(line)
+    body = str(obs.get("body_text") or "")
+    for line in re.split(r"[\n\r•|]+", body):
+        if any(word in line.lower() for word in doc_words):
+            add(line)
+    return labels
+
+
 def proposals_from_tms_loads(observation: dict | None, *, signer: DeliverySigner, channel_id: str,
                              require_pod: bool = False) -> list[dict]:
     """The AR trigger, end to end from the REAL TMS: read ready-to-bill loads off a loads-table

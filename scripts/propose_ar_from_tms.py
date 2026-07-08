@@ -37,6 +37,8 @@ from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.channels import load_delivery_config, slack_channel_for_route  # noqa: E402
 from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.operation_proposal import (  # noqa: E402
+    attachment_labels_from_detail_observation,
+    has_pod_from_detail,
     loads_missing_pod,
     loads_unknown_pod,
     post_operation_proposal,
@@ -140,6 +142,8 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
     time.sleep(2.5)
     observation = act.observe()
     ready = ready_to_bill_from_loads_table(observation)
+    if require_pod:
+        ready = _resolve_unknown_pods_from_detail(act=act, rows=ready, loads_url=loads_url, list_observation=observation)
     billable = [r for r in ready if r.get("has_pod")] if require_pod else ready
     autonomous_rows, supervised_rows = [], billable
     if router is not None:
@@ -147,7 +151,7 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
     # Autonomous first — each write holds the browser lock and may flip its load to Invoiced.
     autocommitted = _run_autonomous(autonomous_rows, router=router, store=store, live=live, poster=poster, channel=channel)
     proposals = _buttons_for_rows(supervised_rows, signer=signer, channel=channel)
-    blocked = _pod_block_messages(observation, channel=channel) if require_pod else []
+    blocked = _pod_block_messages_for_rows([r for r in ready if r.get("has_pod") is not True], channel=channel) if require_pod else []
     if store is not None:
         already = {
             e["payload"].get("load_ref")
@@ -209,12 +213,71 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
     return posted
 
 
+def _resolve_unknown_pods_from_detail(*, act, rows: list[dict], loads_url: str, list_observation: dict | None) -> list[dict]:
+    """For list-view POD unknowns, inspect the load detail/documents page. Fail closed on any read miss."""
+    out: list[dict] = []
+    for row in rows:
+        if row.get("has_pod") is not None:
+            out.append(row)
+            continue
+        resolved = _read_pod_from_detail(act=act, row=row, loads_url=loads_url, list_observation=list_observation)
+        out.append({**row, "has_pod": resolved})
+    return out
+
+
+def _read_pod_from_detail(*, act, row: dict, loads_url: str, list_observation: dict | None) -> bool | None:
+    load_ref = str(row.get("load_ref") or "").strip()
+    if not load_ref:
+        return None
+    page_readable = False
+    try:
+        target = _detail_nav_target(list_observation, load_ref)
+        if target and hasattr(act, "navigate"):
+            page_readable = bool(act.navigate(target))
+        elif hasattr(act, "click"):
+            page_readable = bool(act.click(load_ref))
+        if not page_readable:
+            return None
+        labels = attachment_labels_from_detail_observation(act.observe())
+        return has_pod_from_detail(labels, page_readable=True)
+    except Exception:  # noqa: BLE001 - a detail-read failure is not a billing greenlight
+        return None
+    finally:
+        try:
+            if hasattr(act, "navigate"):
+                act.navigate(loads_url)
+            else:
+                act.session.evaluate(f"location.href={loads_url!r}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _detail_nav_target(observation: dict | None, load_ref: str) -> str | None:
+    for nav in (observation or {}).get("nav") or []:
+        text = str(nav.get("text") or "")
+        url = str(nav.get("url") or "")
+        hay = f"{text} {url}"
+        if load_ref and load_ref in hay:
+            return url
+    return None
+
+
 def _pod_block_messages(observation: dict | None, *, channel: str) -> list[dict]:
     messages: list[dict] = []
     for row in loads_missing_pod(observation):
         messages.append(_pod_block_message(row, channel=channel, reason="missing_pod"))
     for row in loads_unknown_pod(observation):
         messages.append(_pod_block_message(row, channel=channel, reason="unknown_pod"))
+    return messages
+
+
+def _pod_block_messages_for_rows(rows: list[dict], *, channel: str) -> list[dict]:
+    messages: list[dict] = []
+    for row in rows:
+        if row.get("has_pod") is False:
+            messages.append(_pod_block_message(row, channel=channel, reason="missing_pod"))
+        elif row.get("has_pod") is None:
+            messages.append(_pod_block_message(row, channel=channel, reason="unknown_pod"))
     return messages
 
 

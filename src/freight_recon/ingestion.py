@@ -26,6 +26,7 @@ from __future__ import annotations
 import email
 import hashlib
 import re
+from email.header import decode_header, make_header
 from email.message import EmailMessage as MimeMessage
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -138,7 +139,7 @@ def parse_eml(source: str | Path, attachment_text_extractor: AttachmentTextExtra
         if part.get_content_disposition() != "attachment":
             continue
         payload = part.get_payload(decode=True) or b""
-        filename = part.get_filename() or "attachment"
+        filename = _decode_mime_header(part.get_filename()) or "attachment"
         content_type = part.get_content_type()
         text_hint = _pdf_text_hint(payload, content_type, filename)
         if attachment_text_extractor is not None:
@@ -155,17 +156,27 @@ def parse_eml(source: str | Path, attachment_text_extractor: AttachmentTextExtra
             )
         )
     return ParsedEmail(
-        message_id=mime.get("Message-ID"),
-        from_addr=mime.get("From"),
-        to_addr=mime.get("To"),
+        message_id=_decode_mime_header(mime.get("Message-ID")),
+        from_addr=_decode_mime_header(mime.get("From")),
+        to_addr=_decode_mime_header(mime.get("To")),
         date_header=mime.get("Date"),
         email_timestamp=_parse_email_timestamp(mime.get("Date")),
-        in_reply_to=mime.get("In-Reply-To"),
+        in_reply_to=_decode_mime_header(mime.get("In-Reply-To")),
         references=_split_message_id_header(mime.get("References")),
         thread_key=_thread_key(mime),
-        subject=mime.get("Subject", ""),
+        subject=_decode_mime_header(mime.get("Subject")) or "",
         attachments=attachments,
     )
+
+
+def _decode_mime_header(value: str | None) -> str | None:
+    """Decode RFC2047/MIME encoded headers from real carrier email."""
+    if value is None:
+        return None
+    try:
+        return str(make_header(decode_header(value)))
+    except Exception:  # noqa: BLE001
+        return str(value)
 
 
 def classify_attachment(filename: str, subject: str = "") -> DocClassification:

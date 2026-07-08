@@ -8,6 +8,7 @@ renders a Slack-friendly line. The same snapshot drives proactive alerts when po
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,15 @@ class HealthSnapshot:
     extra: dict = field(default_factory=dict)
 
 
+@dataclass
+class PilotReadinessSnapshot:
+    status: str  # GO | DEGRADED | NO_GO
+    healthy: bool
+    checks: list[HealthSnapshot] = field(default_factory=list)
+
+
 _EMOJI = {"OK": ":large_green_circle:", "STALE": ":large_yellow_circle:", "ERROR": ":red_circle:", "NOT_STARTED": ":white_circle:", "UNREADABLE": ":red_circle:"}
+_READINESS_EMOJI = {"GO": ":large_green_circle:", "DEGRADED": ":large_yellow_circle:", "NO_GO": ":red_circle:"}
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -104,6 +113,138 @@ def read_loop_health(status_file: str | Path, *, now: datetime | None = None, st
     return HealthSnapshot(status="OK", healthy=True, detail=detail, **common)
 
 
+def read_supervisor_health(supervisor_file: str | Path) -> HealthSnapshot:
+    """Classify the process-supervisor state written by ``scripts/run_teammate.py``."""
+    path = Path(supervisor_file)
+    if not path.exists():
+        return HealthSnapshot(status="NOT_STARTED", healthy=False, detail="Process supervisor has not written state yet.")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return HealthSnapshot(status="UNREADABLE", healthy=False, detail="Process supervisor state is unreadable.")
+    children = data.get("children") or {}
+    dropped = [
+        name for name, child in children.items()
+        if not (child or {}).get("running", False) or not _pid_alive((child or {}).get("pid"))
+    ]
+    events = data.get("events") or []
+    dropped_events = [e for e in events if e.get("event") == "child_dropped_after_crash_loop"]
+    if data.get("degraded") or dropped_events or dropped:
+        names = ", ".join(e.get("child", "unknown") for e in dropped_events) or ", ".join(dropped) or "a child"
+        return HealthSnapshot(
+            status="ERROR",
+            healthy=False,
+            detail=f"Process supervisor is DEGRADED — {names} dropped after repeated crashes.",
+            extra={"events": events, "children": children},
+        )
+    if not children:
+        return HealthSnapshot(status="NOT_STARTED", healthy=False, detail="Process supervisor has no child processes recorded.")
+    return HealthSnapshot(
+        status="OK",
+        healthy=True,
+        detail=f"Process supervisor is healthy — {len(children)} child process(es) tracked.",
+        extra={"events": events, "children": children},
+    )
+
+
+def read_browser_lock_health(lock_file: str | Path, *, now: datetime | None = None, stale_after_seconds: int = 1800) -> HealthSnapshot:
+    """A stale browser lock means the reader may defer forever after a crashed write."""
+    path = Path(lock_file)
+    if not path.exists():
+        return HealthSnapshot(status="OK", healthy=True, detail="Browser lock is clear.")
+    now = now or datetime.now(timezone.utc)
+    try:
+        modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return HealthSnapshot(status="UNREADABLE", healthy=False, detail="Browser lock exists but cannot be read.")
+    age = (now - modified).total_seconds()
+    if age > stale_after_seconds:
+        return HealthSnapshot(
+            status="STALE",
+            healthy=False,
+            detail=f"Browser lock is STALE — held for {_ago(age)}. A write may have crashed mid-run.",
+            age_seconds=age,
+        )
+    return HealthSnapshot(status="OK", healthy=True, detail=f"Browser lock is held briefly ({_ago(age)}).", age_seconds=age)
+
+
+def _pid_alive(pid: object) -> bool:
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid_int <= 0:
+        return False
+    try:
+        os.kill(pid_int, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def read_db_health(db_path: str | Path) -> HealthSnapshot:
+    """Cheap DB availability check for the shared workflow store."""
+    path = Path(db_path)
+    if not path.exists():
+        return HealthSnapshot(status="NOT_STARTED", healthy=False, detail="Workflow DB has not been created yet.")
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        return HealthSnapshot(status="ERROR", healthy=False, detail=f"Workflow DB is not readable: {type(exc).__name__}.")
+    return HealthSnapshot(status="OK", healthy=True, detail="Workflow DB is readable.")
+
+
+def read_pilot_readiness(
+    workspace: str | Path,
+    *,
+    now: datetime | None = None,
+    loop_stale_after_seconds: int = 900,
+    lock_stale_after_seconds: int = 1800,
+    db_path: str | Path | None = None,
+    cdp_url: str | None = None,
+    url_filter: str | None = None,
+) -> PilotReadinessSnapshot:
+    """Aggregate the local signals that decide whether the supervised pilot is healthy enough to trust."""
+    ws = Path(workspace)
+    checks = [
+        read_loop_health(ws / "teammate_status.json", now=now, stale_after_seconds=loop_stale_after_seconds),
+        read_supervisor_health(ws / "teammate_supervisor.json"),
+        read_db_health(db_path or (ws / "workflow.sqlite3")),
+        read_browser_lock_health(ws / "browser.busy", now=now, stale_after_seconds=lock_stale_after_seconds),
+    ]
+    if cdp_url:
+        from .browser_session_health import read_browser_session_health
+
+        browser = read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter)
+        checks.append(
+            HealthSnapshot(
+                status=browser.status,
+                healthy=browser.healthy,
+                detail=browser.detail,
+                extra={
+                    "cdp_url": browser.cdp_url,
+                    "url_filter": browser.url_filter,
+                    "active_url": browser.active_url,
+                    "tabs_seen": browser.tabs_seen,
+                    "matching_tabs": browser.matching_tabs,
+                },
+            )
+        )
+    if all(c.healthy for c in checks):
+        return PilotReadinessSnapshot(status="GO", healthy=True, checks=checks)
+    if any(c.status in ("ERROR", "UNREADABLE", "NO_CDP", "NO_TMS_TAB", "SESSION_EXPIRED") for c in checks):
+        return PilotReadinessSnapshot(status="NO_GO", healthy=False, checks=checks)
+    return PilotReadinessSnapshot(status="DEGRADED", healthy=False, checks=checks)
+
+
 def watchdog_decision(snapshot: HealthSnapshot, *, already_alerted: bool) -> tuple[str | None, bool]:
     """Decide the proactive "the loop went dark" Slack alert from a heartbeat snapshot.
 
@@ -133,4 +274,12 @@ def render_health(snapshot: HealthSnapshot) -> str:
         lines.append(f"• poll cycles run: {snapshot.iteration}")
     if snapshot.status in ("ERROR", "STALE") and snapshot.next_run_at:
         lines.append(f"• will retry around: {snapshot.next_run_at}")
+    return "\n".join(lines)
+
+
+def render_pilot_readiness(snapshot: PilotReadinessSnapshot) -> str:
+    emoji = _READINESS_EMOJI.get(snapshot.status, ":grey_question:")
+    lines = [f"{emoji} *Pilot readiness:* {snapshot.status}"]
+    for check in snapshot.checks:
+        lines.append(f"• {_EMOJI.get(check.status, ':grey_question:')} {check.detail}")
     return "\n".join(lines)

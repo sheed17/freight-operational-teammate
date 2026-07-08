@@ -9,6 +9,8 @@ data/inbox/
 data/synthetic_corpus/
 data/template_sources/downloaded/
 .pytest_cache/
+.pytest_tmp/
+.chrome-neyma-cdp/
 eval/results/
 eval/golden_set/.previews/
 *.egg-info/

@@ -8,6 +8,9 @@ is the whole daily loop, kept short.
 - **Stop:** `Ctrl-C` (stops the whole teammate cleanly).
 - Prereqs each time: Chrome up on `--remote-debugging-port=9222` and **logged into TruckingOffice**;
   `.env` present. If a child crashes, it **self-heals** (restarts with backoff) — you don't babysit crashes.
+- POD safety: the default keeps the POD gate ON. Neyma checks the load list, then the load detail/docs
+  area for POD or signed BOL. If it cannot prove delivery, it posts a POD exception instead of a money
+  button. For a controlled demo only, run `NEYMA_CLIENT1_ALLOW_NO_POD_GATE=1 ./scripts/run_client1.sh`.
 
 ## What it does while running (supervised)
 - Periodically reads the TMS and **posts an "Invoice [Approve & run]" button** for each delivered, un-billed load.
@@ -15,7 +18,7 @@ is the whole daily loop, kept short.
 
 ## How you drive it — just talk in Slack
 Reply in a Neyma thread, or `/neyma <message>`:
-- **"who owes us money?"** → live aged-AR digest (what's outstanding).
+- **"who owes us money?"** → live outstanding-AR digest read from the TMS.
 - **"what have you done today?"** → activity timeline. **"how did we do this week?"** → ROI.
 - **"record a $184.50 payment on invoice 560003"** → proposes it → you approve → it applies + verifies.
 - **"bill load 105"** → it fetches the amount from the TMS → proposes → you approve.
@@ -33,7 +36,7 @@ Every run posts a **receipt with the full trace** (read → clicked → filled �
 "what did it actually do" is always answerable.
 
 ## What to expect (honest)
-- **Proven live, use freely:** invoicing, recording payments, short-pay credits, aging/"who owes us", the
+- **Proven live, use freely:** invoicing, recording payments, short-pay credits, outstanding-AR/"who owes us", the
   conversational surface.
 - **Rough edges (the backlog we burn down together):** `create_load` is multi-entity and hard;
   `adjust_invoice` writes correctly but over-escalates on its success check; the email/inbox brain isn't

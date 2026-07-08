@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import time
 
-from freight_recon.cdp_session import CdpBrowserSession
+from freight_recon.cdp_session import CdpBrowserSession, CdpError
 
 # Shared JS: resolve an input/select/textarea by selector, label, placeholder, name, or aria-label.
 _FIND_INPUT = r"""
@@ -173,7 +173,10 @@ class CdpActuator:
         return self.session.evaluate(_OBSERVE_JS) or {"url": "", "interactive": [], "errors": [], "headings": []}
 
     def navigate(self, url: str) -> bool:
-        self.session.navigate(url)
+        try:
+            self.session.navigate(url)   # raises CdpError if off the TMS domain allowlist
+        except CdpError:
+            return False  # off-allowlist or nav failure -> a failed action; the agent adapts/escalates
         self._settle_until_ready()  # wait for the SPA to actually render, not just for a fixed sleep
         return True
 

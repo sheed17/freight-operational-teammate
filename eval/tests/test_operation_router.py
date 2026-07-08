@@ -95,6 +95,33 @@ def test_money_lane_without_approved_amount_escalates_at_the_door():
     assert build_agent.actuator.calls == []  # never drove without an approved amount
 
 
+def test_browser_preflight_blocks_operation_before_agent_runs():
+    from types import SimpleNamespace
+
+    called = {"build": 0}
+
+    def build_agent(**_kwargs):
+        called["build"] += 1
+        return OperatorAgent(actuator=FakeActuator(), complete=_scripted_llm([]))
+
+    router = OperationRouter(
+        lanes=freight_lanes(),
+        build_agent=build_agent,
+        approved_amount_for=lambda _i: "2850.00",
+        browser_health_check=lambda: SimpleNamespace(
+            healthy=False,
+            status="SESSION_EXPIRED",
+            detail="TMS browser session appears to be on a login/session-expired page; human re-auth is required.",
+            active_url="https://secure.truckingoffice.com/login",
+        ),
+    )
+    res = router.run(_operate("invoice the delivered load for Acme"), approve=lambda a: True)
+    assert res.status == "ESCALATED" and res.lane == "raise_invoice"
+    assert "human re-auth" in res.note
+    assert res.steps[0]["browser_preflight"] == "SESSION_EXPIRED"
+    assert called["build"] == 0
+
+
 def test_agent_escalation_propagates_as_result():
     llm = _scripted_llm([{"action": "ESCALATE", "target": "cannot find the customer field"}])
     build_agent = _agent_factory(llm)
@@ -225,7 +252,10 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
     for thread in threads:
         thread.join()
 
-    assert sorted(results) == ["DONE", "DONE"]
+    # Exactly one save happens (no double-write). The winner commits -> DONE; the loser can't tell a
+    # live-concurrent winner from a crashed one (both look RESERVED), so it fails SAFE -> ESCALATED
+    # ("verify"), rather than silently reporting a done it didn't do. Safety over a tidy double-DONE.
+    assert sorted(results) == ["DONE", "ESCALATED"]
     assert saves == ["Save invoice"]
 
 
@@ -292,3 +322,53 @@ def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
         assert lanes[op].requires_amount is False, op
     for money in ("raise_invoice", "record_payment", "adjust_invoice", "record_payable"):
         assert lanes[money].requires_amount is True, money
+
+
+def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
+    # BLOCKER regression: a run that crashes AFTER reserving the commit but BEFORE any write must not,
+    # on retry, be reported as DONE ("already committed") with nothing written — and must not blindly
+    # repeat the write either. It escalates for a human to verify in the TMS.
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        class BoomActuator(FakeActuator):
+            def observe(self):
+                raise RuntimeError("CDP disconnected / process killed by supervisor")
+
+        boom = _agent_factory(_scripted_llm([]), actuator=BoomActuator())
+        intent = _operate("invoice the delivered load for Acme",
+                          {"customer": "Acme", "load_ref": "LD-9001", "commit": True})
+        r1 = OperationRouter(lanes=freight_lanes(), build_agent=boom, approved_amount_for=lambda _i: "2850.00",
+                             tenant="acme", commit_store=store)
+        raised = False
+        try:
+            r1.run(intent, approve=lambda a: True)
+        except RuntimeError:
+            raised = True
+        assert raised and boom.actuator.calls == []          # crashed, wrote nothing
+
+        good = _agent_factory(_scripted_llm([{"action": "READ", "target": "x"}, {"action": "DONE", "why": "ok"}]))
+        retry = OperationRouter(lanes=freight_lanes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
+                                tenant="acme", commit_store=store).run(intent, approve=lambda a: True)
+        assert retry.status == "ESCALATED"                   # NOT a false DONE
+        assert "not confirmed done" in retry.note.lower()
+        assert good.actuator.calls == []                     # did NOT blindly repeat the write
+    finally:
+        store.close()
+
+
+def test_leaked_reserved_claim_from_hard_kill_escalates(tmp_path):
+    # A hard kill can't run the crash handler, so it leaves a bare RESERVED claim. The duplicate-guard
+    # must still escalate (verify), not report DONE.
+    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    try:
+        store.claim_operation_commit(tenant="acme", lane="raise_invoice", load_ref="LD-9001",
+                                     party="Acme", approved_amount="2850.00", payload={"status": "RESERVED"})
+        good = _agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}]))
+        res = OperationRouter(lanes=freight_lanes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
+                              tenant="acme", commit_store=store).run(
+            _operate("invoice the delivered load for Acme", {"customer": "Acme", "load_ref": "LD-9001", "commit": True}),
+            approve=lambda a: True)
+        assert res.status == "ESCALATED" and "not confirmed done" in res.note.lower()
+        assert good.actuator.calls == []
+    finally:
+        store.close()

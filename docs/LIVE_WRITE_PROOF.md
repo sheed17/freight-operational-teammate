@@ -110,4 +110,5 @@ confirm the load ref on it matches what you intended before trusting it.
 ## Follow-ups this proof surfaces (not blockers)
 - AR invoice auto-propose fail-closes on missing `party` — thread `customer` through `InboxAssessment` /
   `proposal_from_assessment` so the hands-off AR loop works (the owner-operator DSO ask).
-- `parse_eml` chokes on RFC2047-encoded subjects — fix before activating triage on a real inbox.
+- RFC2047-encoded email subjects are now decoded before triage/linking; keep this covered in ingestion
+  regressions as live carrier mail expands.

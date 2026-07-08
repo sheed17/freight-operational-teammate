@@ -94,7 +94,7 @@ def main() -> int:
     args = parser.parse_args()
 
     workspace = Path(args.workspace)
-    db_path = Path(args.db) if args.db else workspace / "neyma_workflow.sqlite3"
+    db_path = Path(args.db) if args.db else workspace / "workflow.sqlite3"
     corpus = Path(args.corpus) if args.corpus else workspace / "synthetic_corpus"
     status_file = Path(args.status_file) if args.status_file else workspace / "teammate_status.json"
 
@@ -221,6 +221,8 @@ def main() -> int:
         nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
         load_amount_resolver=load_amount_resolver,
         receivables_reader=receivables_reader,
+        operation_cdp_url=args.operation_cdp_url if args.operation_url_filter else None,
+        operation_url_filter=args.operation_url_filter or None,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")
@@ -286,6 +288,7 @@ def _build_live_operation_router(
     completer = openai_completer(model=model)
 
     from freight_recon.agent_memory import AgentMemory
+    from freight_recon.browser_session_health import read_browser_session_health
     from freight_recon.lane_graduation import LaneGraduation
     from freight_recon.workflow import WorkflowStore
 
@@ -324,6 +327,7 @@ def _build_live_operation_router(
         graduation=LaneGraduation(grad_path),
         commit_store=WorkflowStore(db_path) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
+        browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),
     )
 
 
@@ -341,14 +345,14 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
 
     def _read():
         if lock is not None and lock.is_busy():
-            return []
+            return None
         try:
             with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
                 session.evaluate(f"location.href={invoices_url!r}")
                 _time.sleep(2.5)
                 return receivables_from_invoices_table(CdpActuator(session).observe())
-        except Exception:  # noqa: BLE001 - a read miss just yields an empty digest, never a crash
-            return []
+        except Exception:  # noqa: BLE001 - a read miss must not render as a false empty receivables list
+            return None
 
     return _read
 

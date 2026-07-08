@@ -53,6 +53,28 @@ class _LoadsActuator:
         return self._observation
 
 
+class _DetailActuator:
+    def __init__(self, list_observation, detail_observation):
+        self._list_observation = list_observation
+        self._detail_observation = detail_observation
+        self._on_detail = False
+        self.session = self
+        self.evaluated = []
+        self.navigated = []
+
+    def evaluate(self, expression):
+        self.evaluated.append(expression)
+        self._on_detail = False
+
+    def navigate(self, url):
+        self.navigated.append(url)
+        self._on_detail = True
+        return True
+
+    def observe(self):
+        return self._detail_observation if self._on_detail else self._list_observation
+
+
 class _FakeActuator:
     def __init__(self): self.calls = []
     def observe(self): return {"url": "x", "interactive": [], "errors": []}
@@ -358,6 +380,65 @@ def test_live_ar_cycle_default_pod_gate_blocks_unknown_pod_status():
     assert "Approve & run" not in json.dumps(poster.messages[0])
 
 
+def test_live_ar_cycle_resolves_unknown_pod_from_detail_page():
+    from propose_ar_from_tms import _cycle
+
+    list_obs = {"nav": [{"text": "Load 101", "url": "/loads/101"}], "tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global", "$2,500.00"]}],
+    }]}
+    detail_obs = {"tables": [{
+        "headers": ["FileSafe Documents"],
+        "rows": [{"cells": ["Signed BOL - LD 101.pdf"], "text": "Signed BOL - LD 101.pdf"}],
+    }]}
+    poster = _Poster()
+
+    posted = _cycle(
+        act=_DetailActuator(list_obs, detail_obs),
+        signer=_SIGNER,
+        channel="C",
+        loads_url="https://tms.test/loads",
+        store=None,
+        lock=None,
+        live=True,
+        poster=poster,
+    )
+
+    assert posted == 1
+    assert len(poster.messages) == 1
+    assert "Approve & run" in json.dumps(poster.messages[0])
+
+
+def test_live_ar_cycle_blocks_when_detail_page_has_rate_con_but_no_pod():
+    from propose_ar_from_tms import _cycle
+
+    list_obs = {"nav": [{"text": "Load 101", "url": "/loads/101"}], "tables": [{
+        "headers": ["Load #", "Status", "Customer", "Total"],
+        "rows": [{"cells": ["101", "Delivered", "Echo Global", "$2,500.00"]}],
+    }]}
+    detail_obs = {"tables": [{
+        "headers": ["FileSafe Documents"],
+        "rows": [{"cells": ["Rate Confirmation.pdf"], "text": "Rate Confirmation.pdf"}],
+    }]}
+    poster = _Poster()
+
+    posted = _cycle(
+        act=_DetailActuator(list_obs, detail_obs),
+        signer=_SIGNER,
+        channel="C",
+        loads_url="https://tms.test/loads",
+        store=None,
+        lock=None,
+        live=True,
+        poster=poster,
+    )
+
+    assert posted == 0
+    assert len(poster.messages) == 1
+    assert "Missing POD" in poster.messages[0]["text"]
+    assert "Approve & run" not in json.dumps(poster.messages[0])
+
+
 def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():
     from propose_ar_from_tms import _cycle
 
@@ -400,6 +481,19 @@ def test_detail_page_pod_classifier_counts_delivery_proof_not_rate_con():
     assert has_pod_from_detail([], page_readable=False) is None
     assert has_pod_from_detail(["POD.pdf"], page_readable=True) is True
     assert has_pod_from_detail(["Rate Con.pdf"], page_readable=True) is False
+
+
+def test_attachment_labels_from_detail_observation_pulls_document_rows():
+    from freight_recon.operation_proposal import attachment_labels_from_detail_observation
+
+    obs = {
+        "tables": [{"headers": ["FileSafe Documents"], "rows": [
+            {"cells": ["POD_101.pdf", "07/07/2026"], "text": "POD_101.pdf 07/07/2026"},
+        ]}],
+        "body_text": "Load details\nRate Confirmation.pdf\n",
+    }
+    labels = attachment_labels_from_detail_observation(obs)
+    assert any("POD_101.pdf" in label for label in labels)
 
 
 def test_no_button_for_non_lane_or_amountless_assessments():

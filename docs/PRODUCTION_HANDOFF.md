@@ -77,7 +77,9 @@ set -a; source .env; set +a
   --enable-ar-trigger --ar-interval-seconds 300
 ```
 Add `--ar-autonomous` only after the owner has graduated a lane (`/neyma graduate raise_invoice <cap>`).
-Add `--ar-no-require-pod` only if the TMS list can't show POD (e.g. TruckingOffice) and the owner accepts it.
+Add `--enable-triage` when running against a real inbox. Add `--ar-no-require-pod` only for a controlled
+demo exception where the owner explicitly accepts billing on delivered status even when delivery proof
+cannot be read from the list or detail/documents page.
 
 ### Keep it up (process supervision)
 `run_teammate` supervises its children within one process, but the process itself and Chrome need an
@@ -112,17 +114,27 @@ always there. ngrok is already supervised as a child on the static domain.
 - **Self-healing supervision** — a child that crashes (transient CDP/network/model blip) is RESTARTED
   with exponential backoff; the others keep running; a crash-looping child is given up on (guard). The
   teammate stays up instead of the whole group dying on one hiccup.
+- **Durable degraded-state file** — `run_teammate` writes `teammate_supervisor.json` in the shared
+  workspace, so a crash-looped child is visible to status/readiness checks instead of only stdout.
+- **Pilot readiness rollup** — `freight_recon.teammate_health.read_pilot_readiness()` combines loop
+  heartbeat, supervisor state, DB readability, stale browser-lock detection, and configured CDP/TMS
+  browser-session health. If CDP is down, no TMS tab matches the allowed domain, or the TMS tab looks
+  logged out/session-expired, readiness is **NO_GO** and the owner must re-auth before TMS work.
+- **Run diagnostics CLI** — `scripts/run_diagnostics.py path/to/trace.json` renders the deterministic
+  "why it struggled" diagnosis for a saved operation trace.
 
 ## Known gaps / risks for hands-off always-on (the honest list)
 1. **Not yet run for days on a server.** Self-heal handles child crashes, but longest-duration and
    reconnect-after-CHROME-death (Chrome needs its own OS supervisor) are still unproven at length.
-2. **Local browser, single tenant.** No hosted headless-browser pool; no multi-tenant DB/isolation.
+2. **Local browser, single tenant.** Session health is now visible in readiness, but there is still no
+   hosted headless-browser pool, encrypted per-tenant browser profile storage, or multi-tenant DB/isolation.
 3. **Unproven operation lanes** (above) — prove each live before relying on it.
 4. **Slack Events subscription is required** for thread-reply/`submit` — a per-app setup step (documented
    in the pilot doc); if it lapses, replies silently vanish.
 5. **Model/API dependence** — TMS-driving + NL routing call OpenAI; an outage degrades to escalation,
    not a wrong write (the fence holds), but it does pause work.
-6. **No dashboards/alerting beyond the heartbeat watchdog.**
+6. **No hosted dashboard yet.** Local readiness/diagnostics exist; external observability and alerting
+   still need production packaging.
 
 ---
 

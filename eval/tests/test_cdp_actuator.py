@@ -49,3 +49,29 @@ def test_click_row_action_passes_row_and_action_separately():
     click_expression = session.expressions[0]
     assert '"Coyote Logistics","Create Invoice"' in click_expression
 
+
+
+def test_navigation_domain_allowlist_guards_the_authenticated_browser():
+    # P0: the agent drives a Chrome logged into the TMS; a mis-prompted NAVIGATE must not leave the
+    # domain. host_allowed is the hard guard (no live connection needed to test it).
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    s = CdpBrowserSession(url_filter="truckingoffice")
+    assert s.host_allowed("https://secure.truckingoffice.com/loads") is True
+    assert s.host_allowed("/invoices/new") is True                 # relative -> same (allowed) origin
+    assert s.host_allowed("") is True                              # no-op
+    assert s.host_allowed("https://www.google.com") is False       # off-domain
+    assert s.host_allowed("https://evil-truckingoffice.com/x") is False   # not a real label match
+    assert s.host_allowed("javascript:alert(1)") is False          # executable pseudo-URLs fail closed
+    assert s.host_allowed("data:text/html,hi") is False
+    assert s.host_allowed("file:///etc/passwd") is False
+    assert s.host_allowed("about:blank") is True                   # harmless no-op/new blank page
+    assert s.host_allowed("https://truckingoffice.com") is True
+
+    # navigate() raises on an off-domain target; the actuator turns that into a soft failed action
+    import pytest
+    with pytest.raises(Exception):
+        s.navigate("https://www.google.com")
+
+    # no allowlist configured -> unrestricted (dev)
+    assert CdpBrowserSession(url_filter=None).host_allowed("https://anywhere.example.com") is True
