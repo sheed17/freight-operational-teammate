@@ -345,7 +345,7 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
     /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy."""
     import time as _time
 
-    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
     from freight_recon.browser_lock import BrowserLock
     from freight_recon.cdp_actuator import CdpActuator
     from freight_recon.cdp_session import CdpBrowserSession
@@ -357,9 +357,16 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
             return None
         try:
             with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                act = CdpActuator(session)
                 session.evaluate(f"location.href={invoices_url!r}")
                 _time.sleep(2.5)
-                return receivables_from_invoices_table(CdpActuator(session).observe())
+                obs = act.observe()
+                if not invoices_table_present(obs):      # unrendered/logged-out page: retry once, then
+                    _time.sleep(3.0)                      # honest "couldn't read" — NEVER "all paid"
+                    obs = act.observe()
+                if not invoices_table_present(obs):
+                    return None
+                return receivables_from_invoices_table(obs)
         except Exception:  # noqa: BLE001 - a read miss must not render as a false empty receivables list
             return None
 
@@ -375,6 +382,7 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
     from freight_recon.browser_lock import BrowserLock
     from freight_recon.cdp_actuator import CdpActuator
     from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.ar_collections import invoices_table_present
     from freight_recon.operation_proposal import loads_status_counts, ready_to_bill_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
@@ -391,6 +399,11 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
                 session.evaluate(f"location.href={invoices_url!r}")
                 _time.sleep(2.5)
                 invoices_obs = act.observe()
+            if not invoices_table_present(invoices_obs):
+                _time.sleep(3.0)
+                invoices_obs = act.observe()
+            if not invoices_table_present(invoices_obs):
+                return None                               # blind on AR -> honest miss, not a fake brief
             return {
                 "status_counts": loads_status_counts(loads_obs),
                 "ready": ready_to_bill_from_loads_table(loads_obs),

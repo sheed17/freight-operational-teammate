@@ -95,3 +95,15 @@ def test_render_top_debtors_reads_like_the_owner_narrative():
     assert "$18,400.00" in out and "past due" in out
     assert "Chiquita Brands" in out and "within terms" in out   # never mislabels in-terms money
     assert render_top_debtors([]).startswith(":information_source:")
+
+
+def test_missing_invoices_table_is_unreadable_not_all_paid():
+    # LIVE-FOUND: a cold/unrendered (or logged-out) page parsed as zero receivables and rendered
+    # "every invoice is paid in full". A page WITHOUT the invoices table must read as NOT-present.
+    from freight_recon.ar_collections import invoices_table_present
+
+    assert invoices_table_present(_OBS) is True
+    assert invoices_table_present({"tables": []}) is False
+    assert invoices_table_present(None) is False
+    login_page = {"tables": [{"headers": ["Email", "Password"], "rows": []}]}
+    assert invoices_table_present(login_page) is False

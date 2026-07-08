@@ -98,6 +98,18 @@ def aged_unpaid(receivables, *, as_of: date, min_days: int = 0, terms_days: int 
     return sorted(aged, key=lambda r: r["days_outstanding"], reverse=True)
 
 
+def invoices_table_present(observation: dict | None) -> bool:
+    """Is the invoices table actually ON this page? A login screen, an error page, or a not-yet-rendered
+    SPA parses as zero receivables — and zero must mean "all paid", never "I was looking at the wrong
+    page." Callers treat a missing table as unreadable (None), not as an empty ledger. LIVE-FOUND: a
+    cold Chrome answered "every invoice is paid in full" off an unrendered page."""
+    for table in (observation or {}).get("tables") or []:
+        headers = [str(h).strip().lower() for h in (table.get("headers") or [])]
+        if any("balance" in h for h in headers):
+            return True
+    return False
+
+
 def receivables_by_customer(aged) -> list[dict]:
     """Group outstanding receivables by customer, biggest debtor first — the chief-of-staff answer to
     "who owes us the most?". Each entry: {customer, total, count, oldest_days, past_due_total}. Pure and
