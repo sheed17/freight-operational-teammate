@@ -92,7 +92,9 @@ Each system is authoritative for a **slice**, and for nothing more:
 | Accounting / the bank | Money that actually moved. |
 | FMCSA / the insurer | Whether a carrier is legally allowed to haul. |
 
-> **There is no single source of truth in a brokerage. There is a *distributed* truth, and the operator's job is to reconcile it.** Any model that appoints one system as "the truth" will be wrong about the business. (Reconciliation §4.1 — the authority relationship remains `NEEDS VALIDATION`; this document does not resolve it.)
+> **There is no single source of truth in a brokerage. There is a *distributed* truth, and the operator's job is to reconcile it.** Any model that appoints one system as "the truth" will be wrong about the business.
+
+**`RESOLVED 2026-07-09 by ADR-001`** — Neyma maintains a **canonical operational projection**: derived from the authoritative systems above, continuously reconciled, fully auditable, with **field-level provenance** (originating system, originating record, observation timestamp, confidence, reconciliation status). **It is not a replacement for any of them and never becomes the global source of truth.** When authoritative systems disagree, **Neyma does not silently choose** — it records the conflict and routes it to deterministic reconciliation or a human. See `docs/architecture/decisions/ADR-001-authority-model.md`.
 
 ### 3.3 The commitment precedes the document
 
@@ -276,7 +278,7 @@ Five verbs, applied consistently. **They are ordered by increasing consequence, 
 ## 7. PRODUCT BOUNDARIES
 
 ### 7.1 What Neyma owns
-- **Its own operational model of the work** — the correlation between artifacts, loads, parties, and actions across systems. *(Nothing else holds this today. Whether it is ever* authoritative *is deliberately unresolved — Reconciliation §4.1, `NEEDS VALIDATION`.)*
+- **Its own canonical operational projection** — the correlation between artifacts, loads, parties, and actions across systems. **`RESOLVED by ADR-001`:** it is **derived, continuously reconciled, fully auditable, and field-level provenanced** — and it **never** becomes the global source of truth. External systems remain authoritative for their own domains; Neyma reconciles across them and **records conflicts rather than silently choosing.**
 - **The audit trail of everything it did**, with provenance. (P7)
 - **The exception state** — what is open, what is aging, what needs a human.
 - **Its learned knowledge** — the company's rules, and every correction a human has given it. (§2.4)
