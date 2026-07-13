@@ -22,10 +22,6 @@ from freight_recon.delivery_dispatch import SlackApiPoster, slack_thread_status_
 from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.ops_control import OpsControl  # noqa: E402
-from freight_recon.post_approval_execution import (  # noqa: E402
-    MockTmsAutoEntryConfig,
-    maybe_execute_mock_tms_after_approval,
-)
 from freight_recon.screen_discovery import openai_completer  # noqa: E402
 from run_dogfood_pilot import DEFAULT_WORKSPACE  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
@@ -48,16 +44,6 @@ def main() -> int:
         "--allow-local-dev-secret",
         action="store_true",
         help="Use the fixed local dogfood signing secret when NEYMA_DELIVERY_SECRET is not set",
-    )
-    parser.add_argument(
-        "--auto-enter-approved-mock-tms",
-        action="store_true",
-        help="After an APPROVE_* Slack action, enter the approved payable into the mock TMS ledger.",
-    )
-    parser.add_argument(
-        "--mock-tms-ledger",
-        default=None,
-        help="Mock TMS payable ledger path for --auto-enter-approved-mock-tms; defaults to workspace/browser_tms_payable_ledger.json",
     )
     parser.add_argument(
         "--status-file",
@@ -122,27 +108,10 @@ def main() -> int:
     if corpus.exists():
         follow_up_loads = {load.load_id: load for load in load_synthetic_loads(corpus)}
 
+    # SAFETY (ADR-004 precursor): no post-approval effect executor. A mock financial adapter
+    # must never be selectable from a production entry point, and an approval must never reach an
+    # externally-completed state without a real, verified effect. Fail closed.
     post_action_executor = None
-    if args.auto_enter_approved_mock_tms:
-        ledger_path = Path(args.mock_tms_ledger) if args.mock_tms_ledger else workspace / "browser_tms_payable_ledger.json"
-        auto_entry_config = MockTmsAutoEntryConfig(enabled=True, ledger_path=str(ledger_path))
-        ops_control = OpsControl(Path(db_path).parent / "ops_control.json")
-
-        def _executor(store, outcome):
-            on_status = None
-            if args.client_config:
-                delivery_config = load_delivery_config(args.client_config)
-                if delivery_config is not None:
-                    on_status = slack_thread_status_poster(store, delivery_config, env=os.environ)
-            maybe_execute_mock_tms_after_approval(
-                store,
-                outcome,
-                config=auto_entry_config,
-                on_status=on_status,
-                ops_control=ops_control,
-            )
-
-        post_action_executor = _executor
 
     operation_router = None
     operation_result_poster = None

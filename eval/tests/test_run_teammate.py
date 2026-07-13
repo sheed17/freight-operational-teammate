@@ -27,14 +27,9 @@ def test_all_processes_share_one_workspace_db_and_heartbeat():
     assert _val_after(loop, "--workspace") == "/tmp/ws"
     assert "/tmp/ws/site" in site
 
-    # Always-on defaults: auto-enter approved payables (mock) + forward the digest hour.
-    assert "--auto-enter-approved-mock-tms" in callback
+    # SAFETY: the mock financial-effect flag must NEVER be passed by the supervisor.
+    assert "--auto-enter-approved-mock-tms" not in callback
     assert _val_after(loop, "--daily-digest-hour") == "7"
-
-
-def test_no_auto_enter_omits_the_mock_tms_flag():
-    cmds = build_process_commands(workspace="/tmp/ws", client_config="c", auto_enter_mock_tms=False)
-    assert "--auto-enter-approved-mock-tms" not in cmds["callback"]
 
 
 def test_operation_router_flags_are_opt_in_for_callback():

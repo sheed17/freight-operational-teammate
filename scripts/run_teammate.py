@@ -133,7 +133,6 @@ def build_process_commands(
     daily_digest_hour: int | None = None,
     mailbox: str = "Neyma-Test-Inbox",
     query: str = "UNSEEN",
-    auto_enter_mock_tms: bool = True,
     enable_operation_router: bool = False,
     allowed_slack_users: tuple[str, ...] = (),
     allowed_slack_channel: str | None = None,
@@ -172,8 +171,6 @@ def build_process_commands(
         "--workspace", str(ws), "--db", str(db), "--status-file", str(status_file),
         "--client-config", client_config,
     ]
-    if auto_enter_mock_tms:
-        callback.append("--auto-enter-approved-mock-tms")
     if enable_operation_router:
         callback.append("--enable-operation-router")
         for user in allowed_slack_users:
@@ -249,7 +246,6 @@ def main() -> int:
     parser.add_argument("--daily-digest-hour", type=int, default=None)
     parser.add_argument("--mailbox", default="Neyma-Test-Inbox")
     parser.add_argument("--query", default="UNSEEN")
-    parser.add_argument("--no-auto-enter", action="store_true", help="do not auto-enter approved payables into the mock TMS")
     parser.add_argument("--enable-operation-router", action="store_true", help="enable signed Slack operation approvals -> OperationRouter")
     parser.add_argument("--allowed-slack-user", action="append", default=[], help="Slack user id allowed to approve OperationRouter runs")
     parser.add_argument("--allowed-slack-channel", default=os.environ.get("NEYMA_ALLOWED_SLACK_CHANNEL"))
@@ -298,7 +294,6 @@ def main() -> int:
         daily_digest_hour=args.daily_digest_hour,
         mailbox=args.mailbox,
         query=args.query,
-        auto_enter_mock_tms=not args.no_auto_enter,
         enable_operation_router=args.enable_operation_router,
         allowed_slack_users=tuple(args.allowed_slack_user),
         allowed_slack_channel=args.allowed_slack_channel,

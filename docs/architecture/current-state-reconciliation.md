@@ -205,8 +205,26 @@ Per-(tenant, lane) supervised→autonomous graduation with dollar/party/daily ca
 
 ---
 
-#### M. MOCK TMS INFRASTRUCTURE — **REMOVE from production/live runtime · EVALUATE for retention as test infrastructure**
-`mock_tms.py` (634 L), `mock_tms_write_server.py`, `tms_write.py` (662 L), `tms_adapter.py` (mock read adapter), `read_mock_tms.py`, `generate_mock_tms.py` · `REPO_CONFIRMED`
+#### M. MOCK TMS INFRASTRUCTURE — **CORRECTED 2026-07-09**
+
+> ## ⚠️ CORRECTION — the original classification of `tms_write.py` was **WRONG**
+>
+> **This section previously classified `tms_write.py` as mock infrastructure to be removed. That was incorrect.**
+> **Deleting `tms_write.py` wholesale would have removed PRODUCTION SAFETY BEHAVIOUR.**
+>
+> Established by the repository baseline audit (finding **R-03**), `REPO_CONFIRMED`: `tms_write.py` **conflates three different concerns in one module**, and its name and docstring describe only one of them.
+>
+> | Concern | What it actually is | Correct disposition |
+> |---|---|---|
+> | **`enter_approved_payable`** + the write-driver contracts (`PayableWriteResult`, `PayableWriteStatus`, `ChargeLine`, `ExecutionStatusUpdate`, `approved_amount_for_run`) | **The production safety spine**: approved-amount binding, idempotency, the `APPROVED → … → DONE` state machine, and **verify-by-readback**. **`truckingoffice_write.py` "drops into `enter_approved_payable` unchanged" with a REAL ledger.** | **KEEP / EXTRACT** |
+> | **`MockTmsWriteLedger`** and mock-only adapters | A **mock adapter behind a ledger port** | **TEST_ONLY** |
+> | **The conflated module boundary and misleading naming** (*"Bounded TMS write path against the mock TMS (Stage 7)"*) | The module is **named for its mock** while **containing the production driver**. This is why it is live-reachable, why this reconciliation misread it, and why an implementer would misread it too. | **MODIFY** |
+> | **Any production path that selects a mock ledger** | *(Found: `--auto-enter-approved-mock-tms`, enabled **by default** in the production supervisor, writing approved payables to a JSON file and reporting them complete.)* | **REMOVE IMMEDIATELY** *(done — see `test_no_mock_effect_in_production.py`)* |
+>
+> **The ledger is a port. Mock and TruckingOffice are two adapters. The defect is the module boundary, not the driver.**
+
+**Remaining genuine mock infrastructure** (the original classification stands for these):
+`mock_tms.py` (634 L), `mock_tms_write_server.py`, `tms_adapter.py` (mock read adapter), `read_mock_tms.py`, `generate_mock_tms.py` · `REPO_CONFIRMED`
 
 **Finding, stated precisely per correction (2) — this is a two-part classification:**
 
