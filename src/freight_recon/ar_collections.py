@@ -18,6 +18,9 @@ from decimal import Decimal, InvalidOperation
 _MONEY = re.compile(r"\$?\s*\d[\d,]*\.\d{2}\b")            # $2,400.00 — not a date (dates use '/')
 _DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")     # 07/05/2026
 _ACTION_HINTS = ("view", "enter payment", "edit", "copy", "delete", "email", "print", "pay")
+# A load/invoice reference cell (e.g. "LD-560008", "560008", "#1002") is NOT a customer name — skip it
+# so a Custom-Invoice-Number column doesn't get shown as the debtor (a customer name is never ref-shaped).
+_REF_LIKE = re.compile(r"^(ld[-\s]?)?#?\d[\d\-]*$", re.IGNORECASE)
 
 
 def _money(text: str):
@@ -66,6 +69,8 @@ def receivables_from_invoices_table(observation: dict | None) -> list[dict]:
                 cl = c.lower()
                 if _MONEY.search(c) or _as_date(c) or any(h in cl for h in _ACTION_HINTS):
                     continue
+                if _REF_LIKE.match(c.strip()):
+                    continue  # a load/invoice ref cell, not the customer name
                 if c:
                     customer = c
                     break

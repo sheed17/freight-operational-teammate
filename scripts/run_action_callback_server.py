@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import os
+import re
 import sys
 import threading
 import time
@@ -154,10 +155,24 @@ def main() -> int:
             invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
             lock_path=(workspace / "browser.busy") if workspace else None,
         )
+        load_state_reader = _build_load_state_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+        load_docs_reader = _build_load_docs_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
     else:
         load_amount_resolver = None
         receivables_reader = None
         tms_brief_reader = None
+        load_state_reader = None
+        load_docs_reader = None
 
     # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
     # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
@@ -199,6 +214,8 @@ def main() -> int:
         load_amount_resolver=load_amount_resolver,
         receivables_reader=receivables_reader,
         tms_brief_reader=tms_brief_reader,
+        load_state_reader=load_state_reader,
+        load_docs_reader=load_docs_reader,
         operation_cdp_url=args.operation_cdp_url if args.operation_url_filter else None,
         operation_url_filter=args.operation_url_filter or None,
     )
@@ -302,11 +319,48 @@ def _build_live_operation_router(
         lanes=freight_lanes(),
         build_agent=_build_agent,
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
+        document_for=_build_document_resolver(workspace=workspace),
         graduation=LaneGraduation(grad_path),
         commit_store=WorkflowStore(db_path) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
         browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),
     )
+
+
+def _build_document_resolver(*, workspace: "Path | None"):
+    """Resolve the local file a ``file_document`` lane should attach — the RUNTIME picks it, never the
+    model. It looks in the workspace ``documents/`` dir for a file matching the bound load ref AND the
+    document type (POD/BOL/rate con). Returns None when nothing matches, so the router fails CLOSED
+    (refuses to "attach" nothing) rather than filing the wrong paperwork on a load."""
+    docs_dir = (Path(workspace) / "documents") if workspace else Path("documents")
+
+    def resolve(intent):
+        params = intent.params or {}
+        ref = str(params.get("load_ref") or params.get("record") or params.get("load") or "").strip()
+        text = f"{intent.summary or ''} {' '.join(str(v) for v in params.values())}"
+        if not ref:
+            m = re.search(r"\b(\d{2,6})\b", text)   # a load/order ref in free text, never a money token
+            ref = m.group(1) if m else ""
+        if not ref or not docs_dir.is_dir():
+            return None
+        low = text.lower()
+        dtype = ("pod" if ("pod" in low or "proof of delivery" in low)
+                 else "bol" if ("bol" in low or "bill of lading" in low)
+                 else "rate" if ("rate con" in low or "rate confirmation" in low)
+                 else "")
+        files = sorted(p for p in docs_dir.glob("*") if p.is_file())
+        for f in files:  # a file naming BOTH the requested type and the ref
+            n = f.name.lower()
+            if ref in n and (not dtype or dtype in n):
+                return str(f)
+        if dtype:
+            return None  # a specific doc type was asked for but no file matches -> fail closed
+        for f in files:  # no type specified: any file naming this ref
+            if ref in f.name.lower():
+                return str(f)
+        return None
+
+    return resolve
 
 
 def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
@@ -401,9 +455,9 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
                 session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(2.5)
+                _time.sleep(1.2)
                 rows = ready_to_bill_from_loads_table(CdpActuator(session).observe())
             for row in rows:
                 if str(row.get("load_ref")) == str(load_ref):
@@ -413,6 +467,105 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
         return None
 
     return _resolve
+
+
+def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
+    """Given a load ref, read its live row from the TMS /loads list: {load_ref, status, customer, total}.
+    Header-based column mapping (robust to column drift, like the AR reader). Returns None if the browser
+    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+    _JS = r"""(function(ref){
+      ref=String(ref);
+      var tables=[].slice.call(document.querySelectorAll('table'));
+      for(var ti=0;ti<tables.length;ti++){
+        var t=tables[ti];
+        var hs=[].slice.call(t.querySelectorAll('tr')[0].querySelectorAll('th,td')).map(function(h){return (h.innerText||'').trim().toLowerCase();});
+        function idx(n){for(var i=0;i<hs.length;i++){if(hs[i].indexOf(n)>=0)return i;}return -1;}
+        var iL=idx('load'), iS=idx('status'), iC=idx('customer'), iT=idx('total');
+        if(iS<0) continue;
+        var rows=[].slice.call(t.querySelectorAll('tr'));
+        for(var ri=1;ri<rows.length;ri++){
+          var cells=[].slice.call(rows[ri].querySelectorAll('td')).map(function(c){return (c.innerText||'').replace(/\s+/g,' ').trim();});
+          if(!cells.length) continue;
+          var lc=(iL>=0?cells[iL]:cells[0])||'';
+          var first=lc.split(' ')[0];
+          if(first===ref || lc.replace(/[^0-9]/g,'')===ref.replace(/[^0-9]/g,'')){
+            return JSON.stringify({load_ref:ref, status:(iS>=0?cells[iS]:''), customer:(iC>=0?cells[iC]:''), total:(iT>=0?cells[iT]:'')});
+          }
+        }
+      }
+      return null;
+    })"""
+
+    def _read(load_ref: str) -> "dict | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(1.3)
+                raw = session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")
+        except Exception:  # noqa: BLE001 — a read is best-effort; None means "unreadable", never "not found as truth"
+            return None
+        if not raw:
+            return None
+        import json as _json
+        try:
+            return _json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return None
+
+    return _read
+
+
+def _build_load_docs_reader(*, cdp_url, url_filter, loads_url, lock_path):
+    """Given a load ref, return the list of document filenames on that load (its FileSafe attachments).
+    Finds the load's detail link on /loads, opens its /attachments page, reads the .pdf names. Returns
+    None if unreadable (browser busy / not found) — never an empty list as a false 'no docs'."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+    _HREF_JS = r"""(function(ref){ref=String(ref);
+      var links=[].slice.call(document.querySelectorAll('table a'));
+      for(var i=0;i<links.length;i++){var txt=(links[i].innerText||'').trim().split(' ')[0];
+        if(txt===ref){return links[i].getAttribute('href');}}
+      return null;})"""
+    _DOCS_JS = r"""(function(){return JSON.stringify([].slice.call(document.querySelectorAll('a'))
+      .map(function(a){return (a.innerText||'').trim();}).filter(function(t){return /\.[a-z]{3,4}$/i.test(t) && /pdf|jpg|jpeg|png|tiff?/i.test(t);}));})()"""
+
+    def _read(load_ref: str) -> "list | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=8) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(1.3)
+                href = session.evaluate(_HREF_JS + "(" + repr(str(load_ref)) + ")")
+                if not href:
+                    return None  # load not found on the list -> unreadable, not "no docs"
+                if href.startswith("/"):
+                    base = loads_url.split("/loads")[0]
+                    href = base + href
+                session.evaluate(f"location.href={(href.rstrip('/') + '/attachments')!r}")
+                _time.sleep(1.3)
+                raw = session.evaluate(_DOCS_JS)
+        except Exception:  # noqa: BLE001 — best-effort read
+            return None
+        import json as _json
+        try:
+            return _json.loads(raw) if raw else []
+        except Exception:  # noqa: BLE001
+            return None
+
+    return _read
 
 
 def _build_operation_result_poster(client_config: str | None):

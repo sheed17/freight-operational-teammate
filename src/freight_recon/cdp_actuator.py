@@ -279,6 +279,18 @@ class CdpActuator:
         time.sleep(self.settle)
         return bool(ok)
 
+    def upload_file(self, file_path: str, target: str = "") -> bool:
+        """Attach a local file to a file-input on the current form (POD / BOL / rate-con upload).
+
+        The file is supplied by the RUNTIME, never chosen by the model — the same fence as money
+        amounts. Returns False (a soft-failed action) if the file is missing or there is no file-input
+        on the page, so a missing artifact fails CLOSED and the lane escalates instead of "attaching"
+        nothing."""
+        ok = self.session.set_file_input(file_path, target=target)
+        if ok:
+            self._settle_until_ready()  # the upload often triggers an async preview/render
+        return bool(ok)
+
     def read(self, target: str) -> str:
         """Read a value back for verification — from a form field OR from DISPLAYED text.
 

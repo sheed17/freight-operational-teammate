@@ -122,6 +122,43 @@ class CdpBrowserSession:
         result = self._cmd("Runtime.evaluate", {"expression": expression, "returnByValue": True})
         return result.get("result", {}).get("result", {}).get("value")
 
+    def set_file_input(self, file_path: str, *, target: str = "") -> bool:
+        """Attach a LOCAL file to a file-input on the current page (CDP ``DOM.setFileInputFiles``).
+
+        The file is supplied by the RUNTIME — a real path on disk — never chosen by the model: the
+        same fence as money amounts. The agent may say "upload here"; it cannot conjure or pick a
+        file. Returns False if the path is missing or no file-input is present, so a missing artifact
+        fails CLOSED (the lane escalates) rather than silently attaching nothing. ``target`` is an
+        optional label/name hint used to pick among multiple file inputs."""
+        p = Path(file_path)
+        if not p.is_file():
+            return False
+        expr = (
+            "(function(t){"
+            "var ins=[].slice.call(document.querySelectorAll('input[type=file]'));"
+            "if(!ins.length) return null;"
+            "if(t){var needle=String(t).toLowerCase();"
+            "for(var i=0;i<ins.length;i++){var el=ins[i];"
+            "var ctx=((el.name||'')+' '+(el.id||'')+' '+(el.getAttribute('aria-label')||'')+' '+"
+            "(el.closest('label')?el.closest('label').innerText:'')+' '+"
+            "(el.parentElement?el.parentElement.innerText:'')).toLowerCase();"
+            "if(ctx.indexOf(needle)>=0) return el;}}"
+            "return ins[0];})(" + json.dumps(target) + ")"
+        )
+        result = self._cmd("Runtime.evaluate", {"expression": expr, "returnByValue": False})
+        object_id = result.get("result", {}).get("result", {}).get("objectId")
+        if not object_id:
+            return False
+        try:
+            self._cmd("DOM.enable")
+        except CdpError:
+            pass  # some builds don't require it; the setFileInputFiles call below is the real gate
+        try:
+            self._cmd("DOM.setFileInputFiles", {"files": [str(p.resolve())], "objectId": object_id})
+        except CdpError:
+            return False
+        return True
+
     def capture_screenshot(self, path: str | Path, *, full_page: bool = False) -> str:
         """Capture a PNG screenshot to disk for audit/debug evidence.
 

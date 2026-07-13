@@ -38,6 +38,7 @@ class LiveActionKind(str, Enum):
     TYPE = "TYPE"
     SELECT = "SELECT"
     READ = "READ"            # read a value back (for the agent's own verification)
+    UPLOAD = "UPLOAD"        # attach a runtime-supplied file to a file-input (POD/BOL/rate-con)
     DONE = "DONE"            # goal achieved
     ESCALATE = "ESCALATE"    # stuck/unsafe -> hand to the human
 
@@ -66,6 +67,7 @@ class Actuator(Protocol):
     def type(self, target: str, value: str) -> bool: ...
     def select(self, target: str, option: str) -> bool: ...
     def read(self, target: str) -> str: ...
+    def upload_file(self, file_path: str, target: str = "") -> bool: ...  # optional; guarded by getattr
 
 
 @dataclass
@@ -115,6 +117,7 @@ class OperatorAgent:
         actuator: Actuator,
         complete: Completer,
         approved_amount: str | None = None,
+        document_path: str | None = None,
         approve: Callable[[LiveAction], bool] | None = None,
         money_fence: MoneyFence | None = None,
         max_steps: int = 20,
@@ -129,6 +132,9 @@ class OperatorAgent:
         self.actuator = actuator
         self.complete = complete
         self.approved_amount = approved_amount
+        # DOCUMENT FENCE: the file an UPLOAD attaches is fixed here by the runtime — the model can pick
+        # the field to attach to, never the file. Same shape as the money fence: no model-chosen path.
+        self.document_path = str(document_path) if document_path else ""
         self.approve = approve
         self.fence = money_fence or MoneyFence()
         self.max_steps = max_steps
@@ -269,6 +275,13 @@ class OperatorAgent:
                 return AgentResult(goal, "DONE", history, action.why or "goal achieved")
             if action.kind == LiveActionKind.ESCALATE:
                 return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
+
+            # DOCUMENT FENCE: an UPLOAD attaches the RUNTIME-supplied file — the model chooses only the
+            # field, never the path. With no file bound, the lane fails CLOSED (escalate) rather than
+            # pretending to attach nothing — the exact "no file available to upload" gap file_document hit.
+            if action.kind == LiveActionKind.UPLOAD and not self.document_path:
+                return AgentResult(goal, "ESCALATED", history,
+                                   "a document must be attached but no file is available to upload")
 
             # MONEY FENCE: the model never supplies a monetary value.
             if self.fence.is_money_field(action):
@@ -459,6 +472,12 @@ class OperatorAgent:
         if action.kind == LiveActionKind.READ:
             value = self.actuator.read(action.target)
             return True, (value or "")
+        if action.kind == LiveActionKind.UPLOAD:
+            # The file is the runtime-bound document (fenced above); the target is only a field hint.
+            up = getattr(self.actuator, "upload_file", None)
+            if not callable(up):
+                return False, None
+            return bool(up(self.document_path, action.target)), None
         return False, None
 
 
@@ -523,9 +542,12 @@ def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str
         "Allowed actions (use exactly these): NAVIGATE(target=url), CLICK(target=button/link text, selector, "
         "or row/action target like 'Coyote Logistics -> Create Invoice'), TYPE(target=field, value=text), "
         "SELECT(target=field, value=option), READ(target=field), "
-        "DONE(why=...), ESCALATE(target=reason). Rules: take the minimal next step; if you are blocked or "
+        "UPLOAD(target=file field/label), DONE(why=...), ESCALATE(target=reason). Rules: take the minimal "
+        "next step; if you are blocked or "
         "unsure, ESCALATE rather than guess. NEVER decide a monetary amount — for money fields the system "
         "supplies the approved value, so just TYPE into the amount field and the value will be substituted. "
+        "To attach a document (POD/BOL/rate con), open the load's document/attachment form and UPLOAD "
+        "(target=the file input's label); the FILE itself is supplied by the system — you only pick the field. "
         "To use a table row action, target it explicitly as '<row visible text> -> <action text>' so the "
         "actuator clicks the action inside that row. To open a specific record (order, load, invoice), CLICK "
         "it by its visible reference text in the list/table — do NOT NAVIGATE to a guessed record URL like "

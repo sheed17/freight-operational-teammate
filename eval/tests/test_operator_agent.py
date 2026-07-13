@@ -22,6 +22,7 @@ class FakeActuator:
     def type(self, target, value): self.calls.append(("type", target, value)); return True
     def select(self, target, option): self.calls.append(("select", target, option)); return True
     def read(self, target): self.calls.append(("read", target)); return "read-value"
+    def upload_file(self, file_path, target=""): self.calls.append(("upload", file_path, target)); return True
 
 
 def _scripted_llm(actions):
@@ -559,3 +560,28 @@ def test_agent_escalates_when_stuck_repeating_instead_of_looping():
     assert res.status == "ESCALATED" and "stuck" in res.note
     # It stopped early, not after 20 identical clicks.
     assert len([c for c in act.calls if c == ("click", "Close")]) <= 3
+
+
+def test_upload_attaches_runtime_file_never_a_model_path():
+    """The document fence: an UPLOAD attaches the runtime-bound file; a model-supplied path is ignored."""
+    act = FakeActuator()
+    llm = _scripted_llm([
+        {"action": "UPLOAD", "target": "Proof of Delivery", "value": "/etc/passwd"},  # model-picked path
+        {"action": "DONE", "why": "filed"},
+    ])
+    res = OperatorAgent(actuator=act, complete=llm, document_path="/docs/POD_load_101.pdf",
+                        approve=lambda a: True).run("attach the POD to load 101")
+    assert res.status == "DONE"
+    uploads = [c for c in act.calls if c[0] == "upload"]
+    # The runtime file was attached to the chosen field; the model's /etc/passwd never reached the actuator.
+    assert uploads == [("upload", "/docs/POD_load_101.pdf", "Proof of Delivery")]
+
+
+def test_upload_without_a_bound_document_fails_closed():
+    """No file bound -> escalate rather than 'attach' nothing (the 'no file available' gap, closed)."""
+    act = FakeActuator()
+    llm = _scripted_llm([{"action": "UPLOAD", "target": "Proof of Delivery"},
+                         {"action": "DONE", "why": "filed"}])
+    res = OperatorAgent(actuator=act, complete=llm, approve=lambda a: True).run("attach the POD to load 101")
+    assert res.status == "ESCALATED"
+    assert not [c for c in act.calls if c[0] == "upload"]

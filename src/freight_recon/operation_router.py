@@ -42,6 +42,9 @@ class OperationLane:
     keywords: tuple[str, ...]
     build_goal: GoalBuilder
     requires_amount: bool = True
+    # A document lane (e.g. file_document) must have a real file resolved before it runs — the document
+    # fence, mirror of requires_amount: no file bound => refuse at the front door instead of "attaching" nothing.
+    requires_document: bool = False
 
     def matches(self, intent: CommandIntent) -> bool:
         hint = (intent.summary or "") + " " + " ".join(str(v) for v in (intent.params or {}).values())
@@ -86,6 +89,7 @@ class OperationRouter:
         lanes: list[OperationLane],
         build_agent: Callable[..., OperatorAgent],
         approved_amount_for: Callable[[CommandIntent], str | None] | None = None,
+        document_for: Callable[[CommandIntent], str | None] | None = None,
         graduation=None,
         tenant: str = "default",
         commit_store: WorkflowStore | None = None,
@@ -95,6 +99,9 @@ class OperationRouter:
         self.lanes = lanes
         self.build_agent = build_agent
         self.approved_amount_for = approved_amount_for or (lambda _i: None)
+        # Resolves the local file a document lane should attach (POD/BOL/rate con for the bound load).
+        # The RUNTIME picks the file; the model never names a path (mirror of approved_amount_for).
+        self.document_for = document_for or (lambda _i: None)
         # Optional LaneGraduation policy: governs whether a consequential lane may run WITHOUT a
         # per-run human approval. Absent/ungraduated => supervised (fail-safe).
         self.graduation = graduation
@@ -127,6 +134,15 @@ class OperationRouter:
                 "ESCALATED", lane.name,
                 "this is a money action but no human-approved amount is bound to it yet — approve an "
                 "amount and I'll run it through the gates.",
+            )
+
+        document_path = self.document_for(intent) if lane.requires_document else None
+        if lane.requires_document and not document_path:
+            # Document fence at the front door: a filing lane never runs without a real file to attach.
+            return OperationResult(
+                "ESCALATED", lane.name,
+                "this is a document-filing action but I don't have the file to attach yet — I couldn't "
+                "find the document for that load. Point me at it and I'll file it.",
             )
         commit_identity = _commit_identity(self.tenant, lane.name, intent, amount)
 
@@ -252,6 +268,9 @@ class OperationRouter:
         # workflow once, replay across records). Set post-build so no build_agent factory needs changing.
         if hasattr(agent, "record_ref"):
             agent.record_ref = _load_ref_of(intent) or ""
+        # Bind the runtime-resolved file so an UPLOAD attaches it (document fence; model never names a path).
+        if document_path and hasattr(agent, "document_path"):
+            agent.document_path = str(document_path)
         # Hold the shared browser for the duration of the write so the periodic AR-trigger defers.
         try:
             if self.browser_lock is not None:
@@ -479,7 +498,7 @@ def freight_lanes() -> list[OperationLane]:
         OperationLane("file_document",
                       ("attach", "file pod", "file the pod", "file bol", "file document", "upload pod",
                        "upload bol", "attach pod", "attach bol"),
-                      file_document_goal, requires_amount=False),
+                      file_document_goal, requires_amount=False, requires_document=True),
         OperationLane("create_load",
                       ("create load", "new load", "add load", "add order", "create order", "new order",
                        "book a load", "book load", "enter a load", "build a load"),

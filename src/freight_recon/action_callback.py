@@ -100,6 +100,14 @@ class CallbackAppConfig:
     # Returns {"status_counts", "ready", "receivables"} for the "what's happening?" snapshot, or None
     # when the TMS couldn't be read (never rendered as an all-clear).
     tms_brief_reader: Callable[[], "dict | None"] | None = None
+    # Optional reader: given a load ref, return that load's live row {status, customer, total, invoiced}
+    # from the TMS /loads list, or None if unreadable/not found. Powers "what's the story on load X"
+    # (answer, don't misroute to system health) and the already-invoiced guard on "bill X" (no double-bill).
+    load_state_reader: Callable[[str], "dict | None"] | None = None
+    # Optional reader: given a load ref, return the list of document filenames on that load (its FileSafe
+    # attachments), or None if unreadable. Powers "did the POD get attached to 101?" (answer the question
+    # instead of re-proposing the attach) and document-audit reads.
+    load_docs_reader: Callable[[str], "list | None"] | None = None
 
 
 def handle_signed_action_callback(
@@ -817,6 +825,8 @@ def run_callback_server(
     load_amount_resolver: Callable[[str], "str | None"] | None = None,
     receivables_reader: Callable[[], "list | None"] | None = None,
     tms_brief_reader: Callable[[], "dict | None"] | None = None,
+    load_state_reader: Callable[[str], "dict | None"] | None = None,
+    load_docs_reader: Callable[[str], "list | None"] | None = None,
     operation_cdp_url: str | None = None,
     operation_url_filter: str | None = None,
 ) -> ThreadingHTTPServer:
@@ -843,6 +853,8 @@ def run_callback_server(
             load_amount_resolver=load_amount_resolver,
             receivables_reader=receivables_reader,
             tms_brief_reader=tms_brief_reader,
+            load_state_reader=load_state_reader,
+            load_docs_reader=load_docs_reader,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
@@ -1118,6 +1130,94 @@ def render_tms_brief(status_counts: dict, ready_rows: list, aged: list) -> str:
     return "\n".join(lines)
 
 
+_LOAD_QUERY_HINTS = ("story", "status", "where is", "where's", "wheres", "going on", "happening",
+                     "details", "detail", "look up", "pull up", "show me", "what about", "how is",
+                     "how's", "hows", "update on", "up with", "tell me about")
+_LOAD_COMMAND_VERBS = ("bill", "invoice", "attach", "file ", "upload", "credit", "pay ", "record",
+                       "create", "mark ", "delete", "adjust")
+
+
+def _is_load_query(text: str) -> bool:
+    """Is this a QUESTION about one specific load ("what's the story on load 101", "status of 88")?
+    It must name a load ref, ask a story/status question, and NOT be a command verb — so it is answered
+    about that load instead of falling through to the system-health/readiness report (which is a
+    misroute and also leaks internal ops state to the owner). Command verbs route to operations."""
+    t = (text or "").lower()
+    if not _extract_load_ref(text):
+        return False
+    if any(v in t for v in _LOAD_COMMAND_VERBS):
+        return False
+    return any(h in t for h in _LOAD_QUERY_HINTS)
+
+
+_COMPLAINT_HINTS = ("too long", "too slow", "so slow", "taking forever", "this sucks", "come on man",
+                    "wtf", "frustrat", "annoying", "not working", "isn't working", "isnt working",
+                    "broken", "ugh", "useless", "hurry up", "what's the holdup", "whats the holdup")
+
+
+def _is_complaint(text: str) -> bool:
+    """Owner venting / frustration (not an actionable request). Deserves a human acknowledgement, not the
+    generic 'I didn't quite get that' fallback."""
+    return any(h in (text or "").lower() for h in _COMPLAINT_HINTS)
+
+
+_DOC_WORDS = ("pod", "proof of delivery", "bol", "bill of lading", "rate con", "document", "paperwork",
+              "attachment", "attached", "filed", "on file")
+_QUESTION_STARTS = ("did", "do ", "does", "is ", "are ", "has ", "have ", "was ", "were ", "any ", "what")
+
+
+def _is_doc_status_query(text: str) -> bool:
+    """Is this a QUESTION about whether a document is on a load ("did the POD get attached to 101?",
+    "do we have the BOL for 88?")? It must name a load, mention a document, and be interrogative — so it
+    is ANSWERED from the load's document list instead of being (mis)read as a command to attach again."""
+    t = (text or "").lower().strip()
+    if not _extract_load_ref(text):
+        return False
+    if "?" not in t and not t.startswith(_QUESTION_STARTS):
+        return False
+    return any(w in t for w in _DOC_WORDS)
+
+
+def _render_load_docs(ref: str, docs: list, text: str) -> str:
+    """Answer a document-status question from the load's attachment list."""
+    low = (text or "").lower()
+    want = ("POD" if "pod" in low or "proof of delivery" in low
+            else "BOL" if "bol" in low or "bill of lading" in low
+            else "rate con" if "rate con" in low else "")
+    if not docs:
+        return f":page_facing_up: Load {ref} has *no documents on file* yet" + (f" — no {want}." if want else ".")
+    if want:
+        match = [d for d in docs if want.replace(" ", "").lower() in d.lower().replace(" ", "")
+                 or (want == "POD" and "pod" in d.lower()) or (want == "BOL" and "bol" in d.lower())]
+        if match:
+            return f":white_check_mark: Yes — load {ref} has the {want} on file: {', '.join(match)}."
+        return (f":warning: No {want} on load {ref} yet. On file: {', '.join(docs)}." if docs
+                else f":warning: No {want} on load {ref} yet.")
+    return f":page_facing_up: Load {ref} documents on file: {', '.join(docs)}."
+
+
+def _render_load_state(state: dict) -> str:
+    """The per-load 'story' answer from the TMS /loads row: status, customer, total, billing state."""
+    ref = state.get("load_ref")
+    status = (state.get("status") or "").strip()
+    cust = (state.get("customer") or "").strip()
+    total = (state.get("total") or "").strip()
+    parts = [f":package: *Load {ref}*"]
+    if cust:
+        parts.append(cust)
+    if status:
+        parts.append(f"status *{status}*")
+    if total:
+        parts.append(total)
+    line = " · ".join(parts)
+    low = status.lower()
+    if "invoiced" in low:
+        line += "\n_Already invoiced — nothing to bill._"
+    elif "delivered" in low:
+        line += "\n_Delivered — ready to bill (say *bill it*)._"
+    return line
+
+
 _RESUME_WORDS = {
     "submit", "commit", "approve", "approved", "confirm", "confirmed", "proceed",
     "yes", "yep", "yeah", "okay", "retry",   # note: NOT "resume" (that's the 'resume tms writes' control)
@@ -1178,6 +1278,28 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
             from .ar_collections import render_top_debtors
             return {"text": render_top_debtors(aged)}
         return {"text": render_aging_digest(aged)}
+    # Owner venting ("this is taking too long") -> a human acknowledgement, not the generic fallback.
+    if _is_complaint(text):
+        return {"text": "I hear you — I'm on it. If something's slow or looks wrong, tell me the load "
+                        "(*what's the story on load 105*) or ask *what's happening* and I'll get you a "
+                        "straight answer."}
+    # A document-status QUESTION ("did the POD get attached to 101?") is ANSWERED from the load's
+    # document list — never (mis)read as a command to attach it again.
+    if _is_doc_status_query(text) and getattr(config, "load_docs_reader", None) is not None:
+        ref = _extract_load_ref(text)
+        docs = config.load_docs_reader(ref) if ref else None
+        if docs is None:
+            return {"text": f":warning: I couldn't read load {ref}'s documents just now — ask me again in a moment."}
+        return {"text": _render_load_docs(ref, docs, text)}
+    # A per-load QUESTION ("what's the story on load 101") is answered about THAT load — it must never
+    # fall through to handle_ops_command and come back as the system-health/pilot-readiness report.
+    if _is_load_query(text) and getattr(config, "load_state_reader", None) is not None:
+        ref = _extract_load_ref(text)
+        state = config.load_state_reader(ref) if ref else None
+        if state is None:
+            return {"text": f":warning: I couldn't read load {ref} just now (browser busy, or no load "
+                            f"{ref} in the TMS) — ask me again in a moment."}
+        return {"text": _render_load_state(state)}
     reply = handle_ops_command(
         text,
         actor=actor,
@@ -1193,6 +1315,31 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
         return {"text": reply}  # a recognized read/control -> answer immediately (no gates needed)
     if config.operation_router is None:
         return {"text": reply}
+    # DOCUMENT FENCE at PROPOSE time: an attach/file request must have a real file to attach, or say so
+    # up front — don't propose an attach for a document we don't have (fixes proposing on load 102 with
+    # no POD). Mirrors the router's requires_document fence, but surfaced at proposal instead of run.
+    _low = (text or "").lower()
+    if any(k in _low for k in ("attach", "file pod", "file the pod", "file bol", "upload pod",
+                               "upload bol", "file document", "file the bol")):
+        _docfn = getattr(config.operation_router, "document_for", None)
+        if callable(_docfn):
+            _ref = _extract_load_ref(text)
+            _intent = CommandIntent(kind=CommandKind.OPERATE, summary=text,
+                                    params={"load_ref": _ref} if _ref else {})
+            if _docfn(_intent) is None:
+                _dt = "POD" if "pod" in _low else "BOL" if "bol" in _low else "document"
+                return {"text": f":open_file_folder: I don't have a {_dt} for load {_ref or '(that load)'} "
+                                "to file yet — send it to me (email it or drop the file in) and I'll attach it."}
+    # ALREADY-INVOICED GUARD: "bill 101" on a load that's already Invoiced must NOT offer to bill again
+    # (double-bill / double-cash risk). Answer with its state instead of proposing raise_invoice.
+    if re.search(r"\b(bill|invoice|raise)\b", (text or "").lower()) and getattr(config, "load_state_reader", None) is not None:
+        _ref = _extract_load_ref(text)
+        if _ref:
+            _state = config.load_state_reader(_ref)
+            if _state and "invoiced" in (_state.get("status") or "").lower():
+                return {"text": f":information_source: Load {_ref} is *already invoiced* "
+                                f"({(_state.get('customer') or '').strip()} · {(_state.get('total') or '').strip()}). "
+                                "Nothing to bill — reply *record a payment on it* if they've paid."}
     # "bill load 105" with no amount: fetch the load's Total from the TMS (deterministic, not model-
     # chosen) so the owner doesn't have to type it. Falls back to asking if it can't be resolved.
     amount_source = text
@@ -1255,10 +1402,36 @@ def _render_pending_op_context(pending_op: dict, reply_text: str) -> str:
             lines.extend(f"  • {t}" for t in trace[-6:])
     lines.append(
         "_If I worked the wrong record or you want changes: give me the correction as a fresh request "
-        "(e.g. `bill load 102 amount 2400.00`) and approve that proposal — this run stays paused. "
-        "Reply `submit` only if you want THIS run to continue as-is._"
+        "naming the exact load/invoice and approved amount, then approve that new proposal. This run "
+        "stays paused. Reply `submit` only if you want THIS run to continue as-is._"
     )
     return "\n".join(lines)
+
+
+def _is_pending_op_challenge(text: str, pending_op: dict | None) -> bool:
+    """Is this reply challenging/questioning the active operation rather than starting a new one?
+
+    This runs before generic lane matching. In a pending operation thread, phrases like "why are you
+    attaching 101" must explain the active run, not become a fresh file_document proposal because the
+    word "attaching" matched a lane keyword.
+    """
+    if pending_op is None:
+        return False
+    t = " ".join((text or "").lower().split())
+    if not t:
+        return False
+    challenge_markers = (
+        "why", "did i not", "didn't i", "wrong", "not that", "not this", "what do you mean",
+        "thats not", "that's not", "that is not", "i said", "i asked", "why are you",
+        "why did you", "why'd you", "hold on", "wait", "stop",
+    )
+    if any(marker in t for marker in challenge_markers):
+        return True
+    params = pending_op.get("params") or {}
+    named = {str(v).lower() for k, v in params.items() if k in ("load_ref", "load_id", "invoice_ref") and v}
+    if named and re.search(r"\b(wrong|different|other|instead|not)\b", t):
+        return True
+    return False
 
 
 def _respond_conversationally(*, text, actor, channel_id, thread_ts, config, pending_op: dict | None = None) -> None:
@@ -1267,6 +1440,16 @@ def _respond_conversationally(*, text, actor, channel_id, thread_ts, config, pen
     PENDING op and the reply isn't a clean read/control, answer about THAT op instead of lane-matching
     the owner's words into an unrelated new proposal."""
     if config.operation_result_poster is None or not (text or "").strip():
+        return
+    if _is_pending_op_challenge(text, pending_op):
+        try:
+            config.operation_result_poster({
+                "channel_id": channel_id,
+                "thread_ts": thread_ts,
+                "text": _render_pending_op_context(pending_op or {}, text),
+            })
+        except Exception:  # noqa: BLE001 - a conversational reply must never crash the events endpoint
+            return
         return
     ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
     store = WorkflowStore(config.db_path)
@@ -1563,6 +1746,14 @@ def _build_operation_command_proposal(
     params: dict = {"lane": lane.name}
     if load_ref is not None:
         params["load_ref"] = load_ref
+    customer = _extract_customer(text)
+    if customer:
+        params["customer"] = customer
+    elif lane.name == "raise_invoice" and load_ref is not None:
+        # AR invoice requests often arrive as "bill load 100 amount 2850". The browser can read the
+        # bill-to from the load, but commit-once still needs a stable party dimension. Use an explicit
+        # load-scoped placeholder rather than leaving the commit identity unprotected.
+        params["party"] = f"customer_on_load:{load_ref}"
     amount = _extract_command_amount(amount_source_text if amount_source_text is not None else text)
     if lane.requires_amount and amount is None:
         return {
@@ -1627,6 +1818,36 @@ def _extract_command_amount(text: str) -> str | None:
     if not match:
         return None
     return f"{float(match.group(1).replace(',', '')):.2f}"
+
+
+def _extract_customer(text: str) -> str | None:
+    """Best-effort deterministic customer capture from typed owner commands.
+
+    This is not allowed to invent a party. It only binds clear phrases such as
+    ``invoice LD-9001 for Acme amount 2850`` or ``customer Acme``. If absent, the AR lane uses the
+    load-scoped party fallback above and lets the TMS load supply the bill-to.
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    patterns = (
+        r"\bcustomer\s+(.+?)(?:\s+(?:load|order|invoice|amount|\$)\b|$)",
+        r"\bfor\s+(.+?)\s+amount\b",
+        r"\bfor\s+(.+?)\s+\$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, t, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = match.group(1).strip(" \t-:,.")
+        if not value:
+            continue
+        if re.fullmatch(r"\$?\d[\d,]*(?:\.\d{1,2})?", value):
+            continue
+        # Avoid swallowing record phrases as parties.
+        value = re.sub(r"\b(load|order|invoice)\s*#?\s*\w+\b", "", value, flags=re.IGNORECASE).strip(" \t-:,.")
+        return value or None
+    return None
 
 
 def _scrub_money_from_text(text: str) -> str:
