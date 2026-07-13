@@ -3,6 +3,32 @@
 You are the first client. Run it on real work, supervised, and we harden it from your feedback. This
 is the whole daily loop, kept short.
 
+## ⚠️ TEMPORARY OPERATOR WARNING — do not run these scripts while the teammate is up
+
+**Six entry points in this repo can produce a live financial write, and they do not know about each
+other.** They share no reservation on a business entity, so two of them can bill the same load. Both
+would pass their gates. Both would be audited. **Each is invisible to the other, and the customer gets
+two invoices.**
+
+> **While `./scripts/run_client1.sh` (or `run_teammate.py`) is running, do NOT run any of these against
+> the live TMS:**
+>
+> | Script | Why it's dangerous right now |
+> |---|---|
+> | `enter_truckingoffice_invoice.py` | direct live invoice write from a terminal |
+> | `enter_invoice_discovered.py` | same, via a discovered screen map |
+> | `run_operate_request.py` | natural-language request → live write, approved at the terminal (not Slack) |
+> | `run_operator_agent.py` | **the least-gated live-write path in the repo** — an agent on a live TMS with only a local approver |
+>
+> `propose_ar_from_tms.py` runs *inside* the teammate and is fine there; **do not also run it by hand.**
+
+**This is operational discipline, not a fix. It does not resolve the underlying problem** (audit
+finding **R-02** / review finding **F-07**). The real fix is ADR-004's Effect Grant: an adapter will
+refuse to act without a grant, and only the Action Pipeline can mint one — at which point these
+scripts simply stop working until they become pipeline clients, which is the correct outcome.
+Until then, **one writer at a time.**
+See `docs/architecture/live-effect-entrypoint-inventory.md`.
+
 ## Start / stop
 - **Start:** `./scripts/run_client1.sh` (keep the terminal open — you'll see the logs).
 - **Stop:** `Ctrl-C` (stops the whole teammate cleanly).
