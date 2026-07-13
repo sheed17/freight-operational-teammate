@@ -252,3 +252,46 @@ Additionally: dead code sits in a live module, and the green test suite is **not
 6. **Re-run the suite on the clean tree.** *Only then* is it a baseline.
 
 > **Nothing in this audit was modified. The tree is exactly as it was found.**
+
+---
+
+# PART 5 — RESOLUTION: THE BASELINE IS FROZEN
+
+**Appended 2026-07-13. The audit above is preserved verbatim as the record of what was found.**
+
+## VERDICT: **BASELINE_READY**
+
+> ## **MIGRATION BASELINE: `f0e801b4dfd611345ca6c2842e946d58a7512ae5`**
+>
+> Branch `demos`. **This commit is the canonical starting point for the architecture migration.**
+> Every subsequent architectural change is measured from here.
+
+## How each blocker was closed
+
+| # | Blocker | Resolution |
+|---|---|---|
+| **R-01** | A production entry point routed human-APPROVED payables into a **mock ledger** — **enabled by default** | ⛔ **SEVERED** at `974031d`. `post_approval_execution.py` deleted; no production path can select a mock financial adapter. Guarded by `test_no_mock_effect_in_production.py`. |
+| **R-02** | Six write-capable entry points share no entity reservation; two can bill the same load | ⚠️ **DOCUMENTED, NOT FIXED.** Operator warning in `CLIENT_1_RUNBOOK.md` + `live-effect-entrypoint-inventory.md`. **The warning does not resolve R-02.** ADR-004's Effect Grant is the permanent mechanism. **The entry points are deliberately unaltered** until it exists. |
+| **R-03** | Reconciliation wrongly classified `tms_write.py` as REMOVE | ✅ **CORRECTED** in the frozen reconciliation (§M). `enter_approved_payable` is the **production safety spine**, not mock infrastructure. Guarded by a test. |
+| **D1** | Stream B authorship unknown | ✅ **RESOLVED BY DECISION.** Stream B is **preserved, not promoted** — branch `preserve/pre-reset-readiness-hardening` (`9bf31d0`). **Not approved for production inclusion.** No Stream B code is in the baseline. |
+| **D3** | `tms_read_cache.py` vs ADR-001 C4 | ✅ **REVIEWED** (`tms-read-cache-safety-review.md`). It does **not** serve a consequential freshness read. **V-3** (the amount resolver is one line from being cached) is closed structurally by `test_consequential_read_boundary.py`, landed **ahead of** the cache. |
+| **D4** | Dead radar code | ✅ Removed. |
+| **D5** | MVP scorecard | ✅ Preserved on the preservation branch, out of the baseline. |
+| **D6** | Entry-point disposition | ⏸ **Deferred to ADR-004 by decision.** Do not alter the six entry points yet. |
+
+## What the baseline contains
+
+| Layer | Commits |
+|---|---|
+| Architecture corpus (reconciliation, discovery, principles, operating model, ADR-001…004/008, target spec, review, correction plan) | `25226df` … `be23ac4` |
+| **Production safety fix** (mock effect path severed) | `974031d` |
+| **Stream A** — document upload through the safety spine + six live-verified dogfood fixes | `034b055` |
+| **Separation plan, Stream B review, V-3 structural guard, R-02 warning** | **`f0e801b`** |
+
+**673 → 677 tests passing. Working tree clean. No Stream B content.**
+
+## What the baseline explicitly does NOT contain — and must not, during this phase
+
+`test_conversational_surface.py` (unattributed) · **B1** IMAP retry · **B2** TMS read cache · **B3** mailbox routing refresh · **B4** assign-unlinked.
+**All preserved on `preserve/pre-reset-readiness-hardening`. None may be cherry-picked during this phase.**
+Their architectural lessons are recorded in `stream-b-architectural-lessons.md` — **the lessons are promoted; the code is not.**
