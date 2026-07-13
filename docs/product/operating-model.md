@@ -316,6 +316,23 @@ These are **structural**. They are not policies to be tuned; they are **what Ney
 3. **Neyma never exercises commercial judgment** — the sell rate, whom to trust, the words when it matters. (§6.2)
 4. **Every action is attributable, explainable, and verifiable — and the *capability* to gate, audit, and reverse exists permanently in the architecture**, regardless of which gates are currently switched on. (P5, P7)
 5. **A human brake always exists and always works.** (P14)
+6. **Only a human may assert that an undocumented authorization exists.** *(Added 2026-07-09 by ADR-003, in response to review finding F-05.)*
+
+> ### 7.5.1 — Permanent truth #6, in full: **Authorization Assertion**
+>
+> A probabilistic model, an external counterparty, a document, an email, an SMS, or a call transcript **may provide evidence that an authorization might exist.** **None of them may independently establish that an undocumented authorization is valid for a consequential financial action.**
+>
+> **A model MAY:** detect language suggesting an authorization · identify the amount and charge type · retrieve supporting communications · assemble a timeline · **surface a candidate authorization** · recommend that a human review it.
+>
+> **A model MAY NEVER:** create an authoritative accessorial authorization by itself · promote a counterparty's assertion into a confirmed authorization · allow an inferred verbal agreement to satisfy a financial guardrail · authorize payment on the basis of confidence, similarity, or model interpretation.
+>
+> **Where an authorization is not already confirmed by an authoritative structured record, only an authorized human may assert that it exists.** That human assertion MUST be: **explicit · attributed to the human actor · tied to the specific load, charge, amount, counterparty, and time period · supported by the evidence reviewed · versioned · correctable · auditable · and included in the material-facts fingerprint of any approval that depends on it.**
+>
+> A counterparty statement such as *"per our call, you approved this detention"* is an **unverified counterparty claim and a potential fraud signal.** **It is not authorization.**
+>
+> **This restriction is permanent.** It **cannot** graduate away through autonomy, confidence, historical performance, or policy configuration. It belongs here, in the permanent truths — **not in §7.6.**
+
+> **Why this is a truth and not a policy:** the Operating Model's deepest domain insight is that **the commitment precedes the document** (§3.3, P31). The architecture review found that this insight had been implemented as *"a model may assert that a commitment occurred"* — which converts our greatest strength into a **payment-fraud vector reachable through the safety spine rather than around it.** The correct expression of P31 is that the system must be **able to represent** an undocumented authorization — **not that it may invent one.**
 
 > **#4 is the load-bearing one, and it is the distinction that matters most in this section.**
 > The architecture must **always be able** to enforce a human gate on any action — **even if, for a given customer or a given era, that gate is not switched on.**
