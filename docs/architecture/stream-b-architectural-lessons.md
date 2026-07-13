@@ -17,13 +17,17 @@ and is **not approved for production inclusion**.
 
 ## L-A — Machine inference must never overwrite human-authored native state
 
-**Binding rule.** Every identity binding, routing decision, and correction carries a **provenance class**:
+**Binding rule.** Every identity binding, routing decision, and correction carries a **`provenance_class`**.
 
-| Provenance | Meaning | May a machine recompute it? |
-|---|---|---|
-| `OWNER_ASSERTED` | A human decided this | **NEVER.** |
-| `LINKER_INFERRED` | The system derived this | **Yes** — it is projected state; rebuild it freely. |
-| `SYSTEM_IMPORTED` | An external system asserted this | Only by re-import from the same authority. |
+> **ADOPTED AND EXTENDED (owner decision, 2026-07-13).** This lesson proposed three classes. The owner
+> expanded it to **six** and promoted it into **frozen ADR-002 §2.3 (Amendment A2)** — the canonical
+> definition now lives there, not here. **The addition of `MODEL_EXTRACTED` vs `MODEL_INFERRED` is the
+> substantive improvement:** *"the model read £2,850 off the rate confirmation"* and *"the model thinks
+> it's probably £2,850"* were, until this amendment, **the same database row**.
+
+`SYSTEM_IMPORTED` · `OWNER_ASSERTED` · `LINKER_INFERRED` · `MODEL_EXTRACTED` · `MODEL_INFERRED` · `RECONCILED`
+— governed by **R-P1** (runtime-assigned), **R-P2** (no laundering upward), **R-P3** (`OWNER_ASSERTED` is
+never machine-recomputed), and: **`MODEL_INFERRED` may never gate a consequential action, at any confidence.**
 
 > **Machine recomputation may not overwrite an `OWNER_ASSERTED` binding. Not on a better model, not on a
 > better linker, not on a later cycle, not ever.**

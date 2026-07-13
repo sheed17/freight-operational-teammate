@@ -60,7 +60,7 @@ Simultaneously §19 describes the Action Pipeline as a **sequence of stages** (`
 | **Failure states** | Explicit. **A machine may fail; it may not vanish.** |
 | **Compensation** | Declared wherever an effect may need undoing. |
 | **Ownership** | Machines representing *work* carry an **accountable human owner at all times** (**I1**). |
-| **Provenance** | Every field carries its **provenance class** — `OWNER_ASSERTED` · `LINKER_INFERRED` · `SYSTEM_IMPORTED`. **Machine recomputation may never overwrite `OWNER_ASSERTED`.** *(Stream B lesson **L-A**.)* |
+| **Provenance** | Every field carries **`provenance_class`** — the six values of **ADR-002 §2.3** (`SYSTEM_IMPORTED` · `OWNER_ASSERTED` · `LINKER_INFERRED` · `MODEL_EXTRACTED` · `MODEL_INFERRED` · `RECONCILED`), **runtime-assigned (R-P1)**, **never laundered upward (R-P2)**. **Machine recomputation may never overwrite `OWNER_ASSERTED` (R-P3).** **`MODEL_INFERRED` may never gate a consequential action, at any confidence.** *(Stream B lesson **L-A**.)* |
 
 ### 2.4 Illegal transitions are hard errors (F-30, P10)
 
@@ -339,9 +339,11 @@ Replay reconstructs state by applying events through the transition tables. **It
 
 | From | Trigger | Guard | → | Emits |
 |---|---|---|---|---|
-| — | `ClaimProposed` | carries **`provenance`**: `OWNER_ASSERTED` \| `LINKER_INFERRED` \| `SYSTEM_IMPORTED` | `PROPOSED` | `ClaimProposed` |
-| `PROPOSED` | `DeterministicMatch` | **exact ID match** — never fuzzy | `CONFIRMED` | `ClaimConfirmed` |
-| `PROPOSED` | `HumanAsserted` | authorized human; **bound to an immutable id (L-B)** | `CONFIRMED` | `ClaimConfirmed{OWNER_ASSERTED}` |
+| — | `ClaimProposed` | carries **`provenance_class`** — one of the **six** in **ADR-002 §2.3**, **runtime-assigned (R-P1)** | `PROPOSED` | `ClaimProposed{provenance_class}` |
+| `PROPOSED` | `DeterministicMatch` | **exact ID match** — never fuzzy | `CONFIRMED` | `ClaimConfirmed{LINKER_INFERRED}` |
+| `PROPOSED` | `HumanAsserted` | **authenticated** human; **bound to an immutable id (L-B)** | `CONFIRMED` | `ClaimConfirmed{OWNER_ASSERTED}` |
+| `PROPOSED` | `ModelReadItOffAnArtifact` | **the artifact is retained** and the span is recorded | `PROPOSED` | `ClaimEvidenced{MODEL_EXTRACTED}` — **evidence, not confirmation** |
+| **`PROPOSED`** | **`ModelGuessed`** | `provenance_class = MODEL_INFERRED` | **`AMBIGUOUS`** | `ClaimAmbiguous` → **Exception, human-owned.** ### **A guess NEVER auto-confirms — at any confidence.** |
 | `PROPOSED` | `MultipleCandidates` \| `NoCandidate` | — | `AMBIGUOUS` | `ClaimAmbiguous` → **Exception, human-owned** |
 | `AMBIGUOUS` | `HumanResolved` | **`decision_ref`** | `CONFIRMED` | `ClaimConfirmed{OWNER_ASSERTED}` |
 | `CONFIRMED` | `RecomputedByInferrer` | **provenance = `LINKER_INFERRED`** | `SUPERSEDED` | `ClaimSuperseded` — *projection rebuild; legitimate* |
@@ -489,7 +491,10 @@ Replay reconstructs state by applying events through the transition tables. **It
 - **Duplicate delivery** — same event twice ⇒ inbox makes it a **no-op**.
 - **Duplicate observation** — same email twice ⇒ **one** Observation, **one** `ObservationConfirmed`, **zero** duplicate work items.
 - **Illegal transition** — attempt **every** illegal `(state, event)` pair; assert it raises, persists nothing, emits the security event.
-- ### **Owner-binding protection (L-A)** — assert `RecomputedByInferrer` against an **`OWNER_ASSERTED`** claim is an **ILLEGAL TRANSITION**. *This is the B3 regression test.*
+- ### **Owner-binding protection (L-A / ADR-002 R-P3)** — assert `RecomputedByInferrer` against an **`OWNER_ASSERTED`** claim is an **ILLEGAL TRANSITION**. *This is the B3 regression test.*
+- ### **No provenance laundering (ADR-002 R-P2)** — take a `MODEL_INFERRED` value and push it through **every** path that could relabel it: copy, re-read, cache round-trip, re-observation, reconciliation, projection materialization, serialization across a process boundary. **Assert it emerges `MODEL_INFERRED` every time.** *A guess acquiring the authority of a fact by moving through enough layers is the single most likely way this architecture gets quietly defeated — so it gets the most adversarial test.*
+- ### **A guess cannot gate money (ADR-002 §2.3)** — a `MODEL_INFERRED` value on a material field ⇒ the pre-effect checkpoint **REFUSES**, **at every confidence score, including 1.0.**
+- ### **A counterparty cannot self-authorize (ADR-003)** — an inbound email asserting *"you approved this detention"* ⇒ the claim is **`MODEL_EXTRACTED`**, **never `OWNER_ASSERTED`**, and it **cannot gate the payable.**
 - ### **Conflict blocks money** — an open Conflict on a material field ⇒ **every consequential action on that entity is refused.**
 - **Exception closure** — closure without a `decision_ref` ⇒ **illegal transition**.
 - **Expectation blindness (F-14)** — deadline passes while the channel is **down** ⇒ **`INDETERMINATE`, never `OVERDUE`.**
