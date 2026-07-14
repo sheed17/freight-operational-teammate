@@ -119,7 +119,7 @@ mint_grant(witness: CheckpointPassed, target: TargetResource, ...) -> EffectGran
 | `grant_id` | uuid, PK | — | Identity. |
 | `tenant_id` | text, **NOT NULL** | **tenant binding** | An adapter refuses a grant whose tenant ≠ its operating context. **Always first, always present** (F-12). |
 | `action_class` | enum, NOT NULL | **action-class binding** | `RAISE_INVOICE`, `RECORD_PAYABLE`, `FILE_DOCUMENT`, `SEND_OUTBOUND`, `MIGRATION`, … |
-| `gate_decision` | enum, NOT NULL | — | `HUMAN_REQUIRED` · `AUTONOMOUS_WITHIN_CAPS` · `UNGATABLE_PERMANENT`. **Never null.** A null gate is an unasserted gate (F-20). |
+| `gate_decision` | enum, NOT NULL | — | **[AMENDED — A3, ADR-010]** `HUMAN_APPROVAL_REQUIRED` · `AUTONOMOUS_WITHIN_CAPS` · `PERMANENT_HUMAN_ASSERTION_REQUIRED` · `FORBIDDEN`. **Never null.** A null gate is an unasserted gate (F-20). |
 | `target_system` | text, NOT NULL | **target-resource binding** | `tms:truckingoffice`, `email:smtp`, … |
 | `target_resource_id` | text, NOT NULL | **target-resource binding** | `load:4471`. A grant for *invoice load 4471 in TMS-A* **cannot** invoice load 4472, or touch TMS-B. |
 | `target_operation` | text, NOT NULL | **target-resource binding** | `create_invoice`. |
@@ -127,7 +127,7 @@ mint_grant(witness: CheckpointPassed, target: TargetResource, ...) -> EffectGran
 | `material_facts_fingerprint` | text, NOT NULL | **material-facts binding** | Hash over the facts the human saw (**amount, party, load, document**). **Drift ⇒ the approval is void** (ADR-005). |
 | `entity_versions` | jsonb, NOT NULL | **entity-version binding** | `{"load:4471": 17}`. Optimistic concurrency, enforced at the same instant (ADR-009). |
 | `policy_version` | text, NOT NULL | **policy-version binding** | The exact policy that authorized this. **A policy change invalidates in-flight grants** — you cannot act under a policy that no longer exists. |
-| `approval_id` | uuid, **NULL only if** `gate_decision ≠ HUMAN_REQUIRED` | **approval binding** | Enforced by a DB **CHECK constraint**, not by code. |
+| `approval_id` | uuid, **NULL only if** `gate_decision ∉ {HUMAN_APPROVAL_REQUIRED, PERMANENT_HUMAN_ASSERTION_REQUIRED}` **[AMENDED — A3]** | **approval binding** | Enforced by a DB **CHECK constraint**, not by code. |
 | `checkpoint_id` | uuid, NOT NULL | **witness binding** | FK → `checkpoint_records`. **This is what makes the grant insufficient on its own.** |
 | `pipeline_instance_id` | uuid, NOT NULL | — | FK → the durable machine (ADR-008). **An orphan grant is impossible.** |
 | `state` | enum, NOT NULL | — | `GRANTED → CLAIMED` \| `EXPIRED` \| `REVOKED` |
@@ -348,3 +348,11 @@ Every adapter invocation emits `EffectAttempted`. A continuous reconciler assert
 - **It does not define policy** — **ADR-010**. This ADR *binds* a policy version; ADR-010 says what a policy is. *(See Stream B lesson **L-C**: an owner-stated rule must compile to policy or be honestly reported as memory.)*
 - **It does not alter the six write-capable entry points.** **Deliberately** — the permanent mechanism is defined first (owner decision).
 - **It does not, by existing, close R-02.** **R-02 closes when this is built.**
+
+---
+
+## AMENDMENT RECORD
+
+| # | Date | Amendment | Reason | Approved by |
+|---|---|---|---|---|
+| **A3** | 2026-07-13 | **§3.2 `gate_decision` enum replaced.** Was: `HUMAN_REQUIRED` · `AUTONOMOUS_WITHIN_CAPS` · `UNGATABLE_PERMANENT`. Now: **`HUMAN_APPROVAL_REQUIRED` · `AUTONOMOUS_WITHIN_CAPS` · `PERMANENT_HUMAN_ASSERTION_REQUIRED` · `FORBIDDEN`** (ADR-010 §3.1). `approval_id`'s CHECK constraint widened accordingly. | The original three **collapsed two concepts that must never be collapsed**. `UNGATABLE_PERMANENT` was doing the work of *both* *"only a human may EVER do this"* (**a permanent truth** — Authorization Assertion, ADR-003) *and* *"nobody may ever do this"* (**a prohibition**). **They are different sentences.** Keeping them merged would have forced a choice between freezing money-out forever (wrong — it is **policy**, Operating Model §7.6) and making Authorization Assertion graduatable (**catastrophic** — it is **permanent**). **The distinction between the two new members IS the distinction between a permanent truth and a current policy.** | Rasheed |

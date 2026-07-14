@@ -209,9 +209,10 @@ Replay reconstructs state by applying events through the transition tables. **It
 | `PROPOSED` | `PolicyEvaluated` | policy **denies** | `REJECTED` | `PipelineRejected{reason}` |
 | `POLICY_CHECKED` | `Validated` | money fence + document fence + evidence complete | `VALIDATED` | `IntentValidated` |
 | `POLICY_CHECKED` | `ValidationFailed` | — | `REJECTED` | `PipelineRejected` |
-| `VALIDATED` | — | gate = **`HUMAN_REQUIRED`** | `AWAITING_APPROVAL` | `ApprovalRequested` |
+| `VALIDATED` | — | gate = **`HUMAN_APPROVAL_REQUIRED`** **[AMENDED — A4]** | `AWAITING_APPROVAL` | `ApprovalRequested` |
 | `VALIDATED` | — | gate = `AUTONOMOUS_WITHIN_CAPS` **and within caps** | `CHECKPOINT` | — |
-| `VALIDATED` | — | gate = **`UNGATABLE_PERMANENT`** | `REJECTED` | `PipelineRejected{ungatable}` |
+| `VALIDATED` | — | gate = **`FORBIDDEN`** **[AMENDED — A4]** | `REJECTED` | `PipelineRejected{forbidden}` |
+| `VALIDATED` | — | gate = **`PERMANENT_HUMAN_ASSERTION_REQUIRED`** **[AMENDED — A4]** — requires an **authenticated human ASSERTION** (ADR-003); **can never graduate to autonomous** | `AWAITING_APPROVAL` | `ApprovalRequested{permanent_assertion}` |
 | `AWAITING_APPROVAL` | `ApprovalGranted` | approval binds **this** commit key + fingerprint (ADR-005) | `CHECKPOINT` | `ApprovalBound` |
 | `AWAITING_APPROVAL` | `ApprovalDenied` \| `ApprovalExpired` \| `BrakeEngaged` | — | `VOIDED` | `PipelineVoided{reason}` |
 | `CHECKPOINT` | `CheckpointPassed` | **all 7 checks** (ADR-004 §2.4) | `GRANTED` | `EffectGranted{grant_id}` |
@@ -282,7 +283,7 @@ Replay reconstructs state by applying events through the transition tables. **It
 
 | From | Trigger | Guard | → | Emits |
 |---|---|---|---|---|
-| — | `ApprovalRequested` | gate = `HUMAN_REQUIRED`; **material facts fingerprinted** | `REQUESTED` | `ApprovalRequested{fingerprint}` |
+| — | `ApprovalRequested` | gate ∈ {`HUMAN_APPROVAL_REQUIRED`, `PERMANENT_HUMAN_ASSERTION_REQUIRED`} **[AMENDED — A4]**; **material facts fingerprinted** | `REQUESTED` | `ApprovalRequested{fingerprint}` |
 | `REQUESTED` | `HumanApproved` | **authorized human**; **the human is authenticated, not asserted** (ADR-003) | `GRANTED` | `ApprovalGranted` |
 | `REQUESTED` | `HumanDenied` | — | `DENIED` | `ApprovalDenied` |
 | `REQUESTED` \| `GRANTED` | `TimerFired` | TTL elapsed | `EXPIRED` | `ApprovalExpired` |
@@ -452,7 +453,7 @@ Replay reconstructs state by applying events through the transition tables. **It
 | From | Trigger | Guard | → | Emits |
 |---|---|---|---|---|
 | — | `CorrectionInvalidatedAnEffect` | a **`VERIFIED`** effect is now known to be wrong | `REQUIRED` | `CompensationRequired{exposure}` |
-| `REQUIRED` | `HumanApproved` | ### **money-affecting compensation is ALWAYS `HUMAN_REQUIRED`** | `APPROVED` | `CompensationApproved` |
+| `REQUIRED` | `HumanApproved` | ### **money-affecting compensation is ALWAYS `HUMAN_APPROVAL_REQUIRED`** **[AMENDED — A4]** | `APPROVED` | `CompensationApproved` |
 | `REQUIRED` | `NoCompensatingActionExists` | *the world offers no undo* | **`NOT_POSSIBLE`** | `CompensationImpossible{exposure}` |
 | `APPROVED` | `PipelineStarted` | ### **its OWN Pipeline Instance — fully gated (§3.2)** | `EXECUTING` | `CompensationStarted` |
 | `EXECUTING` | `PipelineClosed` | compensating effect **verified by readback** | `COMPLETED` | `CompensationCompleted` |
@@ -523,3 +524,11 @@ Replay reconstructs state by applying events through the transition tables. **It
 | **V3** | **Exception ageing/escalation thresholds** per lane. | Product/policy. |
 
 **None of these block implementation of the machinery.** They block only the **domain** lifecycles that sit on it.
+
+---
+
+## AMENDMENT RECORD
+
+| # | Date | Amendment | Reason | Approved by |
+|---|---|---|---|---|
+| **A4** | 2026-07-13 | **§3.2 / §3.4 / §3.10 gate-decision guards updated to the ADR-010 §3.1 enum.** Critically: the row `VALIDATED` + `UNGATABLE_PERMANENT` ⇒ **`REJECTED`** is **split** into `FORBIDDEN` ⇒ **`REJECTED`**, and **`PERMANENT_HUMAN_ASSERTION_REQUIRED` ⇒ `AWAITING_APPROVAL`**. | ### **THIS CORRECTED A LATENT DEFECT IN THE FROZEN TABLE.** The original routed the permanent-truth gate **straight to `REJECTED`** — meaning **an accessorial that an authenticated human COULD legitimately have authorized would have been rejected outright instead of asked about.** **ADR-003 says only a human may assert an undocumented authorization — NOT that it may never happen.** The frozen transition table had turned *"ask a human"* into *"refuse"*, which is a **usability failure masquerading as a safety property**: it would have made Neyma unable to pay a legitimate, human-authorized detention charge. | Rasheed |

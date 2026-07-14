@@ -132,7 +132,7 @@ Some effects cannot be read back **at all**: an email leaves; a fax leaves; a wi
 
 **Rules:**
 1. **The adapter declares it, per operation, up front.** It is a **static property of the capability**, not a runtime surprise.
-2. ### **An operation whose verification is `IMPOSSIBLE` may NOT be `AUTONOMOUS_WITHIN_CAPS`.** It is **`HUMAN_REQUIRED`** — and the human is told, on the card, *"I will not be able to confirm this."* **The human is the verification.**
+2. ### **An operation whose verification is `IMPOSSIBLE` may NOT be `AUTONOMOUS_WITHIN_CAPS`.** It is **`HUMAN_APPROVAL_REQUIRED`** *(ADR-010 §3.1)* — and the human is told, on the card, *"I will not be able to confirm this."* **The human is the verification.**
 3. **We record only what we can prove.** For an email: *the transmission was accepted by the relay (SMTP 250) at 14:02, and here is the exact byte-for-byte copy of what was sent.* ### **We NEVER record "delivered", "received", or "read".**
 4. The projection stores the field as **`unknown`**, never as a success.
 
