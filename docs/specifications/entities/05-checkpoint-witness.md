@@ -15,6 +15,17 @@
 11. **Optional attributes.** `approval_id` (present iff the gate required a human).
 12. **Enums.** `gate_decision` per the 4-member registry. No state enum — **the witness has no lifecycle.**
 13. **Provenance requirements.** ### **`projected_observations_used[]` and `native_claims_used[]` pin the EXACT versions read.** No entry may be a `MODEL_INFERRED` material fact (M-16). The `material_facts_fingerprint` was computed from these pinned reads.
+
+    ### **SD-3 — the `entity_versions` selection rule (deterministic, mandatory).**
+    > **`entity_versions` MUST contain the version of EVERY entity that satisfies ANY of:**
+    > **(1) it is referenced by any field in the `material_facts_fingerprint`** *(the amount's source load, the counterparty, the bound documents' entities, …)*; **or**
+    > **(2) it is the `target_resource`'s canonical projection**; **or**
+    > **(3) it backs a `GATE_PRECONDITION` a policy/rule evaluated in step 6** *(e.g. the customer's credit-hold record for a "no billing on hold" rule)*.
+    >
+    > ### **If a material fact depends on an entity, that entity's version is pinned — with NO exceptions left to implementer judgment. Under-pinning is a specification violation, not an optimization.**
+
+    **Why already implied.** ADR-009 §5 requires *"the versions of every entity whose state made this action correct,"* and spec §19.3 binds `entity_versions` into the witness. This states the membership test mechanically so two engineers pin the **same** set. **Why it is safety, not style:** checkpoint step 5 fails only for a *pinned* entity; an unpinned material entity (e.g. a credit-hold flipped concurrently) would otherwise pass the checkpoint on a stale fact. **No new concept — the fingerprint and the target already enumerate the required entities.**
+    **Test:** `test_entity_versions_pins_every_material_fact_entity_plus_target` — mutate an entity referenced by a material fact after the witness is built and assert the claim CAS / step-5 revalidation fails; mutate an *unreferenced* entity and assert it does **not** fail (the set is exactly, not over-, specified).
 14. **Relationships & cardinalities.** Checkpoint Witness 1 : 1 Effect Grant. Checkpoint Witness N : 1 Pipeline Instance (a retry family has one witness per attempt). Witness → Observations/Claims used (evidence pins).
 15. **Aggregate / transaction boundary.** ### **Inserted in ONE transaction with the grant mint and the pipeline `CHECKPOINT → GRANTED` transition** (spec §19.2). **No asynchronous work may occur between the seven checks and this insert** (M-40).
 16. **Database constraints.** All point-10 columns `NOT NULL` (except the approval pair). ### **`gate_decision NOT NULL`** (F-20). `expires_at > created_at`. **Append-only — no `UPDATE`, no `DELETE`** `[C-8]`.
@@ -31,7 +42,7 @@
 27. **Reopening rules.** N/A.
 28. **Deletion policy.** None `[C-9]`.
 29. **Retention policy.** Permanent — it is the evidentiary heart of "why did you act": the pinned versions of everything the decision depended on (spec §25, M-67).
-30. **Audit requirements.** Emitted as `CheckpointPassed`. A failed checkpoint emits `CheckpointFailed{step, reason}` and **no witness is created**.
+30. **Audit requirements.** Emitted as `CheckpointPassed`. A failed checkpoint emits `CheckpointFailed{step, reason}` and **no witness is created**. ### **SD-7 — deterministic failure ordering:** the seven checks are evaluated in **fixed canonical order** — `1 approval · 2 fingerprint · 3 projected-freshness · 4 native-state · 5 entity-version · 6 policy · 7 brake` (spec §19.2 order) — and **the checkpoint SHORT-CIRCUITS on the FIRST failing step**, emitting `CheckpointFailed{step, reason}` for that step only. *(One reported step, deterministic, so the drift/refusal explanation and the observability metric are reproducible. Atomicity is unaffected — a short-circuit still produces no witness. **No new concept:** the seven steps and their order are already frozen in spec §19.2; this fixes only "which one is reported when several would fail.")* **Test:** `test_checkpoint_reports_the_first_failing_step_in_canonical_order`.
 31. **Events emitted.** `CheckpointPassed` (with `checkpoint_id`).
 32. **Events consumed.** None — it is a synchronous product of the checkpoint function, not an event handler.
 33. **Idempotency.** A re-run of the checkpoint produces a **new** witness (new `checkpoint_id`, fresh reads). Witnesses are never reused.
@@ -45,5 +56,5 @@
 41. **Interaction with policy & brake.** ### **Binds `policy_version` and `brake_version`; the adapter's claim CAS re-validates both — a change since the witness ⇒ the CAS fails, the witness is effectively invalid.**
 42. **Observability.** Witness creation rate ≈ effect rate. `CheckpointFailed{step}` distribution shows which check blocks most (a drift-heavy step 2 = a fast-moving world or a flapping source).
 43. **Acceptance criteria.** (a) no witness without all seven checks; (b) a stale witness is refused at the adapter; (c) a witness cannot be constructed outside the checkpoint; (d) replay constructs none; (e) `gate_decision` is never null.
-44. **Adversarial tests.** `test_witness_has_no_public_constructor` · `test_stale_witness_after_brake_version_change_is_refused` (the named case from the brief) · `test_checkpoint_failure_creates_no_witness` · `test_replay_constructs_no_checkpoint_passed` `[C-5]` · `test_no_async_work_between_checkpoint_and_claim` (M-40) · `test_witness_pins_every_input_version` (M-67).
+44. **Adversarial tests.** `test_witness_has_no_public_constructor` · `test_stale_witness_after_brake_version_change_is_refused` (the named case from the brief) · `test_checkpoint_failure_creates_no_witness` · `test_replay_constructs_no_checkpoint_passed` `[C-5]` · `test_no_async_work_between_checkpoint_and_claim` (M-40) · `test_witness_pins_every_input_version` (M-67) · ### `test_entity_versions_pins_every_material_fact_entity_plus_target` (SD-3) · `test_checkpoint_reports_the_first_failing_step_in_canonical_order` (SD-7).
 45. **Open validation questions.** The **freshness-window length** (`expires_at − created_at`). **Fail-closed default:** short, ≥ the claim-to-call latency, ≤ the grant TTL. Implementation tuning, **not a block.**
