@@ -1,0 +1,18 @@
+# Workflow W6 — L6 Documentation *(delivery & document completion)*
+
+*Registry defaults apply. ### The FIRST-LOOP candidate (L6→L8): pain is acute (cash), truth is checkable (the document exists or it doesn't), the surface is reachable, blast radius bounded.*
+
+**2.** W6. **3.** From delivery → **the right documents on the right load, complete for billing**, with any OS&D obligation created. **4.** ### **billing can proceed because the paperwork is actually there and correct — and we know, per load, what's missing and for how long.** **5.** own document completeness (incl. **documents that HAVEN'T arrived** — the non-event) until the Packet is `COMPLETE` or the delivery is dispositioned. **6.** ### **NOT "a POD was uploaded" — uploaded ≠ valid ≠ correctly bound ≠ complete; a delivered status does NOT close this loop (CD-8).** **10.** the documentation owner. **13.** Document, Document Requirement, Document Packet, Brokerage Load, Stop, OS&D Case. **14.** `COMPLETE_DOCS`.
+
+## Key steps
+| Step | machine · adapter · class | notes |
+|---|---|---|
+| W6-1 raise doc Expectations | M8 · — · — | ### **on delivery, raise an Expectation per required doc type (from Document Requirements — customer-specific); a missing doc is a tracked NON-EVENT (the core job)** |
+| W6-2 ingest document | M5 · A1/A11/A15 · `OBSERVATION_ONLY` | content-addressed Evidence; ### **duplicate (same digest) dedups; a revision is a new version** |
+| W6-3 classify | agent · — · — | `MODEL_EXTRACTED` classification (POD/BOL/lumper…); ### **an unsigned BOL is NOT a POD** |
+| W6-4 bind to load | M6 · A4 · — | ### **deterministic within `(tenant, customer)`; a doc referencing load# X but belonging to another customer (hostile #11) ⇒ `AMBIGUOUS` ⇒ human, never auto-bound (CD-6); one POD for two loads (hostile #12) ⇒ bind BOTH; a wrong binding later corrected ⇒ `ClaimCorrected` propagates (retains history, CD-7)** |
+| W6-5 **file document** | M2 · A4/A11/A15 · ### `CONSEQUENTIAL_EFFECT`(`FILE_DOCUMENT`) | READBACK; CK occ = **content digest**; ### **the document fence: the runtime supplies the file** |
+| W6-6 assess packet | M-native · — · — | ### **Packet `COMPLETE` iff every required type present, `consistent`, correctly bound, acceptable provenance — a `MODEL_INFERRED` POD does NOT count; illegible ⇒ `ILLEGIBLE` ⇒ Exception (hostile — #10); missing pages ⇒ `INCOMPLETE`** |
+| W6-7 OS&D branch | M-native · — · — | ### **POD reveals damage/short (hostile #13) ⇒ open an OS&D Case (→W11), even if tracking said completed** |
+
+**22. Expectations.** per required doc, with a deadline (`OVERDUE` only if the channel was healthy — else `INDETERMINATE`). **23. Conflicts.** conflicting document versions; POD-vs-tracking. **24. Exceptions.** illegible, ambiguous binding, missing at billing time. **48. Compensation.** ### **a wrong binding that already fed a completed invoice (hostile — #24 domain) ⇒ Compensation.** **53. Closure.** ### **Packet `COMPLETE` on the correct load with the delivery outcome and any OS&D obligation explicitly created — handed to W8 (atomic).** **54. Not.** a delivered status; an uploaded-but-unbound/illegible doc. **52. Degraded.** no TMS write ⇒ Neyma reads/classifies/binds and PREPARES the packet; the human files; Neyma verifies + tracks the missing. ### **This is the loop that stays valuable read-only — it tells you what's missing and for how long.** **57. Metrics.** ### **packet-completeness rate, time-to-complete-docs, missing-doc-caught rate, invoice-release-time contribution — NOT "documents processed".** **60. Adversarial.** #10, #11, #12, #13, #14 (missing at billing). **61. Open.** per-customer document requirements (V5); handwritten OCR confidence (fail-closed to human).
