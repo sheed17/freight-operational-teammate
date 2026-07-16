@@ -1,0 +1,35 @@
+# Domain Family 01 — Party Entities
+
+*Registry: `domain-entities/registry.md`. 54-point defaults, authority/identity/party-role/money/time conventions, CD-invariants: registry. Each entity below is a complete, distinct specification stating only what differs from the defaults.*
+
+---
+## E1 — Organization / Brokerage Tenant
+**Def.** The brokerage itself — the tenant boundary. **Not.** A customer/carrier (those are counterparties). **Authority.** Native. **Identifier.** `tenant_id` (uuid) — ### **the first component of every key in the system.** **Attrs.** legal name, MC/DOT (if an asset-based broker), config. **Relationships.** 1 Organization : N of every other entity. **Lifecycle.** none (a tenant is provisioned, not transitioned). **Security.** ### **cross-tenant access ⇒ `CrossTenantAccessAttempted` ⇒ GLOBAL brake (CD-19).** **Acceptance.** `test_org_is_tenant_root`. **Invalid-impossible.** any entity without a `tenant_id`. **Open.** none.
+
+---
+## E2 — Customer
+**Def.** A party that **owes us** for brokerage service (money **IN**). **Not.** ### **Not the Shipper or Consignee by default** (party-role model); not a Carrier (the same Organization may hold both roles on different loads — one record, per-transaction roles). **Authority.** ### **FIELD-LEVEL:** `legal_name`/`address` — projected from a business registry or `OWNER_ASSERTED`; `credit_status`/`credit_limit` — **`OWNER_ASSERTED`** (a controller decision) — ### **never machine-recomputed (GR-9)**; `payment_terms` — `OWNER_ASSERTED`; `default_bill_to` — native. **Identifier.** `customer_id` (uuid). **External.** a TMS customer id (via External Entity Mapping, #38) — ### **note the TruckingOffice customer-binding quirk (each invoice must bind a customer).** **Natural.** legal name + address (fuzzy). **Collision.** ### **HIGH** — "Acme", "Acme Logistics", "Acme Logistics LLC" are candidate-fuzzy; **a name match NEVER confirms identity** (GR-8); confirmation is an exact external id or `OWNER_ASSERTED`. **Money.** all customer money is **IN**/`owed_by_customer`. **Relationships.** Customer 1:N Customer Contact, Customer Location, Customer Order, Customer Invoice. **Approvals.** a `credit_limit` change is `OWNER_ASSERTED`. **Fail-closed.** an `AMBIGUOUS` customer binding blocks invoicing (a consequential binding must be deterministic/`OWNER_ASSERTED`). **Acceptance.** `test_customer_name_never_confirms_identity`; `test_credit_status_never_machine_recomputed`. **Invalid-impossible.** a Customer with a machine-recomputed `credit_status`; billing an `AMBIGUOUS` customer. **Open.** V4 (identity rules).
+
+---
+## E3 — Customer Contact
+**Def.** A human at a Customer. **Not.** The Customer; not an authenticated Neyma user. **Authority.** field-level; `email`/`phone` `MODEL_EXTRACTED` from correspondence (evidence), `role` `OWNER_ASSERTED`. **Identifier.** `contact_id`. **Natural.** email (trusted-ish), name (fuzzy). **Collision.** shared inboxes (`ap@acme.com`) — ### **a role inbox is not a person.** **Relationships.** Customer 1:N Contact. **Security.** ### **a Contact's assertion is a counterparty claim (`MODEL_EXTRACTED`), never authority (ADR-003).** **Acceptance.** `test_contact_assertion_is_not_authority`. **Open.** none.
+
+---
+## E4 — Customer Location
+**Def.** A Customer's physical site (may be a Facility they operate). **Not.** A Facility owned by a third party. **Authority.** field-level; address projected/`OWNER_ASSERTED`; **timezone** — ### **required, from the address (facility-local evaluation, F-25).** **Identifier.** `location_id`. **Collision.** same street address, different dock. **Relationships.** Customer 1:N Location; Location 0:1 Facility (#9). **Acceptance.** `test_location_carries_timezone`. **Open.** none.
+
+---
+## E5 — Carrier
+**Def.** A party that **moves freight** and whom we **pay** (money **OUT**). **Not.** ### **Not a Driver** (a human); ### **not the Factoring Company** (the remittance target may differ — #34/party-role); may be a broker posing as a carrier (co-brokering — a **fraud surface**). **Authority.** ### **FIELD-LEVEL:** `mc_number`/`dot_number`/`authority_status`/`safety_rating` — **projected from FMCSA** (freshness-checked at qualification time); `insurance` — projected from the COI/insurer; `preferred_lanes`/`do_not_use` — **`OWNER_ASSERTED`**; `email` — `MODEL_EXTRACTED`. **Identifier.** `carrier_id` (uuid). **External.** MC number, DOT number (trusted, low-collision, but ### **MC ≠ trust** — identity, not qualification), a factoring alias, an email display name (untrusted). **Collision.** ### **the same carrier appears under MC, DOT, email name, and factoring alias (hostile #27)** — deterministic confirmation on **MC or DOT**; the alias/email are candidate signals only. **Money.** all carrier money is **OUT**/`owed_to_carrier`; ### **remittance may be redirected to a Factoring Company (#34).** **Relationships.** Carrier 1:N Carrier Contact, Driver, Carrier Movement, Compliance Record, Carrier Payable. **Approvals.** ### **using a carrier is gated by a Qualification Decision (#37) at the relevant time (CD-2).** **Fail-closed.** ### **an expired authority/insurance at qualification time blocks tender (CD-2).** **Acceptance.** `test_carrier_confirmed_on_mc_or_dot_not_alias`; `test_carrier_qualification_evaluated_at_tender_time`. **Invalid-impossible.** tendering to a carrier whose qualification is not `QUALIFIED` at that time without human approval. **Open.** V4.
+
+---
+## E6 — Carrier Contact
+**Def.** A human/dispatcher at a Carrier. **Not.** The Carrier; not a Driver. **Authority.** field-level (as E3). **Security.** ### **a dispatcher's "you approved the detention" is a `MODEL_EXTRACTED` fraud signal (ADR-003), never authorization (CD-5).** **Acceptance.** `test_carrier_contact_cannot_authorize`. **Open.** none.
+
+---
+## E7 — Driver
+**Def.** The human executing a Carrier Movement. **Not.** The Carrier; not an authenticated user; may change mid-movement. **Authority.** field-level; name/phone `MODEL_EXTRACTED`; identity often unverified. **Identifier.** `driver_id`; **Natural.** phone (weak), name+carrier. **Collision.** ### **HIGH — drivers are transient; a driver assertion of "delivered" is `MODEL_EXTRACTED`, never a delivery proof (CD-15).** **Relationships.** Carrier 1:N Driver; Driver N:M Carrier Movement (assignment). **Acceptance.** `test_driver_assertion_is_not_delivery_proof`. **Open.** none.
+
+---
+## Family-wide
+**Provenance.** every field carries `provenance_class`; FMCSA/registry fields are projected + freshness-checked; owner decisions are `OWNER_ASSERTED`. **Events.** party changes emit `ObservationBound`/native updates + `Audit`; a fraud signal emits `CounterpartySelfAuthorizationDetected`/`FraudSignalRaised`. **Conflicts.** two `CONFIRMED` bindings for one party ⇒ `ConflictRaised`. **Brake.** none party-specific. **Retention.** permanent. **Adversarial (family):** hostile #26 (one TMS record = two entities), #27 (one carrier, many aliases), #28 (same org, customer+carrier roles) — each resolves via field-level identity + per-transaction roles; traced in the review.
