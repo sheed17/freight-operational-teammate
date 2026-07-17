@@ -19,6 +19,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [phase-2-implementation-review.md](phase-2-implementation-review.md) | ### **Phase 2 — what is built and proven, what is NOT, and why I stopped (verdict: NOT READY)** |
 | [phase-1-occurrence-identity-review.md](phase-1-occurrence-identity-review.md) | ### **the closure correction — the free-form `occurrence_key` escape hatch removed; occurrence identity comes from a canonical business occurrence** |
 | [canonical-corpus-errata-review.md](canonical-corpus-errata-review.md) | ### **the bounded errata pass — 141→134, 92→98, 6→7 tables, U0.3→P8 + the 3 findings in its own work** |
 
@@ -77,4 +78,4 @@
 | ### **Phase 0 — baseline & migration guards** | ### **COMPLETE (`d33f251`) — the guard suite + adjudicated manifest. Its 3 findings are now CORRECTED by the errata pass.** |
 | ### **Canonical Corpus Errata Pass** | ### **COMPLETE — DEF-4/5/6 + P0-F1 corrected; ERRATA 5 made the Phase-0 tree green (it was RED). Corpus only; no code, schema, or behaviour touched.** |
 | ### **Phase 1 — Migration Safety Task #1** | ### **COMPLETE + CLOSED — the Commit Key identifies the EFFECT, not the decision. AC-SAFE-012/013 GREEN. The free-form `occurrence_key` escape hatch is REMOVED: identity comes from a canonical occurrence (Payment Application P9 · Compensation/Expectation P8) or the operation fails closed. FORWARD-ONLY.** |
-| ### **Phase 2 — Tenant-safe ledger** | ### **NOT STARTED — by instruction. Unblocked; U2.1 scope corrected to all 7 tables.** |
+| ### **Phase 2 — Tenant-safe ledger** | ### **IN PROGRESS — NOT READY.** Migration + canonical `effect_grants` schema built and proven against live data (dry-run byte-identical; 120 ambiguous rows quarantined, none guessed; idempotent rerun). ### **INERT — nothing imports it, live schema unchanged.** Blocking: **U2.6 — make `WorkflowStore` tenant-scoped across 146 construction sites, fail-closed, no default tenant.** See `phase-2-implementation-review.md`. |
