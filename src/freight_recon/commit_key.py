@@ -92,18 +92,93 @@ def commit_key(effect: LogicalEffect) -> str:
 #
 # So each action class declares how repetition is discriminated:
 #
-#   SINGLE   - repetition is NOT legitimate. occurrence_key = "". A second attempt is the SAME
-#              logical effect and must converge (commit-once).
-#   DERIVED  - repetition IS legitimate and a deterministic, drift-free discriminator exists in the
-#              request itself (the document's content digest; the target status being set).
-#   EXPLICIT - repetition IS legitimate but NO deterministic discriminator exists today. The caller
-#              must supply one. Absent it we FAIL CLOSED. We do not invent one, and we do not fall
-#              back to the amount - that is the defect returning by the back door.
+#   SINGLE    - repetition is NOT legitimate. occurrence_key = "". A second attempt is the SAME
+#               logical effect and must converge (commit-once).
+#   DERIVED   - repetition IS legitimate and a deterministic, drift-free discriminator exists in the
+#               request itself (the document's content digest; the target status being set).
+#   CANONICAL - repetition IS legitimate, and the thing that makes two occurrences distinct is a real
+#               BUSINESS OCCURRENCE with its own canonical identity. Until that entity exists and can
+#               be resolved, the operation FAILS CLOSED.
+#
+# Phase 1 first shipped a CANONICAL-shaped hole: a free-form `params["occurrence_key"]` that any
+# caller could set. That was the same defect the amount had, wearing a different field name - vary it
+# per retry and every attempt mints a new logical effect, which is exactly what commit-once exists to
+# prevent. Identity may not enter through an untyped dictionary. It comes from a resolved canonical
+# occurrence or it does not come at all.
 
 SINGLE = "SINGLE"
 DERIVED_DOCUMENT_DIGEST = "DERIVED_DOCUMENT_DIGEST"
 DERIVED_TARGET_STATUS = "DERIVED_TARGET_STATUS"
-EXPLICIT_OCCURRENCE_REQUIRED = "EXPLICIT_OCCURRENCE_REQUIRED"
+CANONICAL_OCCURRENCE_REQUIRED = "CANONICAL_OCCURRENCE_REQUIRED"
+
+
+@dataclass(frozen=True)
+class CanonicalOccurrence:
+    """A resolved business occurrence: WHICH legitimate repetition this effect is.
+
+    Only a resolver may produce one, and a resolver must have proved the occurrence EXISTS, is bound
+    to the right entity, and belongs to this tenant. There is deliberately no path from a request
+    payload to this type: a caller cannot hand one over, so a caller cannot manufacture identity.
+    """
+
+    entity: str          # the canonical entity, e.g. "Payment Application"
+    occurrence_id: str   # its canonical identifier, e.g. a payment_application_id
+
+    def key(self) -> str:
+        return f"{self.entity.strip().lower()}:{self.occurrence_id.strip().lower()}"
+
+
+@dataclass(frozen=True)
+class OccurrenceSource:
+    """Where an action class's occurrence identity MUST come from, and who will build it."""
+
+    field: str           # the typed canonical field, named by the frozen specs
+    entity: str          # the canonical entity that owns it
+    phase: str           # the phase that introduces that entity
+    unit: str            # the implementation unit
+    why: str             # why the obvious discriminator is not allowed to be identity
+
+
+# The canonical occurrence source per action class, taken from the FROZEN specifications - not
+# invented here, and not aliased.
+CANONICAL_OCCURRENCE_SOURCES: dict[str, OccurrenceSource] = {
+    "record_payment": OccurrenceSource(
+        field="payment_application_id",
+        entity="Payment Application",       # domain E34, 09-financial.md
+        phase="P9",
+        unit="U9.*",
+        why=(
+            "Two partial payments against one invoice are separate logical effects because they are "
+            "separate Payment Application occurrences - NOT because their amounts differ. The frozen "
+            "spec is explicit: the remittance reference (check no./ACH trace) is the occurrence_key "
+            "for payment idempotency (ADR-009), and a partial payment is a distinct occurrence. The "
+            "amount is a material fact."
+        ),
+    ),
+    "adjust_invoice": OccurrenceSource(
+        field="compensation_id",
+        entity="Compensation",              # foundational entity 13-compensation.md
+        phase="P8",
+        unit="U8.4",
+        why=(
+            "The frozen invoice spec: a void/credit IS a Compensation (a gated effect); a rebill is a "
+            "NEW invoice under a distinct action class (REISSUE_INVOICE), not this effect repeated. "
+            "One invoice may legitimately receive several distinct adjustments, so the invoice's own "
+            "identity is not enough. The changed line values are material facts."
+        ),
+    ),
+    "check_call": OccurrenceSource(
+        field="expectation_id",
+        entity="Expectation",               # foundational entity 11-expectation.md
+        phase="P8",
+        unit="U8.4",
+        why=(
+            "Repeated check calls are distinct only where distinct Expectation occurrences exist. The "
+            "note is free text and often model-authored; a timestamp taken at call time is "
+            "attempt-scoped. Neither may carry identity."
+        ),
+    ),
+}
 
 # Keyed by the current lane name (the action class's ancestor; renamed at P8, NOT here).
 OCCURRENCE_RULES: dict[str, str] = {
@@ -117,29 +192,30 @@ OCCURRENCE_RULES: dict[str, str] = {
     "file_document": DERIVED_DOCUMENT_DIGEST,
     # Setting DELIVERED and setting PICKED_UP are two effects; setting DELIVERED twice is one.
     "update_status": DERIVED_TARGET_STATUS,
-    # --- repetition legitimate, discriminator ABSENT: these fail closed. See the review. ---
-    # Partial payments against one invoice are legitimately repeated. Only the amount distinguishes
-    # them today, and the amount is exactly what may not carry identity.
-    "record_payment": EXPLICIT_OCCURRENCE_REQUIRED,
-    # Several credits/adjustments against one invoice are legitimate. Same problem.
-    "adjust_invoice": EXPLICIT_OCCURRENCE_REQUIRED,
-    # Several check-calls on one load are legitimate. The note is free text and often model-authored;
-    # model output may never carry identity, and near-identical text would forge distinct effects.
-    "check_call": EXPLICIT_OCCURRENCE_REQUIRED,
+    # --- repetition legitimate; identity belongs to a canonical occurrence that does not exist yet ---
+    "record_payment": CANONICAL_OCCURRENCE_REQUIRED,
+    "adjust_invoice": CANONICAL_OCCURRENCE_REQUIRED,
+    "check_call": CANONICAL_OCCURRENCE_REQUIRED,
 }
+
+
+class UnresolvedCanonicalOccurrence(UnidentifiableEffect):
+    """The occurrence entity this operation needs does not exist yet. Fail closed, and say which."""
 
 
 def occurrence_key_for(
     action_class: str,
     *,
-    explicit: str | None = None,
+    resolved: CanonicalOccurrence | None = None,
     document_digest: str | None = None,
     target_status: str | None = None,
 ) -> str:
-    """The occurrence discriminator for one action class, or raise UnidentifiableEffect.
+    """The occurrence discriminator for one action class, or raise.
 
-    An explicit caller-supplied key always wins: it is the escape hatch for a legitimate repetition
-    the runtime cannot see. It is supplied, never invented.
+    `resolved` is the ONLY way a repetition-legitimate operation gets an occurrence, and it can only
+    come from a resolver that proved the occurrence exists, is bound to the right entity, and belongs
+    to this tenant. There is no free-form parameter, so there is nothing for a caller to vary between
+    retries.
     """
     rule = OCCURRENCE_RULES.get(action_class)
     if rule is None:
@@ -147,8 +223,6 @@ def occurrence_key_for(
             f"action class {action_class!r} declares no occurrence rule. A new consequential "
             f"operation must state whether repetition is legitimate before it may run."
         )
-    if explicit:
-        return str(explicit).strip().lower()
     if rule is SINGLE:
         return ""
     if rule is DERIVED_DOCUMENT_DIGEST:
@@ -164,12 +238,23 @@ def occurrence_key_for(
                 "a status change needs the target status as its occurrence key; none was given"
             )
         return str(target_status).strip().lower()
-    raise UnidentifiableEffect(
-        f"{action_class!r} may legitimately repeat, but no deterministic occurrence discriminator "
-        f"exists for it and none was supplied. Supply params['occurrence_key'] identifying WHICH "
-        f"occurrence this is. The approved amount may NOT be used: re-reading one payment at a "
-        f"corrected figure would then look like a second payment."
-    )
+
+    source = CANONICAL_OCCURRENCE_SOURCES[action_class]
+    if resolved is None:
+        raise UnresolvedCanonicalOccurrence(
+            f"{action_class!r} may legitimately repeat, and which occurrence it is can only come from "
+            f"a resolved {source.entity} ({source.field}). No such resolver exists yet: "
+            f"{source.entity} arrives at {source.phase} ({source.unit}). Until then this operation "
+            f"FAILS CLOSED and a human performs it. {source.why}"
+        )
+    if resolved.entity.strip().lower() != source.entity.strip().lower():
+        raise UnidentifiableEffect(
+            f"{action_class!r} needs a {source.entity} occurrence; got {resolved.entity!r}. An "
+            f"occurrence bound to the wrong entity is not this effect's identity."
+        )
+    if not str(resolved.occurrence_id or "").strip():
+        raise UnidentifiableEffect(f"the {source.entity} occurrence carries no identifier")
+    return resolved.key()
 
 
 def document_digest(path: str) -> str:

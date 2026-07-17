@@ -1,5 +1,7 @@
 # Phase-1 Implementation Review — Migration Safety Task #1
 
+> ### **CORRECTED — 2026-07-16.** This review presented `params['occurrence_key']` as the way to unblock the three fail-closed lanes. ### **That was wrong: a free-form caller string is the amount defect with a new field name.** The escape hatch has been REMOVED; occurrence identity now comes from a canonical business occurrence (Payment Application · Compensation · Expectation) or the operation fails closed. ### **Everything else in this review stands.** See `phase-1-occurrence-identity-review.md`.
+
 > ### **The Commit Key now identifies the EFFECT, never the CONTENT of the decision.**
 > ### **FORWARD-ONLY.** The amount-keyed derivation is **deleted, not deprecated**. Rollback may disable a capability; it may never bring this defect back — and the suite fails if anyone tries.
 > ### **Phase 1 corrects effect IDENTITY. It does not claim the target effect boundary exists.** No grant ledger, no witness, no checkpoint, no claim CAS, no adapter containment, no tenant-first migration.
@@ -68,7 +70,8 @@ The frozen `pr-sequence.md` says: *"U1.4 — invert `eval/tests/test_lane_gradua
 ### ⛔ P1-F2 — THREE LANES NOW FAIL CLOSED. THIS IS A REAL CAPABILITY REGRESSION.
 > Partial payments against one invoice are **legitimately repeated**. ### **Today the only thing telling two of them apart was the AMOUNT — which is exactly what may not carry identity.** Remove it and two legitimate payments collapse into one effect (the second wrongly refused); keep it and re-reading ONE payment at a corrected figure looks like two (the double-pay defect).
 > ### **There is no third option that is honest, so these lanes ESCALATE to a human until a real occurrence discriminator exists.** The frozen brief sanctions exactly this: *"do not invent one silently… fail closed, and report the unresolved semantic dependency."*
-> **A caller may pass `params['occurrence_key']` (a remittance reference, a credit-memo number) and the lane runs normally.** ### **The dependency is a product decision — what identifies a payment occurrence — not a coding one, so it is escalated rather than guessed.**
+> ~~**A caller may pass `params['occurrence_key']` (a remittance reference, a credit-memo number) and the lane runs normally.**~~
+> ### **⛔ SUPERSEDED 2026-07-16 — THIS WAS THE DEFECT.** A free-form caller string is not an identity: vary it between retries and every attempt mints a new logical effect, defeating commit-once through an arbitrary field instead of through the amount. ### **The escape hatch is REMOVED.** Occurrence identity now comes from a resolved canonical occurrence — **Payment Application `payment_application_id`** (P9) · **Compensation `compensation_id`** (P8) · **Expectation `expectation_id`** (P8) — or the operation fails closed. The underlying observation below stands: ### **the dependency is a product decision, not a coding one.** See `phase-1-occurrence-identity-review.md`.
 > **`check_call`** had **no** duplicate protection before (non-money effects skipped the reservation path entirely). It now refuses rather than repeats.
 
 ### ⛔ The structural half of AC-SAFE-013

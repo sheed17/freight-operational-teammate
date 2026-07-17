@@ -23,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from freight_recon.commit_key import (
     KEY_VERSION,
+    CanonicalOccurrence,
     LogicalEffect,
     UnidentifiableEffect,
+    UnresolvedCanonicalOccurrence,
     commit_key,
     occurrence_key_for,
 )
@@ -162,12 +164,29 @@ def test_07_two_legitimate_repeats_can_use_distinct_occurrence_discriminators(tm
                              document_path=str(doc_b))["commit_key"]
     assert ka != kb
 
-    # And an explicit occurrence key discriminates where the runtime cannot.
-    p1 = _operate("payment", {"load_ref": "INV-9", "customer": "C", "occurrence_key": "remit-001"})
-    p2 = _operate("payment", {"load_ref": "INV-9", "customer": "C", "occurrence_key": "remit-002"})
-    k1 = _commit_reservation("acme", "tms", _lane("record_payment"), p1, "500.00")["commit_key"]
-    k2 = _commit_reservation("acme", "tms", _lane("record_payment"), p2, "700.00")["commit_key"]
-    assert k1 != k2, "two legitimately distinct payments collapsed into one effect"
+    # This test used to continue:
+    #
+    #   p1 = _operate("payment", {..., "occurrence_key": "remit-001"})
+    #   p2 = _operate("payment", {..., "occurrence_key": "remit-002"})
+    #   assert k1 != k2
+    #
+    # It asserted that a FREE-FORM caller string discriminates two payments - i.e. it encoded the
+    # escape hatch as expected behaviour, exactly as test_operation_router.py:282 once encoded the
+    # amount-in-key defect (DEF-3). A test that asserts the defect fights the fix, so the closure
+    # inverts it: identity comes from a resolved canonical occurrence, and a caller-authored string
+    # is not one.
+    for occurrence in ("remit-001", "remit-002"):
+        payment = _operate("payment", {"load_ref": "INV-9", "customer": "C",
+                                       "occurrence_key": occurrence})
+        with pytest.raises(UnresolvedCanonicalOccurrence):
+            _commit_reservation("acme", "tms", _lane("record_payment"), payment, "500.00")
+
+    # Two distinct payments ARE two effects - discriminated by their Payment Application occurrences.
+    k1 = occurrence_key_for("record_payment",
+                            resolved=CanonicalOccurrence("Payment Application", "pa-0001"))
+    k2 = occurrence_key_for("record_payment",
+                            resolved=CanonicalOccurrence("Payment Application", "pa-0002"))
+    assert k1 != k2, "two Payment Applications collapsed into one occurrence"
 
 
 def test_08_same_external_identifier_in_two_tenants_does_not_collide(tmp_path):

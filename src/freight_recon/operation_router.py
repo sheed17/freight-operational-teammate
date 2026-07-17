@@ -429,9 +429,19 @@ def _logical_effect(
             digest = document_digest(document_path)
         except OSError as exc:
             raise UnidentifiableEffect(f"the document to file could not be read: {exc}") from exc
+    # NOTE what is NOT here: `params.get("occurrence_key")`.
+    #
+    # Phase 1 shipped that, and it was the amount defect wearing a different field name. A caller who
+    # varies a free-form string between retries mints a new logical effect each time - so the very
+    # thing commit-once exists to prevent becomes a one-line reach into an untyped dict. Identity may
+    # not enter through the request payload. It comes from a resolver that has PROVED the occurrence
+    # exists, is bound to the right entity and belongs to this tenant, or the operation fails closed.
+    #
+    # No such resolver exists yet (Payment Application arrives at P9; Compensation and Expectation at
+    # P8), so record_payment / adjust_invoice / check_call fail closed and a human performs them.
     occurrence = occurrence_key_for(
         lane.name,
-        explicit=params.get("occurrence_key"),
+        resolved=None,
         document_digest=digest,
         target_status=params.get("status_value"),
     )

@@ -11,6 +11,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -182,3 +184,191 @@ def test_the_router_call_sites_all_use_the_canonical_reservation():
     ev.require_population(minimum=4)
     legacy = [c for c in ev.accepted if "**commit_identity" in c]
     assert not legacy, f"a call site still splats the old identity dict: {legacy}"
+
+
+# =============================================================================================
+# Phase-1 Closure Correction — the generic occurrence escape hatch may never return.
+#
+# Phase 1 shipped `params["occurrence_key"]`: a free-form string any caller could set to unblock a
+# fail-closed money operation. It was the amount defect with a new field name. Vary it per retry and
+# every attempt is a new logical effect — the exact thing commit-once exists to prevent, reachable
+# through one reach into an untyped dict.
+# =============================================================================================
+
+# Values that may never discriminate an occurrence. Each is attempt-scoped or mutable, so an identity
+# built from one makes every retry a fresh effect.
+FORBIDDEN_OCCURRENCE_SOURCES = (
+    "occurrence_key", "amount", "approved_amount", "timestamp", "now", "uuid", "uuid4",
+    "request_id", "retry", "attempt", "approval_id", "payload_hash", "sequence",
+)
+
+
+def _consequential_lanes():
+    from freight_recon.commit_key import OCCURRENCE_RULES
+    return [l for l in freight_lanes() if l.name in OCCURRENCE_RULES]
+
+
+# The ONLY request-payload keys the identity builder may read. An allowlist, not a blocklist: a
+# blocklist bans the names you thought of, and the mutation harness proved that immediately — a guard
+# that banned "occurrence_key" let `params["request_id"]` walk straight past it into the identity.
+IDENTITY_READABLE_PARAMS = frozenset({
+    "status_value",   # the target status IS the logical effect for update_status
+    "load_ref", "load_id", "pro", "invoice_number",   # the target resource
+    "customer", "carrier", "party",                    # the counterparty
+})
+
+
+def _params_keys_read_by(func_names: set[str]) -> dict[str, set[str]]:
+    """Every request-payload key read inside the named identity functions, by AST."""
+    out: dict[str, set[str]] = {}
+    tree = ast.parse(ROUTER.read_text(encoding="utf-8"))
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name not in func_names:
+            continue
+        keys: set[str] = set()
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get" and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                keys.add(node.args[0].value)
+            elif (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+                  and isinstance(node.slice.value, str)):
+                keys.add(node.slice.value)
+        out[fn.name] = keys
+    return out
+
+
+def test_the_identity_builder_reads_only_allowlisted_request_fields():
+    """The real closure guard: NOTHING attempt-scoped may reach identity, whatever it is called.
+
+    The first version of this test banned the single name `occurrence_key`. Mutation showed the hole
+    in one run: swapping in `params["request_id"]` reproduced the defect exactly and the guard stayed
+    green. Banning names you happen to have thought of is not a boundary — so this asserts the
+    opposite direction, an allowlist of the few fields that legitimately describe the effect.
+    """
+    read = _params_keys_read_by({"_logical_effect", "_commit_reservation"})
+    assert read, "the identity builders were not found - the guard would prove nothing"
+    for fn, keys in read.items():
+        illegal = keys - IDENTITY_READABLE_PARAMS
+        assert not illegal, (
+            f"{fn} reads request-payload field(s) that may not carry identity: {sorted(illegal)}\n"
+            f"Only {sorted(IDENTITY_READABLE_PARAMS)} describe the logical effect. Anything else is "
+            f"attempt-scoped or caller-authored, and makes every retry a new effect."
+        )
+
+
+def test_no_free_form_occurrence_key_is_readable_from_the_request_payload():
+    """The specific closure: `occurrence_key` is gone from production entirely.
+
+    Read the AST, not the text: a comment naming the defect is not the defect.
+    """
+    ev = Evaluation(name="phase1.params_reads_for_identity")
+    offenders = []
+    for path in python_files(SRC, SCRIPTS):
+        ev.sources_inspected.append(rel(path))
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            key = None
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get" and node.args
+                    and isinstance(node.args[0], ast.Constant)):
+                key = node.args[0].value
+            elif isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+                key = node.slice.value
+            if not isinstance(key, str):
+                continue
+            ev.candidates.append(f"{rel(path)}:{key}")
+            ev.accepted.append(f"{rel(path)}:{key}")
+            if key == "occurrence_key":
+                offenders.append(f"{rel(path)}:{getattr(node, 'lineno', '?')}")
+    ev.require_population(minimum=20)
+    assert not offenders, (
+        "the generic occurrence escape hatch is back: " + ", ".join(offenders) +
+        "\nA caller-authored string may not carry the identity of a consequential effect."
+    )
+
+
+def test_the_derivation_accepts_no_free_form_occurrence_parameter():
+    """`explicit=` is gone. Only a RESOLVED canonical occurrence may discriminate."""
+    import inspect
+
+    from freight_recon.commit_key import occurrence_key_for
+
+    params = inspect.signature(occurrence_key_for).parameters
+    assert "explicit" not in params, "the free-form `explicit` occurrence parameter was restored"
+    assert "resolved" in params
+    for banned in FORBIDDEN_OCCURRENCE_SOURCES:
+        assert banned not in params, f"occurrence_key_for accepts {banned!r}"
+
+
+def test_a_canonical_occurrence_cannot_be_built_from_a_request_payload():
+    """The type is the gate: a caller hands over params, and params cannot become an occurrence."""
+    from freight_recon.commit_key import CanonicalOccurrence
+
+    tree = ast.parse(COMMIT_KEY_MODULE.read_text(encoding="utf-8"))
+    cls = next(n for n in ast.walk(tree)
+               if isinstance(n, ast.ClassDef) and n.name == "CanonicalOccurrence")
+    fields = [n.target.id for n in cls.body if isinstance(n, ast.AnnAssign)]
+    assert fields == ["entity", "occurrence_id"], f"CanonicalOccurrence's shape changed: {fields}"
+
+    # It is frozen: an occurrence cannot be edited into a different one after it is resolved.
+    import dataclasses
+    occ = CanonicalOccurrence(entity="Payment Application", occurrence_id="pa-1")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        occ.occurrence_id = "pa-2"   # type: ignore[misc]
+
+
+def test_every_repetition_legitimate_lane_names_a_canonical_source_a_phase_and_an_owner():
+    """No operation may sit fail-closed with no stated way out. Name the entity and who builds it."""
+    from freight_recon.commit_key import (
+        CANONICAL_OCCURRENCE_REQUIRED,
+        CANONICAL_OCCURRENCE_SOURCES,
+        OCCURRENCE_RULES,
+    )
+
+    ev = Evaluation(name="phase1.canonical_occurrence_sources", sources_inspected=[rel(COMMIT_KEY_MODULE)])
+    needs = [n for n, r in OCCURRENCE_RULES.items() if r is CANONICAL_OCCURRENCE_REQUIRED]
+    for n in needs:
+        ev.candidates.append(n); ev.parsed.append(n); ev.accepted.append(n)
+    ev.require_population(minimum=3)
+
+    for name in needs:
+        src = CANONICAL_OCCURRENCE_SOURCES.get(name)
+        assert src, f"{name} fails closed but names no canonical occurrence source"
+        assert src.field and src.entity and src.phase and src.unit and src.why, f"{name}: incomplete source"
+        assert src.phase in ("P7", "P8", "P9"), f"{name}: implausible phase {src.phase}"
+
+
+def test_the_canonical_field_names_match_the_frozen_specifications():
+    """Named by the specs, not invented here. An alias would be a new vocabulary nobody agreed to."""
+    from freight_recon.commit_key import CANONICAL_OCCURRENCE_SOURCES
+
+    expected = {
+        "record_payment": ("payment_application_id", "Payment Application"),
+        "adjust_invoice": ("compensation_id", "Compensation"),
+        "check_call": ("expectation_id", "Expectation"),
+    }
+    for lane, (field, entity) in expected.items():
+        src = CANONICAL_OCCURRENCE_SOURCES[lane]
+        assert src.field == field, f"{lane}: {src.field!r} is not the frozen field name {field!r}"
+        assert src.entity == entity
+
+    specs = Path(__file__).resolve().parents[2] / "docs" / "specifications"
+    assert "payment_application_id" in (specs / "domain-entities" / "09-financial.md").read_text()
+    assert "compensation_id" in (specs / "entities" / "13-compensation.md").read_text()
+    assert "expectation_id" in (specs / "entities" / "11-expectation.md").read_text()
+
+
+def test_no_occurrence_is_derived_from_a_forbidden_source():
+    """Read the derivation itself: nothing attempt-scoped or mutable may reach the occurrence."""
+    tree = ast.parse(COMMIT_KEY_MODULE.read_text(encoding="utf-8"))
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "occurrence_key_for")
+    consts = {n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    leaked = {c for c in consts if c in ("occurrence_key", "amount", "approved_amount", "retry",
+                                         "request_id", "approval_id", "timestamp")}
+    assert not leaked, f"the occurrence derivation references forbidden source(s): {leaked}"

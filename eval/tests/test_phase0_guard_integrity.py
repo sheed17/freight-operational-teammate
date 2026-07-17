@@ -24,7 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from phase0 import manifest
 
 TESTS = Path(__file__).resolve().parent
-GUARD_FILES = sorted(TESTS.glob("test_phase0_*.py"))
+# Every phase's guards, not just Phase 0's. Mutation caught this: a skip added to a Phase-1 test
+# went undetected because the sweep only globbed test_phase0_*. A guard suite that protects only the
+# phase that wrote it stops protecting anything the moment the next phase lands.
+GUARD_FILES = sorted(TESTS.glob("test_phase0_*.py")) + sorted(TESTS.glob("test_phase1_*.py"))
 
 # The cases that MUST run and fail today. Neutering one is the defect this file exists to catch.
 # Nothing is red-by-design any more. The two that were - AC-SAFE-012/013 - went green at Phase 1,
@@ -45,11 +48,11 @@ MUST_BE_GREEN = {
 
 
 def test_the_guard_suite_is_not_empty():
-    assert len(GUARD_FILES) >= 9, f"only {len(GUARD_FILES)} Phase-0 guard files found"
+    assert len(GUARD_FILES) >= 12, f"only {len(GUARD_FILES)} phase guard files found"
 
 
 def test_no_phase0_guard_is_skipped():
-    """REG-7's sibling. `skip` and `skipif` are banned in the Phase-0 suite: they are silence."""
+    """REG-7's sibling. `skip`/`skipif` are banned in EVERY phase's guard suite: they are silence."""
     offenders = []
     for path in GUARD_FILES:
         for i, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
