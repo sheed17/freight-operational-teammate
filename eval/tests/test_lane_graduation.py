@@ -140,11 +140,11 @@ def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
 
 def test_sqlite_autonomous_daily_cap_claim_is_atomic(tmp_path):
     db_path = tmp_path / "w.sqlite3"
-    WorkflowStore(db_path).close()
+    WorkflowStore(db_path, tenant="tenant-fixture-a").close()
     results = []
 
     def claim_once():
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant="tenant-fixture-a")
         try:
             results.append(store.claim_autonomous_run("acme", "raise_invoice", cap=1)[0])
         finally:
@@ -156,7 +156,7 @@ def test_sqlite_autonomous_daily_cap_claim_is_atomic(tmp_path):
     for thread in threads:
         thread.join()
 
-    store = WorkflowStore(db_path)
+    store = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         assert sorted(results) == [False, True]
         assert store.autonomous_runs_today("acme", "raise_invoice") == 1
@@ -168,12 +168,12 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
     db_path = tmp_path / "w.sqlite3"
-    WorkflowStore(db_path).close()
+    WorkflowStore(db_path, tenant="tenant-fixture-a").close()
     barrier = threading.Barrier(2)
     results = []
 
     def run_once():
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant="tenant-fixture-a")
         try:
             router = OperationRouter(
                 lanes=freight_lanes(),
@@ -195,7 +195,7 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
     for thread in threads:
         thread.join()
 
-    store = WorkflowStore(db_path)
+    store = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         assert sorted(results) == ["DONE", "ESCALATED"]
         assert store.autonomous_runs_today("acme", "raise_invoice") == 1
@@ -210,7 +210,7 @@ def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_id
     the router says why)."""
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         router = OperationRouter(
             lanes=freight_lanes(),

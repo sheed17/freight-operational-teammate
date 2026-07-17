@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
 from freight_recon.delivery import build_delivery_message, record_delivery_message  # noqa: E402
 from freight_recon.delivery_dispatch import DispatchMode, dispatch_delivery_message  # noqa: E402
@@ -26,6 +27,8 @@ DEFAULT_ATTEMPTS = ROOT / "data" / "active_workspace" / "delivery_dispatch_attem
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--payloads", default=str(DEFAULT_REVIEW_PAYLOADS))
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--client-config", default=str(DEFAULT_CLIENT_CONFIG))
@@ -62,7 +65,7 @@ def main() -> int:
         payloads = [payload for payload in payloads if payload.run_id == args.run_id]
 
     attempts = []
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="dispatch_review.py"))
     try:
         for payload in payloads:
             message = build_delivery_message(payload, signer, actor="Rasheed")

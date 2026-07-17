@@ -16,7 +16,7 @@ def test_mock_tms_site_writes_source_of_truth_surface(tmp_path):
     corpus = tmp_path / "corpus"
     generate(corpus, loads_count=8, seed=42)
     loads = load_synthetic_loads(corpus)
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         seen: set[tuple[str, str]] = set()
         for load in loads:
@@ -54,7 +54,7 @@ def test_mock_tms_record_has_realistic_broker_fields(tmp_path):
     corpus = tmp_path / "corpus"
     generate(corpus, loads_count=8, seed=42)
     loads = load_synthetic_loads(corpus)
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         seen: set[tuple[str, str]] = set()
         for load in loads:

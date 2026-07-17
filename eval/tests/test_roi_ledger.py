@@ -39,7 +39,7 @@ def _daily(**kw):
 
 
 def test_receipts_are_read_from_the_audit_log(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _applied(store, lane="raise_invoice", status="DONE", amount="2850.00",
                  note="invoice INV-4912 verified")
@@ -52,7 +52,7 @@ def test_receipts_are_read_from_the_audit_log(tmp_path):
 
 
 def test_value_digest_tallies_invoiced_and_payables_only_on_done(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _applied(store, lane="raise_invoice", status="DONE", amount="2850.00")
         _applied(store, lane="raise_invoice", status="DONE", amount="1150.00")
@@ -71,7 +71,7 @@ def test_value_digest_tallies_invoiced_and_payables_only_on_done(tmp_path):
 
 
 def test_value_digest_folds_in_ap_reconciliation_numbers(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _applied(store, lane="raise_invoice", status="DONE", amount="2850.00")
         daily = _daily(auto_cleared=10, needs_review=3,
@@ -89,7 +89,7 @@ def test_value_digest_folds_in_ap_reconciliation_numbers(tmp_path):
 def test_ar_invoice_never_inflates_the_carrier_overbilling_recovered_bucket(tmp_path):
     # Hard AP/AR guard (owner trust-eroder #2): an AR customer invoice is its own bucket and must
     # NEVER be counted as money "recovered" from carrier overbilling (an AP concept).
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _applied(store, lane="raise_invoice", status="DONE", amount="9999.00")  # big AR invoice
         daily = _daily(potential_overbilling_flagged="100.00", confirmed_recovered="40.00")
@@ -103,7 +103,7 @@ def test_ar_invoice_never_inflates_the_carrier_overbilling_recovered_bucket(tmp_
 
 
 def test_hours_saved_is_a_tunable_estimate(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _applied(store, lane="raise_invoice", status="DONE", amount="100.00")
         daily = _daily(auto_cleared=0, needs_review=0)
@@ -159,7 +159,7 @@ def test_prose_only_id_is_reported_not_verified():
 
 
 def test_empty_digest_is_honest_not_fake(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         digest = build_value_digest(store)
         text = render_value_digest(digest)

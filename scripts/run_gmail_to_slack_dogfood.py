@@ -29,6 +29,7 @@ try:
 except Exception:  # pragma: no cover - optional local convenience
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
 from freight_recon.delivery import redact_delivery_message  # noqa: E402
 from freight_recon.delivery_dispatch import DispatchMode, dispatch_delivery_message  # noqa: E402
@@ -51,6 +52,8 @@ DEFAULT_CLIENT_CONFIG = ROOT / "configs" / "clients" / "neyma_test_freight.yaml"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE))
     parser.add_argument("--mailbox", default=os.getenv("NEYMA_IMAP_MAILBOX", "Neyma-Test-Inbox"))
     parser.add_argument("--query", default=os.getenv("NEYMA_IMAP_QUERY", "UNSEEN"))
@@ -116,6 +119,11 @@ def main() -> int:
     parser.add_argument("--text", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+    tenant = resolve_cli_tenant(
+        tenant=getattr(args, "tenant", None),
+        client_config=getattr(args, "client_config", None),
+        context="run_gmail_to_slack_dogfood.py",
+    )
 
     if not args.username or not args.password:
         raise SystemExit("Missing IMAP credentials. Set NEYMA_IMAP_USERNAME/PASSWORD or NEYMA_SMTP_USERNAME/PASSWORD.")
@@ -154,6 +162,7 @@ def main() -> int:
     loads = load_synthetic_loads(Path(args.corpus))
     load_by_id = {load.load_id: load for load in loads}
     workflow = run_mailbox_workflow(
+        tenant=tenant,
         inbox_dir=inbox_dir,
         preserve_dir=preserve_dir,
         mailbox_state_path=mailbox_state,
@@ -196,7 +205,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    store = WorkflowStore(db_path)
+    store = WorkflowStore(db_path, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="run_gmail_to_slack_dogfood.py"))
     try:
         pages = build_packet_site(
             output_dir=site_dir,

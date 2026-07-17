@@ -74,7 +74,7 @@ def _message(tmp_path):
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
     load = next(item for item in loads if item.load_id == "LD-560003")
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(
         store,
         load,

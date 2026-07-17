@@ -84,7 +84,7 @@ def test_bridge_detects_load_link_mismatch(tmp_path):
 # ---- process_load_packet real-extraction path --------------------------------
 
 def _process(tmp_path, load, corpus, extractor):
-    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(
         store, load,
         primary_document_path=corpus / load.documents["carrier_invoice"],
@@ -158,7 +158,7 @@ def test_review_card_renders_extracted_billed_values_not_source(tmp_path):
 def test_ground_truth_path_review_load_is_unchanged(tmp_path):
     corpus, loads = _loads(tmp_path)
     load = loads[0]
-    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(  # no extractor → ground-truth path
         store, load, primary_document_path=corpus / load.documents["carrier_invoice"], seen_invoice_keys=set()
     )

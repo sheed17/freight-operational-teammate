@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from generate_realistic_corpus import generate  # noqa: E402
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.action_callback import handle_signed_action_callback  # noqa: E402
 from freight_recon.config import load_config  # noqa: E402
 from freight_recon.delivery import (  # noqa: E402
@@ -49,6 +50,7 @@ DEFAULT_WORKSPACE = ROOT / "data" / "active_workspace"
 
 def run_pilot(
     *,
+    tenant: str,
     workspace: Path = DEFAULT_WORKSPACE,
     loads_count: int = 18,
     seed: int = 42,
@@ -111,6 +113,7 @@ def run_pilot(
     _copy_email_corpus_to_inbox(Path(email_ingestion["output_dir"]), inbox_dir)
     signer = DeliverySigner.from_env(allow_local_dev=True)
     mailbox_workflow = run_mailbox_workflow(
+        tenant=tenant,
         inbox_dir=inbox_dir,
         preserve_dir=mailbox_dir,
         mailbox_state_path=mailbox_state_path,
@@ -131,7 +134,7 @@ def run_pilot(
     )
     mailbox_workflow_path.write_text(mailbox_workflow_report.model_dump_json(indent=2), encoding="utf-8")
 
-    store = WorkflowStore(db_path)
+    store = WorkflowStore(db_path, tenant=tenant)
     payloads = mailbox_workflow.review_payloads
     delivery_messages = mailbox_workflow.delivery_messages
     try:
@@ -364,6 +367,7 @@ def run_pilot(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None, help="Canonical tenant; no default.")
     parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE))
     parser.add_argument("--loads", type=int, default=18)
     parser.add_argument("--seed", type=int, default=42)
@@ -392,6 +396,7 @@ def main() -> int:
         max_pages=args.max_pages,
     ) if args.real_extraction else None
     report = run_pilot(
+        tenant=resolve_cli_tenant(tenant=getattr(args, 'tenant', None), client_config=getattr(args, 'client_config', None), context='run_dogfood_pilot'),
         workspace=Path(args.workspace),
         loads_count=args.loads,
         seed=args.seed,

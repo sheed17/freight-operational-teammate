@@ -30,7 +30,7 @@ def _config(*, nl_completer=None):
 
 
 def _ctx(tmp_path):
-    return OpsControl(tmp_path / "ops.json"), WorkflowStore(str(tmp_path / "w.sqlite3"))
+    return OpsControl(tmp_path / "ops.json"), WorkflowStore(str(tmp_path / "w.sqlite3"), tenant="tenant-fixture-a")
 
 
 def test_read_command_is_answered_immediately_no_gate(tmp_path):
@@ -178,12 +178,12 @@ def test_batch_background_run_fences_each_item_and_posts_one_consolidated_receip
     def poster(payload):
         posts.append(payload)
 
-    store = WorkflowStore(str(tmp_path / "w.sqlite3")); store.close()
+    store = WorkflowStore(str(tmp_path / "w.sqlite3"), tenant="tenant-fixture-a"); store.close()
     batch = {"action_id": "batch1", "lane": "raise_invoice", "items": [
         {"load_ref": "103", "customer": "Acme", "amount": "2500.00"},
         {"load_ref": "104", "customer": "Echo", "amount": "1200.00"},
     ]}
-    t = _start_batch_background_run(db_path=str(tmp_path / "w.sqlite3"), router=_Router(), batch=batch,
+    t = _start_batch_background_run(tenant="tenant-fixture-a", db_path=str(tmp_path / "w.sqlite3"), router=_Router(), batch=batch,
                                     actor="U1", channel_id="C", thread_ts="1.1", poster=poster)
     t.join(timeout=10)
     assert [p["load_ref"] for p in ran] == ["103", "104"]
@@ -191,7 +191,7 @@ def test_batch_background_run_fences_each_item_and_posts_one_consolidated_receip
     assert len(posts) == 1                                    # ONE consolidated receipt
     text = posts[0]["text"]
     assert "1/2 invoiced" in text and "103" in text and "104" in text and "FAILED" in text
-    s = WorkflowStore(str(tmp_path / "w.sqlite3"))
+    s = WorkflowStore(str(tmp_path / "w.sqlite3"), tenant="tenant-fixture-a")
     try:
         events = [e for e in s.security_events() if e["event_type"] == "slack_operation_applied"]
         assert len(events) == 2                               # per-item audit trail

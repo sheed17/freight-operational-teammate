@@ -13,7 +13,7 @@ from run_dogfood_pilot import run_pilot  # noqa: E402
 
 def test_dogfood_pilot_runner_writes_core_artifacts(tmp_path):
     workspace = tmp_path / "workspace"
-    report = run_pilot(workspace=workspace, loads_count=8, seed=42, age_hours=48)
+    report = run_pilot(tenant="tenant-fixture-a", workspace=workspace, loads_count=8, seed=42, age_hours=48)
 
     assert report["company"] == "Neyma Test Freight LLC"
     assert report["role"] == "owner/operator"

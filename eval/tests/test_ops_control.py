@@ -50,7 +50,7 @@ def test_handle_command_roi_reports_what_neyma_did(tmp_path):
     from freight_recon.workflow import WorkflowStore
 
     oc = OpsControl(tmp_path / "ops.json")
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         store.add_security_event(
             "slack_operation_applied", actor="R",
@@ -70,7 +70,7 @@ def test_empty_and_bare_commands_do_not_crash(tmp_path):
     from freight_recon.workflow import WorkflowStore
 
     oc = OpsControl(tmp_path / "ops.json")
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         for text in ("", "   ", "graduate", "supervise", "unknown thing"):
             out = handle_ops_command(text, actor="R", ops_control=oc, store=store)
@@ -84,7 +84,7 @@ def test_handle_command_knowledge_learn_inspect_forget(tmp_path):
     from freight_recon.workflow import WorkflowStore
 
     oc = OpsControl(tmp_path / "ops.json")
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         assert "haven't learned" in handle_ops_command("know", actor="R", ops_control=oc, store=store)
         out = handle_ops_command("learn Northbound Freight Brokers is order #1002",
@@ -113,7 +113,7 @@ def test_handle_command_graduation_flips_lane_autonomy(tmp_path):
     from freight_recon.workflow import WorkflowStore
 
     oc = OpsControl(tmp_path / "ops.json")
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         assert "supervised" in handle_ops_command("autonomy", actor="R", ops_control=oc, store=store)
         out = handle_ops_command("graduate raise_invoice", actor="R", ops_control=oc, store=store)

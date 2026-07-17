@@ -40,6 +40,7 @@ from .reconciliation import FreightLoadForReconciliation
 from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
 from .slack_delegate import CommandIntent, CommandKind, authorize_command
 from .thread_reply import find_resumable_operation, intent_from_resumable
+from .tenant import require_tenant
 from .workflow import WorkflowError, WorkflowStore
 
 DEFAULT_OPERATION_TOKEN_TTL_SECONDS = 3600
@@ -64,6 +65,10 @@ class CallbackResponse(BaseModel):
 
 @dataclass(frozen=True)
 class CallbackAppConfig:
+    # WHOSE data this server acts on. Required and first: there is no default, no env fallback, and
+    # no later "fill it in during startup" step. A config without a tenant fails here, before a
+    # WorkflowStore can be constructed, which is the whole point of putting it at this boundary.
+    tenant: str
     db_path: str
     signer: DeliverySigner
     follow_up_loads: dict[str, FreightLoadForReconciliation] | None = None
@@ -108,6 +113,12 @@ class CallbackAppConfig:
     # attachments), or None if unreadable. Powers "did the POD get attached to 101?" (answer the question
     # instead of re-proposing the attach) and document-audit reads.
     load_docs_reader: Callable[[str], "list | None"] | None = None
+
+    def __post_init__(self) -> None:
+        # Validated here so an invalid tenant cannot reach a query later wearing a valid tenant's
+        # clothes. require_tenant refuses None, blank, non-strings and every sentinel.
+        object.__setattr__(self, "tenant", require_tenant(self.tenant, context="CallbackAppConfig"))
+
 
 
 def handle_signed_action_callback(
@@ -293,7 +304,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 )
                 return
             token = parse_callback_token(self.path, body)
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 response = handle_signed_action_callback(
                     store,
@@ -328,7 +339,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 )
                 if operation_response is not None:
                     return
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 adapter = SlackDeliveryAdapter(
                     store, signer=config.signer, signing_secret=config.slack_signing_secret
@@ -392,7 +403,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     signature=signature,
                 )
             except SlackSignatureError:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_request_rejected",
@@ -435,7 +446,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 allowed_channel=config.allowed_slack_channel,
             )
             if not ok:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_operation_rejected",
@@ -458,7 +469,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 thread_ts=thread_ts,
             )
             if context_reason:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_operation_rejected",
@@ -486,7 +497,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 return True
 
             assert config.operation_router is not None
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 if approval.approved_amount:
                     store.record_operation_token_amount(
@@ -529,6 +540,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             finally:
                 store.close()
             _start_operation_background_run(
+                tenant=config.tenant,
                 db_path=config.db_path,
                 router=config.operation_router,
                 approval=approval,
@@ -571,7 +583,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 allowed_users=config.allowed_slack_users, allowed_channel=config.allowed_slack_channel,
             )
             if not ok or config.operation_router is None:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_operation_rejected", actor=str(user_id or "unknown"),
@@ -586,7 +598,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 self._write_json(200, {"replace_original": False,
                                        "text": "That Approve-all button belongs to a different channel."})
                 return True
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 claimed = store.claim_operation_action(
                     str(batch["action_id"]), actor=str(user_id or "unknown"),
@@ -604,6 +616,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             finally:
                 store.close()
             _start_batch_background_run(
+                tenant=config.tenant,
                 db_path=config.db_path, router=config.operation_router, batch=batch,
                 actor=str(user_id or "unknown"), channel_id=channel_id, thread_ts=thread_ts,
                 poster=config.operation_result_poster,
@@ -665,7 +678,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 return
             thread_ts = event.get("thread_ts")
             event_id = payload.get("event_id") or ""
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 # Dedup Slack's at-least-once event retries so a reply resumes exactly once.
                 if event_id and not store.claim_operation_action(
@@ -699,6 +712,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 except Exception:  # noqa: BLE001 - the ack is best-effort
                     pass
             _start_resume_background_run(
+                tenant=config.tenant,
                 db_path=config.db_path,
                 router=config.operation_router,
                 intent=intent_from_resumable(resumable, str(event.get("text", ""))),
@@ -727,7 +741,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     config.slack_signing_secret, timestamp=timestamp, body=body_str, signature=signature
                 )
             except SlackSignatureError:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_request_rejected", actor="system", payload={"failure": "signature", "route": "commands"}
@@ -748,7 +762,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                 allowed_channel=config.allowed_slack_channel,
             )
             if not ok:
-                store = WorkflowStore(config.db_path)
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
                 try:
                     store.add_security_event(
                         "slack_command_rejected",
@@ -762,7 +776,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             # /neyma uses the SAME conversational recognizer as a thread reply — reads, controls, AR
             # aging, and gated operations all work, so the owner gets an answer, not a command dump.
             ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
-            store = WorkflowStore(config.db_path)
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
             try:
                 routed = route_conversational_message(
                     text, actor=actor, channel_id=channel_id, config=config,
@@ -809,6 +823,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
 
 def run_callback_server(
     *,
+    tenant: str,
     host: str,
     port: int,
     db_path: str,
@@ -836,6 +851,7 @@ def run_callback_server(
     )
     handler = make_callback_handler(
         CallbackAppConfig(
+            tenant=tenant,
             db_path=db_path,
             signer=signer,
             follow_up_loads=follow_up_loads,
@@ -1452,7 +1468,7 @@ def _respond_conversationally(*, text, actor, channel_id, thread_ts, config, pen
             return
         return
     ops_control = OpsControl(Path(config.db_path).parent / "ops_control.json")
-    store = WorkflowStore(config.db_path)
+    store = WorkflowStore(config.db_path, tenant=config.tenant)
     try:
         routed = route_conversational_message(
             text, actor=actor, channel_id=channel_id, config=config, ops_control=ops_control, store=store
@@ -1491,6 +1507,7 @@ def _receipt_text(result, amount, diag) -> str:
 
 def _start_batch_background_run(
     *,
+    tenant: str,
     db_path: str,
     router: OperationRouter,
     batch: dict,
@@ -1519,7 +1536,7 @@ def _start_batch_background_run(
             except Exception as exc:  # noqa: BLE001 - one bad item must not sink the batch
                 status, note = "FAILED", f"{type(exc).__name__}: {exc}"[:300]
             outcomes.append((load_ref, status, note))
-            store = WorkflowStore(db_path)
+            store = WorkflowStore(db_path, tenant=tenant)
             try:
                 store.add_security_event(
                     "slack_operation_applied", actor=actor,
@@ -1551,6 +1568,7 @@ def _start_batch_background_run(
 
 def _start_operation_background_run(
     *,
+    tenant: str,
     db_path: str,
     router: OperationRouter,
     approval: SlackOperationApproval,
@@ -1561,7 +1579,7 @@ def _start_operation_background_run(
     poster: Callable[[dict], None] | None,
 ) -> threading.Thread:
     def _run() -> None:
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant=tenant)
         result: OperationResult
         try:
             result = router.run(
@@ -1644,6 +1662,7 @@ def _learn_correction(db_path: str, intent, result) -> None:
 
 def _start_resume_background_run(
     *,
+    tenant: str,
     db_path: str,
     router: OperationRouter,
     intent,
@@ -1656,7 +1675,7 @@ def _start_resume_background_run(
     amount = (intent.params or {}).get("approved_amount")
 
     def _run() -> None:
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant=tenant)
         try:
             try:
                 result = router.run(intent, approve=_single_consequential_approval())

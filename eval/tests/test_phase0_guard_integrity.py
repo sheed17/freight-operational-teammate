@@ -24,10 +24,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from phase0 import manifest
 
 TESTS = Path(__file__).resolve().parent
-# Every phase's guards, not just Phase 0's. Mutation caught this: a skip added to a Phase-1 test
-# went undetected because the sweep only globbed test_phase0_*. A guard suite that protects only the
-# phase that wrote it stops protecting anything the moment the next phase lands.
-GUARD_FILES = sorted(TESTS.glob("test_phase0_*.py")) + sorted(TESTS.glob("test_phase1_*.py"))
+# EVERY phase's guards, discovered — not a list of prefixes someone remembers to extend.
+#
+# This has now been wrong twice: the sweep globbed test_phase0_* and missed a skip on a Phase-1
+# guard; it was widened to test_phase1_* and immediately missed a skip on a U2.6A guard. A guard
+# that enumerates the files it knows about will always lag the next file added, and it fails silent
+# — which is the only failure mode that matters here. So: discover them.
+#
+# A "phase guard" is any test module in this directory whose job is to protect a phase's invariants.
+# They are identified by their own declaration, not by a naming convention a future file may not follow.
+def _guard_files():
+    out = []
+    for p in sorted(TESTS.glob("test_*.py")):
+        head = p.read_text(encoding="utf-8")[:1500]
+        if "PHASE_GUARD" in head or p.name.startswith(("test_phase0_", "test_phase1_", "test_phase2_",
+                                                       "test_u2", "test_u3")):
+            out.append(p)
+    return out
+
+
+GUARD_FILES = _guard_files()
 
 # The cases that MUST run and fail today. Neutering one is the defect this file exists to catch.
 # Nothing is red-by-design any more. The two that were - AC-SAFE-012/013 - went green at Phase 1,

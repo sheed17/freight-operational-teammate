@@ -41,7 +41,7 @@ def _delivered(tmp_path, load_id):
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
     load_by_id = {load.load_id: load for load in loads}
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     selected = None
     for load in loads:

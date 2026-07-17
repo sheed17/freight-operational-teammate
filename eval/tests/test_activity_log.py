@@ -10,7 +10,7 @@ from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 
 def test_timeline_is_curated_newest_first_and_proof_bearing(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         store.add_security_event("slack_operation_applied", actor="R",
                                  payload={"lane": "raise_invoice", "status": "DONE",
@@ -33,7 +33,7 @@ def test_timeline_is_curated_newest_first_and_proof_bearing(tmp_path):
 
 
 def test_empty_timeline_is_honest(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         assert "No activity" in render_activity(build_activity(store))
     finally:
@@ -44,7 +44,7 @@ def test_audit_command_renders_timeline(tmp_path):
     from freight_recon.ops_control import OpsControl, handle_ops_command
 
     oc = OpsControl(tmp_path / "ops.json")
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         store.add_security_event("slack_operation_applied", actor="R",
                                  payload={"lane": "record_payable", "status": "DONE"})

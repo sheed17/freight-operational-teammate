@@ -108,7 +108,7 @@ def test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice(tmp_path):
 
     A local write is never an oracle for an external effect — so this asserts on the external calls.
     """
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         actuator = _CountingActuator()
         params = {"load_ref": "LD-560010", "customer": "ACME", "commit": True}
@@ -158,7 +158,7 @@ def test_ac_safe_013_commit_key_exists_for_non_money_effects(tmp_path):
 
 def test_ac_safe_013_filing_the_same_pod_twice_attaches_it_once(tmp_path):
     """Frozen oracle: "filing the same POD twice => one attachment; no second upload"."""
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         pod = tmp_path / "pod.pdf"
         pod.write_bytes(b"%PDF-1.4 proof of delivery")

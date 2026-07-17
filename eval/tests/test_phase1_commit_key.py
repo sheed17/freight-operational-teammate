@@ -139,7 +139,7 @@ def test_05_missing_logical_effect_identity_fails_closed():
 
 
 def test_06_same_logical_effect_claimed_twice_converges_on_one_reservation(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         intent = _operate("invoice", {"load_ref": "LD-1", "customer": "CUST"})
         first = _commit_reservation("acme", "tms", _lane("raise_invoice"), intent, "2850.00")
@@ -190,7 +190,7 @@ def test_07_two_legitimate_repeats_can_use_distinct_occurrence_discriminators(tm
 
 
 def test_08_same_external_identifier_in_two_tenants_does_not_collide(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         intent = _operate("invoice", {"load_ref": "LD-1", "customer": "CUST"})
         a = _commit_reservation("tenant_a", "tms", _lane("raise_invoice"), intent, "100.00")
@@ -232,7 +232,7 @@ def test_13_payload_field_ordering_does_not_alter_identity():
 def test_14_a_historical_old_format_identity_cannot_permit_recommitment(tmp_path):
     """THE MIGRATION HAZARD. A committed invoice under the old amount-keyed identity must not be
     raised again merely because its canonical key is now different."""
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         # A legacy row exactly as the deleted algorithm would have written it: key derived WITH the
         # amount, so it does not match any canonical key.
@@ -258,7 +258,7 @@ def test_14_a_historical_old_format_identity_cannot_permit_recommitment(tmp_path
 def test_14b_two_legacy_rows_for_one_logical_effect_are_manual_review_not_a_merge(tmp_path):
     """Two legacy rows differing only by amount ARE a historical double-commit. Do not merge them.
     Do not pick one. Do not infer success. A human settles it."""
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         for amount in ("2850.00", "3100.00"):
             store.claim_operation_commit(
@@ -320,7 +320,7 @@ def test_race_two_workers_two_amounts_one_logical_effect(tmp_path):
 
     Under the old algorithm both keys differed, both reservations succeeded, and both invoiced.
     """
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         intent = _operate("invoice", {"load_ref": "LD-1", "customer": "CUST"})
         results, keys, barrier = [], [], threading.Barrier(2)
@@ -328,7 +328,7 @@ def test_race_two_workers_two_amounts_one_logical_effect(tmp_path):
         def worker(amount):
             # A separate connection per worker: the arbiter is the table's PRIMARY KEY, not a shared
             # Python object. Sharing one connection would test nothing but the GIL.
-            own = WorkflowStore(tmp_path / "w.sqlite3")
+            own = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
             try:
                 res = _commit_reservation("acme", "tms", _lane("raise_invoice"), intent, amount)
                 keys.append(res["commit_key"])
@@ -354,7 +354,7 @@ def test_race_two_workers_two_amounts_one_logical_effect(tmp_path):
 
 
 def test_race_same_non_money_effect_from_two_entry_points(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         doc = tmp_path / "pod.pdf"
         doc.write_bytes(b"POD")
@@ -364,7 +364,7 @@ def test_race_same_non_money_effect_from_two_entry_points(tmp_path):
         out, barrier = [], threading.Barrier(2)
 
         def worker():
-            own = WorkflowStore(tmp_path / "w.sqlite3")
+            own = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
             try:
                 barrier.wait()
                 out.append(own.claim_operation_commit(**res, payload={"status": "RESERVED"}))
@@ -380,7 +380,7 @@ def test_race_same_non_money_effect_from_two_entry_points(tmp_path):
 
 
 def test_race_same_logical_effect_with_different_retry_ids(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         out = []
         for retry in ("1", "2", "3"):
@@ -394,7 +394,7 @@ def test_race_same_logical_effect_with_different_retry_ids(tmp_path):
 
 def test_crash_after_identity_before_reservation_is_safe_to_rerun(tmp_path):
     """Nothing happened: no row, no effect. Re-deriving the key must reproduce it exactly."""
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         intent = _operate("invoice", {"load_ref": "LD-1", "customer": "CUST"})
         first = _commit_reservation("acme", "tms", _lane("raise_invoice"), intent, "100.00")
@@ -414,11 +414,11 @@ def test_crash_after_reservation_blocks_a_blind_retry_across_a_restart(tmp_path)
     intent = _operate("invoice", {"load_ref": "LD-1", "customer": "CUST"})
     res = _commit_reservation("acme", "tms", _lane("raise_invoice"), intent, "100.00")
 
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant="tenant-fixture-a")
     store.claim_operation_commit(**res, payload={"status": "RESERVED"})
     store.close()                                  # crash / restart
 
-    store = WorkflowStore(db)                      # a fresh process
+    store = WorkflowStore(db, tenant="tenant-fixture-a")                      # a fresh process
     try:
         actuator = _Actuator()
         result = OperationRouter(
@@ -487,13 +487,13 @@ def test_the_backfill_report_never_infers_success(tmp_path):
     from report_legacy_commit_identities import report
 
     db = tmp_path / "w.sqlite3"
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant="tenant-fixture-a")
     _seed_legacy(store, "LD-COMMITTED", ["2850.00"], status="COMMITTED")
     _seed_legacy(store, "LD-RESERVED", ["2850.00"], status="RESERVED")
     _seed_legacy(store, "LD-UNKNOWN", ["2850.00"], status="NEEDS_VERIFICATION")
     store.close()
 
-    out = report(str(db))
+    out = report(str(db), tenant="tenant-fixture-a")
     by_ref = {f["logical_effect"]["load_ref"]: f["disposition"] for f in out["findings"]}
     assert by_ref["LD-COMMITTED"] == "RESOLVED_COMMITTED"
     assert by_ref["LD-RESERVED"] == "UNRESOLVED"
@@ -505,11 +505,11 @@ def test_two_legacy_rows_for_one_effect_are_reported_as_a_historical_double_comm
     from report_legacy_commit_identities import report
 
     db = tmp_path / "w.sqlite3"
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant="tenant-fixture-a")
     _seed_legacy(store, "LD-DOUBLE", ["2850.00", "3100.00"])   # the defect's fingerprint
     store.close()
 
-    out = report(str(db))
+    out = report(str(db), tenant="tenant-fixture-a")
     finding = out["findings"][0]
     assert finding["disposition"] == "MANUAL_REVIEW_REQUIRED"
     assert finding["legacy_rows"] == 2
@@ -523,12 +523,12 @@ def test_the_report_is_read_only(tmp_path):
     from report_legacy_commit_identities import report
 
     db = tmp_path / "w.sqlite3"
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant="tenant-fixture-a")
     _seed_legacy(store, "LD-1", ["2850.00", "3100.00"])
     store.close()
 
     before = hashlib.sha256(db.read_bytes()).hexdigest()
-    report(str(db))
+    report(str(db), tenant="tenant-fixture-a")
     assert hashlib.sha256(db.read_bytes()).hexdigest() == before, "the dry-run report mutated the database"
 
     # Match SQL SHAPE, not prose. A first version searched for the bare word "DELETE" and tripped
@@ -547,7 +547,7 @@ def test_an_empty_database_reports_nothing_to_do_without_pretending_otherwise(tm
     from report_legacy_commit_identities import report
 
     db = tmp_path / "w.sqlite3"
-    WorkflowStore(db).close()
-    out = report(str(db))
+    WorkflowStore(db, tenant="tenant-fixture-a").close()
+    out = report(str(db), tenant="tenant-fixture-a")
     assert out["total_rows"] == 0 and out["findings"] == []
     assert out["dispositions"] == {}

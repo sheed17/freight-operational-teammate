@@ -20,7 +20,7 @@ def _summary_fixture(tmp_path):
     generate(corpus, 18, seed=42)
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     payloads = []
     for load in loads:

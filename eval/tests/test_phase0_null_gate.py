@@ -38,12 +38,19 @@ def test_the_canonical_gate_population_is_provably_empty_today():
 
     src = Path(freight_recon.__file__).parent
     ev = Evaluation(name="policy.typed_action_class_gates")
+    # Match the gate decisions as WHOLE TOKENS, not as fragments of other identifiers.
+    # `FORBIDDEN_TENANTS` (U2.6A's sentinel list) contains "FORBIDDEN" and is not a policy gate;
+    # a substring scan counted it and reported that typed policy had arrived. Same class of bug as
+    # the report guard that tripped over the word "DELETED" inside a docstring.
+    import re as _re
+
+    gate_tokens = ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
+                   "PERMANENT_HUMAN_ASSERTION_REQUIRED", "FORBIDDEN")
     for path in sorted(src.rglob("*.py")):
         ev.sources_inspected.append(str(path))
         text = path.read_text(encoding="utf-8")
-        for token in ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
-                      "PERMANENT_HUMAN_ASSERTION_REQUIRED", "FORBIDDEN"):
-            if token in text:
+        for token in gate_tokens:
+            if _re.search(rf"(?<![A-Za-z0-9_]){token}(?![A-Za-z0-9_])", text):
                 ev.candidates.append(f"{path.name}:{token}")
                 ev.accepted.append(f"{path.name}:{token}")
 

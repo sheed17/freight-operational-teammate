@@ -102,10 +102,29 @@ def sha256_file(path: str | Path) -> str:
     return h.hexdigest()
 
 
+from .tenant import require_tenant
+
+
 class WorkflowStore:
     """SQLite store for workflow runs and audit events."""
 
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, *, tenant: str) -> None:
+        """A store belongs to exactly ONE tenant, named at construction and never after.
+
+        `tenant` is keyword-only and required: there is no positional slot to forget, no default to
+        inherit, and no setter to change it later. A caller that cannot name its tenant is a caller
+        that does not know whose data it is about to touch, and the safe answer to that is to stop.
+
+        U2.6A SCOPE - READ THIS BEFORE TRUSTING IT:
+        This binds the tenant at the CONSTRUCTION boundary. It does NOT yet make the store's
+        persistence tenant-safe: the 22 affected methods still issue their original unscoped SQL,
+        and the schema is still the pre-migration one. That is U2.6B (method scoping) and U2.6C
+        (schema activation). Nothing here may be read as tenant isolation - a store that knows its
+        tenant and does not use it is a store that knows its tenant and does not use it.
+        """
+        # Validated at the boundary, so an invalid tenant cannot reach a query later disguised as a
+        # valid one. `require_tenant` refuses None, blank, non-strings, and the sentinels.
+        self._tenant = require_tenant(tenant, context=f"WorkflowStore({db_path})")
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
@@ -126,6 +145,15 @@ class WorkflowStore:
 
     def close(self) -> None:
         self.conn.close()
+
+    @property
+    def tenant(self) -> str:
+        """The one tenant this store belongs to. Read-only: there is no setter, deliberately.
+
+        Rebinding an open store to another tenant would make every prior read and write ambiguous
+        after the fact, which is worse than never having had a tenant at all.
+        """
+        return self._tenant
 
     def _migrate(self) -> None:
         self.conn.executescript(

@@ -44,6 +44,12 @@
 
 ## Phase 2 — Tenant-safe ledger *(G4-prep)*
 ### **U2.1** tenant-first keys across ### **ALL SEVEN offending tables — enumerated by exact set in [migration-plan.md PART 7](migration-plan.md), not by count** ⇒ ### **`AC-SEC-001` GREEN.** *(Errata 2026-07-16: this unit previously said "the 6 offending tables". Executed literally it would have migrated six, left `operation_token_amounts` behind, and left AC-SEC-001 red with the phase marked done. ### **U2.1 is NOT complete while any of the seven remains non-tenant-first.**)* · **U2.2** the one `effect_grants` table, 8 states · **U2.3** ### **the two partial unique indexes (reservation + commit-once)** ⇒ `AC-SAFE-014`, `AC-RACE-001` · **U2.4** the ledger backfill from `operation_commit_claims` (dry-run first) · **U2.5** rename to `effect_grants`.
+
+### **U2.6** Explicit tenant ownership in `WorkflowStore` *(the Phase-2 completion unit, split for safety)*
+- ### **U2.6A** — the CONSTRUCTION boundary: a typed tenant (`require_tenant`), `WorkflowStore(db, *, tenant)` required + immutable, `CallbackAppConfig.tenant` required, all 146 construction sites explicit, canonical source = client config `client_id`. ### **Binds the tenant; does NOT scope the queries — this is not tenant isolation.**
+- **U2.6B** — scope all **22** affected store methods (13 write, 9 read). ### **All 22 together: a store where some methods are tenant-safe and others are not is worse than one where none are, because it reads as safe.**
+- **U2.6C** — activate the tenant-first schema migration ⇒ `AC-SEC-001`.
+
 > ### **U2.3 is the load-bearing unit of the whole plan: it is the mechanism that makes coexistence safe (principle 5). Until it exists, EVERY cutover strategy in the entry-point plan is unbacked.**
 
 ## Phase 3 — Checkpoint + witness *(G4)*

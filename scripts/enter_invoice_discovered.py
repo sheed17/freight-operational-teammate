@@ -25,6 +25,7 @@ except Exception:  # pragma: no cover
     pass
 
 from enter_truckingoffice_invoice import seed_approved_run  # noqa: E402
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.discovered_write import DiscoveredInvoiceLedger  # noqa: E402
 from freight_recon.screen_discovery import (  # noqa: E402
@@ -48,6 +49,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--db", default=str(ROOT / "data" / "active_workspace" / "truckingoffice_discovered.sqlite3"))
     parser.add_argument("--seed-load", default="LD-560004")
     parser.add_argument("--corpus", default=str(ROOT / "data" / "synthetic_corpus"))
@@ -61,7 +64,7 @@ def main() -> int:
     args = parser.parse_args()
 
     Path(args.db).unlink(missing_ok=True)
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="enter_invoice_discovered.py"))
     run_id = seed_approved_run(store, Path(args.corpus), args.seed_load)
     run = store.get_run(run_id)
     approved = approved_amount_for_run(store, run_id)

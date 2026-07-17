@@ -18,6 +18,7 @@ try:
 except Exception:  # pragma: no cover
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.review import ReviewPayload, ReviewRoute  # noqa: E402
 from freight_recon.roi_ledger import build_value_digest, render_value_digest  # noqa: E402
 from freight_recon.summary import build_daily_summary, render_daily_summary  # noqa: E402
@@ -31,6 +32,8 @@ DEFAULT_OUTPUT = ROOT / "data" / "active_workspace" / "daily_summary.json"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--payloads", default=str(DEFAULT_REVIEW_PAYLOADS))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
@@ -43,7 +46,7 @@ def main() -> int:
         ReviewPayload.model_validate(item)
         for item in json.loads(Path(args.payloads).read_text(encoding="utf-8"))
     ]
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="generate_daily_summary.py"))
     try:
         summary = build_daily_summary(store, payloads)
         # Fold the AP reconciliation numbers in with the agent-operation receipts into one ROI digest.

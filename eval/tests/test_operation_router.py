@@ -160,7 +160,7 @@ def test_non_money_lane_runs_without_an_amount():
 
 
 def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         first_llm = _scripted_llm([
             {"action": "CLICK", "target": "Save invoice"},
@@ -206,7 +206,7 @@ def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
 
 def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
     db_path = tmp_path / "workflow.sqlite3"
-    WorkflowStore(db_path).close()
+    WorkflowStore(db_path, tenant="tenant-fixture-a").close()
     start = threading.Barrier(2)
     lock = threading.Lock()
     saves = []
@@ -220,7 +220,7 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
             return super().click(target)
 
     def run_once():
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant="tenant-fixture-a")
         try:
             actuator = SlowSaveActuator()
             build_agent = _agent_factory(
@@ -356,7 +356,7 @@ def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
     # BLOCKER regression: a run that crashes AFTER reserving the commit but BEFORE any write must not,
     # on retry, be reported as DONE ("already committed") with nothing written — and must not blindly
     # repeat the write either. It escalates for a human to verify in the TMS.
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         class BoomActuator(FakeActuator):
             def observe(self):
@@ -387,7 +387,7 @@ def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
 def test_leaked_reserved_claim_from_hard_kill_escalates(tmp_path):
     # A hard kill can't run the crash handler, so it leaves a bare RESERVED claim. The duplicate-guard
     # must still escalate (verify), not report DONE.
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         # Seed the leaked reservation under the CANONICAL key (the oracle is unchanged: a bare
         # RESERVED claim must escalate, never report DONE — we do not know if the TMS was written).

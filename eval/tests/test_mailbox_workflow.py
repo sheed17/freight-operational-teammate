@@ -90,6 +90,7 @@ def test_mailbox_workflow_creates_review_and_signed_delivery_for_exception(tmp_p
     _copy_packet_emails(packet, inbox)
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -112,7 +113,7 @@ def test_mailbox_workflow_creates_review_and_signed_delivery_for_exception(tmp_p
     assert any("Received" in link.label for link in message.evidence_links)
     assert result.review_payloads[0].audit_context["mailbox_delivered_doc_types"]
 
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         events = [event["event_type"] for event in store.audit_events(workflow_result.workflow_run_id)]
     finally:
@@ -132,6 +133,7 @@ def test_mailbox_workflow_real_extraction_uses_preserved_carrier_invoice_attachm
     _copy_packet_emails(packet, inbox)
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -148,7 +150,7 @@ def test_mailbox_workflow_real_extraction_uses_preserved_carrier_invoice_attachm
     payload = next(item for item in result.review_payloads if item.load_id == packet.load_id)
     linehaul = next(field for field in payload.fields if field.label == "linehaul")
     assert linehaul.invoice_value == f"{billed_linehaul:.2f}"
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         extracted = next(
             event for event in store.audit_events(workflow_result.workflow_run_id)
@@ -168,6 +170,7 @@ def test_mailbox_workflow_real_extraction_low_confidence_forces_review(tmp_path)
     _copy_packet_emails(packet, inbox)
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -179,7 +182,7 @@ def test_mailbox_workflow_real_extraction_low_confidence_forces_review(tmp_path)
 
     workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
     assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         run = store.get_run(workflow_result.workflow_run_id)
     finally:
@@ -196,6 +199,7 @@ def test_mailbox_workflow_real_extraction_total_mismatch_forces_review(tmp_path)
     _copy_packet_emails(packet, inbox)
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -207,7 +211,7 @@ def test_mailbox_workflow_real_extraction_total_mismatch_forces_review(tmp_path)
 
     workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
     assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         run = store.get_run(workflow_result.workflow_run_id)
     finally:
@@ -226,6 +230,7 @@ def test_mailbox_workflow_real_extraction_exception_routes_to_review_not_crash(t
         raise RuntimeError("render failed")
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -237,7 +242,7 @@ def test_mailbox_workflow_real_extraction_exception_routes_to_review_not_crash(t
 
     workflow_result = next(item for item in result.packet_results if item.load_id == packet.load_id)
     assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         run = store.get_run(workflow_result.workflow_run_id)
     finally:
@@ -275,6 +280,7 @@ def test_mailbox_workflow_multiple_carrier_invoices_force_review_without_extract
     calls: list[Path] = []
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -287,7 +293,7 @@ def test_mailbox_workflow_multiple_carrier_invoices_force_review_without_extract
     workflow_result = next(item for item in result.packet_results if item.load_id == load.load_id)
     assert calls == []
     assert workflow_result.workflow_state == WorkflowState.NEEDS_REVIEW
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         run = store.get_run(workflow_result.workflow_run_id)
     finally:
@@ -315,6 +321,7 @@ def test_mailbox_workflow_surfaces_unlinked_inbound_email_for_review(tmp_path):
     (inbox / "unlinked.eml").write_bytes(message.as_bytes())
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -351,15 +358,15 @@ def test_mailbox_workflow_is_idempotent_on_repeat_poll(tmp_path):
         "signer": DeliverySigner(b"test-secret"),
     }
 
-    first = run_mailbox_workflow(**kwargs)
-    second = run_mailbox_workflow(**kwargs)
+    first = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
+    second = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
 
     assert len(first.mailbox.new_messages) == len(packet.emails)
     assert len(second.mailbox.new_messages) == 0
     assert len(second.mailbox.duplicates) == len(packet.emails)
     assert first.packet_results[0].workflow_run_id == second.packet_results[0].workflow_run_id
 
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         runs = store.list_runs()
         run_id = first.packet_results[0].workflow_run_id
@@ -389,6 +396,7 @@ def test_mailbox_workflow_packet_flags_force_human_review_for_math_clean_packet(
     shutil.copy2(first_email, inbox / first_email.name)
 
     result = run_mailbox_workflow(
+        tenant="tenant-fixture-a",
         inbox_dir=inbox,
         preserve_dir=tmp_path / "mailbox",
         mailbox_state_path=tmp_path / "mailbox" / "mailbox_state.json",
@@ -430,19 +438,19 @@ def test_mailbox_workflow_trickle_email_refreshes_same_run_when_packet_resolves(
         "signer": DeliverySigner(b"test-secret"),
     }
 
-    first = run_mailbox_workflow(**kwargs)
+    first = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
     first_run_id = first.packet_results[0].workflow_run_id
     assert first.packet_results[0].workflow_state == WorkflowState.NEEDS_REVIEW
 
     second_email = Path(packet.emails[1].eml_path)
     shutil.copy2(second_email, inbox / second_email.name)
-    second = run_mailbox_workflow(**kwargs)
+    second = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
 
     assert second.packet_results[0].workflow_run_id == first_run_id
     assert second.packet_results[0].workflow_state == WorkflowState.DONE
     assert second.packet_results[0].outcome == "MATCHED"
     assert second.reviews_created == 0
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         assert len(store.list_runs()) == 1
         events = [event["event_type"] for event in store.audit_events(first_run_id)]
@@ -473,20 +481,20 @@ def test_mailbox_workflow_real_extraction_trickle_refreshes_same_run_when_packet
         "extractor": _extractor_for(_fake_obj(load), calls),
     }
 
-    first = run_mailbox_workflow(**kwargs)
+    first = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
     first_run_id = first.packet_results[0].workflow_run_id
     assert first.packet_results[0].workflow_state == WorkflowState.NEEDS_REVIEW
     assert first.packet_results[0].outcome == "NEEDS_REVIEW"
 
     second_email = Path(packet.emails[1].eml_path)
     shutil.copy2(second_email, inbox / second_email.name)
-    second = run_mailbox_workflow(**kwargs)
+    second = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
 
     assert second.packet_results[0].workflow_run_id == first_run_id
     assert second.packet_results[0].workflow_state == WorkflowState.DONE
     assert second.packet_results[0].outcome == "MATCHED"
     assert len(calls) >= 2
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         events = [event["event_type"] for event in store.audit_events(first_run_id)]
     finally:
@@ -514,9 +522,9 @@ def test_mailbox_workflow_requested_backup_consumes_arriving_backup(tmp_path):
         "signer": DeliverySigner(b"test-secret"),
     }
 
-    first = run_mailbox_workflow(**kwargs)
+    first = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
     run_id = first.packet_results[0].workflow_run_id
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         action = apply_review_action(
             store,
@@ -528,12 +536,12 @@ def test_mailbox_workflow_requested_backup_consumes_arriving_backup(tmp_path):
 
     second_email = Path(packet.emails[1].eml_path)
     shutil.copy2(second_email, inbox / second_email.name)
-    second = run_mailbox_workflow(**kwargs)
+    second = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
 
     assert second.packet_results[0].workflow_run_id == run_id
     assert second.packet_results[0].workflow_state == WorkflowState.DONE
     assert second.packet_results[0].outcome == "MATCHED"
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         events = [event["event_type"] for event in store.audit_events(run_id)]
     finally:
@@ -566,8 +574,8 @@ def test_mailbox_workflow_duplicate_outcome_survives_repeat_poll(tmp_path):
         "signer": DeliverySigner(b"test-secret"),
     }
 
-    first = run_mailbox_workflow(**kwargs)
-    second = run_mailbox_workflow(**kwargs)
+    first = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
+    second = run_mailbox_workflow(tenant="tenant-fixture-a", **kwargs)
 
     first_duplicate = next(item for item in first.packet_results if item.load_id == duplicate_load.load_id)
     second_duplicate = next(item for item in second.packet_results if item.load_id == duplicate_load.load_id)
@@ -588,6 +596,7 @@ def test_mailbox_workflow_cli_smoke(tmp_path):
         [
             str(ROOT / ".venv" / "bin" / "python"),
             str(ROOT / "scripts" / "run_mailbox_workflow.py"),
+            "--tenant", "tenant-fixture-a",
             "--corpus",
             str(corpus),
             "--inbox",

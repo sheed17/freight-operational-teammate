@@ -31,6 +31,7 @@ try:
 except Exception:  # pragma: no cover
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
@@ -81,6 +82,8 @@ def seed_approved_run(store: WorkflowStore, corpus_dir: Path, load_id: str) -> i
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--db", default=str(ROOT / "data" / "active_workspace" / "truckingoffice_demo.sqlite3"))
     parser.add_argument("--run-id", type=int, default=None, help="drive an existing approved run instead of seeding")
     parser.add_argument("--seed-load", default="LD-560007", help="corpus load to seed when --run-id is omitted")
@@ -94,7 +97,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="enter_truckingoffice_invoice.py"))
     run_id = args.run_id if args.run_id is not None else seed_approved_run(store, Path(args.corpus), args.seed_load)
     run = store.get_run(run_id)
     if run.state != WorkflowState.APPROVED:

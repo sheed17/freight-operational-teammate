@@ -44,7 +44,7 @@ Finishing that integration, the 22 acceptance cases, the 11 concurrency schedule
 | **rerun** | ### **`already_applied=True` — idempotent, no duplication** |
 
 ### ⛔ THE FINDING THAT SHAPES THE REST OF PHASE 2
-**Only `operation_commit_claims` carries a tenant. The other six tables have no tenant anywhere** — not a column, not a parent, not a payload. I checked the real rows: `{id, load_id, document_hash, state, invoice_number, carrier, outcome, reason, created_at, updated_at}`. ### **There is nothing to derive from.**
+**Only `operation_commit_claims` carries a tenant. The other six of the seven have no tenant anywhere** *(errata-safe phrasing: the affected set is SEVEN; six of them are tenantless)* — not a column, not a parent, not a payload. I checked the real rows: `{id, load_id, document_hash, state, invoice_number, carrier, outcome, reason, created_at, updated_at}`. ### **There is nothing to derive from.**
 The frozen plan already ruled on this — *"ownership cannot be inferred — a human assigns it"* — so the migration takes an **owner assertion** (`--assert-tenant`, recorded as an assertion) or **quarantines**. ### **There is deliberately no fallback value.**
 
 ### Four real bugs found by exercising it (not by reading it)

@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.follow_up import build_follow_up_draft, record_follow_up_draft  # noqa: E402
 from freight_recon.review import ReviewPayload  # noqa: E402
 from freight_recon.review_actions import ReviewDecision  # noqa: E402
@@ -20,6 +21,8 @@ from run_workflow import DEFAULT_CORPUS, DEFAULT_DB, load_synthetic_loads  # noq
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("run_id", type=int)
     parser.add_argument("decision", choices=[decision.value for decision in ReviewDecision])
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS))
@@ -37,7 +40,7 @@ def main() -> int:
     payload = payload_by_run[args.run_id]
     draft = build_follow_up_draft(payload, loads[payload.load_id], ReviewDecision(args.decision))
     if args.record_audit:
-        store = WorkflowStore(args.db)
+        store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="generate_follow_up_draft.py"))
         try:
             record_follow_up_draft(store, draft)
         finally:

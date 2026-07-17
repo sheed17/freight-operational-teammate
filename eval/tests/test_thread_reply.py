@@ -34,7 +34,7 @@ def _escalate(store, *, thread_ts, summary="Record the payable to TQL for LD-1",
 
 
 def test_find_resumable_finds_latest_escalation_in_thread(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1", amount="2700.00")
         _escalate(store, thread_ts="T2", amount="999.00", status="DONE", token_fingerprint="tok-2")  # not escalated
@@ -47,7 +47,7 @@ def test_find_resumable_finds_latest_escalation_in_thread(tmp_path):
 
 
 def test_find_resumable_rejects_amount_without_verified_token_binding(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1", amount="2700.00", token_fingerprint=None)
         store.record_operation_token_amount(
@@ -64,7 +64,7 @@ def test_find_resumable_rejects_amount_without_verified_token_binding(tmp_path):
 
 
 def test_find_resumable_requires_action_scope_when_thread_has_multiple_open_operations(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1", action_id="action-1", token_fingerprint="tok-1", amount="2700.00")
         _escalate(
@@ -86,7 +86,7 @@ def test_find_resumable_requires_action_scope_when_thread_has_multiple_open_oper
 
 
 def test_find_resumable_excludes_already_committed_operation(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1", steps=[{"committed": True, "commit_key": "abc"}])
 
@@ -124,7 +124,7 @@ def test_intent_from_committed_resumable_is_verify_only_not_commit():
 
 
 def test_handle_thread_reply_resumes_when_authorized(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1")
         seen = {}
@@ -142,7 +142,7 @@ def test_handle_thread_reply_resumes_when_authorized(tmp_path):
 
 
 def test_handle_thread_reply_ignores_unauthorized_or_empty_or_untied(tmp_path):
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         _escalate(store, thread_ts="T1")
         ran = []

@@ -18,6 +18,7 @@ try:
 except Exception:  # pragma: no cover
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.tms_write import ChargeLine, MockTmsWriteLedger, enter_approved_payable  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 from run_workflow import DEFAULT_DB  # noqa: E402
@@ -28,6 +29,8 @@ DEFAULT_LEDGER = ROOT / "data" / "active_workspace" / "tms_payable_ledger.json"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("run_id", type=int)
     parser.add_argument("--amount", required=True)
     parser.add_argument("--db", default=str(DEFAULT_DB))
@@ -55,7 +58,7 @@ def main() -> int:
         name, _, amount = raw.partition("=")
         charges.append(ChargeLine(name=name, amount=amount))
 
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="enter_tms_payable.py"))
     if args.browser:
         from freight_recon.browser_use_adapter import (
             BrowserUseWriteLedger,

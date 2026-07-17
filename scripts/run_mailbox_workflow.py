@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.delivery import DeliveryChannel, DeliverySigner, render_delivery_message  # noqa: E402
 from freight_recon.config import load_config  # noqa: E402
 from freight_recon.document_identifier import extract_pdf_identifiers  # noqa: E402
@@ -33,6 +34,8 @@ DEFAULT_OUT = DEFAULT_PRESERVE / "mailbox_workflow_report.json"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant; no default. Omit only with --client-config.")
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="Synthetic/load corpus root")
     parser.add_argument("--inbox", default=str(DEFAULT_INBOX), help="Directory containing inbound .eml files")
     parser.add_argument("--preserve-dir", default=str(DEFAULT_PRESERVE), help="Where raw messages/state are preserved")
@@ -65,6 +68,11 @@ def main() -> int:
         help="Include raw signed action tokens in stdout/report for explicit local testing only",
     )
     args = parser.parse_args()
+    tenant = resolve_cli_tenant(
+        tenant=getattr(args, "tenant", None),
+        client_config=getattr(args, "client_config", None),
+        context="run_mailbox_workflow.py",
+    )
 
     signer = DeliverySigner.from_env(allow_local_dev=True)
     loads = load_synthetic_loads(Path(args.corpus))
@@ -75,6 +83,7 @@ def main() -> int:
         max_pages=args.max_pages,
     ) if args.real_extraction else None
     result = run_mailbox_workflow(
+        tenant=tenant,
         inbox_dir=Path(args.inbox),
         preserve_dir=Path(args.preserve_dir),
         mailbox_state_path=Path(args.mailbox_state),

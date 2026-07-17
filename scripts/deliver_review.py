@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.delivery import (  # noqa: E402
     DeliveryChannel,
     DeliverySigner,
@@ -26,6 +27,8 @@ from run_workflow import DEFAULT_DB  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--payloads", default=str(DEFAULT_REVIEW_PAYLOADS))
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--channel", default=DeliveryChannel.LOCAL.value, choices=[c.value for c in DeliveryChannel])
@@ -47,7 +50,7 @@ def main() -> int:
     if args.run_id is not None:
         payloads = [p for p in payloads if p.run_id == args.run_id]
 
-    store = WorkflowStore(args.db) if args.record_audit else None
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="deliver_review.py")) if args.record_audit else None
     messages = []
     try:
         for payload in payloads:

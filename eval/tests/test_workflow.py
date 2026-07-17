@@ -33,7 +33,7 @@ def _generated_corpus(tmp_path, count=9, seed=42):
 
 def test_workflow_routes_generated_loads_to_done_or_review(tmp_path):
     corpus, loads = _generated_corpus(tmp_path, count=9)
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
 
     for load in loads:
@@ -53,7 +53,7 @@ def test_workflow_idempotency_uses_document_hash(tmp_path):
     corpus, loads = _generated_corpus(tmp_path, count=1)
     load = loads[0]
     doc = corpus / load.documents["carrier_invoice"]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
 
     run1 = store.receive_document(load.load_id, sha256_file(doc), {"primary_document": str(doc)})
     run2 = store.receive_document(load.load_id, sha256_file(doc), {"primary_document": str(doc)})
@@ -70,7 +70,7 @@ def test_workflow_idempotency_is_scoped_by_ap_ar_direction(tmp_path):
     ap_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CARRIER_PAYABLE})
     ar_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE})
     doc = corpus / source.documents["carrier_invoice"]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
 
     ap_run = process_load_packet(store, ap_load, primary_document_path=doc)
     ar_run = process_load_packet(store, ar_load, primary_document_path=doc)
@@ -87,7 +87,7 @@ def test_workflow_blocks_invalid_state_transition(tmp_path):
     corpus, loads = _generated_corpus(tmp_path, count=1)
     load = loads[0]
     doc = corpus / load.documents["carrier_invoice"]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     run = store.receive_document(load.load_id, sha256_file(doc), {"primary_document": str(doc)})
 
     with pytest.raises(WorkflowError):
@@ -98,7 +98,7 @@ def test_workflow_blocks_invalid_state_transition(tmp_path):
 def test_process_load_packet_is_retry_safe_for_terminal_run(tmp_path):
     corpus, loads = _generated_corpus(tmp_path, count=1)
     load = loads[0]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     doc = corpus / load.documents["carrier_invoice"]
 

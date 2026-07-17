@@ -27,7 +27,7 @@ def _store_with_review_runs(tmp_path, count=8):
     generate(corpus, count, seed=42)
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     for load in loads:
         run = process_load_packet(
@@ -72,7 +72,7 @@ def test_ar_expected_approval_records_customer_invoice_direction_without_follow_
     load = FreightLoadForReconciliation.from_mapping(raw["LD-560003"]).model_copy(
         update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE}
     )
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(store, load, primary_document_path=corpus / load.documents["carrier_invoice"])
     payload = build_review_payload(run, load)
     assert payload is not None
@@ -112,7 +112,7 @@ def test_ar_request_backup_does_not_create_carrier_follow_up_requirement(tmp_pat
     )
     invoice = tmp_path / "invoice.pdf"
     invoice.write_bytes(b"%PDF-1.4 fake")
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(store, load, primary_document_path=invoice)
     payload = build_review_payload(run, load)
     assert payload is not None
@@ -223,7 +223,7 @@ def test_money_approval_rejects_stale_payload_from_other_direction(tmp_path):
     load = FreightLoadForReconciliation.from_mapping(raw["LD-560003"]).model_copy(
         update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE}
     )
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     run = process_load_packet(store, load, primary_document_path=corpus / load.documents["carrier_invoice"])
     payload = build_review_payload(run, load)
     assert payload is not None

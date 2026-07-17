@@ -96,6 +96,7 @@ class MailboxWorkflowResult(BaseModel):
 
 def run_mailbox_workflow(
     *,
+    tenant: str,
     inbox_dir: str | Path,
     preserve_dir: str | Path,
     mailbox_state_path: str | Path,
@@ -129,7 +130,7 @@ def run_mailbox_workflow(
         triage_completer=triage_completer,
     )
     load_by_id = {load.load_id: load for load in loads}
-    store = WorkflowStore(workflow_db_path)
+    store = WorkflowStore(workflow_db_path, tenant=tenant)
     seen_invoice_keys = _seen_invoice_keys_from_store(store)
     packet_results: list[MailboxWorkflowPacketResult] = []
     review_payloads: list[ReviewPayload] = []

@@ -46,8 +46,8 @@ def classify(rows: list[dict]) -> str:
     return "MANUAL_REVIEW_REQUIRED"
 
 
-def report(db: str) -> dict:
-    store = WorkflowStore(db)
+def report(db: str, *, tenant: str) -> dict:
+    store = WorkflowStore(db, tenant=tenant)
     try:
         rows = [
             {
@@ -89,8 +89,11 @@ def report(db: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", required=True)
+    ap.add_argument("--tenant", required=True,
+                    help="OPERATOR ASSERTION: which tenant this report is about. "
+                         "Required — this tool will not pick one for you.")
     args = ap.parse_args()
-    out = report(args.db)
+    out = report(args.db, tenant=args.tenant)
     print(json.dumps(out, indent=2, sort_keys=True))
     if out["dispositions"].get("MANUAL_REVIEW_REQUIRED"):
         print(

@@ -46,7 +46,7 @@ def _delivered(tmp_path, load_id="LD-560008"):
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
     load_by_id = {load.load_id: load for load in loads}
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     selected = None
     for load in loads:
@@ -205,6 +205,7 @@ def test_http_callback_accepts_email_link_and_returns_json(tmp_path):
     token = _token_for(message, ReviewDecision.REQUEST_BACKUP)
     store.close()
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -228,7 +229,7 @@ def test_http_callback_accepts_email_link_and_returns_json(tmp_path):
     assert body["status"] == CallbackStatus.APPLIED
     assert body["run_id"] == message.run_id
     assert "Backup requested by Rasheed" in body["message"]
-    check_store = WorkflowStore(db_path)
+    check_store = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         run = check_store.get_run(message.run_id)
         assert run is not None
@@ -242,6 +243,7 @@ def test_http_callback_rejects_unknown_path(tmp_path):
     db_path = store.db_path
     store.close()
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -271,6 +273,7 @@ def test_signed_action_endpoint_is_post_only(tmp_path):
     token = _token_for(message, ReviewDecision.REQUEST_BACKUP)
     store.close()
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -292,7 +295,7 @@ def test_signed_action_endpoint_is_post_only(tmp_path):
 
     assert result.status == 405
     assert body["status"] == CallbackStatus.REJECTED
-    check_store = WorkflowStore(db_path)
+    check_store = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         run = check_store.get_run(message.run_id)
         assert run is not None
@@ -306,6 +309,7 @@ def test_http_callback_rejects_malformed_content_length(tmp_path):
     db_path = store.db_path
     store.close()
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -378,6 +382,7 @@ def _slack_headers(body, *, secret=_SLACK_SECRET, timestamp=None):
 
 def _serve(db_path, signer, loads):
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -422,6 +427,7 @@ def _serve_with_operation_router(db_path, signer, loads, *, approved_amount="285
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
     )
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -440,7 +446,7 @@ def _serve_with_operation_router(db_path, signer, loads, *, approved_amount="285
 def _wait_for_security_event(db_path, event_type, *, timeout=5):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        store = WorkflowStore(db_path)
+        store = WorkflowStore(db_path, tenant="tenant-fixture-a")
         try:
             matches = [e for e in store.security_events() if e["event_type"] == event_type]
             if matches:
@@ -471,7 +477,7 @@ def test_slack_interactivity_applies_signed_action(tmp_path):
 
     assert result.status == 200
     assert payload.get("replace_original") is True  # Slack replaces the original card
-    check = WorkflowStore(db_path)
+    check = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         assert check.get_run(message.run_id).state == WorkflowState.REQUESTED_BACKUP
     finally:
@@ -566,7 +572,7 @@ def test_slack_operation_approval_token_is_single_use(tmp_path):
 
 
 def test_operation_action_claim_is_atomic(tmp_path):
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         assert store.claim_operation_action("op-1", actor="a", payload={"first": True}) is True
         assert store.claim_operation_action("op-1", actor="b", payload={"second": True}) is False
@@ -575,7 +581,7 @@ def test_operation_action_claim_is_atomic(tmp_path):
 
 
 def test_delivery_action_claim_is_atomic(tmp_path):
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         assert store.claim_delivery_action("review-1", run_id=1, actor="a", payload={"first": True}) is True
         assert store.claim_delivery_action("review-1", run_id=1, actor="b", payload={"second": True}) is False
@@ -626,7 +632,7 @@ def test_slack_operation_approval_rejects_unauthorized_user_before_router(tmp_pa
     assert payload["replace_original"] is False
     assert "Not authorized" in payload["text"]
     assert calls == []
-    check = WorkflowStore(db_path)
+    check = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         rejected = [e for e in check.security_events() if e["event_type"] == "slack_operation_rejected"]
         assert rejected and rejected[-1]["payload"]["failure"] == "authorization"
@@ -666,7 +672,7 @@ def test_slack_operation_approval_rejects_wrong_message_context_before_router(tm
     assert result.status == 200
     assert "does not belong" in payload["text"]
     assert calls == []
-    check = WorkflowStore(db_path)
+    check = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         rejected = [e for e in check.security_events() if e["event_type"] == "slack_operation_rejected"]
         assert rejected and rejected[-1]["payload"]["failure"] == "channel_mismatch"
@@ -686,6 +692,7 @@ def test_slack_operation_router_exception_returns_receipt_and_audits(tmp_path):
     value = build_slack_operation_approval_value(intent, signer, approved_amount="2850.00")
     body = _slack_operation_body(value)
     server = run_callback_server(
+        tenant="tenant-fixture-a",
         host="127.0.0.1",
         port=0,
         db_path=str(db_path),
@@ -817,7 +824,7 @@ def test_slack_interactivity_rejects_forged_signature_without_state_change(tmp_p
         thread.join(timeout=5)
 
     assert result.status == 401
-    check = WorkflowStore(db_path)
+    check = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         assert check.get_run(message.run_id).state == WorkflowState.NEEDS_REVIEW  # unchanged
         rejected = [e for e in check.security_events() if e["event_type"] == "slack_request_rejected"]
@@ -974,7 +981,7 @@ def test_slack_interactivity_disabled_without_signing_secret(tmp_path):
     store.close()
     body = _slack_interaction_body(token)
     # No slack_signing_secret configured → route is disabled (404), action not applied.
-    server = run_callback_server(host="127.0.0.1", port=0, db_path=str(db_path), signer=signer, follow_up_loads=loads)
+    server = run_callback_server(tenant="tenant-fixture-a", host="127.0.0.1", port=0, db_path=str(db_path), signer=signer, follow_up_loads=loads)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -989,7 +996,7 @@ def test_slack_interactivity_disabled_without_signing_secret(tmp_path):
         thread.join(timeout=5)
 
     assert result.status == 404
-    check = WorkflowStore(db_path)
+    check = WorkflowStore(db_path, tenant="tenant-fixture-a")
     try:
         assert check.get_run(message.run_id).state == WorkflowState.NEEDS_REVIEW
     finally:

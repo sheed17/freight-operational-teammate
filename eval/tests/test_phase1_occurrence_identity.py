@@ -112,7 +112,7 @@ def test_4_changing_the_free_form_value_between_retries_cannot_produce_a_second_
     Under the old code these three payloads produced three different Commit Keys and three
     reservations for one logical payment. Now all three are refused identically.
     """
-    store = WorkflowStore(tmp_path / "w.sqlite3")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         actuator = _Actuator()
         for attempt in ("attempt-1", "attempt-2", "attempt-3"):
@@ -255,7 +255,7 @@ def test_14_and_15_missing_canonical_occurrence_means_zero_actuator_calls_and_no
     tmp_path, lane_name, params, amount
 ):
     """The two negatives that matter: nothing happened outside, and nothing was written inside."""
-    store = WorkflowStore(tmp_path / f"{lane_name}.sqlite3")
+    store = WorkflowStore(tmp_path / f"{lane_name}.sqlite3", tenant="tenant-fixture-a")
     try:
         actuator = _Actuator()
         result = OperationRouter(

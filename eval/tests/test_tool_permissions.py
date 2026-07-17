@@ -88,7 +88,7 @@ def test_unknown_tool_is_blocked():
 
 
 def test_tool_permission_decisions_are_audited(tmp_path):
-    store = WorkflowStore(tmp_path / "workflow.sqlite3")
+    store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
         run = store.receive_document("LD-560003", "hash-1", payload={"source": "test"})
         context = ToolContext(workflow_state=run.state, actor="test")

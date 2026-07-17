@@ -20,6 +20,7 @@ try:
 except Exception:  # pragma: no cover - optional local/runtime convenience
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant, tenant_from_client_config
 from freight_recon.channels import load_delivery_config  # noqa: E402
 from freight_recon.delivery import DeliverySigner, build_delivery_message, record_delivery_message  # noqa: E402
 from freight_recon.delivery_dispatch import DispatchMode, dispatch_delivery_message  # noqa: E402
@@ -35,6 +36,7 @@ DEFAULT_WORKSPACE = DOGFOOD_WORKSPACE / "first_design_partner"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None, help="Canonical tenant; no default.")
     parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE))
     parser.add_argument("--client-config", default=str(DEFAULT_CLIENT_CONFIG))
     parser.add_argument("--loads", type=int, default=18)
@@ -48,6 +50,9 @@ def main() -> int:
     )
     parser.add_argument("--text", action="store_true")
     args = parser.parse_args()
+    tenant = resolve_cli_tenant(tenant=getattr(args, "tenant", None),
+                                client_config=getattr(args, "client_config", None),
+                                context="run_first_design_partner")
 
     workspace = Path(args.workspace)
     client_config_path = Path(args.client_config)
@@ -75,7 +80,11 @@ def run_first_design_partner(
     age_hours: int = 48,
     dispatch_mode: str = "LOCAL_OUTBOX",
 ) -> dict:
+    # The canonical tenant for this workspace: the client config we were already given.
+    tenant = tenant_from_client_config(client_config_path)
+
     pilot_report = run_pilot(
+        tenant=tenant,
         workspace=workspace,
         loads_count=loads_count,
         seed=seed,
@@ -120,6 +129,9 @@ def run_first_design_partner(
 
 
 def _dispatch_review_messages(*, workspace: Path, client_config_path: Path, mode: str) -> dict:
+    # The canonical tenant for this workspace: the client config we were already given.
+    tenant = tenant_from_client_config(client_config_path)
+
     config = load_delivery_config(client_config_path)
     if config is None:
         raise SystemExit(f"No delivery config found: {client_config_path}")
@@ -132,6 +144,7 @@ def _dispatch_review_messages(*, workspace: Path, client_config_path: Path, mode
     if mode == "LIVE_SLACK":
         _require_live_slack_env(config, env)
         attempts = _live_slack_only_attempts(
+        tenant=tenant,
             workspace=workspace,
             client_config_path=client_config_path,
             payloads=payloads,
@@ -141,7 +154,7 @@ def _dispatch_review_messages(*, workspace: Path, client_config_path: Path, mode
     else:
         dispatch_mode = DispatchMode(mode)
         attempts = []
-        store = WorkflowStore(workspace / "neyma_workflow.sqlite3")
+        store = WorkflowStore(workspace / "neyma_workflow.sqlite3", tenant=tenant)
         try:
             for payload in payloads:
                 message = build_delivery_message(payload, signer, actor="Rasheed")
@@ -182,7 +195,7 @@ def _live_slack_only_attempts(*, workspace: Path, client_config_path: Path, payl
     temp_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     config = load_delivery_config(temp_path)
     attempts = []
-    store = WorkflowStore(workspace / "neyma_workflow.sqlite3")
+    store = WorkflowStore(workspace / "neyma_workflow.sqlite3", tenant=tenant)
     try:
         for payload in payloads:
             message = build_delivery_message(payload, signer, actor="Rasheed")

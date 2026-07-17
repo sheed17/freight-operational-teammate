@@ -94,7 +94,7 @@ def test_build_signer_fails_closed_without_secret(tmp_path):
 
 def test_build_channel_adapters_builds_enabled_channels(tmp_path):
     config = _config(tmp_path)
-    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-fixture-a")
     try:
         adapters = build_channel_adapters(store, config, env=_FULL_ENV)
         assert isinstance(adapters[ChannelType.SLACK], SlackDeliveryAdapter)
@@ -107,7 +107,7 @@ def test_build_channel_adapters_builds_enabled_channels(tmp_path):
 
 def test_build_channel_adapters_skips_slack_without_signing_secret(tmp_path):
     config = _config(tmp_path)
-    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-fixture-a")
     env = {"NEYMA_DELIVERY_SECRET_ACME": "acme-action-secret"}  # action secret only
     try:
         adapters = build_channel_adapters(store, config, env=env)

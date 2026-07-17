@@ -276,6 +276,7 @@ expected_deprecated_terms:
     - src/freight_recon/inbox_brain.py
     - src/freight_recon/lane_graduation.py
     - src/freight_recon/mailbox_workflow.py
+    - src/freight_recon/migrations/phase2_tenant_first.py
     - src/freight_recon/mock_tms_write_server.py
     - src/freight_recon/operation_proposal.py
     - src/freight_recon/operation_router.py
@@ -289,11 +290,14 @@ expected_deprecated_terms:
     - src/freight_recon/workflow.py
   terms:
     - term: lane
-      count: 227
+      count: 234
       canonical: action_class | workflow_id | policy scope
       removed_by_phase: P8
       accountable_unit: U8.5
       note: >-
+        ADJUDICATED 2026-07-17 (U2.6A): +7, all inside migrations/phase2_tenant_first.py, which
+        must NAME the legacy tables and columns it migrates - a migration that cannot say
+        `workflow_runs` cannot migrate workflow_runs. The terms did not spread to any other file.
         Three meanings in one word. The largest mechanical change in the plan, deliberately last.
         PRODUCTION baseline @ d33f251 was 257; Phase 1 brought it to 227 - DOWN 30, because deleting
         the amount-keyed derivation took its lane-shaped parameters with it. The new module
@@ -312,7 +316,7 @@ expected_deprecated_terms:
       removed_by_phase: P3
       accountable_unit: U3.5
     - term: workflow_runs
-      count: 17
+      count: 24
       canonical: Work Item + Pipeline Instance (SPLIT, never merged back)
       removed_by_phase: P6
       accountable_unit: U6.4
@@ -327,7 +331,7 @@ expected_deprecated_terms:
         the compound "historical_commit_identity", an escalation payload field NAMING the legacy
         concept it reports on - a substring, not a word-boundary use.
     - term: operation_action_claims
-      count: 2
+      count: 5
       canonical: approval consumption
       removed_by_phase: P3
       accountable_unit: U3.2

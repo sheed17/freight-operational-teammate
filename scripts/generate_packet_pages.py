@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.packet_page import build_packet_site  # noqa: E402
 from freight_recon.review import ReviewPayload  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
@@ -23,6 +24,8 @@ DEFAULT_MAILBOX_PRESERVE_DIR = ROOT / "data" / "active_workspace" / "mailbox"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="Synthetic corpus directory")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite workflow DB path")
     parser.add_argument("--payloads", default=str(DEFAULT_REVIEW_PAYLOADS), help="Review payload JSON")
@@ -52,7 +55,7 @@ def main() -> int:
         ReviewPayload.model_validate(item)
         for item in json.loads(payload_path.read_text(encoding="utf-8"))
     ]
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="generate_packet_pages.py"))
     try:
         pages = build_packet_site(
             output_dir=site,

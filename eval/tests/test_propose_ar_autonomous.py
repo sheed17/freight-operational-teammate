@@ -79,7 +79,7 @@ class _FakePoster:
 
 
 def test_run_autonomous_commits_receipts_with_trace_and_dedups(tmp_path):
-    store = WorkflowStore(str(tmp_path / "w.sqlite3"))
+    store = WorkflowStore(str(tmp_path / "w.sqlite3"), tenant="tenant-fixture-a")
     router, poster = _FakeRouter(), _FakePoster()
     rows = [{"load_ref": "101", "customer": "Echo", "amount": "2500.00"}]
 

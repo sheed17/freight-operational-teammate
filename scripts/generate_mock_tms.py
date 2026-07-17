@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.mock_tms import build_mock_tms_site  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
@@ -21,13 +22,15 @@ DEFAULT_OUT = ROOT / "data" / "active_workspace" / "site" / "tms"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS))
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     args = parser.parse_args()
 
     loads = load_synthetic_loads(Path(args.corpus))
-    store = WorkflowStore(args.db)
+    store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="generate_mock_tms.py"))
     try:
         site = build_mock_tms_site(
             output_dir=Path(args.out),

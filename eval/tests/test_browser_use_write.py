@@ -84,7 +84,7 @@ def _approved_run(tmp_path):
     generate(corpus, 8, seed=42)
     raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
     loads = [FreightLoadForReconciliation.from_mapping(item) for item in raw.values()]
-    store = WorkflowStore(tmp_path / "wf.sqlite3")
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-fixture-a")
     seen: set[tuple[str, str]] = set()
     for load in loads:
         process_load_packet(store, load, primary_document_path=corpus / load.documents["carrier_invoice"], seen_invoice_keys=seen)

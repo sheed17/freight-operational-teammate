@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.action_callback import run_callback_server  # noqa: E402
 from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
 from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
@@ -30,6 +31,9 @@ from run_workflow import load_synthetic_loads  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, "
+                             "whose client_id is used. There is no default.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE))
@@ -127,7 +131,15 @@ def main() -> int:
             parser.error("--enable-operation-router requires a Slack signing secret from --client-config")
         if not allowed_slack_users or not args.allowed_slack_channel:
             parser.error("--enable-operation-router requires --allowed-slack-user and --allowed-slack-channel")
+        # The canonical tenant, resolved ONCE at the entry point from the client config's
+        # client_id. --enable-operation-router already requires --client-config above, so the
+        # source is guaranteed present here; resolve_cli_tenant still refuses a blank or sentinel.
+        tenant = resolve_cli_tenant(
+            tenant=args.tenant, client_config=args.client_config,
+            context="run_action_callback_server --enable-operation-router",
+        )
         operation_router = _build_live_operation_router(
+            tenant=tenant,
             cdp_url=args.operation_cdp_url,
             url_filter=args.operation_url_filter or None,
             model=args.operation_model,
@@ -268,6 +280,7 @@ def _build_digest_poster(client_config: str | None):
 
 def _build_live_operation_router(
     *,
+    tenant: str,
     cdp_url: str,
     url_filter: str | None,
     model: str,
@@ -321,7 +334,7 @@ def _build_live_operation_router(
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
         document_for=_build_document_resolver(workspace=workspace),
         graduation=LaneGraduation(grad_path),
-        commit_store=WorkflowStore(db_path) if db_path is not None else None,
+        commit_store=WorkflowStore(db_path, tenant=tenant) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
         browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),
     )

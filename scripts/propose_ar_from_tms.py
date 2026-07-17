@@ -31,6 +31,7 @@ try:
 except Exception:  # pragma: no cover
     pass
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.browser_lock import BrowserLock  # noqa: E402
 from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
 from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
@@ -346,7 +347,7 @@ def main() -> int:
     with CdpBrowserSession(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as session:
         act = CdpActuator(session)
         while True:
-            store = WorkflowStore(args.db) if args.db else None
+            store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="propose_ar_from_tms.py")) if args.db else None
             try:
                 _cycle(
                     act=act, signer=signer, channel=channel, loads_url=args.loads_url,
