@@ -19,6 +19,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [u2-6bc-recovery-and-qualification-review.md](u2-6bc-recovery-and-qualification-review.md) | ### **U2.6BC — the recovered snapshot (`42a87e2`): what it implements, the 16 failures, and why NOT READY** |
 | [u2-6b-tenant-method-review.md](u2-6b-tenant-method-review.md) | ### **U2.6B — NOT READY: zero methods scoped, by design. The all-or-nothing reasoning + the plan.** |
 | [u26b-method-inventory.md](u26b-method-inventory.md) | the exact 22 methods, each with its target SQL and current cross-tenant risk |
 | [u2-6a-tenant-construction-review.md](u2-6a-tenant-construction-review.md) | ### **U2.6A — the tenant construction boundary: 146/146 sites explicit, no default. NOT tenant isolation.** |

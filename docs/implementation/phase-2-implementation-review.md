@@ -1,5 +1,7 @@
 # Phase-2 Implementation Review — Tenant-Safe Persistence & The Canonical Ledger
 
+> ### **SUPERSEDED IN PART — 2026-07-17.** Phase 2 has advanced since this review: **U2.6A** landed (`55c225f`), **U2.6B** returned NOT READY with the exact 22-method inventory (`edf6ef2`), and a substantial **U2.6BC** implementation is preserved at ### **`42a87e2` on `recovery/u2-6bc-atomic-cutover`** — 21/22 methods scoped, one central schema-readiness contract, canonical fresh-schema creation, and a fix for a real router/store cross-tenant defect. ### **It is NOT qualified: 16 failures, two of them merge-gating on stale fixtures.** ### **Phase 2 remains INCOMPLETE. The next unit is U2.6BC's qualification.** The findings below are preserved as the discovery record. See `u2-6bc-recovery-and-qualification-review.md`.
+
 > # ### **NOT READY. PHASE 2 IS INCOMPLETE AND I AM STOPPING RATHER THAN CLAIMING IT.**
 > ### **What exists is real, proven against the live data, and inert. What is missing is the half that touches every caller — and a half-migrated tenant boundary is more dangerous than an unmigrated one.**
 
