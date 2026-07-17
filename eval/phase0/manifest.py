@@ -30,6 +30,11 @@ def tables_tenant_first() -> set[str]:
     return set(load()["expected_noncanonical_schema"]["tables_tenant_first"])
 
 
+def tables_tenant_exempt() -> set[str]:
+    """Tables adjudicated as NOT tenant-owned. Each must justify itself like any other allowance."""
+    return {e["table"] for e in load()["expected_noncanonical_schema"]["tables_tenant_exempt"]}
+
+
 def allowed_adapter_import_edges() -> set[str]:
     return set(load()["adapter_import_allowlist"]["edges"])
 

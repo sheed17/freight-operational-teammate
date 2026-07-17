@@ -56,7 +56,13 @@ def report(db: str, *, tenant: str) -> dict:
                 "approved_amount": r["approved_amount"],
                 "payload": json.loads(r["payload_json"]), "created_at": r["created_at"],
             }
-            for r in store.conn.execute("SELECT * FROM operation_commit_claims").fetchall()
+            # Scoped by the store's own tenant. This read was global, and through a tenant-bound
+            # store: it would have reported another tenant's reservations as this tenant's
+            # compatibility evidence, and the dispositions below decide whether an effect may be
+            # committed again.
+            for r in store.conn.execute(
+                "SELECT * FROM effect_grants WHERE tenant = ?", (store.tenant,)
+            ).fetchall()
         ]
     finally:
         store.close()

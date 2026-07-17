@@ -334,6 +334,9 @@ def _build_live_operation_router(
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
         document_for=_build_document_resolver(workspace=workspace),
         graduation=LaneGraduation(grad_path),
+        # The router mints the Commit Key and the store owns the row: they must name ONE tenant.
+        # This site passed `tenant` to the store and let the router default to "default".
+        tenant=tenant,
         commit_store=WorkflowStore(db_path, tenant=tenant) if db_path is not None else None,
         browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
         browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),

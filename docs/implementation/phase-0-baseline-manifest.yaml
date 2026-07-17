@@ -144,24 +144,48 @@ expected_current_defects:
 # ---------------------------------------------------------------------------------------------
 expected_noncanonical_schema:
   reason: >-
-    Tenant is not first in the key, so the uniqueness domain is global. A tenant COLUMN is not
-    tenant isolation: operation_commit_claims HAS a tenant column and is still unsafe, because its
-    PRIMARY KEY is commit_key alone.
+    CLOSED by U2.6BC (Phase 2). Tenant is now FIRST in the key of every tenant-owned table, so the
+    uniqueness domain is per-tenant. The stated deletion condition was "this list must reach empty";
+    it has. The entry is KEPT, empty, rather than deleted: an absent section would read as "nobody
+    checked", and the empty list is what the guard asserts against.
   risk_id: R-06
   acceptance: AC-SEC-001
   removed_by_phase: P2
-  accountable_unit: U2.1
+  accountable_unit: U2.1 / U2.6BC
   deletion_condition: every table below is tenant-first; this list must reach empty
-  tables_not_tenant_first:
+  status: >-
+    MET at U2.6BC. operation_commit_claims - the table that HAD a tenant column and was still unsafe
+    because its PRIMARY KEY was commit_key alone - is gone: it became the canonical effect_grants
+    ledger, keyed (tenant, grant_id) with UNIQUE (tenant, commit_key).
+  tables_not_tenant_first: []
+  tables_tenant_first:
+    - autonomous_run_counters
     - workflow_runs
     - audit_events
     - security_events
     - operation_action_claims
     - delivery_action_claims
-    - operation_commit_claims
+    - effect_grants
     - operation_token_amounts
-  tables_tenant_first:
-    - autonomous_run_counters
+  # Deliberately NOT tenant-owned. Two members, each adjudicated - this is not an exemption hatch,
+  # and a table added here without a reason fails the guard.
+  tables_tenant_exempt:
+    - table: migration_quarantine
+      reason: >-
+        It holds rows whose tenant is BY DEFINITION unknown - it is the table that exists BECAUSE
+        ownership could not be established without inference. A tenant column here would force the
+        exact guess Phase 2 refuses, at the one moment we have already proven we cannot make it.
+      removed_by_phase: never (structural)
+      accountable_unit: U2.6BC
+      deletion_condition: >-
+        none. If this table ever becomes tenant-first, quarantine has started inferring ownership.
+    - table: schema_migrations
+      reason: >-
+        It records what ran against the DATABASE. A database is not a tenant, and stamping migration
+        steps per-tenant would imply a tenant can be migrated independently, which is false.
+      removed_by_phase: never (structural)
+      accountable_unit: U2.6BC
+      deletion_condition: none
 
 # ---------------------------------------------------------------------------------------------
 # EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.

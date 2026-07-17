@@ -118,6 +118,20 @@ class OperationRouter:
         self.tenant = tenant
         self.target_system = target_system
         self.commit_store = commit_store
+        if commit_store is not None and commit_store.tenant != tenant:
+            # U2.6BC. The store now supplies the tenant that OWNS a reservation row, while this
+            # tenant is still what MINTS the Commit Key. If they disagree the ledger records a row
+            # whose identity was computed for somebody else - and this was not hypothetical: the
+            # callback server passed the real tenant to the store and left the router on "default",
+            # so every live Commit Key was minted under "default" while its row said otherwise. Two
+            # brokerages would then compute the SAME key for the same load reference, and the day
+            # anyone corrected the router, every outstanding reservation would stop being
+            # recognised and the effects behind them would be committed a second time.
+            raise ValueError(
+                f"OperationRouter tenant {tenant!r} does not match its commit_store tenant "
+                f"{commit_store.tenant!r}. The Commit Key would be minted for one tenant and the "
+                f"reservation owned by another. Pass the same tenant to both."
+            )
         # Marks the shared browser busy while the agent operates, so the periodic AR-trigger (which
         # reads /loads in the SAME Chrome) defers instead of navigating away mid-write.
         self.browser_lock = browser_lock
@@ -256,7 +270,6 @@ class OperationRouter:
             )
         if will_commit and self.commit_store is not None and commit_reservation is not None:
             historical = self.commit_store.legacy_commit_rows(
-                tenant=commit_reservation["tenant"],
                 lane=commit_reservation["lane"],
                 load_ref=commit_reservation["load_ref"],
                 party=commit_reservation["party"],
@@ -481,7 +494,11 @@ def _commit_reservation(
     effect = _logical_effect(tenant, target_system, lane, intent, document_path=document_path)
     return {
         "commit_key": effect.key(),
-        "tenant": tenant,
+        # NOT "tenant". U2.6BC: a reservation does not carry the tenant it is FOR - the store it is
+        # written to IS the tenant, and no caller may name a different one. `tenant` is still an
+        # input above, because the Commit Key binds it; it is just no longer an output that a caller
+        # could hand to a store bound to somebody else.
+        "target_system": target_system,
         "lane": lane.name,
         "load_ref": _load_ref_of(intent) or "",
         "party": _party_of(intent) or "",

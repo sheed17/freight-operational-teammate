@@ -52,6 +52,32 @@ TENANT_FIRST_TABLES: tuple[str, ...] = (
 )
 ALREADY_TENANT_FIRST: tuple[str, ...] = ("autonomous_run_counters",)
 
+# The same seven tables under their CANONICAL RUNTIME names. `operation_commit_claims` is a legacy
+# name: after U2.6BC the store speaks to `effect_grants` and nothing else. Both spellings are kept
+# because they answer different questions - TENANT_FIRST_TABLES is "what does the migration read",
+# CANONICAL_TENANT_TABLES is "what must exist for the store to run". A single tuple could not.
+CANONICAL_TENANT_TABLES: tuple[str, ...] = (
+    "workflow_runs",
+    "audit_events",
+    "security_events",
+    "operation_action_claims",
+    "delivery_action_claims",
+    "effect_grants",
+    "operation_token_amounts",
+)
+
+# Tables that are deliberately NOT tenant-owned, each adjudicated. This list is not an exemption
+# hatch: it has exactly two members and both would be WRONG to tenant-key.
+#   `migration_quarantine` holds rows whose tenant is, by definition, unknown - it is the table that
+#   exists BECAUSE ownership could not be established. A tenant column here would force the exact
+#   inference the phase refuses, at the one moment we have already proven we cannot make it.
+#   `schema_migrations` records what ran against the DATABASE. A database is not a tenant.
+TENANT_EXEMPT_TABLES: tuple[str, ...] = ("migration_quarantine", "schema_migrations")
+
+# Bumped when the canonical shape changes in a way an older binary cannot speak to. A database
+# stamped with a version this code does not know is refused, not guessed at.
+SCHEMA_VERSION = "phase2-tenant-first-1"
+
 # The eight canonical Effect Grant states. From the frozen spec, not invented and not renamed.
 # REVOKED stays DISTINCT from EXPIRED_UNCLAIMED: "revoked by brake/policy/approval" and "expired
 # unclaimed" are different facts about why a capability died, and audit needs both.
@@ -235,6 +261,17 @@ TARGET_SCHEMA: dict[str, str] = {
             issued_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
             PRIMARY KEY (tenant, grant_id)
+        )""",
+    # Already tenant-first before Phase 2, and carried here so ONE table in the tree owns the
+    # canonical shape. A fresh database must not have to run a migration to obtain it.
+    "autonomous_run_counters": """
+        CREATE TABLE autonomous_run_counters (
+            tenant TEXT NOT NULL,
+            lane TEXT NOT NULL,
+            day TEXT NOT NULL,
+            runs INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (tenant, lane, day)
         )""",
     # Ambiguous history lives here, intact, until a human settles it. Not deleted, not guessed at.
     "migration_quarantine": """

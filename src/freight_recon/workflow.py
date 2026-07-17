@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
 from types import SimpleNamespace
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -102,11 +103,21 @@ def sha256_file(path: str | Path) -> str:
     return h.hexdigest()
 
 
+from .schema import (
+    SchemaNotReady,
+    create_canonical_schema,
+    enable_and_verify_foreign_keys,
+    schema_readiness_problems,
+)
 from .tenant import require_tenant
+
+# Internal, fixed. These names are interpolated into SQL for per-tenant id allocation, so they may
+# never come from a caller: the tuple IS the allowlist.
+_ID_ALLOCATED_TABLES = frozenset({"workflow_runs", "audit_events", "security_events"})
 
 
 class WorkflowStore:
-    """SQLite store for workflow runs and audit events."""
+    """SQLite store for workflow runs and audit events. Bound to exactly one tenant, always."""
 
     def __init__(self, db_path: str | Path, *, tenant: str) -> None:
         """A store belongs to exactly ONE tenant, named at construction and never after.
@@ -115,12 +126,9 @@ class WorkflowStore:
         inherit, and no setter to change it later. A caller that cannot name its tenant is a caller
         that does not know whose data it is about to touch, and the safe answer to that is to stop.
 
-        U2.6A SCOPE - READ THIS BEFORE TRUSTING IT:
-        This binds the tenant at the CONSTRUCTION boundary. It does NOT yet make the store's
-        persistence tenant-safe: the 22 affected methods still issue their original unscoped SQL,
-        and the schema is still the pre-migration one. That is U2.6B (method scoping) and U2.6C
-        (schema activation). Nothing here may be read as tenant isolation - a store that knows its
-        tenant and does not use it is a store that knows its tenant and does not use it.
+        U2.6BC: the tenant bound here is now USED. All 22 affected methods scope their SQL by it,
+        every one of the seven tenant-owned tables is tenant-first, and a database that cannot
+        honour that is refused at construction rather than served unsafely.
         """
         # Validated at the boundary, so an invalid tenant cannot reach a query later disguised as a
         # valid one. `require_tenant` refuses None, blank, non-strings, and the sentinels.
@@ -141,7 +149,17 @@ class WorkflowStore:
             pass
         self.conn.execute("PRAGMA busy_timeout=30000")
         self.conn.execute("PRAGMA synchronous=NORMAL")
+        # The tenant-consistent foreign keys are half of the cross-tenant relationship rule, and they
+        # do nothing at all unless this pragma actually took. It is verified, not assumed.
+        enable_and_verify_foreign_keys(self.conn)
+        # Cached against SQLite's own DDL counter rather than a bare bool: `PRAGMA schema_version`
+        # changes on every schema change, so a database altered under a live store is re-checked and
+        # fails closed instead of coasting on a verdict that was true an hour ago.
+        self._schema_ready_version: int | None = None
         self._migrate()
+        # Fail HERE, not at the first query. A new binary must not open a legacy database at all:
+        # its unscoped predecessor and this tenant-first schema cannot both be right.
+        self._require_schema_ready()
 
     def close(self) -> None:
         self.conn.close()
@@ -156,95 +174,83 @@ class WorkflowStore:
         return self._tenant
 
     def _migrate(self) -> None:
-        self.conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS workflow_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                load_id TEXT NOT NULL,
-                document_hash TEXT NOT NULL UNIQUE,
-                state TEXT NOT NULL,
-                workflow_direction TEXT NOT NULL DEFAULT 'CARRIER_PAYABLE',
-                invoice_number TEXT,
-                carrier TEXT,
-                outcome TEXT,
-                reason TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
+        """Create a FRESH database directly in the canonical tenant-first shape. Migrate nothing.
 
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id INTEGER NOT NULL,
-                event_type TEXT NOT NULL,
-                actor TEXT NOT NULL,
-                from_state TEXT,
-                to_state TEXT,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(run_id) REFERENCES workflow_runs(id)
-            );
+        Three cases, and only three:
 
-            CREATE TABLE IF NOT EXISTS security_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
-                actor TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
+        1. EMPTY database -> built canonical in one pass, from the single `TARGET_SCHEMA` text the
+           migration itself uses. It never begins legacy, never needs legacy data to obtain
+           `effect_grants`, and never needs a second startup to become correct. Every fixture and
+           every test database gets the canonical shape for free, which is the point.
+        2. ALREADY-CANONICAL database -> nothing to do.
+        3. ANYTHING ELSE (pre-migration, half-migrated) -> we touch NOTHING and let
+           `_require_schema_ready()` refuse with the full list of reasons.
 
-            CREATE TABLE IF NOT EXISTS operation_action_claims (
-                action_id TEXT PRIMARY KEY,
-                actor TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS delivery_action_claims (
-                action_id TEXT PRIMARY KEY,
-                run_id INTEGER NOT NULL,
-                actor TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS operation_commit_claims (
-                commit_key TEXT PRIMARY KEY,
-                tenant TEXT NOT NULL,
-                lane TEXT NOT NULL,
-                load_ref TEXT NOT NULL,
-                party TEXT NOT NULL,
-                approved_amount TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS autonomous_run_counters (
-                tenant TEXT NOT NULL,
-                lane TEXT NOT NULL,
-                day TEXT NOT NULL,
-                runs INTEGER NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (tenant, lane, day)
-            );
-
-            CREATE TABLE IF NOT EXISTS operation_token_amounts (
-                token_fingerprint TEXT PRIMARY KEY,
-                action_id TEXT NOT NULL,
-                approved_amount TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            """
-        )
-        columns = {
-            row["name"]
-            for row in self.conn.execute("PRAGMA table_info(workflow_runs)").fetchall()
+        Case 3 is why this is not a `CREATE TABLE IF NOT EXISTS` sweep. Against a legacy database
+        that sweep would happily add `effect_grants` beside the legacy tables and then die trying to
+        index a `tenant` column that does not exist - having already mutated a database this binary
+        must not write to. Business operations do not migrate schemas here; a human runs
+        `migrations/phase2_tenant_first.py`, which is staged, auditable and resumable.
+        """
+        present = {
+            r[0]
+            for r in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
         }
-        if "workflow_direction" not in columns:
-            self.conn.execute(
-                "ALTER TABLE workflow_runs ADD COLUMN workflow_direction TEXT NOT NULL DEFAULT 'CARRIER_PAYABLE'"
+        if not {t for t in present if not t.startswith("sqlite_")}:
+            create_canonical_schema(self.conn)
+            return
+        if not schema_readiness_problems(self.conn):
+            return
+        # Deliberately no `else`. An existing non-canonical database is the migration's business.
+
+    def _require_schema_ready(self) -> None:
+        """The ONE readiness contract. Every affected method calls it before tenant-owned SQL.
+
+        There is no per-method interpretation, no legacy fallback, no "try the new query and then the
+        old one", and no compatibility mode. A missing tenant column is not a reason to run the query
+        that ignores tenants - that query IS the defect this phase removes.
+        """
+        version = self.conn.execute("PRAGMA schema_version").fetchone()[0]
+        if version == self._schema_ready_version:
+            return
+        problems = schema_readiness_problems(self.conn)
+        if problems:
+            self._schema_ready_version = None
+            raise SchemaNotReady(
+                f"the Phase-2 tenant-first migration is required or incomplete for {self.db_path}; "
+                f"refusing to run tenant-owned SQL against it:\n  - " + "\n  - ".join(problems)
             )
-        self.conn.commit()
+        self._schema_ready_version = version
+
+    @contextmanager
+    def _write_txn(self):
+        """One serialized write. BEGIN IMMEDIATE takes the write lock before the read.
+
+        Per-tenant row ids are allocated as MAX(id)+1 within the tenant, so the read that chooses the
+        id and the write that uses it must be one atomic step or two concurrent ingests pick the same
+        id and one loses. IMMEDIATE (not DEFERRED) is what makes that true.
+        """
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            self.conn.rollback()
+            raise
+        else:
+            self.conn.commit()
+
+    def _next_id(self, table: str) -> int:
+        """The next row id WITHIN this tenant. Ids are per-tenant and deliberately collide across
+        tenants - that collision is the thing the tests reuse to prove isolation is real."""
+        if table not in _ID_ALLOCATED_TABLES:
+            raise WorkflowError(f"id allocation is not defined for {table!r}")
+        row = self.conn.execute(
+            f"SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM {table} WHERE tenant = ?",
+            (self._tenant,),
+        ).fetchone()
+        return int(row["next_id"])
 
     def receive_document(
         self,
@@ -254,10 +260,54 @@ class WorkflowStore:
         *,
         workflow_direction: WorkflowDirection | str = WorkflowDirection.CARRIER_PAYABLE,
     ) -> WorkflowRun:
+        """Receive a document for THIS tenant. Identical bytes in another tenant are not our business.
+
+        THE LIVE CROSS-TENANT DEFECT CLOSED. `document_hash` was globally UNIQUE and the dedup
+        lookup was global, so when two tenants filed the same bytes the second tenant's document was
+        silently called a duplicate of the first tenant's - and returned the first tenant's run.
+        Deduplication now happens strictly WITHIN the bound tenant, there is no global hash preflight
+        of any kind, and the uniqueness that enforces it is `(tenant, document_hash)`.
+        """
+        self._require_schema_ready()
         direction = WorkflowDirection(workflow_direction)
         scoped_document_hash = _direction_scoped_document_hash(document_hash, direction)
-        existing = self.get_run_by_hash(scoped_document_hash)
-        if existing:
+
+        # The duplicate check and the insert are ONE serialized step: two concurrent deliveries of
+        # the same bytes must converge on one run, deterministically, not race for an id.
+        duplicate_id: int | None = None
+        run_id: int | None = None
+        with self._write_txn():
+            row = self.conn.execute(
+                "SELECT id FROM workflow_runs WHERE tenant = ? AND document_hash = ?",
+                (self._tenant, scoped_document_hash),
+            ).fetchone()
+            if row is not None:
+                duplicate_id = int(row["id"])
+            else:
+                now = utc_now()
+                run_id = self._next_id("workflow_runs")
+                self.conn.execute(
+                    """
+                    INSERT INTO workflow_runs (
+                        tenant, id, load_id, document_hash, state, workflow_direction,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self._tenant,
+                        run_id,
+                        load_id,
+                        scoped_document_hash,
+                        WorkflowState.RECEIVED.value,
+                        direction.value,
+                        now,
+                        now,
+                    ),
+                )
+
+        if duplicate_id is not None:
+            existing = self.get_run(duplicate_id)
+            assert existing is not None
             self.add_audit_event(
                 existing.id,
                 "duplicate_received",
@@ -271,33 +321,43 @@ class WorkflowStore:
             )
             return existing
 
-        now = utc_now()
-        cur = self.conn.execute(
-            """
-            INSERT INTO workflow_runs (
-                load_id, document_hash, state, workflow_direction, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (load_id, scoped_document_hash, WorkflowState.RECEIVED.value, direction.value, now, now),
-        )
-        self.conn.commit()
-        run = self.get_run(cur.lastrowid)
+        run = self.get_run(run_id)
         assert run is not None
         self.add_audit_event(run.id, "document_received", actor="system", payload=payload)
         return run
 
     def get_run(self, run_id: int) -> WorkflowRun | None:
-        row = self.conn.execute("SELECT * FROM workflow_runs WHERE id = ?", (run_id,)).fetchone()
+        """This tenant's run by id. Another tenant's run with the same id is ABSENT, not forbidden.
+
+        Run ids are per-tenant and collide by construction, so a bare id is not an identity. The
+        answer for another tenant's row is `None` - identical to a row that never existed - because
+        distinguishing the two would disclose that it does.
+        """
+        self._require_schema_ready()
+        row = self.conn.execute(
+            "SELECT * FROM workflow_runs WHERE tenant = ? AND id = ?", (self._tenant, run_id)
+        ).fetchone()
         return self._row_to_run(row) if row else None
 
     def get_run_by_hash(self, document_hash: str) -> WorkflowRun | None:
+        """The read half of the document-hash defect, closed.
+
+        Tenant A's row can never satisfy tenant B's lookup, and the absence of a row here says
+        nothing whatsoever about whether another tenant holds those bytes.
+        """
+        self._require_schema_ready()
         row = self.conn.execute(
-            "SELECT * FROM workflow_runs WHERE document_hash = ?", (document_hash,)
+            "SELECT * FROM workflow_runs WHERE tenant = ? AND document_hash = ?",
+            (self._tenant, document_hash),
         ).fetchone()
         return self._row_to_run(row) if row else None
 
     def list_runs(self) -> list[WorkflowRun]:
-        rows = self.conn.execute("SELECT * FROM workflow_runs ORDER BY id").fetchall()
+        """This tenant's runs. Pagination and ordering happen INSIDE the tenant partition."""
+        self._require_schema_ready()
+        rows = self.conn.execute(
+            "SELECT * FROM workflow_runs WHERE tenant = ? ORDER BY id", (self._tenant,)
+        ).fetchall()
         return [self._row_to_run(row) for row in rows]
 
     def transition(
@@ -309,6 +369,7 @@ class WorkflowStore:
         event_type: str = "state_transition",
         payload: dict[str, Any] | None = None,
     ) -> WorkflowRun:
+        self._require_schema_ready()
         run = self.get_run(run_id)
         if run is None:
             raise WorkflowError(f"workflow run not found: {run_id}")
@@ -316,8 +377,9 @@ class WorkflowStore:
             raise WorkflowError(f"invalid transition: {run.state.value} -> {to_state.value}")
 
         cur = self.conn.execute(
-            "UPDATE workflow_runs SET state = ?, updated_at = ? WHERE id = ? AND state = ?",
-            (to_state.value, utc_now(), run_id, run.state.value),
+            "UPDATE workflow_runs SET state = ?, updated_at = ? "
+            "WHERE tenant = ? AND id = ? AND state = ?",
+            (to_state.value, utc_now(), self._tenant, run_id, run.state.value),
         )
         if cur.rowcount != 1:
             self.conn.rollback()
@@ -338,6 +400,7 @@ class WorkflowStore:
         return updated
 
     def mark_extracted(self, run_id: int, extraction_payload: dict[str, Any]) -> WorkflowRun:
+        self._require_schema_ready()
         run = self.transition(
             run_id,
             WorkflowState.EXTRACTED,
@@ -346,33 +409,35 @@ class WorkflowStore:
         )
         invoice_number = extraction_payload.get("invoice_number")
         carrier = extraction_payload.get("carrier")
-        self.conn.execute(
+        cur = self.conn.execute(
             """
             UPDATE workflow_runs
             SET invoice_number = COALESCE(?, invoice_number),
                 carrier = COALESCE(?, carrier),
                 updated_at = ?
-            WHERE id = ?
+            WHERE tenant = ? AND id = ?
             """,
-            (invoice_number, carrier, utc_now(), run_id),
+            (invoice_number, carrier, utc_now(), self._tenant, run_id),
         )
+        self._require_one_row(cur.rowcount, "mark_extracted", run_id)
         self.conn.commit()
         updated = self.get_run(run_id)
         assert updated is not None
         return updated
 
     def mark_reconciled(self, run_id: int, result: ReconciliationResult) -> WorkflowRun:
+        self._require_schema_ready()
         self.transition(
             run_id,
             WorkflowState.RECONCILED,
             event_type="reconciliation_completed",
             payload=result.model_dump(mode="json"),
         )
-        self.conn.execute(
+        cur = self.conn.execute(
             """
             UPDATE workflow_runs
             SET workflow_direction = ?, invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
-            WHERE id = ?
+            WHERE tenant = ? AND id = ?
             """,
             (
                 result.workflow_direction.value,
@@ -381,9 +446,11 @@ class WorkflowStore:
                 result.outcome.value,
                 "; ".join(result.reasons),
                 utc_now(),
+                self._tenant,
                 run_id,
             ),
         )
+        self._require_one_row(cur.rowcount, "mark_reconciled", run_id)
         self.conn.commit()
         next_state = self.review_state_for_result(result)
         return self.transition(
@@ -404,6 +471,7 @@ class WorkflowStore:
         review card. If deterministic reconciliation is now clean, the run can close to ``DONE``;
         otherwise the run remains in human review with updated outcome/reasons and an audit event.
         """
+        self._require_schema_ready()
         run = self.get_run(run_id)
         if run is None:
             raise WorkflowError(f"workflow run not found: {run_id}")
@@ -413,11 +481,11 @@ class WorkflowStore:
                 f"got {run.state.value}"
             )
 
-        self.conn.execute(
+        cur = self.conn.execute(
             """
             UPDATE workflow_runs
             SET workflow_direction = ?, invoice_number = ?, carrier = ?, outcome = ?, reason = ?, updated_at = ?
-            WHERE id = ?
+            WHERE tenant = ? AND id = ?
             """,
             (
                 result.workflow_direction.value,
@@ -426,9 +494,11 @@ class WorkflowStore:
                 result.outcome.value,
                 "; ".join(result.reasons),
                 utc_now(),
+                self._tenant,
                 run_id,
             ),
         )
+        self._require_one_row(cur.rowcount, "refresh_reconciliation", run_id)
         self.conn.commit()
         self.add_audit_event(
             run_id,
@@ -473,23 +543,33 @@ class WorkflowStore:
         from_state: WorkflowState | None = None,
         to_state: WorkflowState | None = None,
     ) -> None:
-        self.conn.execute(
-            """
-            INSERT INTO audit_events (
-                run_id, event_type, actor, from_state, to_state, payload_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                event_type,
-                actor,
-                from_state.value if from_state else None,
-                to_state.value if to_state else None,
-                json.dumps(payload, sort_keys=True),
-                utc_now(),
-            ),
-        )
-        self.conn.commit()
+        """Attach evidence to THIS tenant's run.
+
+        The tenant travels in the foreign key itself - `(tenant, run_id) -> workflow_runs(tenant, id)`
+        - so an audit row cannot be spelled against another tenant's run even when the numeric ids
+        match, which after per-tenant id allocation they routinely do.
+        """
+        self._require_schema_ready()
+        with self._write_txn():
+            self.conn.execute(
+                """
+                INSERT INTO audit_events (
+                    tenant, id, run_id, event_type, actor, from_state, to_state, payload_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self._tenant,
+                    self._next_id("audit_events"),
+                    run_id,
+                    event_type,
+                    actor,
+                    from_state.value if from_state else None,
+                    to_state.value if to_state else None,
+                    json.dumps(payload, sort_keys=True),
+                    utc_now(),
+                ),
+            )
 
     def add_security_event(
         self,
@@ -498,16 +578,28 @@ class WorkflowStore:
         actor: str,
         payload: dict[str, Any],
     ) -> None:
-        """Record an audit event that cannot safely be tied to a trusted workflow run."""
-        self.conn.execute(
-            """
-            INSERT INTO security_events (
-                event_type, actor, payload_json, created_at
-            ) VALUES (?, ?, ?, ?)
-            """,
-            (event_type, actor, json.dumps(payload, sort_keys=True), utc_now()),
-        )
-        self.conn.commit()
+        """Record an audit event that cannot safely be tied to a trusted workflow run.
+
+        It still belongs to a tenant. Security events were pooled across tenants, which made one
+        tenant's forged-token attempt readable as another's.
+        """
+        self._require_schema_ready()
+        with self._write_txn():
+            self.conn.execute(
+                """
+                INSERT INTO security_events (
+                    tenant, id, event_type, actor, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self._tenant,
+                    self._next_id("security_events"),
+                    event_type,
+                    actor,
+                    json.dumps(payload, sort_keys=True),
+                    utc_now(),
+                ),
+            )
 
     def claim_operation_action(
         self,
@@ -521,19 +613,25 @@ class WorkflowStore:
         Returns ``False`` if another request already claimed the same action. This is separate from
         audit logging so threaded Slack retries/double-clicks cannot both run the router before an
         audit event is written.
+
+        The claim is single-use WITHIN this tenant. It was single-use globally, so one tenant's
+        action id consumed another tenant's claim and the second tenant's operator watched their
+        own button do nothing.
         """
+        self._require_schema_ready()
         try:
             self.conn.execute(
                 """
                 INSERT INTO operation_action_claims (
-                    action_id, actor, payload_json, created_at
-                ) VALUES (?, ?, ?, ?)
+                    tenant, action_id, actor, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
-                (action_id, actor, json.dumps(payload, sort_keys=True), utc_now()),
+                (self._tenant, action_id, actor, json.dumps(payload, sort_keys=True), utc_now()),
             )
             self.conn.commit()
             return True
         except sqlite3.IntegrityError:
+            self.conn.rollback()
             return False
 
     def claim_delivery_action(
@@ -544,19 +642,36 @@ class WorkflowStore:
         actor: str,
         payload: dict[str, Any],
     ) -> bool:
-        """Atomically claim a signed review action token before applying it."""
+        """Atomically claim a signed review action token before applying it, within this tenant.
+
+        The `(tenant, run_id)` foreign key means a claim cannot be attached to another tenant's run:
+        a token that names a run id this tenant does not own is refused by the database, not merely
+        by the caller's good intentions.
+        """
+        self._require_schema_ready()
         try:
             self.conn.execute(
                 """
                 INSERT INTO delivery_action_claims (
-                    action_id, run_id, actor, payload_json, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    tenant, action_id, run_id, actor, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (action_id, run_id, actor, json.dumps(payload, sort_keys=True), utc_now()),
+                (
+                    self._tenant,
+                    action_id,
+                    run_id,
+                    actor,
+                    json.dumps(payload, sort_keys=True),
+                    utc_now(),
+                ),
             )
             self.conn.commit()
             return True
         except sqlite3.IntegrityError:
+            # Either the claim is already taken in this tenant, or the run belongs to another tenant
+            # and the tenant-consistent FK refused it. Both are "no", and neither may be
+            # distinguished for the caller - the difference is another tenant's business.
+            self.conn.rollback()
             return False
 
     def operation_commit_claim(
@@ -564,28 +679,21 @@ class WorkflowStore:
         *,
         commit_key: str,
     ) -> dict[str, Any] | None:
-        key = commit_key
+        """This tenant's reservation for a Commit Key, read from the ONE canonical ledger.
+
+        Tenant A could observe tenant B's effect reservation - and, worse, act on its status. The
+        same Commit Key in another tenant is a different effect and reads as absent here.
+        """
+        self._require_schema_ready()
         row = self.conn.execute(
-            "SELECT * FROM operation_commit_claims WHERE commit_key = ?",
-            (key,),
+            "SELECT * FROM effect_grants WHERE tenant = ? AND commit_key = ?",
+            (self._tenant, commit_key),
         ).fetchone()
-        if row is None:
-            return None
-        return {
-            "commit_key": row["commit_key"],
-            "tenant": row["tenant"],
-            "lane": row["lane"],
-            "load_ref": row["load_ref"],
-            "party": row["party"],
-            "approved_amount": row["approved_amount"],
-            "payload": json.loads(row["payload_json"]),
-            "created_at": row["created_at"],
-        }
+        return self._grant_to_claim(row) if row is not None else None
 
     def legacy_commit_rows(
         self,
         *,
-        tenant: str,
         lane: str,
         load_ref: str,
         party: str,
@@ -610,33 +718,27 @@ class WorkflowStore:
 
         Removal: Phase 2 (U2.4), when the ledger backfill adjudicates these rows explicitly.
         Deletion condition: zero legacy rows remain, proven by the backfill's dry-run report.
+
+        U2.6BC: the `tenant` PARAMETER is gone. It was the store's most dangerous remaining argument
+        - a caller could ask "what history exists for tenant X?" of a store bound to tenant Y and
+        receive it, so cross-tenant history could be returned as THIS tenant's compatibility
+        evidence and escalate (or fail to escalate) an effect on another tenant's past.
         """
+        self._require_schema_ready()
         rows = self.conn.execute(
             """
-            SELECT * FROM operation_commit_claims
+            SELECT * FROM effect_grants
             WHERE tenant = ? AND lane = ? AND load_ref = ? AND party = ? AND commit_key != ?
             """,
-            (tenant, lane, load_ref, party, canonical_commit_key),
+            (self._tenant, lane, load_ref, party, canonical_commit_key),
         ).fetchall()
-        return [
-            {
-                "commit_key": r["commit_key"],
-                "tenant": r["tenant"],
-                "lane": r["lane"],
-                "load_ref": r["load_ref"],
-                "party": r["party"],
-                "approved_amount": r["approved_amount"],
-                "payload": json.loads(r["payload_json"]),
-                "created_at": r["created_at"],
-            }
-            for r in rows
-        ]
+        return [self._grant_to_claim(r) for r in rows]
 
     def claim_operation_commit(
         self,
         *,
         commit_key: str,
-        tenant: str,
+        target_system: str,
         lane: str,
         load_ref: str,
         party: str,
@@ -653,29 +755,54 @@ class WorkflowStore:
         as a MATERIAL FACT of the decision - a column, never a key. Two approvals at different
         amounts for one invoice now converge on ONE reservation instead of raising two invoices.
         `approved_amount` is "" for non-money effects, which are now reserved too.
+
+        U2.6BC: the `tenant` PARAMETER is gone and the row is written to the ONE canonical ledger.
+        The reservation belongs to the store's tenant - full stop. Previously a caller named the
+        tenant, so a store bound to tenant Y could reserve an effect "for" tenant X, and the global
+        `commit_key` PRIMARY KEY meant tenant A's Commit Key BLOCKED tenant B's legitimate invoice:
+        the same load reference at two brokerages, and the second one silently never raised. The
+        uniqueness is now `(tenant, commit_key)`, so the same Commit Key in two tenants is two
+        effects, and a duplicate within one tenant is still exactly one.
+
+        What this deliberately is NOT: the Phase-3 claim CAS. The row is written `GRANTED`. Nothing
+        here transitions it to `CLAIMED`, and no second effect namespace is created to hold it.
         """
-        key = commit_key
+        self._require_schema_ready()
+        now = utc_now()
         try:
             self.conn.execute(
                 """
-                INSERT INTO operation_commit_claims (
-                    commit_key, tenant, lane, load_ref, party, approved_amount, payload_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO effect_grants (
+                    tenant, grant_id, commit_key, action_class, target_system, target_resource_id,
+                    target_operation, state, approved_amount, material_facts_json,
+                    lane, load_ref, party, payload_json, issued_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    key,
-                    tenant,
+                    self._tenant,
+                    commit_key,
+                    commit_key,
+                    lane,
+                    target_system,
+                    f"{load_ref}|{party}",
+                    lane,
+                    "GRANTED",
+                    approved_amount,
+                    # Material Facts stay SEPARATE from identity, by construction. The amount is
+                    # preserved so drift stays auditable; it may never key a row again.
+                    json.dumps({"approved_amount": approved_amount}, sort_keys=True),
                     lane,
                     load_ref,
                     party,
-                    approved_amount,
                     json.dumps(payload, sort_keys=True),
-                    utc_now(),
+                    now,
+                    now,
                 ),
             )
             self.conn.commit()
             return True
         except sqlite3.IntegrityError:
+            self.conn.rollback()
             return False
 
     def update_operation_commit_payload(
@@ -684,19 +811,48 @@ class WorkflowStore:
         commit_key: str,
         payload: dict[str, Any],
     ) -> None:
-        key = commit_key
-        self.conn.execute(
+        """Update the payload of a reservation THIS tenant holds.
+
+        Strict on row count: a caller only updates a reservation it just claimed, so zero rows means
+        the reservation vanished or belongs to another tenant. Both are anomalies, and silently
+        updating nothing would let the caller believe it had recorded an outcome it did not.
+        """
+        self._require_schema_ready()
+        cur = self.conn.execute(
             """
-            UPDATE operation_commit_claims
+            UPDATE effect_grants
             SET payload_json = ?
-            WHERE commit_key = ?
+            WHERE tenant = ? AND commit_key = ?
             """,
-            (json.dumps(payload, sort_keys=True), key),
+            (json.dumps(payload, sort_keys=True), self._tenant, commit_key),
         )
+        if cur.rowcount != 1:
+            self.conn.rollback()
+            raise WorkflowError(
+                f"expected exactly one reservation to update for commit_key {commit_key!r} in "
+                f"tenant {self._tenant!r}, {cur.rowcount} row(s) matched"
+            )
         self.conn.commit()
 
     def release_operation_commit(self, *, commit_key: str) -> None:
-        self.conn.execute("DELETE FROM operation_commit_claims WHERE commit_key = ?", (commit_key,))
+        """Release a reservation THIS tenant holds. Tenant A could release tenant B's reservation.
+
+        Row-count posture, deliberately asymmetric with the update above and worth stating: release
+        is IDEMPOTENT by design - it is called on failure paths that may already have released - so
+        zero rows is a legitimate outcome. More than one row is not, and cannot be: `(tenant,
+        commit_key)` is unique. If that ever fires, the uniqueness this phase installed is gone.
+        """
+        self._require_schema_ready()
+        cur = self.conn.execute(
+            "DELETE FROM effect_grants WHERE tenant = ? AND commit_key = ?",
+            (self._tenant, commit_key),
+        )
+        if cur.rowcount > 1:
+            self.conn.rollback()
+            raise WorkflowError(
+                f"{cur.rowcount} reservations matched commit_key {commit_key!r} in tenant "
+                f"{self._tenant!r}; (tenant, commit_key) is supposed to be unique"
+            )
         self.conn.commit()
 
     def claim_autonomous_run(
@@ -759,36 +915,62 @@ class WorkflowStore:
         approved_amount: str,
         payload: dict[str, Any] | None = None,
     ) -> None:
+        """Bind an APPROVED AMOUNT to a token fingerprint, within this tenant.
+
+        This column is what an operator agreed to pay. It was bound in a GLOBAL namespace, so two
+        tenants whose tokens fingerprinted alike shared one approved amount - and the conflict
+        target silently OVERWROTE it. The conflict target is now `(tenant, token_fingerprint)`.
+        """
+        self._require_schema_ready()
         normalized_amount = normalize_money_amount(approved_amount)
         self.conn.execute(
             """
             INSERT INTO operation_token_amounts (
-                token_fingerprint, action_id, approved_amount, payload_json, created_at
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(token_fingerprint)
+                tenant, token_fingerprint, action_id, approved_amount, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant, token_fingerprint)
             DO UPDATE SET approved_amount = excluded.approved_amount,
                           action_id = excluded.action_id,
                           payload_json = excluded.payload_json
             """,
-            (token_fingerprint, action_id, normalized_amount, json.dumps(payload or {}, sort_keys=True), utc_now()),
+            (
+                self._tenant,
+                token_fingerprint,
+                action_id,
+                normalized_amount,
+                json.dumps(payload or {}, sort_keys=True),
+                utc_now(),
+            ),
         )
         self.conn.commit()
 
     def operation_token_amount(self, token_fingerprint: str | None) -> str | None:
+        """This tenant's approved amount for a fingerprint. Never another tenant's figure."""
+        self._require_schema_ready()
         if not token_fingerprint:
             return None
         row = self.conn.execute(
-            "SELECT approved_amount FROM operation_token_amounts WHERE token_fingerprint = ?",
-            (token_fingerprint,),
+            "SELECT approved_amount FROM operation_token_amounts "
+            "WHERE tenant = ? AND token_fingerprint = ?",
+            (self._tenant, token_fingerprint),
         ).fetchone()
         return str(row["approved_amount"]) if row else None
 
     def audit_events(self, run_id: int | None = None) -> list[dict[str, Any]]:
+        """This tenant's audit history. Both branches are scoped - the `None` branch especially.
+
+        The unfiltered branch is the one that leaked: it returned EVERY tenant's history, and it is
+        the branch a support tool reaches for.
+        """
+        self._require_schema_ready()
         if run_id is None:
-            rows = self.conn.execute("SELECT * FROM audit_events ORDER BY id").fetchall()
+            rows = self.conn.execute(
+                "SELECT * FROM audit_events WHERE tenant = ? ORDER BY id", (self._tenant,)
+            ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM audit_events WHERE run_id = ? ORDER BY id", (run_id,)
+                "SELECT * FROM audit_events WHERE tenant = ? AND run_id = ? ORDER BY id",
+                (self._tenant, run_id),
             ).fetchall()
         return [
             {
@@ -805,7 +987,11 @@ class WorkflowStore:
         ]
 
     def security_events(self) -> list[dict[str, Any]]:
-        rows = self.conn.execute("SELECT * FROM security_events ORDER BY id").fetchall()
+        """This tenant's security events. They were pooled across every tenant in the database."""
+        self._require_schema_ready()
+        rows = self.conn.execute(
+            "SELECT * FROM security_events WHERE tenant = ? ORDER BY id", (self._tenant,)
+        ).fetchall()
         return [
             {
                 "id": row["id"],
@@ -819,6 +1005,40 @@ class WorkflowStore:
             }
             for row in rows
         ]
+
+    def _require_one_row(self, rowcount: int, operation: str, run_id: int) -> None:
+        """Row-count behaviour is deterministic, and zero is never silently fine.
+
+        Zero rows now means one of exactly two things, and neither is survivable: the run does not
+        exist, or it belongs to another tenant. Before the tenant predicate a cross-tenant write
+        matched and succeeded; the danger of leaving this unchecked is that the same write now
+        matches nothing and reports success just as cheerfully.
+        """
+        if rowcount != 1:
+            self.conn.rollback()
+            raise WorkflowError(
+                f"{operation}: expected exactly one row for run {run_id} in tenant "
+                f"{self._tenant!r}, {rowcount} matched"
+            )
+
+    @staticmethod
+    def _grant_to_claim(row: sqlite3.Row) -> dict[str, Any]:
+        """One canonical ledger row, in the reservation shape its callers already speak.
+
+        The ledger is the ONE table; this is a projection of it, not a second namespace. `tenant`
+        comes from the ROW (which the tenant predicate has already constrained to ours) rather than
+        from `self`, so a projection can never assert an ownership the row does not carry.
+        """
+        return {
+            "commit_key": row["commit_key"],
+            "tenant": row["tenant"],
+            "lane": row["lane"],
+            "load_ref": row["load_ref"],
+            "party": row["party"],
+            "approved_amount": row["approved_amount"],
+            "payload": json.loads(row["payload_json"]),
+            "created_at": row["created_at"],
+        }
 
     @staticmethod
     def review_state_for_result(result: ReconciliationResult) -> WorkflowState:
