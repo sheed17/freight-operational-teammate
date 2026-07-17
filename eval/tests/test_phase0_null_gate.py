@@ -65,9 +65,10 @@ def test_the_current_model_is_a_fail_safe_default_not_a_not_null_gate():
     assert "is_autonomous" in LaneGraduation.__dict__
 
 
-def test_ac_ckpt_6_missing_is_adjudicated_as_not_yet_executable():
+def test_ac_ckpt_6_missing_is_deferred_by_dependency_not_waived():
+    """ERRATA 4: the requirement is PRESERVED; only its phase semantics were corrected."""
     failures = manifest.expected_failures()
-    assert failures["AC-CKPT-6-missing"] == "NOT_YET_EXECUTABLE"
+    assert failures["AC-CKPT-6-missing"] == "DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8"
     entry = next(f for f in manifest.load()["expected_acceptance_failures"]
                  if f["case"] == "AC-CKPT-6-missing")
     assert entry["green_at_phase"] == "P8"
@@ -78,5 +79,5 @@ def test_ac_ckpt_6_missing_is_adjudicated_as_not_yet_executable():
 
 def test_it_is_not_marked_passed_and_not_silently_skipped():
     """The two dishonest options are both closed: it is neither green nor invisible."""
-    assert manifest.expected_failures()["AC-CKPT-6-missing"] != "PASSED"
+    assert "PASSED" not in manifest.expected_failures()["AC-CKPT-6-missing"]
     assert "AC-CKPT-6-missing" in manifest.expected_failures()

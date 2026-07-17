@@ -101,3 +101,29 @@
 | acute pain is coverage/claims | **L2** or **L11** | ### **P10 only** |
 | acute pain is carrier fraud/qualification | **L3** (+ FMCSA A8) | ### **P10 only** |
 > ### **In EVERY case: Phases 0–9 are UNCHANGED, and Phases 11–14 change only in which loop they carry.** The safety kernel, the ledger, the checkpoint, containment, events, entities, and policy are ### **loop-agnostic by construction — that is the entire reason they were specified before the wedge was chosen.** ### **The wedge decision can therefore be deferred until P9 completes without stalling a single unit of work — and it MUST NOT be used as a reason to delay the kernel.**
+
+---
+
+## PART 7 — ⛔ THE SEVEN NON-TENANT-FIRST TABLES *(U2.1's exact scope — Errata 2026-07-16)*
+
+> ### **ERRATA:** the plan previously said **"6 of 8"** in seven places, and U2.1 was scoped to *"the 6 offending tables."* ### **Exactly ONE table (`autonomous_run_counters`) is tenant-first. SEVEN are not.** Executed literally, Phase 2 would have migrated six, left one behind, and left `AC-SEC-001` red with the phase marked done. ### **A miscount that hides a table from its own migration is not a typo.**
+> ### **U2.1 is scoped by EXACT SET, enumerated below — never by count. It is NOT complete while any of the seven remains non-tenant-first.** ### **No schema is changed by this errata pass; this is scope, not migration.**
+
+### The canonical rule
+> ### **A tenant COLUMN is not tenant isolation.** `operation_commit_claims` HAS a `tenant` column and is still unsafe: its `PRIMARY KEY` is `commit_key` **alone**, so the uniqueness domain is **global** and one tenant's key can collide with another's. ### **The rule is tenant FIRST IN THE KEY.**
+
+| # | Table | Current PK posture | Current unique-key posture | Tenant column | Tenant-first target | Unit | Acceptance | Backfill | ### Collision risk | Deployment dependency |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `workflow_runs` | `id` (autoincrement) | ### **`document_hash` UNIQUE — GLOBAL, scoped only by money direction** | ### **none** | `(tenant, id)`; ### **UNIQUE `(tenant, document_hash)`** | U2.1 | `AC-SEC-001` | ### **derive tenant per row; rows with no derivable tenant ⇒ MANUAL_REVIEW_REQUIRED** | ### **HIGH — two tenants filing the SAME document (identical bytes ⇒ identical hash) collide TODAY across the tenant boundary: the second is silently treated as the first's duplicate. This is a live cross-tenant defect, not a future one.** | precedes P6's Work Item/Pipeline SPLIT |
+| 2 | `audit_events` | `id` (autoincrement) | none | none | `(tenant, id)` | U2.1 | `AC-SEC-001`, `AC-AUD-*` | tenant from parent run; ### **append-only — rows are NEVER rewritten, only referenced** | MEDIUM — cross-tenant audit reads | precedes P5 outbox |
+| 3 | `security_events` | `id` (autoincrement) | none | none | `(tenant, id)` | U2.1 | `AC-SEC-001` | as above; ### **GLOBAL-scope events (e.g. a global brake) need an explicit sentinel, not a NULL tenant** | MEDIUM | precedes P8 brake |
+| 4 | `operation_action_claims` | `action_id` | `action_id` PK-unique, ### **global** | none | `(tenant, action_id)` | U2.1 | `AC-SEC-001`, `AC-SAFE-014` | tenant from the claim payload | ### **HIGH — a single-use approval token's uniqueness is global; two tenants cannot be proven isolated** | ### **precedes P3's grant claim CAS** |
+| 5 | `delivery_action_claims` | `action_id` | `action_id` PK-unique, global | none | `(tenant, action_id)` | U2.1 | `AC-SEC-001` | tenant from the delivery payload | MEDIUM — approval-transport dedup | precedes P3 |
+| 6 | `operation_commit_claims` | ### **`commit_key` ALONE** | ### **`commit_key` PK-unique — GLOBAL** | ### **present (`tenant`) — and STILL not tenant-first** | ### **`(tenant, commit_key)`** | ### **U2.1 → U2.2/U2.3** | ### **`AC-SEC-001`, `AC-SAFE-012/013/014`, `AC-RACE-001`** | ### **the Task-#1 backfill — collisions are EVIDENCE OF A HISTORICAL DOUBLE-COMMIT ⇒ MANUAL_REVIEW_REQUIRED. Do not merge. Do not pick one.** | ### **CRITICAL — this is the effect ledger's ancestor. Its key currently contains the AMOUNT (DEF-1) AND is tenant-blind. Both are fixed before any effect is enabled.** | ### **BLOCKS P12 (first live write) via the U2.3 partial unique indexes** |
+| 7 | ### **`operation_token_amounts`** | `token_fingerprint` | `token_fingerprint` PK-unique, global | none | `(tenant, token_fingerprint)` | U2.1 | `AC-SEC-001` | tenant from the bound action | ### **HIGH — binds an APPROVED AMOUNT to a token in a global namespace** | ### **THE TABLE THE "6 of 8" MISCOUNT WOULD HAVE LEFT BEHIND. It is the Material-Facts Fingerprint's ancestor — the exact concept Task #1 moves the amount INTO.** | precedes P3 |
+
+**The one already-canonical table (NOT in U2.1's scope):**
+| `autonomous_run_counters` | ### **`PRIMARY KEY (tenant, lane, day)`** | — | present | ### **already tenant-first** | — | `AC-SEC-001` | none | none | — |
+
+### U2.1's completion oracle
+> ### **EXACT SET EQUALITY:** `{tables with tenant first in key}` **==** `{all 8}`, and `{non-tenant-first}` **== ∅**. ### **A count is a diagnostic, not the oracle: "7 tables migrated" while a different seventh remains broken MUST fail.** `AC-SEC-001` stays red until the set is empty.

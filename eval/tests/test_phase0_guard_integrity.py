@@ -28,8 +28,10 @@ GUARD_FILES = sorted(TESTS.glob("test_phase0_*.py"))
 STRICT_XFAIL_CASES = {
     "test_ac_safe_012_commit_key_excludes_mutable_decision_values": "AC-SAFE-012",
     "test_ac_safe_013_commit_key_exists_for_non_money_effects": "AC-SAFE-013",
-    "test_declared_transition_total_matches_the_enumeration": "DEF-4",
-    "test_declared_emitted_event_total_matches_the_enumeration": "DEF-5",
+    # DEF-4 and DEF-5 were red-by-design until the Canonical Corpus Errata Pass (2026-07-16)
+    # corrected the corpus to its own enumeration. They are now green exact-set assertions, not
+    # xfails. AC-SAFE-012/013 stay red: they describe a LIVE code defect, fixed at P1, not a
+    # document that could be amended.
 }
 
 
@@ -121,3 +123,70 @@ def test_every_expected_failure_has_a_test_that_actually_runs_it():
     all_text = "\n".join(p.read_text(encoding="utf-8") for p in GUARD_FILES)
     for case in ("AC-SAFE-012", "AC-SAFE-013", "AC-SEC-001", "AC-CKPT-6-missing"):
         assert case in all_text, f"{case} is declared an expected failure but no guard mentions it"
+
+
+# --------------------------------------------------------------------------------------------
+# Added by the Canonical Corpus Errata Pass (2026-07-16), after the mutation harness proved this
+# class of hole exists in this very suite.
+# --------------------------------------------------------------------------------------------
+
+NEGATIVE_ASSERTION_TESTS = {
+    # test name -> the file it lives in. Each asserts "X is NOT present", which is VACUOUSLY TRUE
+    # over an empty population. Each MUST prove its population first.
+    "test_timerfired_is_a_trigger_and_is_never_counted_as_an_emitted_event":
+        "test_phase0_acceptance_bijection.py",
+    "test_f15_declares_no_new_event_contracts":
+        "test_phase0_acceptance_bijection.py",
+    "test_no_event_cites_a_producer_transition_outside_the_canonical_set":
+        "test_phase0_acceptance_bijection.py",
+    "test_no_normative_document_still_requires_141_transitions":
+        "test_phase0_errata_guards.py",
+    "test_no_normative_document_still_requires_92_emitted_events":
+        "test_phase0_errata_guards.py",
+    "test_no_normative_document_still_says_six_of_eight":
+        "test_phase0_errata_guards.py",
+}
+
+
+def _body(path: Path, name: str) -> str:
+    src = path.read_text(encoding="utf-8")
+    m = re.search(rf"\ndef {re.escape(name)}\(.*?\n(?=\ndef |\Z)", src, re.S)
+    assert m, f"{name} not found in {path.name}"
+    return m.group(0)
+
+
+def test_every_negative_assertion_proves_its_population_first():
+    """A negative assertion over an empty set is not a pass. It is a measurement of nothing.
+
+    This is the M-9 family's subtlest member. `assert "TimerFired" not in names` reads like a real
+    check and IS one - right up until `names` is empty, at which point it reports success forever.
+    The errata mutation harness produced exactly that: stale bytecode made the event parser return
+    zero contracts, and the test went green while measuring nothing.
+
+    So every negative assertion in this suite must first prove it looked at a real population.
+    """
+    tests_dir = Path(__file__).resolve().parent
+    offenders = []
+    for name, filename in NEGATIVE_ASSERTION_TESTS.items():
+        body = _body(tests_dir / filename, name)
+        proves = ("require_population" in body) or re.search(r"assert \w*scanned\w* >=|assert checked >=", body)
+        if not proves:
+            offenders.append(f"{filename}::{name}")
+    assert not offenders, (
+        "negative assertion(s) that do not prove their population first:\n  " + "\n  ".join(offenders)
+        + "\n\nAdd require_population() (or an explicit scanned/checked floor). Without it the test "
+          "passes by measuring nothing."
+    )
+
+
+def test_the_bytecode_poisoning_lesson_is_recorded():
+    """Restoring a .py does not restore behaviour: CPython invalidates a .pyc by (mtime, size).
+
+    A mutation that preserves byte length and restores within one mtime tick leaves stale bytecode.
+    The errata harness hit this and manufactured a false-green in the tool built to catch them.
+    """
+    a = 'm = re.match(r"^\\*\\*(F\\d+)[^:]*:?\\*\\*(.*)$", line.strip())'
+    b = 'm = re.match(r"^\\*\\*(Z\\d+)[^:]*:?\\*\\*(.*)$", line.strip())'
+    assert len(a) == len(b), (
+        "the same-length-mutation hazard no longer reproduces; keep the lesson but update the example"
+    )

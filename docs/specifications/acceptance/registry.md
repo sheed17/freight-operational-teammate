@@ -59,7 +59,8 @@
 | `traceability.md` | — | all |
 
 ## COVERAGE TARGETS *(asserted in the review)*
-### **141/141 transitions · 92/92 emitted events · 40/40 domain entities · all adapter operations · 28/28 permanent safety invariants · 16/16 false-closure rules · 40 hostile workflow + 30 adapter + 20 event + 20 cross-machine traces · 11/11 loops · all degraded modes · all release gates.**
+### **134/134 transitions · 98/98 emitted events · 40/40 domain entities · all adapter operations · 28/28 permanent safety invariants · 16/16 false-closure rules · 40 hostile workflow + 30 adapter + 20 event + 20 cross-machine traces · 11/11 loops · all degraded modes · all release gates.**
+*(Errata 2026-07-16: transitions corrected 141→134, emitted events 92→98 — both were propagated arithmetic errors; the underlying per-machine and per-family enumerations were always correct. See `docs/implementation/canonical-corpus-errata-review.md`.)*
 
 ## GOLDEN CORPUS `GC-1`
 An immutable historical event corpus spanning ≥1 schema version change, ≥2 tenants, ≥1 correction, ≥1 `UNKNOWN_OUTCOME`, ≥1 compensation, ≥1 brake episode. ### **Rebuilding `GC-1` MUST reproduce the same canonical projection DIGEST every time, on every version, forever.**

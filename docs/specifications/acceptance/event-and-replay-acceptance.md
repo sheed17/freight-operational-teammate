@@ -3,14 +3,16 @@
 *Registry defaults apply. Levels: `EVENT_CONTRACT` / `REPLAY`. Gate: **G2**.*
 
 ## Coverage requirement
-> ### **All 92 canonical emitted event names × all event versions. A `STRUCTURAL` case (`AC-EVT-000`) asserts a BIJECTION between the implementation's emitted-event registry and the frozen 92 — an undefined event or an unemitted contract fails the build.**
+> ### **All 98 canonical emitted event names × all event versions. A `STRUCTURAL` case (`AC-EVT-000`) asserts a BIJECTION between the implementation's emitted-event registry and the frozen 98 — an undefined event or an unemitted contract fails the build.**
+> ### **The oracle is EXACT SET EQUALITY of event names, not a count. A count match with different members MUST fail.**
+> *(Errata 2026-07-16: corrected from 92. The canonical event list (`events/registry.md` §3) enumerates **98** across F1–F13. F14's 13 audit/security events are counted separately and were correct; F15 is a lens and declares no contracts; `TimerFired` is a TRIGGER, not an emitted event, and is excluded. See `docs/implementation/canonical-corpus-errata-review.md`.)*
 
 ## Per-event mandatory assertions
 | # | Assertion | Oracle |
 |---|---|---|
-| **AC-EVT-001** | every event uses the **canonical envelope** | schema assertion over all 92 |
+| **AC-EVT-001** | every event uses the **canonical envelope** | schema assertion over all 98 |
 | **AC-EVT-002** | ### **`tenant_id` mandatory AND first in partition identity** | reject any event without it; partition-key probe |
-| **AC-EVT-003** | ### **every producer transition emits its required event** (141→92 map) | the outbox row exists in the transition's commit |
+| **AC-EVT-003** | ### **every producer transition emits its required event** (134→98 map) | the outbox row exists in the transition's commit |
 | **AC-EVT-004** | duplicate delivery is harmless | inbox `(consumer,tenant,event_id)` ⇒ no-op; state digest unchanged |
 | **AC-EVT-005** | out-of-order delivery handled per contract | STRICT families reject/park; order-tolerant families converge |
 | **AC-EVT-006** | ### **dangling references PARKED, never dropped** | `pending_references` row; drained in arrival order; TTL ⇒ Exception |

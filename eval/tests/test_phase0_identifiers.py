@@ -12,6 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from phase0 import planning_corpus
 
+# Reviews may NAME a defect. Naming a defect is not using it.
+REVIEW_DOCS = {"implementation-planning-review.md", "phase-0-implementation-review.md",
+               "canonical-corpus-errata-review.md"}
+
 
 def test_the_probes_evaluate_real_populations():
     planning_corpus.canonical_acceptance_ids().require_population(minimum=100)
@@ -52,17 +56,19 @@ def test_the_invented_id_appears_only_as_a_reported_finding():
         text = path.read_text(encoding="utf-8")
         if "AC-SEC-000" not in text:
             continue
-        assert path.name == "implementation-planning-review.md", (
-            f"{path.name} references AC-SEC-000, which does not exist. Only the review may name it, "
-            f"and only as the finding M-1."
+        assert path.name in REVIEW_DOCS, (
+            f"{path.name} references AC-SEC-000, which does not exist. Only a REVIEW may name it, "
+            f"and only as the finding it was (M-1)."
         )
-        assert "DID NOT EXIST" in text
+        assert "DID NOT EXIST" in text or "invented" in text, (
+            f"{path.name} names AC-SEC-000 without marking it as the defect it was"
+        )
 
 
 def test_u03_completion_oracle_resolves():
     """The specific repair: U0.3's oracle is now the real frozen case."""
     pr = (Path(__file__).resolve().parents[2] / "docs" / "implementation" / "pr-sequence.md").read_text()
-    u03 = next(line for line in pr.split("\n") if line.startswith("| **U0.3**"))
+    u03 = next(line for line in pr.split("\n") if "U0.3**" in line and line.startswith("|"))
     assert "AC-CKPT-6-missing" in u03
     assert "AC-SEC-000" not in u03
     canonical_source = (

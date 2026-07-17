@@ -76,7 +76,7 @@ Scripts importing effect machinery (`enter_approved_payable` / `truckingoffice_w
 | Identity | `email_triage` deterministic-ID-first linker | ### **PRESENT_AND_COMPATIBLE in spirit — the ancestor of §10.1; lacks `provenance_class`** |
 | Authorization | Slack signed HMAC single-use token; channel/user allowlist | **PARTIAL** — transport layer of ADR-005 §3.15 exists; no fingerprint, no witness |
 | Idempotency | `operation_commit_claims` + `*_action_claims` | ### **PRESENT_BUT_UNSAFE — the amount is in the key; non-money uncovered; not tenant-first** |
-| Tenant routing | a `tenant` string threaded through; **6/8 tables not tenant-first** | ### **PRESENT_BUT_UNSAFE** |
+| Tenant routing | a `tenant` string threaded through; ### **7/8 tables not tenant-first** *(errata 2026-07-16: was 6/8 — only `autonomous_run_counters` is tenant-first)* | ### **PRESENT_BUT_UNSAFE** |
 | Approval | Slack button → callback → resume | PARTIAL — no Material-Facts Fingerprint, no drift check |
 | Retry/timeout | ad-hoc; some bounded | **PARTIAL** — no TRANSIENT/PERMANENT classification |
 | Audit | `audit_events` + `security_events` | PARTIAL — no pinned decision context, no explainability query |

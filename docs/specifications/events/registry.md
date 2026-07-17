@@ -1,6 +1,7 @@
 # Event Specification Registry — Canonical Envelope, Events, Rules
 
-**Layer:** Event Specification. **Derived mechanically from:** the 13 state machines + `state-machines/registry.md` §5 (the emitted-event list) + the 141 transitions + ADR-002/004/005/006/007/008/009/010/011 + the Semantic Model.
+**Layer:** Event Specification. **Derived mechanically from:** the 13 state machines + `state-machines/registry.md` §5 (the emitted-event list) + the 134 transitions + ADR-002/004/005/006/007/008/009/010/011 + the Semantic Model.
+*(Errata 2026-07-16: corrected from 141. This file's §3 canonical list enumerates **98** emitted contracts across F1–F13 — itself correct and unchanged.)*
 **Binding:** ### **This registry is the sole canonical list of event names and versions.** Every family file uses these names verbatim; a family file introducing an unlisted name or a local synonym is defective.
 
 > ### **An event records a FACT that occurred. An event is NEVER a command, and NEVER authorizes a future action.** Consumers react according to **their own deterministic transition guards** (the 13 machines); the event does not instruct them. Replay of any event produces **zero** Checkpoint Witnesses, **zero** Effect Grants, **zero** external effects (GR-11).

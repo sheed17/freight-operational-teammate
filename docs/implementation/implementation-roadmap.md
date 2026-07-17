@@ -12,8 +12,8 @@
 | **2** | Tenant-safe Effect Ledger foundation | `tenant_id` first in all 9 surfaces; the one ledger, 8 states, 2 partial indexes | ### **P1 green** | → G4 |
 | **3** | Checkpoint Witness + claim CAS | the 7-step atomic checkpoint; unconstructable `CheckpointPassed`; grant mint+claim; brake admission | P2 | → G4 |
 | **4** | Adapter containment | the 13 import sites converted/removed; CI import gate ON; orphan detection; verification taxonomy | ### **P3** *(a gate with nothing behind it is theatre)* | → G4 |
-| **5** | Outbox/inbox + replay isolation | transactional outbox, dedup inbox, 92 event contracts, `GC-1` digest, sandboxed replay | P2 | **G2** |
-| **6** | Foundational entities + machines | Work Item (ownership!), Pipeline Instance, the 13 machines, 141 transitions | P5 | **G1** + → G4 *(`AC-SAFE-028`)* |
+| **5** | Outbox/inbox + replay isolation | transactional outbox, dedup inbox, ### **98 event contracts**, `GC-1` digest, sandboxed replay | P2 | **G2** |
+| **6** | Foundational entities + machines | Work Item (ownership!), Pipeline Instance, the 13 machines, ### **134 transitions** | P5 | **G1** + → G4 *(`AC-SAFE-028`)* |
 | **7** | Provenance, Evidence, Observation, Claims, Identity Binding | the 6 provenance classes, R-P1/2/3, content-addressed Evidence, the deterministic linker + Conflict | P6 | G1 + → G4 *(`AC-SAFE-015/016`)* |
 | ### **8** | Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation | typed policy, compile-or-refuse rules, the real brake, M7–M10 | P7 | ### **G4 QUALIFIES HERE** *(not at P4 — see the gate plan's correction)* |
 | **9** | Freight-domain projections + mappings | the 40 entities, External Entity Mapping, field-level authority | P8 | G1 |
@@ -25,7 +25,7 @@
 
 ## Justified ordering deviations from the brief's sequence
 ### **None required.** The repo's actual dependencies match the frozen safety order. Two clarifications derived from the recon:
-- ### **P2 is bigger than the earlier inventories implied** — tenant-first keys are missing in **6 of 8 tables**, so P2 is a schema-wide change, not a ledger-only one. It stays at P2 because **tenant isolation must precede multi-tenant effect enablement** (principle 3 + `AC-SEC-001`).
+- ### **P2 is bigger than the earlier inventories implied** — tenant-first keys are missing in ### **7 of 8 tables** *(errata 2026-07-16: was stated as 6 of 8; exactly one table, `autonomous_run_counters`, is tenant-first)*, so P2 is a schema-wide change, not a ledger-only one. It stays at P2 because **tenant isolation must precede multi-tenant effect enablement** (principle 3 + `AC-SEC-001`).
 - ### **P4 must follow P3, not parallel it.** The 13 import sites can only be *converted* to a client that exists (the pipeline+grant, P3). Enabling the CI gate earlier would only force a wrapper — and **a wrapper that logs the bypass is not containment.**
 
 ---

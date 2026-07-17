@@ -1,5 +1,7 @@
 # Phase-0 Implementation Review — Baseline & Migration Guards
 
+> ### **SUPERSEDED IN PART — 2026-07-16.** The defects this review REPORTED (DEF-4 141→134, DEF-5 92→98, DEF-6 6→7 tables, P0-F1 U0.3) have since been corrected by the **Canonical Corpus Errata Pass**. ### **The findings below are accurate as written and are preserved as the discovery record; the corrected canonical values now live in the amended corpus.** See `canonical-corpus-errata-review.md`.
+
 > ### **Phase 0 does not make the current write paths safe. It makes their unsafe state explicit, measurable, and unable to regress silently.**
 > ### **Nothing in this phase touched production code, database schemas, migrations, or symbol names. Every tracked file in `src/` and `scripts/` is byte-identical to `9f20b25`.**
 

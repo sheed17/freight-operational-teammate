@@ -18,6 +18,7 @@
 | [implementation-planning-review.md](implementation-planning-review.md) | ### **the hostile planning review + the verdict** |
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
+| [canonical-corpus-errata-review.md](canonical-corpus-errata-review.md) | ### **the bounded errata pass — 141→134, 92→98, 6→7 tables, U0.3→P8 + the 3 findings in its own work** |
 
 ## Phases → gates → units
 | Phase | Units | Gate |
@@ -45,7 +46,7 @@
 | ID | Phase | Kind | Dry-run first |
 |---|---|---|---|
 | **M-1** commit-key backfill | P1 | TRANSFORM | ### **yes — collisions ⇒ MANUAL_REVIEW_REQUIRED** |
-| **M-2** tenant-first keys (6 tables) | P2 | TRANSFORM | yes |
+| **M-2** tenant-first keys ### **(7 tables — errata: was 6)** | P2 | TRANSFORM | yes |
 | **M-3** ledger backfill | P2 | TRANSFORM | yes |
 | **M-4** event upcast `v0→v1` | P5 | TRANSFORM | yes |
 | **M-5** `workflow_runs` SPLIT | P6 | ### **SPLIT — MERGE_FORBIDDEN** | yes |
@@ -71,5 +72,6 @@
 | Semantic Model · Target Spec Rev 2 | **FROZEN** |
 | Specifications (entities, machines, events, domain, adapters, workflows, acceptance) | **FROZEN** |
 | ### **Implementation & migration planning** | ### **FROZEN at `9f20b25`** |
-| ### **Phase 0 — baseline & migration guards** | ### **COMPLETE — 753 passed / 4 named red-by-design xfails. 3 owner decisions pending (DEF-4/DEF-5 block G1/G2; DEF-6 blocks P2).** |
+| ### **Phase 0 — baseline & migration guards** | ### **COMPLETE (`d33f251`) — the guard suite + adjudicated manifest. Its 3 findings are now CORRECTED by the errata pass.** |
+| ### **Canonical Corpus Errata Pass** | ### **COMPLETE — DEF-4/5/6 + P0-F1 corrected; ERRATA 5 made the Phase-0 tree green (it was RED). Corpus only; no code, schema, or behaviour touched.** |
 | ### **Phase 1 — Migration Safety Task #1** | ### **NOT STARTED — by instruction. Unblocked.** |

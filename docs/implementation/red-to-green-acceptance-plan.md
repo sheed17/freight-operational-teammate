@@ -7,7 +7,7 @@
 |---|---|---|---|---|---|
 | ### **AC-SAFE-012** | ### **RED (by design)** | ### **`_commit_identity` includes `approved_amount`** | **U1.2** | ### **Phase 1** | **G0** |
 | ### **AC-SAFE-013** | ### **RED (by design)** | ### **`if not amount: return None`** | **U1.3** | ### **Phase 1** | **G0** |
-| `AC-SEC-001` | ### **RED** *(new — recon §5)* | ### **6/8 tables not tenant-first** | U2.1 | Phase 2 | G0/G4 |
+| `AC-SEC-001` | ### **RED** *(new — recon §5)* | ### **7/8 tables not tenant-first** *(errata: was 6/8)* | U2.1 | Phase 2 | G0/G4 |
 | `AC-SEC-013` | RED | 13 direct import sites | U4.\* | Phase 4 | G4 |
 | `AC-SAFE-002/004/005` | RED | no checkpoint/witness | U3.1 | Phase 3 | G4 |
 | the 105 `AC-CKPT-*` | RED | as above | U3.1–3.4 | Phase 3 | G4 |

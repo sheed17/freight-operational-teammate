@@ -13,8 +13,8 @@ Engineering Principles (P1–P39, R1–R18)
       → ADR decisions (ADR-001…011 + A1–A4)
         → Architecture requirements (M-1…M-75, the 7 checkpoint steps)
           → Entity constraints (17 foundational + 40 domain)
-            → Machine transitions (141)
-              → Events (92 + 13 security)
+            → Machine transitions (134)
+              → Events (98 + 13 security)
                 → Domain lifecycles (23 L-*)
                   → Adapter operations (~40, A1–A18)
                     → Workflow steps (~55 across W1–W11)
@@ -42,4 +42,6 @@ Engineering Principles (P1–P39, R1–R18)
 | ### **The live commit-key defect** | ADR-009 §2.2 / Target §19.8 → A4 | ### **`AC-SAFE-012/013` as `MIGRATION_GUARD` — FAILING BY DESIGN against the current baseline until the migration fixes it** | **G0** |
 
 ## Coverage assertion
-`AC-TRACE-000` emits the full matrix and asserts: **141/141 transitions · 92/92 events · 40/40 entities · ~40/40 adapter ops · 28/28 safety invariants · 16/16 false-closure rules · 11/11 loops · 110 hostile traces (40 WF + 30 ADPT + 20 EVT + 20 CROSS)** each mapped to ≥1 case, and every case mapped to ≥1 requirement.
+`AC-TRACE-000` emits the full matrix and asserts: ### **134/134 transitions · 98/98 events** · 40/40 entities · ~40/40 adapter ops · 28/28 safety invariants · 16/16 false-closure rules · 11/11 loops · 110 hostile traces (40 WF + 30 ADPT + 20 EVT + 20 CROSS)** each mapped to ≥1 case, and every case mapped to ≥1 requirement.
+### **Every assertion above is EXACT SET EQUALITY over identifiers. Counts are diagnostics; a count match with different members MUST fail.**
+*(Errata 2026-07-16: transitions corrected 141→134, events 92→98. See `docs/implementation/canonical-corpus-errata-review.md`.)*

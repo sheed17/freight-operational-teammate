@@ -72,3 +72,19 @@ def allowance_sections() -> dict[str, list[dict]]:
             for t in m["expected_deprecated_terms"]["terms"]
         ],
     }
+
+
+@lru_cache(maxsize=1)
+def canonical_expected() -> dict:
+    """The REGISTERED expected identifier sets — the second leg of the exact-set oracle."""
+    from .sources import ROOT
+    path = ROOT / "eval" / "phase0" / "canonical_expected.yaml"
+    return yaml.safe_load(require(path).read_text(encoding="utf-8"))
+
+
+def expected_transition_ids() -> set[str]:
+    return {t for ids in canonical_expected()["transitions"].values() for t in ids}
+
+
+def expected_event_names() -> set[str]:
+    return {n for ns in canonical_expected()["emitted_events"].values() for n in ns}

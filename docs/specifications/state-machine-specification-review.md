@@ -1,5 +1,12 @@
 # State-Machine Specification Review — Hostile Cross-Machine
 
+> ## ⛔ ERRATA — 2026-07-16 *(appended; the record below is PRESERVED as written)*
+> ### **The transition total stated in this review is WRONG. It says 141; the correct figure is 134.**
+> ### **The arithmetic error is visible at its source in section 3 below:** `14/25/13/11/8/11/7/8/7/9/7/9/5` — ### **those thirteen per-machine counts are CORRECT and match the machine files exactly. They sum to 134, not 141.**
+> The wrong total propagated into the acceptance registry, traceability, G1's exit criterion and `AC-MACH-000`'s bijection. ### **It was found mechanically by the Phase-0 guards (DEF-4), not by re-reading.**
+> ### **This document is HISTORICAL EVIDENCE of what was believed on the day it was written and is NOT normative. The corrected value lives in the amended acceptance corpus.** See `docs/implementation/canonical-corpus-errata-review.md`.
+
+
 **Subject:** the 13 executable state-machine specifications (`docs/specifications/state-machines/`) + `registry.md`.
 **Method:** 20 cross-machine interaction traces (each: states-before → transition order → txn boundaries → events → ownership → blocked transitions → states-after → required human action → test) + a mechanical consistency sweep.
 **Date:** 2026-07-13 · **No frozen document modified.**

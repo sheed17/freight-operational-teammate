@@ -62,6 +62,7 @@
 7. **Checkpoint:** 7 steps, one transaction, CAS last, ### **`CheckpointPassed` unconstructable — capability by construction.**
 8. **Containment:** 13 import sites; ### **4 scripts DELETED (C-4), 1 import removed, the rest converted; the CI gate lands only after the pipeline exists.**
 9. **Order:** ### **no deviation from the frozen safety order is required.** Two clarifications: P2 is schema-wide (6/8 tables), and P4 must follow P3.
+   > ### **ERRATA 2026-07-16:** the figure **6/8 is WRONG — it is 7 of 8** (only `autonomous_run_counters` is tenant-first). The conclusion (*P2 is schema-wide*) is **unchanged and correct**; only the count was wrong. Preserved as the historical record. See `canonical-corpus-errata-review.md`.
 10. **The wedge:** W6→W8, ### **NEEDS DESIGN-PARTNER VALIDATION.** ### **If rejected, ONLY P10 changes — Phases 0–9 are loop-agnostic by construction. The wedge decision may be deferred to P9 and MUST NOT delay the kernel.**
 11. **Units:** U0.\*–U9.\* + P10–P14, ### **no calendar estimates**; each names its files, its acceptance cases, its flag, its rollback, and a completion oracle.
 12. **Red-to-green:** `AC-SAFE-012/013` are ### **RED BY DESIGN today and are the plan's first green.** ### **No reachable unsafe behavior is excused by a future phase — R-07 is recorded as open rather than explained away.**

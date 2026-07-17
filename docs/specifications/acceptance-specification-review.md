@@ -1,5 +1,11 @@
 # Acceptance Specification Review — Hostile
 
+> ## ⛔ ERRATA — 2026-07-16 *(appended; the record below is PRESERVED as written)*
+> ### **The coverage totals stated in this review are WRONG: transitions are 134 (not 141) and emitted events are 98 (not 92).**
+> Every other total in this review — 40 entities · 28 safety invariants · 16 false-closure rules · 11 loops · the 7×15=105 checkpoint matrix — ### **was verified mechanically and is CORRECT.** ### **The pattern: every count enumerated in ONE table was right; both counts requiring summation across 13 files were wrong.**
+> ### **HISTORICAL EVIDENCE. NOT normative.** See `docs/implementation/canonical-corpus-errata-review.md`.
+
+
 **Subject:** `docs/specifications/acceptance/` — 24 files (registry · 11 core · 11 per-loop · gates · traceability).
 **Method:** a **false-pass attack** (could an implementation pass these while violating the architecture's spirit?), then a mechanical sweep.
 **Date:** 2026-07-16 · **No frozen document modified.**

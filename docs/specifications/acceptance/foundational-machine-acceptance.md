@@ -3,10 +3,12 @@
 *Registry defaults apply. Level: `STATE_MACHINE` / `CROSS_MACHINE`. Gate: **G1**.*
 
 ## Coverage requirement
-> ### **100% of the 141 legal transitions. Every omitted `(state,trigger)` pair proved ILLEGAL. No exceptions.**
+> ### **100% of the 134 legal transitions. Every omitted `(state,trigger)` pair proved ILLEGAL. No exceptions.**
+> *(Errata 2026-07-16: corrected from 141 — the 13 machine files enumerate **134**; see `docs/implementation/canonical-corpus-errata-review.md`.)*
 
 ## The mechanical coverage table *(the build's own artifact — asserted, not asserted-about)*
-### **A `STRUCTURAL` case (`AC-MACH-000`) enumerates the transition tables FROM THE IMPLEMENTATION's declarative data and asserts a bijection with the 141 spec rows.** A transition in the spec with no case, or a case with no spec row, **fails the build.**
+### **A `STRUCTURAL` case (`AC-MACH-000`) enumerates the transition tables FROM THE IMPLEMENTATION's declarative data and asserts a bijection with the 134 spec rows.** A transition in the spec with no case, or a case with no spec row, **fails the build.**
+### **The oracle is EXACT SET EQUALITY of transition identifiers, not a count. A count match with different members MUST fail.**
 
 | Machine | Transitions | Case range | Expected events | State oracle | Gate |
 |---|---|---|---|---|---|
@@ -23,7 +25,9 @@
 | M11 Policy | 7 | `AC-MACH-1101..1107` | `PolicyProposed`…`VersionChanged` | version row | **G4** |
 | M12 Rule | 9 | `AC-MACH-1201..1209` | `RuleProposed`…`Revoked` | version row | G1 |
 | M13 Brake | 5 | `AC-MACH-1301..1305` | `BrakeEngaged`…`Released` | row + brake_version | **G4** |
-| **Total** | **141** | — | **all 92** | — | — |
+| **Total** | ### **134** | — | ### **all 98** | — | — |
+
+> ### **ERRATA (2026-07-16):** the Total row previously read **141** / **all 92**. ### **The 13 per-machine counts above were and remain CORRECT — they sum to 134.** The emitted-event total is **98** (F1–F13). Both errors were arithmetic, not architectural: every count enumerated in a single table was right; both counts requiring summation across 13 files were wrong. See `docs/implementation/canonical-corpus-errata-review.md`.
 
 ## Per-machine mandatory assertions *(every machine, every case)*
 1. ### **Every legal transition succeeds under its EXACT guards** — and fails when any guard is relaxed by one condition (a guard-mutation probe).

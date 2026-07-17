@@ -8,7 +8,7 @@
 
 | # | Component | Current | Class | Target | Acceptance | Task | Depends on | Gate |
 |---|---|---|---|---|---|---|---|---|
-| 1 | **Tenancy** | ### **6/8 tables not tenant-first** | ### **PRESENT_BUT_UNSAFE** | `tenant_id` NOT NULL, first in all 9 surfaces | `AC-SEC-001..003` | U2.1 | — | **G4** |
+| 1 | **Tenancy** | ### **7/8 tables not tenant-first** *(errata: was 6/8)* | ### **PRESENT_BUT_UNSAFE** | `tenant_id` NOT NULL, first in all 9 surfaces | `AC-SEC-001..003` | U2.1 | — | **G4** |
 | 2 | **Commit Key** | amount-in-key; absent for non-money; not tenant-first | ### **PRESENT_BUT_UNSAFE** | logical-effect key, amount-free, mandatory | ### **`AC-SAFE-012/013`** | ### **U1.\*** | — | **G4** |
 | 3 | **Effect Ledger** | `operation_commit_claims` (claim-once, single-col PK) | **PRESENT_BUT_NONCANONICAL** | one row, 8 states, tenant-scoped, 2 partial indexes | `AC-SAFE-014`, the `AC-MACH-3*` series (`AC-MACH-301`…) | U2.2/U2.3 | U1, U2.1 | **G1** *(+G4 safety)* |
 | 4 | **Checkpoint Witness** | ### **none** | ### **ABSENT** | immutable, unconstructable `CheckpointPassed` | `AC-SAFE-002/004/005` + 105 `AC-CKPT` | U3.1 | U2 | **G4** |
@@ -23,11 +23,11 @@
 | 13 | **Verification** | readback + amount reconcile | **PARTIAL** | 8 outcomes + positive health | `AC-SAFE-021/023`, `AC-ADPT-012` | U4.11 | U3 | **G3** *(+G4 safety)* |
 | 14 | **UNKNOWN_OUTCOME** | a `NEEDS_VERIFICATION` payload | **PARTIAL** | non-terminal, owned, reason, frozen | `AC-SAFE-022` | ### **U3.3** *(corrected: it is one of the grant's 8 states, so it lands with the grant in P3 — an earlier draft said P6, which would have made G4 depend on a LATER phase)* | U3.1 | **G4** |
 | 15 | **Outbox/Inbox** | ### **none** | ### **ABSENT** | transactional outbox + dedup inbox | `AC-RACE-006..009`, `AC-EVT-003` | U5.1/U5.2 | U2.1 | **G2** *(+G4 safety)* |
-| 16 | **Event contracts** | ad-hoc audit rows | **PARTIAL** | 92 events + envelope + versions | `AC-EVT-*` | U5.3 | U5.1/U5.2 | **G2** |
+| 16 | **Event contracts** | ad-hoc audit rows | **PARTIAL** | ### **98 events** + envelope + versions | `AC-EVT-*` | U5.3 | U5.1/U5.2 | **G2** |
 | 17 | **Replay** | ### **none** | ### **ABSENT** | sandboxed, zero-effect, `GC-1` digest | `AC-EVT-007/008`, `AC-SEC-014` | U5.4/U5.5 | U5.3 | **G2** *(+G4 safety)* |
 | 18 | **Work Item** | implicit in runs | **ABSENT** *(as an entity)* | M1, owned, closure≠pipeline | `AC-SAFE-028`, `AC-FC-015` | U6.1 | U5 | **G4** |
 | 19 | **Pipeline Instance** | `workflow_runs`+router | **PRESENT_BUT_NONCANONICAL** | M2 (16 states) | the `AC-MACH-2*` series (`AC-MACH-201`…`AC-MACH-215x`) | U6.2 | U5 | **G1** |
-| 20 | **Machines (13)** | 1 doc-shaped machine | **PARTIAL** | 141 transitions declarative | `AC-MACH-*` (141) | U6.3 | U5 | **G1** |
+| 20 | **Machines (13)** | 1 doc-shaped machine | **PARTIAL** | ### **134 transitions** declarative | `AC-MACH-*` ### **(134)** | U6.3 | U5 | **G1** |
 | 21 | **Provenance** | ### **none** | ### **ABSENT** | 6 classes, R-P1/2/3 | `AC-SAFE-015/016`, `AC-EVT-011` | U7.1 | U6 | **G2** *(+G4 safety)* |
 | 22 | **Evidence** | files on disk | **PARTIAL** | content-addressed, immutable | `AC-DOM-009` | U7.2 | U7.1 | **G1** |
 | 23 | **Observation** | ad-hoc reads | **PARTIAL** | natural-key idempotent | the `AC-MACH-5*` series (`AC-MACH-501`…), `AC-ADPT-010` | U7.3 | U7.1 | **G1** |

@@ -1,5 +1,11 @@
 # Event Specification Review — Hostile
 
+> ## ⛔ ERRATA — 2026-07-16 *(appended; the record below is PRESERVED as written)*
+> ### **The counts stated in this review are WRONG: the transition set is 134 (not 141), and the emitted-event set is 98 (not ~92).**
+> The per-family enumerations in `events/registry.md` §3 were and remain **correct** — they enumerate **98** across F1–F13. The **13 audit/security events (F14) were correct.** F15 is a lens and declares no contracts. ### **This review's own observation that `TimerFired` is a TRIGGER and not an emitted event is CORRECT and is preserved in the corrected canon.**
+> ### **HISTORICAL EVIDENCE. NOT normative.** See `docs/implementation/canonical-corpus-errata-review.md`.
+
+
 **Subject:** `docs/specifications/events/` — 15 event families + `registry.md`, deriving from the 141 legal transitions of the 13 state machines.
 **Method:** 20 hostile event traces (producer transition · event identity · partition · ordering · inbox · consumer transition · projection · conflicts · resulting state · audit · test) + a mechanical consistency sweep.
 **Date:** 2026-07-14 · **No frozen document modified.**

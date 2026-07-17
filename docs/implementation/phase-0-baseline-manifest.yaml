@@ -90,11 +90,12 @@ expected_current_defects:
       transitions, or weaken the bijection to an inequality.
     risk_id: P0-F2
     acceptance: AC-MACH-000
-    removed_by_phase: owner adjudication - REQUIRED BEFORE G1 (P6)
+    status: CORRECTED 2026-07-16 by the Canonical Corpus Errata Pass
+    removed_by_phase: P0 (errata) - CLOSED
     accountable_unit: U0.8
     deletion_condition: >-
-      The corpus is amended to the enumerated count, or the 7 missing transitions are specified.
-      The probe then asserts equality.
+      CLOSED: the corpus was amended to its own enumeration (134). The transitions were NOT invented
+      and the bijection was NOT weakened. The probe now asserts EXACT SET EQUALITY, not a count.
 
   - id: DEF-5
     fact: >-
@@ -105,9 +106,12 @@ expected_current_defects:
       contracts. AC-EVT-003 asserts a "141 to 92 map" - both numbers are wrong.
     risk_id: P0-F2
     acceptance: AC-EVT-003
-    removed_by_phase: owner adjudication - REQUIRED BEFORE G2 (P5)
+    status: CORRECTED 2026-07-16 by the Canonical Corpus Errata Pass
+    removed_by_phase: P0 (errata) - CLOSED
     accountable_unit: U0.8
-    deletion_condition: the corpus is amended to the enumerated count and the probe asserts equality
+    deletion_condition: >-
+      CLOSED: the corpus was amended to its own enumeration (98). No events were invented to preserve
+      the old total. The probe now asserts EXACT SET EQUALITY over event names.
 
   - id: DEF-6
     fact: >-
@@ -121,6 +125,10 @@ expected_current_defects:
     acceptance: AC-SEC-001
     removed_by_phase: P2
     accountable_unit: U2.1
+    scope_corrected: >-
+      2026-07-16 errata: every normative statement now says 7 of 8, and U2.1 is scoped by the EXACT
+      SET of seven tables enumerated in migration-plan.md PART 7 - never by count. The SCHEMA itself
+      is unchanged and still non-canonical; only the scope statement was wrong and is now right.
     deletion_condition: all 8 tables are tenant-first and AC-SEC-001 is green
 
 # ---------------------------------------------------------------------------------------------
@@ -281,7 +289,7 @@ expected_acceptance_failures:
     green_at_phase: P2
     accountable_unit: U2.1
   - case: AC-CKPT-6-missing
-    status: NOT_YET_EXECUTABLE
+    status: DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8
     reason: >-
       The case asserts that an action class with a NULL policy gate fails to start. Typed policy and
       action classes do not exist until P8; the current model has lanes with a fail-safe default,
@@ -372,10 +380,14 @@ adapter_import_allowlist:
 # Recomputed corpus counts. The guards assert these against the FILES, not against a headline.
 # ---------------------------------------------------------------------------------------------
 spec_counts:
+  # ERRATA 2026-07-16: the corpus was amended to its own enumeration. Declared == enumerated now.
+  # Counts here are DIAGNOSTICS. The primary oracle is exact set equality against the lists below.
   transitions_enumerated: 134
-  transitions_declared: 141
+  transitions_declared: 134
+  transitions_exact_set_digest: de13ddea5a448a0b
   emitted_events_enumerated: 98
-  emitted_events_declared: 92
+  emitted_events_declared: 98
+  emitted_events_exact_set_digest: 6deb2ccecdfa8b3f
   security_events_enumerated: 13
   domain_entities: 40
   adapters: 18
