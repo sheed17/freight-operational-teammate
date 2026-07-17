@@ -18,13 +18,14 @@
 | [implementation-planning-review.md](implementation-planning-review.md) | ### **the hostile planning review + the verdict** |
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
+| [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
 | [canonical-corpus-errata-review.md](canonical-corpus-errata-review.md) | ### **the bounded errata pass — 141→134, 92→98, 6→7 tables, U0.3→P8 + the 3 findings in its own work** |
 
 ## Phases → gates → units
 | Phase | Units | Gate |
 |---|---|---|
 | ### **0** Baseline & guards | ### **U0.1, U0.2, U0.4 + U0.5–U0.13** *(U0.3 deferred to P8 — see P0-F1)* | ### **G0 — DONE** |
-| ### **1** ⛔ **SAFETY TASK #1** | ### **U1.1–U1.6** | ### **G0 — AC-SAFE-012/013 GREEN** |
+| ### **1** ⛔ **SAFETY TASK #1** | ### **U1.1–U1.6 — DONE** | ### **G0 — AC-SAFE-012/013 GREEN ✔** |
 | **2** Tenant-safe ledger | U2.1–U2.5 | → G4 |
 | **3** Checkpoint + witness | U3.1–U3.5 | → G4 |
 | **4** Adapter containment | U4.1–U4.11 | → G4 · **G3** |
@@ -74,4 +75,5 @@
 | ### **Implementation & migration planning** | ### **FROZEN at `9f20b25`** |
 | ### **Phase 0 — baseline & migration guards** | ### **COMPLETE (`d33f251`) — the guard suite + adjudicated manifest. Its 3 findings are now CORRECTED by the errata pass.** |
 | ### **Canonical Corpus Errata Pass** | ### **COMPLETE — DEF-4/5/6 + P0-F1 corrected; ERRATA 5 made the Phase-0 tree green (it was RED). Corpus only; no code, schema, or behaviour touched.** |
-| ### **Phase 1 — Migration Safety Task #1** | ### **NOT STARTED — by instruction. Unblocked.** |
+| ### **Phase 1 — Migration Safety Task #1** | ### **COMPLETE — the Commit Key identifies the EFFECT, not the decision. AC-SAFE-012/013 GREEN. FORWARD-ONLY: the amount-keyed derivation is deleted, not deprecated.** |
+| ### **Phase 2 — Tenant-safe ledger** | ### **NOT STARTED — by instruction. Unblocked; U2.1 scope corrected to all 7 tables.** |

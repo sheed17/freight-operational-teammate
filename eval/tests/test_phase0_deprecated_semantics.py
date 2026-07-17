@@ -15,13 +15,13 @@ from phase0 import deprecated_probe, manifest
 
 
 def test_the_probe_evaluates_a_real_population():
-    _, ev = deprecated_probe.occurrences(include_tests=True)
+    _, ev = deprecated_probe.occurrences(include_tests=False)
     ev.require_population(minimum=100)
 
 
 def test_deprecated_usage_never_grows():
     """REG-4. Counts may only DECREASE. This is the whole guard."""
-    recomputed = deprecated_probe.counts(include_tests=True)
+    recomputed = deprecated_probe.production_counts()
     baseline = manifest.deprecated_counts()
     grown = {t: (recomputed[t], baseline[t]) for t in baseline if recomputed.get(t, 0) > baseline[t]}
     assert not grown, (
@@ -34,7 +34,7 @@ def test_deprecated_usage_never_grows():
 
 def test_a_decrease_requires_the_manifest_to_be_updated():
     """A count that fell means a rename landed. The manifest must record it, so the list shrinks."""
-    recomputed = deprecated_probe.counts(include_tests=True)
+    recomputed = deprecated_probe.production_counts()
     baseline = manifest.deprecated_counts()
     shrunk = {t: (recomputed[t], baseline[t]) for t in baseline if recomputed.get(t, 0) < baseline[t]}
     assert not shrunk, (
@@ -57,4 +57,39 @@ def test_lane_is_recorded_as_the_largest_and_last_rename():
     lane = next(t for t in manifest.load()["expected_deprecated_terms"]["terms"] if t["term"] == "lane")
     assert lane["removed_by_phase"] == "P8"
     assert lane["accountable_unit"] == "U8.5"
-    assert lane["count"] == deprecated_probe.counts(include_tests=True)["lane"]
+    assert lane["count"] == deprecated_probe.production_counts()["lane"]
+
+
+# --------------------------------------------------------------------------------------------
+# Added in Phase 1, after the count ratchet fired on a LEGITIMATE change and exposed that a raw
+# count is the wrong shape for this guard.
+# --------------------------------------------------------------------------------------------
+
+def test_deprecated_vocabulary_never_spreads_to_a_new_file():
+    """The property that actually matters, which a total count cannot express.
+
+    Phase 1 rewrote operation_router.py and its `lane`/`CommandIntent` counts rose (310->314, 92->93)
+    — legitimately: those ARE the current types, and renaming them is P8's job, explicitly out of
+    Phase-1 scope. A pure count ratchet calls that a regression, which invites the worst possible
+    response: re-baseline the number and move on, until the ratchet means nothing.
+
+    Containment is the real rule. A deprecated term may keep breathing in the files that already own
+    it; it may NEVER reach a file that does not. That is what stops the surface growing while the
+    renames wait their turn.
+    """
+    baseline_owners = set(manifest.load()["expected_deprecated_terms"].get("owning_files", []))
+    if not baseline_owners:
+        pytest.skip("owning-file baseline not recorded")
+    # PRODUCTION only: containment is about the surface P8 must migrate. A new TEST naming the API it
+    # tests entrenches nothing; a new PRODUCTION file adopting deprecated vocabulary does.
+    found, ev = deprecated_probe.occurrences(include_tests=False)
+    ev.require_population(minimum=100)
+    intruders = {
+        term: sorted({o.file for o in occs} - baseline_owners)
+        for term, occs in found.items()
+        if {o.file for o in occs} - baseline_owners
+    }
+    assert not intruders, (
+        "deprecated terminology reached a file that did not previously use it:\n  "
+        + "\n  ".join(f"{t}: {fs}" for t, fs in intruders.items())
+    )

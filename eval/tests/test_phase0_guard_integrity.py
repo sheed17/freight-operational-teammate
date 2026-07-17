@@ -17,6 +17,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from phase0 import manifest
@@ -25,13 +27,20 @@ TESTS = Path(__file__).resolve().parent
 GUARD_FILES = sorted(TESTS.glob("test_phase0_*.py"))
 
 # The cases that MUST run and fail today. Neutering one is the defect this file exists to catch.
-STRICT_XFAIL_CASES = {
+# Nothing is red-by-design any more. The two that were - AC-SAFE-012/013 - went green at Phase 1,
+# and DEF-4/DEF-5 were corrected by the errata pass. The registry stays, because the day a new
+# red-by-design case is added it must be a STRICT xfail (runs, named in CI, breaks the build when it
+# starts passing) and never a skip.
+STRICT_XFAIL_CASES: dict[str, str] = {}
+
+# Cases that are GREEN and must STAY green. Phase 1 earned these; they may never be softened back
+# into silence. Turning a passing safety oracle into an xfail or a skip is how a fix quietly rots:
+# the test still exists, CI still looks calm, and nothing is being checked.
+MUST_BE_GREEN = {
     "test_ac_safe_012_commit_key_excludes_mutable_decision_values": "AC-SAFE-012",
     "test_ac_safe_013_commit_key_exists_for_non_money_effects": "AC-SAFE-013",
-    # DEF-4 and DEF-5 were red-by-design until the Canonical Corpus Errata Pass (2026-07-16)
-    # corrected the corpus to its own enumeration. They are now green exact-set assertions, not
-    # xfails. AC-SAFE-012/013 stay red: they describe a LIVE code defect, fixed at P1, not a
-    # document that could be amended.
+    "test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice": "AC-SAFE-012 (end-to-end)",
+    "test_ac_safe_013_filing_the_same_pod_twice_attaches_it_once": "AC-SAFE-013 (end-to-end)",
 }
 
 
@@ -53,8 +62,31 @@ def test_no_phase0_guard_is_skipped():
     )
 
 
+def test_the_green_safety_oracles_carry_no_xfail_or_skip():
+    """AC-SAFE-012/013 are GREEN as of Phase 1. They may never be weakened back into silence.
+
+    The brief is explicit: do not rename them, replace them with weaker tests, mark them skipped, or
+    broaden their expected exceptions. This asserts the marker-level version of that: a passing
+    safety oracle wearing an xfail is a fix that has quietly stopped being checked.
+    """
+    tests_dir = Path(__file__).resolve().parent
+    guards = tests_dir / "test_phase0_migration_guards.py"
+    text = guards.read_text(encoding="utf-8")
+    for name, case in MUST_BE_GREEN.items():
+        m = re.search(rf"\ndef {re.escape(name)}\(", text)
+        assert m, f"{case}: the oracle {name} has vanished from the suite"
+        preceding = text[max(0, m.start() - 300):m.start()]
+        for weakener in ("xfail", "skip", "skipif"):
+            assert f"@pytest.mark.{weakener}" not in preceding, (
+                f"{case} ({name}) has been weakened with @pytest.mark.{weakener}. It is GREEN and "
+                f"must stay green - Phase 1 is forward-only."
+            )
+
+
 def test_the_red_by_design_cases_are_strict_xfails():
-    """They must RUN and FAIL - and fail the build if they ever silently start passing."""
+    """Any case declared red-by-design must RUN and FAIL - and break the build when it starts passing."""
+    if not STRICT_XFAIL_CASES:
+        pytest.skip("no red-by-design cases remain: AC-SAFE-012/013 went green at Phase 1")
     found = {}
     for path in GUARD_FILES:
         text = path.read_text(encoding="utf-8")

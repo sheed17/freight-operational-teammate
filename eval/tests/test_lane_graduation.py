@@ -203,7 +203,11 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
         store.close()
 
 
-def test_router_does_not_consume_sqlite_daily_cap_when_commit_identity_is_missing(tmp_path):
+def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_identity(tmp_path):
+    """U1.4 (the DEF-2 half): an effect we cannot NAME is one we refuse to run - and refusing must
+    not cost the owner a slot from their daily autonomy cap. The oracle is unchanged from before
+    Phase 1; only the reason text is (identity is no longer 'missing', it is UNCONSTRUCTIBLE, and
+    the router says why)."""
     grad = LaneGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
     store = WorkflowStore(tmp_path / "w.sqlite3")
@@ -220,7 +224,8 @@ def test_router_does_not_consume_sqlite_daily_cap_when_commit_identity_is_missin
         result = router.run(_operate("invoice the load", {"customer": "Acme Corp"}))
 
         assert result.status == "ESCALATED"
-        assert "commit-once" in result.note
+        assert "no safe identity" in result.note
+        assert "no load/invoice reference" in result.note
         assert store.autonomous_runs_today("acme", "raise_invoice") == 0
     finally:
         store.close()

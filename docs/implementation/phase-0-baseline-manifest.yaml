@@ -48,6 +48,7 @@ required_invariants:
 # ---------------------------------------------------------------------------------------------
 expected_current_defects:
   - id: DEF-1
+    status: CLOSED 2026-07-16 by Phase 1 (U1.1/U1.2). Forward-only - may never be restored.
     fact: operation_router.py::_commit_identity includes approved_amount in the commit identity
     reason: >-
       The live defect that Migration Safety Task 1 exists to fix. The amount belongs in the
@@ -59,6 +60,7 @@ expected_current_defects:
     deletion_condition: AC-SAFE-012 flips red to green and no amount reaches any key derivation
 
   - id: DEF-2
+    status: CLOSED 2026-07-16 by Phase 1 (U1.3). Forward-only - may never be restored.
     fact: operation_router.py::_commit_identity returns None when there is no amount
     reason: >-
       Non-money effects (filing a POD) get no commit identity, so their single-commitment cannot be
@@ -70,6 +72,12 @@ expected_current_defects:
     deletion_condition: AC-SAFE-013 green and a non-money effect mints a key
 
   - id: DEF-3
+    status: >-
+      CLOSED 2026-07-16 by Phase 1 (U1.4). NOTE: the frozen plan named test_lane_graduation.py:206,
+      which encodes the NULLABLE-identity defect (DEF-2). The amount-in-key assertion actually lived
+      in test_operation_router.py:282 (test_operation_commit_key_normalizes_equivalent_money_amounts,
+      which passed approved_amount= into the key derivation). BOTH were inverted. See the Phase-1
+      review, finding P1-F1.
     fact: eval/tests/test_lane_graduation.py encodes the amount-in-key defect as expected behaviour
     reason: a test asserting the defect will fight the fix
     risk_id: R-02
@@ -230,39 +238,94 @@ expected_deprecated_terms:
     Names follow behaviour. Each rename is the LAST commit of the phase that made the name true.
     Renaming earlier produces code that reads canonical and behaves legacy.
   counting_rule: >-
-    Word-boundary matches in src/, scripts/ and eval/tests/ (.py files only), EXCLUDING the Phase-0
-    guard files themselves (eval/phase0/** and eval/tests/test_phase0_*). Those files necessarily
-    name the terms they guard; counting them would mean the guard inflates the number it exists to
-    hold down. The exclusion is stated here rather than left implicit, because an unstated exclusion
-    is how a count stops meaning what its label says.
+    PRODUCTION occurrences only: word-boundary matches in src/ and scripts/ (.py). This is the
+    surface P8's rename must migrate, and the only one the ratchet governs.
+
+    REVISED IN PHASE 1, because the previous rule (src + scripts + eval/tests, minus the phase guards)
+    measured the wrong thing and said so out loud: `commit_identity` reached ZERO in production - U1.6
+    complete, the whole point of the unit - while the combined total read 2, both inside a guard whose
+    job is to assert `"def _commit_identity(" not in source`. Naming a deleted symbol in order to
+    forbid it is the opposite of a regression, and a rule that scores it as one only teaches people to
+    silence the rule.
+
+    Tests are counted separately (test_counts) and TRACKED, not ratcheted: a test's vocabulary is
+    derivative of the API it exercises, it entrenches nothing, and P8 sweeps it along with the code.
   deletion_condition: each count must reach 0 at its phase; counts may only DECREASE
+  # The files that already use deprecated vocabulary. CONTAINMENT, not counting: a term may keep
+  # breathing where it already lives, but reaching a NEW file is prohibited. Recorded because the
+  # Phase-1 rewrite proved a raw count ratchet mislabels legitimate work as a regression - and a
+  # guard that cries wolf gets re-baselined into meaninglessness.
+  owning_files:
+    - scripts/enter_tms_payable.py
+    - scripts/propose_ar_from_tms.py
+    - scripts/propose_operation_to_slack.py
+    - scripts/report_legacy_commit_identities.py
+    - scripts/run_action_callback_server.py
+    - scripts/run_dogfood_pilot.py
+    - scripts/run_gmail_to_slack_dogfood.py
+    - scripts/run_mailbox_workflow.py
+    - scripts/run_operate_request.py
+    - src/freight_recon/action_callback.py
+    - src/freight_recon/activity_log.py
+    - src/freight_recon/brain_operator.py
+    - src/freight_recon/browser_use_adapter.py
+    - src/freight_recon/cdp_actuator.py
+    - src/freight_recon/cdp_session.py
+    - src/freight_recon/commit_key.py
+    - src/freight_recon/email_triage.py
+    - src/freight_recon/inbox_brain.py
+    - src/freight_recon/lane_graduation.py
+    - src/freight_recon/mailbox_workflow.py
+    - src/freight_recon/mock_tms_write_server.py
+    - src/freight_recon/operation_proposal.py
+    - src/freight_recon/operation_router.py
+    - src/freight_recon/operator_agent.py
+    - src/freight_recon/ops_control.py
+    - src/freight_recon/roi_ledger.py
+    - src/freight_recon/slack_delegate.py
+    - src/freight_recon/thread_reply.py
+    - src/freight_recon/tms_write.py
+    - src/freight_recon/truckingoffice_write.py
+    - src/freight_recon/workflow.py
   terms:
     - term: lane
-      count: 310
+      count: 227
       canonical: action_class | workflow_id | policy scope
       removed_by_phase: P8
       accountable_unit: U8.5
-      note: three meanings in one word. The largest mechanical change in the plan, deliberately last.
+      note: >-
+        Three meanings in one word. The largest mechanical change in the plan, deliberately last.
+        PRODUCTION baseline @ d33f251 was 257; Phase 1 brought it to 227 - DOWN 30, because deleting
+        the amount-keyed derivation took its lane-shaped parameters with it. The new module
+        commit_key.py is lane-free apart from one comment naming the concept it will replace.
     - term: CommandIntent
-      count: 92
+      count: 57
       canonical: Proposal / Effect Request
       removed_by_phase: P8
       accountable_unit: U8.6
+      note: >-
+        PRODUCTION baseline @ d33f251 was 56; Phase 1 made it 57 (+1, in operation_router.py, whose
+        types ARE CommandIntent-based until P8 renames them - out of Phase-1 scope). ADJUDICATED.
     - term: MockTmsWriteLedger
-      count: 27
+      count: 14
       canonical: spec-derived contract simulator
       removed_by_phase: P3
       accountable_unit: U3.5
     - term: workflow_runs
-      count: 20
+      count: 17
       canonical: Work Item + Pipeline Instance (SPLIT, never merged back)
       removed_by_phase: P6
       accountable_unit: U6.4
     - term: commit_identity
-      count: 14
+      count: 0
       canonical: Commit Key
       removed_by_phase: P1
       accountable_unit: U1.6
+      note: >-
+        PRODUCTION: 14 at baseline @ d33f251 -> 0. U1.6 is COMPLETE. Phase 1 replaced the producer
+        and every consumer with the canonical Commit Key. The term survives in production only inside
+        the compound "historical_commit_identity", an escalation payload field NAMING the legacy
+        concept it reports on - a substring, not a word-boundary use.
     - term: operation_action_claims
       count: 2
       canonical: approval consumption
@@ -274,13 +337,19 @@ expected_deprecated_terms:
 # ---------------------------------------------------------------------------------------------
 expected_acceptance_failures:
   - case: AC-SAFE-012
-    status: RED_BY_DESIGN
-    reason: the amount is in the commit identity (DEF-1)
+    status: GREEN_AT_P1
+    reason: >-
+      WAS red by design (the amount was in the commit identity, DEF-1). Phase 1 removed it: the key
+      is derived from LogicalEffect, which has no amount field. Now an ordinary passing test, proved
+      end-to-end against the real router by actuator call count - not by a stub.
     green_at_phase: P1
     accountable_unit: U1.2
   - case: AC-SAFE-013
-    status: RED_BY_DESIGN
-    reason: non-money effects get no commit identity (DEF-2)
+    status: GREEN_AT_P1
+    reason: >-
+      WAS red by design (non-money effects got no commit identity, DEF-2). Phase 1 gives every
+      consequential effect a key AND makes will_commit cover non-money effects, so the reservation
+      path actually engages. Proved by filing the same POD twice and counting uploads.
     green_at_phase: P1
     accountable_unit: U1.3
   - case: AC-SEC-001

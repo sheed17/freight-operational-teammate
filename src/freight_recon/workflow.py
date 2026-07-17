@@ -534,19 +534,9 @@ class WorkflowStore:
     def operation_commit_claim(
         self,
         *,
-        tenant: str,
-        lane: str,
-        load_ref: str,
-        party: str,
-        approved_amount: str,
+        commit_key: str,
     ) -> dict[str, Any] | None:
-        key = operation_commit_key(
-            tenant=tenant,
-            lane=lane,
-            load_ref=load_ref,
-            party=party,
-            approved_amount=approved_amount,
-        )
+        key = commit_key
         row = self.conn.execute(
             "SELECT * FROM operation_commit_claims WHERE commit_key = ?",
             (key,),
@@ -564,28 +554,79 @@ class WorkflowStore:
             "created_at": row["created_at"],
         }
 
-    def claim_operation_commit(
+    def legacy_commit_rows(
         self,
         *,
         tenant: str,
         lane: str,
         load_ref: str,
         party: str,
-        approved_amount: str,
+        canonical_commit_key: str,
+    ) -> list[dict[str, Any]]:
+        """Pre-Phase-1 reservations for this SAME logical effect, found by their stored columns.
+
+        THE COMPATIBILITY BRIDGE. Scope: exactly the rows written by the deleted amount-keyed
+        algorithm, i.e. rows whose descriptive columns identify this logical effect but whose
+        `commit_key` is not the canonical one. Deterministic: a plain indexed lookup on stored
+        columns, with no recomputation of the old key and no guessing.
+
+        Why it must exist: the old key mixed the amount in, so a historically-committed invoice
+        computes a DIFFERENT key today. Without this lookup the canonical claim would succeed, and we
+        would cheerfully raise a second invoice for an effect that already happened - the migration
+        itself becoming the double-commit.
+
+        What it may NOT do: authorize anything. It only ever BLOCKS. It returns rows; the caller
+        escalates. It never infers success, never merges rows, and never converts a legacy row into a
+        canonical reservation - two legacy rows for one logical effect are evidence of a historical
+        double-commit and belong to a human, not to an algorithm.
+
+        Removal: Phase 2 (U2.4), when the ledger backfill adjudicates these rows explicitly.
+        Deletion condition: zero legacy rows remain, proven by the backfill's dry-run report.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT * FROM operation_commit_claims
+            WHERE tenant = ? AND lane = ? AND load_ref = ? AND party = ? AND commit_key != ?
+            """,
+            (tenant, lane, load_ref, party, canonical_commit_key),
+        ).fetchall()
+        return [
+            {
+                "commit_key": r["commit_key"],
+                "tenant": r["tenant"],
+                "lane": r["lane"],
+                "load_ref": r["load_ref"],
+                "party": r["party"],
+                "approved_amount": r["approved_amount"],
+                "payload": json.loads(r["payload_json"]),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def claim_operation_commit(
+        self,
+        *,
+        commit_key: str,
+        tenant: str,
+        lane: str,
+        load_ref: str,
+        party: str,
+        approved_amount: str = "",
         payload: dict[str, Any],
     ) -> bool:
-        """Atomically reserve/record this freight money operation.
+        """Atomically reserve/record this logical external effect, by its canonical Commit Key.
 
         The reservation happens before the browser agent can click a committing button. A crash after
         reservation fails closed and blocks a blind retry instead of risking a double-write.
+
+        The caller supplies the Commit Key; this store no longer derives one. That is the Phase-1
+        correction: the key identifies the logical EFFECT, and `approved_amount` is stored here only
+        as a MATERIAL FACT of the decision - a column, never a key. Two approvals at different
+        amounts for one invoice now converge on ONE reservation instead of raising two invoices.
+        `approved_amount` is "" for non-money effects, which are now reserved too.
         """
-        key = operation_commit_key(
-            tenant=tenant,
-            lane=lane,
-            load_ref=load_ref,
-            party=party,
-            approved_amount=approved_amount,
-        )
+        key = commit_key
         try:
             self.conn.execute(
                 """
@@ -612,20 +653,10 @@ class WorkflowStore:
     def update_operation_commit_payload(
         self,
         *,
-        tenant: str,
-        lane: str,
-        load_ref: str,
-        party: str,
-        approved_amount: str,
+        commit_key: str,
         payload: dict[str, Any],
     ) -> None:
-        key = operation_commit_key(
-            tenant=tenant,
-            lane=lane,
-            load_ref=load_ref,
-            party=party,
-            approved_amount=approved_amount,
-        )
+        key = commit_key
         self.conn.execute(
             """
             UPDATE operation_commit_claims
@@ -636,23 +667,8 @@ class WorkflowStore:
         )
         self.conn.commit()
 
-    def release_operation_commit(
-        self,
-        *,
-        tenant: str,
-        lane: str,
-        load_ref: str,
-        party: str,
-        approved_amount: str,
-    ) -> None:
-        key = operation_commit_key(
-            tenant=tenant,
-            lane=lane,
-            load_ref=load_ref,
-            party=party,
-            approved_amount=approved_amount,
-        )
-        self.conn.execute("DELETE FROM operation_commit_claims WHERE commit_key = ?", (key,))
+    def release_operation_commit(self, *, commit_key: str) -> None:
+        self.conn.execute("DELETE FROM operation_commit_claims WHERE commit_key = ?", (commit_key,))
         self.conn.commit()
 
     def claim_autonomous_run(
@@ -872,24 +888,15 @@ def _direction_scoped_document_hash(document_hash: str, direction: WorkflowDirec
     return document_hash if document_hash.startswith(prefix) else f"{prefix}{document_hash}"
 
 
-def operation_commit_key(
-    *,
-    tenant: str,
-    lane: str,
-    load_ref: str,
-    party: str,
-    approved_amount: str,
-) -> str:
-    raw = "|".join(
-        [
-            tenant.strip().lower(),
-            lane.strip().lower(),
-            load_ref.strip().lower(),
-            party.strip().lower(),
-            normalize_money_amount(approved_amount),
-        ]
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+# `operation_commit_key(tenant, lane, load_ref, party, approved_amount)` was DELETED in Phase 1.
+#
+# It put the approved amount INTO the identity of the effect, so approving GBP 2,850 and then
+# GBP 3,100 for one invoice produced two keys, two reservations, and two invoices. It is deleted
+# rather than deprecated: leaving it importable would leave a second key namespace with independent
+# claim authority, and the whole point is that exactly one identity algorithm exists.
+#
+# The canonical replacement is `freight_recon.commit_key.commit_key(LogicalEffect(...))`, whose
+# signature cannot accept an amount. Phase 1 is FORWARD-ONLY: restoring this function fails the suite.
 
 
 def normalize_money_amount(amount: str) -> str:

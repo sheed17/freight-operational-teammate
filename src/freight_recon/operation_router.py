@@ -22,6 +22,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from freight_recon.commit_key import (
+    LogicalEffect,
+    UnidentifiableEffect,
+    commit_key,
+    document_digest,
+    occurrence_key_for,
+)
 from freight_recon.operator_agent import AgentResult, OperatorAgent
 from freight_recon.slack_delegate import CommandIntent
 from freight_recon.workflow import WorkflowStore, normalize_money_amount
@@ -92,6 +99,9 @@ class OperationRouter:
         document_for: Callable[[CommandIntent], str | None] | None = None,
         graduation=None,
         tenant: str = "default",
+        # WHICH external system holds the truth this effect targets. Part of the Commit Key: the same
+        # load reference in two different TMSs is two different logical effects.
+        target_system: str = "default",
         commit_store: WorkflowStore | None = None,
         browser_lock=None,
         browser_health_check: Callable[[], object] | None = None,
@@ -106,6 +116,7 @@ class OperationRouter:
         # per-run human approval. Absent/ungraduated => supervised (fail-safe).
         self.graduation = graduation
         self.tenant = tenant
+        self.target_system = target_system
         self.commit_store = commit_store
         # Marks the shared browser busy while the agent operates, so the periodic AR-trigger (which
         # reads /loads in the SAME Chrome) defers instead of navigating away mid-write.
@@ -144,7 +155,18 @@ class OperationRouter:
                 "this is a document-filing action but I don't have the file to attach yet — I couldn't "
                 "find the document for that load. Point me at it and I'll file it.",
             )
-        commit_identity = _commit_identity(self.tenant, lane.name, intent, amount)
+        # U1.3: EVERY consequential effect gets a Commit Key - money and non-money alike. When one
+        # cannot be constructed we FAIL CLOSED (escalate); we never fall back to None, a UUID, a
+        # request id or a timestamp, because an attempt-scoped identity makes every retry look like a
+        # brand-new effect, which is the double-commit defect wearing a disguise.
+        commit_reservation: dict | None = None
+        unidentifiable: str | None = None
+        try:
+            commit_reservation = _commit_reservation(
+                self.tenant, self.target_system, lane, intent, amount, document_path=document_path
+            )
+        except UnidentifiableEffect as exc:
+            unidentifiable = str(exc)
 
         # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may only
         # proceed if it is graduated AND the run is within the owner's guardrails (dollar ceiling, party
@@ -164,11 +186,11 @@ class OperationRouter:
                     f"needs your approval — {reason}. Graduate it (with limits) once you trust it and "
                     "I'll handle it unattended.",
                 )
-            if self.commit_store is not None and commit_identity is None:
+            if self.commit_store is not None and commit_reservation is None:
                 return OperationResult(
                     "ESCALATED",
                     lane.name,
-                    "needs your approval — missing load reference or party for commit-once protection",
+                    f"needs your approval — this effect has no safe identity: {unidentifiable}",
                 )
             if self.graduation is not None and self.commit_store is not None:
                 cap = self.graduation.guardrails(self.tenant, lane.name).get("daily_cap")
@@ -203,7 +225,13 @@ class OperationRouter:
             and not autonomous_run
             and not commit_requested
         )
-        will_commit = lane.requires_amount and not prepare_only
+        # Phase 1: a non-money consequential effect (filing a POD, setting a status, creating a load)
+        # is still a real external write, so it now takes a commit-once reservation like a money one.
+        # Before this, `will_commit` was `lane.requires_amount and ...`, so the entire commit-once
+        # path was skipped for them: filing the same POD twice attached it twice, and nothing could
+        # notice. That is the structural half of AC-SAFE-013 - the key alone would have been a
+        # decoration if nothing ever reserved with it.
+        will_commit = not prepare_only
         if self.browser_health_check is not None:
             health = self.browser_health_check()
             if not bool(getattr(health, "healthy", False)):
@@ -219,17 +247,47 @@ class OperationRouter:
                     ],
                 )
         commit_reserved = False
-        if will_commit and self.commit_store is not None and commit_identity is None:
+        if will_commit and self.commit_store is not None and commit_reservation is None:
+            # Fail closed. A consequential effect we cannot name is one we cannot protect.
             return OperationResult(
                 "ESCALATED",
                 lane.name,
-                "needs your approval — missing load reference or party for commit-once protection",
+                f"this effect has no safe identity, so I won't run it: {unidentifiable}",
             )
-        if will_commit and self.commit_store is not None and commit_identity is not None:
+        if will_commit and self.commit_store is not None and commit_reservation is not None:
+            historical = self.commit_store.legacy_commit_rows(
+                tenant=commit_reservation["tenant"],
+                lane=commit_reservation["lane"],
+                load_ref=commit_reservation["load_ref"],
+                party=commit_reservation["party"],
+                canonical_commit_key=commit_reservation["commit_key"],
+            )
+            if historical:
+                # A pre-Phase-1 reservation exists for this SAME logical effect under the old
+                # amount-keyed algorithm. Its canonical key differs, so a blind claim would reserve
+                # again and re-commit an effect that may already have happened. We refuse.
+                # We do NOT infer success from it, and we do NOT merge rows: two legacy rows for one
+                # logical effect are EVIDENCE OF A HISTORICAL DOUBLE-COMMIT, for a human to settle.
+                return OperationResult(
+                    "ESCALATED",
+                    lane.name,
+                    f"a pre-migration attempt to {lane.name} "
+                    f"{commit_reservation['load_ref']} exists under the old amount-keyed identity — "
+                    "check the TMS whether it already happened; it is NOT confirmed done and I will "
+                    "not repeat it.",
+                    [{"historical_commit_identity": True,
+                      "legacy_rows": len(historical),
+                      "disposition": "MANUAL_REVIEW_REQUIRED" if len(historical) > 1 else "UNRESOLVED",
+                      "legacy_commit_keys": [r["commit_key"] for r in historical]}],
+                )
             reserved_payload = {"status": "RESERVED", "summary": intent.summary, "params": intent.params or {}}
-            commit_reserved = self.commit_store.claim_operation_commit(**commit_identity, payload=reserved_payload)
+            commit_reserved = self.commit_store.claim_operation_commit(
+                **commit_reservation, payload=reserved_payload
+            )
             if not commit_reserved:
-                existing = self.commit_store.operation_commit_claim(**commit_identity)
+                existing = self.commit_store.operation_commit_claim(
+                    commit_key=commit_reservation["commit_key"]
+                )
                 prior_status = str(((existing or {}).get("payload") or {}).get("status", "")).upper()
                 # A leaked reservation (a prior run crashed / was killed by the supervisor AFTER reserving
                 # but BEFORE it could confirm a write) is NOT a real commit — we do not know whether the
@@ -240,7 +298,7 @@ class OperationRouter:
                         "ESCALATED",
                         lane.name,
                         f"a prior or concurrent attempt to {lane.name} "
-                        f"{commit_identity.get('load_ref') or 'this record'} has not confirmed it saved — "
+                        f"{commit_reservation.get('load_ref') or 'this record'} has not confirmed it saved — "
                         "check the TMS whether it already happened before retrying (it is NOT confirmed done).",
                         [{"reserved_but_unconfirmed": True,
                           "commit_key": existing.get("commit_key") if existing else None}],
@@ -284,21 +342,26 @@ class OperationRouter:
             # could mistake for a real commit (false DONE) or blindly repeat (double-write). Mark it
             # NEEDS_VERIFICATION so the retry escalates for a human check. (A hard kill can't run this;
             # the duplicate-guard above treats a bare RESERVED the same way.)
-            if commit_reserved and self.commit_store is not None and commit_identity is not None:
+            if commit_reserved and self.commit_store is not None and commit_reservation is not None:
                 try:
                     self.commit_store.update_operation_commit_payload(
-                        **commit_identity, payload={"status": "NEEDS_VERIFICATION", "summary": intent.summary},
+                        commit_key=commit_reservation["commit_key"],
+                        payload={"status": "NEEDS_VERIFICATION", "summary": intent.summary},
                     )
                 except Exception:  # noqa: BLE001 - never mask the original crash
                     pass
             raise
         steps = list(result.steps)
         committed = _result_committed(result)
-        if committed and commit_identity is not None:
+        if committed and commit_reservation is not None:
             commit_payload = {"status": result.status, "note": result.note, "steps": steps[-5:]}
             if self.commit_store is not None:
-                self.commit_store.update_operation_commit_payload(**commit_identity, payload=commit_payload)
-                existing = self.commit_store.operation_commit_claim(**commit_identity)
+                self.commit_store.update_operation_commit_payload(
+                    commit_key=commit_reservation["commit_key"], payload=commit_payload
+                )
+                existing = self.commit_store.operation_commit_claim(
+                    commit_key=commit_reservation["commit_key"]
+                )
                 steps.append(
                     {
                         "committed": True,
@@ -307,8 +370,8 @@ class OperationRouter:
                 )
             else:
                 steps.append({"committed": True})
-        elif commit_reserved and self.commit_store is not None and commit_identity is not None:
-            self.commit_store.release_operation_commit(**commit_identity)
+        elif commit_reserved and self.commit_store is not None and commit_reservation is not None:
+            self.commit_store.release_operation_commit(commit_key=commit_reservation["commit_key"])
         # Count an unattended run against the daily cap only once it actually ran.
         if autonomous_run and self.graduation is not None and self.commit_store is None:
             self.graduation.record_autonomous_run(self.tenant, lane.name)
@@ -332,19 +395,88 @@ def _load_ref_of(intent: CommandIntent) -> str | None:
     return None
 
 
-def _commit_identity(tenant: str, lane: str, intent: CommandIntent, amount: str | None) -> dict | None:
-    if not amount:
-        return None
+def _logical_effect(
+    tenant: str,
+    target_system: str,
+    lane: OperationLane,
+    intent: CommandIntent,
+    *,
+    document_path: str | None = None,
+) -> LogicalEffect:
+    """The canonical identity of the logical external effect this intent would cause.
+
+    Raises UnidentifiableEffect when identity cannot be determined. The caller MUST fail closed.
+
+    The approved amount is not an argument. It cannot be: `LogicalEffect` has no field for it. That
+    is the Phase-1 correction stated structurally rather than by convention - the defect was that
+    `approved_amount` sat in the identity, so two readings of ONE invoice at different figures looked
+    like two invoices and both committed.
+    """
+    params = intent.params or {}
     load_ref = _load_ref_of(intent)
     party = _party_of(intent)
-    if not load_ref or not party:
-        return None
+    if not load_ref:
+        raise UnidentifiableEffect(
+            "no load/invoice reference is bound to this request, so the logical effect has no target"
+        )
+    if not party:
+        raise UnidentifiableEffect(
+            "no counterparty is bound to this request, so the logical effect has no target"
+        )
+    digest = None
+    if document_path:
+        try:
+            digest = document_digest(document_path)
+        except OSError as exc:
+            raise UnidentifiableEffect(f"the document to file could not be read: {exc}") from exc
+    occurrence = occurrence_key_for(
+        lane.name,
+        explicit=params.get("occurrence_key"),
+        document_digest=digest,
+        target_status=params.get("status_value"),
+    )
+    # Normalise each component BEFORE joining. Joining first and normalising the composite only
+    # strips the ends, so " ld-1 " + "cust" would keep its inner space and fork the identity of one
+    # invoice into two - the very thing a Commit Key exists to prevent. Two readings of one effect
+    # must converge no matter how the parser spaced or cased them.
+    resource = f"{str(load_ref).strip().lower()}|{str(party).strip().lower()}"
+    return LogicalEffect(
+        tenant=tenant,
+        action_class=lane.name,
+        target_system=target_system,
+        target_resource_id=resource,
+        target_operation=lane.name,
+        occurrence_key=occurrence,
+    )
+
+
+def _commit_reservation(
+    tenant: str,
+    target_system: str,
+    lane: OperationLane,
+    intent: CommandIntent,
+    amount: str | None,
+    *,
+    document_path: str | None = None,
+) -> dict:
+    """The reservation record for one logical effect: its canonical Commit Key, plus material facts.
+
+    The split is the point of Phase 1:
+      - `commit_key` answers "is this the SAME logical effect?"  - and nothing mutable may enter it.
+      - `approved_amount` answers "are the approved values still identical?" - it is carried here as
+        a MATERIAL FACT, stored beside the reservation, never inside its identity.
+
+    The amount is preserved, not discarded. It is simply no longer allowed to say who the effect is.
+    """
+    effect = _logical_effect(tenant, target_system, lane, intent, document_path=document_path)
     return {
+        "commit_key": effect.key(),
         "tenant": tenant,
-        "lane": lane,
-        "load_ref": load_ref,
-        "party": party,
-        "approved_amount": normalize_money_amount(amount),
+        "lane": lane.name,
+        "load_ref": _load_ref_of(intent) or "",
+        "party": _party_of(intent) or "",
+        # MATERIAL FACT, not identity. "" for a non-money effect, which now reserves too.
+        "approved_amount": normalize_money_amount(amount) if amount else "",
     }
 
 

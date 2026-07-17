@@ -15,7 +15,8 @@ from freight_recon.operation_router import (  # noqa: E402
 )
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
-from freight_recon.workflow import WorkflowStore, operation_commit_key  # noqa: E402
+from freight_recon.commit_key import LogicalEffect, commit_key  # noqa: E402
+from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 
 class FakeActuator:
@@ -279,17 +280,42 @@ def test_staged_run_with_create_invoice_opener_is_not_read_as_committed():
     assert _result_committed(real) is True               # the real tagged commit does count
 
 
-def test_operation_commit_key_normalizes_equivalent_money_amounts():
-    base = {
-        "tenant": "acme",
-        "lane": "record_payable",
-        "load_ref": "LD-1",
-        "party": "TQL",
-    }
-    assert operation_commit_key(**base, approved_amount="$2,850") == operation_commit_key(
-        **base,
-        approved_amount="2850.00",
+def test_commit_key_cannot_take_an_amount_at_all():
+    """U1.4 - the inversion of the test that ENCODED the defect (DEF-3).
+
+    This test used to read:
+
+        assert operation_commit_key(**base, approved_amount="$2,850") == operation_commit_key(
+            **base, approved_amount="2850.00")
+
+    It asserted that two SPELLINGS of the same amount produce one key - true, and reassuring, and
+    beside the point. By passing `approved_amount=` at all it enshrined the amount as part of the
+    effect's identity, so two DIFFERENT amounts produced two keys, two reservations, and two
+    invoices. The old assertion cannot be restored: `operation_commit_key` no longer exists, and
+    `LogicalEffect` has no field an amount could occupy.
+    """
+    import pytest
+
+    with pytest.raises(ImportError):
+        from freight_recon.workflow import operation_commit_key  # noqa: F401
+
+    with pytest.raises(TypeError):
+        LogicalEffect(
+            tenant="acme", action_class="record_payable", target_system="tms",
+            target_resource_id="LD-1|TQL", target_operation="record_payable",
+            occurrence_key="", approved_amount="2850.00",   # type: ignore[call-arg]
+        )
+
+
+def test_the_same_logical_payable_has_one_key_whatever_the_amount():
+    """AC-SAFE-012's shape at the derivation: the amount is simply not part of identity."""
+    effect = LogicalEffect(
+        tenant="acme", action_class="record_payable", target_system="tms",
+        target_resource_id="LD-1|TQL", target_operation="record_payable", occurrence_key="",
     )
+    # There is no amount to vary - which is the proof. The key is a function of the effect alone.
+    assert commit_key(effect) == effect.key()
+    assert len(commit_key(effect)) == 64
 
 
 def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
@@ -363,8 +389,15 @@ def test_leaked_reserved_claim_from_hard_kill_escalates(tmp_path):
     # must still escalate (verify), not report DONE.
     store = WorkflowStore(tmp_path / "workflow.sqlite3")
     try:
-        store.claim_operation_commit(tenant="acme", lane="raise_invoice", load_ref="LD-9001",
-                                     party="Acme", approved_amount="2850.00", payload={"status": "RESERVED"})
+        # Seed the leaked reservation under the CANONICAL key (the oracle is unchanged: a bare
+        # RESERVED claim must escalate, never report DONE — we do not know if the TMS was written).
+        leaked = LogicalEffect(
+            tenant="acme", action_class="raise_invoice", target_system="default",
+            target_resource_id="LD-9001|Acme", target_operation="raise_invoice", occurrence_key="",
+        )
+        store.claim_operation_commit(commit_key=leaked.key(), tenant="acme", lane="raise_invoice",
+                                     load_ref="LD-9001", party="Acme", approved_amount="2850.00",
+                                     payload={"status": "RESERVED"})
         good = _agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}]))
         res = OperationRouter(lanes=freight_lanes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
                               tenant="acme", commit_store=store).run(
