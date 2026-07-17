@@ -16,11 +16,13 @@
 | [release-gate-plan.md](release-gate-plan.md) | phases→G0–G10 · ### **the G4 correction** |
 | [implementation-risk-register.md](implementation-risk-register.md) | R-01…R-20 |
 | [implementation-planning-review.md](implementation-planning-review.md) | ### **the hostile planning review + the verdict** |
+| [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
+| [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 
 ## Phases → gates → units
 | Phase | Units | Gate |
 |---|---|---|
-| **0** Baseline & guards | U0.1–U0.4 | **G0** |
+| ### **0** Baseline & guards | ### **U0.1, U0.2, U0.4 + U0.5–U0.13** *(U0.3 deferred to P8 — see P0-F1)* | ### **G0 — DONE** |
 | ### **1** ⛔ **SAFETY TASK #1** | ### **U1.1–U1.6** | ### **G0 — AC-SAFE-012/013 GREEN** |
 | **2** Tenant-safe ledger | U2.1–U2.5 | → G4 |
 | **3** Checkpoint + witness | U3.1–U3.5 | → G4 |
@@ -68,5 +70,6 @@
 | Architecture (ADR-001…011 + A1–A4) | **FROZEN** |
 | Semantic Model · Target Spec Rev 2 | **FROZEN** |
 | Specifications (entities, machines, events, domain, adapters, workflows, acceptance) | **FROZEN** |
-| ### **Implementation & migration planning** | ### **COMPLETE — awaiting the owner's verdict** |
-| Implementation | ### **NOT STARTED — by instruction** |
+| ### **Implementation & migration planning** | ### **FROZEN at `9f20b25`** |
+| ### **Phase 0 — baseline & migration guards** | ### **COMPLETE — 753 passed / 4 named red-by-design xfails. 3 owner decisions pending (DEF-4/DEF-5 block G1/G2; DEF-6 blocks P2).** |
+| ### **Phase 1 — Migration Safety Task #1** | ### **NOT STARTED — by instruction. Unblocked.** |

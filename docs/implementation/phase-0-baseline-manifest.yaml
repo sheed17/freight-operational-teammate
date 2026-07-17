@@ -1,0 +1,386 @@
+# Phase-0 Baseline Manifest
+#
+# The adjudicated record of what is TRUE about this repository today. Every Phase-0 guard RECOMPUTES
+# these facts and compares them here. A changed fact fails the build and requires a human to change
+# this file deliberately - that is the whole mechanism.
+#
+# This manifest does not make anything safe. Several entries below record that the repository is
+# UNSAFE, on purpose, so that the unsafe state cannot drift or be forgotten. An allowance here is
+# not containment; it is a receipt for a known hole, with a named owner and a deletion condition.
+#
+# RULE: no indefinite allowance. No wildcard allowance. No allowance justified only as "legacy".
+
+baseline:
+  commit: 9f20b25
+  recon_commit: 6057dfe
+  tests_passing_at_baseline: 677
+  test_count_rule: >-
+    The guard direction is >=. Tests may be added freely; a DROP in the collected count is a hard
+    failure. Silently losing a test is how a guard disappears without anyone deciding to remove it.
+
+# ---------------------------------------------------------------------------------------------
+# REQUIRED_INVARIANT - true now and forever. Breaking one is a hard failure, not a delta.
+# ---------------------------------------------------------------------------------------------
+required_invariants:
+  - id: INV-P0-1
+    rule: every Phase-0 probe reports its evaluated count and fails on an empty population
+    reason: a checker that parsed nothing has proven nothing (planning review M-9)
+    accountable_unit: U0.5
+  - id: INV-P0-2
+    rule: no production entry point may execute a financial effect against a mock
+    reason: finding R-01, the archetype defect. Already green; must never regress.
+    accountable_unit: pre-existing (test_no_mock_effect_in_production)
+  - id: INV-P0-3
+    rule: a CONSEQUENTIAL_FRESHNESS_READ may not accept a cache
+    reason: guard V-3. Already green by negative control.
+    accountable_unit: pre-existing (test_consequential_read_boundary)
+  - id: INV-P0-4
+    rule: every completion oracle must resolve to a canonical acceptance case id
+    reason: the invented AC-SEC-000 oracle (planning review M-1) named a test that did not exist
+    accountable_unit: U0.6
+  - id: INV-P0-5
+    rule: G4 must resolve through Phase 8
+    reason: planning review M-3. An under-scoped G4 is a path to an ungated live write.
+    accountable_unit: U0.7
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_CURRENT_DEFECT - real defects, adjudicated, allowed ONLY until the named phase.
+# ---------------------------------------------------------------------------------------------
+expected_current_defects:
+  - id: DEF-1
+    fact: operation_router.py::_commit_identity includes approved_amount in the commit identity
+    reason: >-
+      The live defect that Migration Safety Task 1 exists to fix. The amount belongs in the
+      Material-Facts Fingerprint, never in the identity of the effect.
+    risk_id: R-02
+    acceptance: AC-SAFE-012
+    removed_by_phase: P1
+    accountable_unit: U1.2
+    deletion_condition: AC-SAFE-012 flips red to green and no amount reaches any key derivation
+
+  - id: DEF-2
+    fact: operation_router.py::_commit_identity returns None when there is no amount
+    reason: >-
+      Non-money effects (filing a POD) get no commit identity, so their single-commitment cannot be
+      enforced or proven.
+    risk_id: R-02
+    acceptance: AC-SAFE-013
+    removed_by_phase: P1
+    accountable_unit: U1.3
+    deletion_condition: AC-SAFE-013 green and a non-money effect mints a key
+
+  - id: DEF-3
+    fact: eval/tests/test_lane_graduation.py encodes the amount-in-key defect as expected behaviour
+    reason: a test asserting the defect will fight the fix
+    risk_id: R-02
+    acceptance: AC-SAFE-012
+    removed_by_phase: P1
+    accountable_unit: U1.4
+    deletion_condition: the assertion is inverted and cannot be restored without failing AC-SAFE-012
+
+  # --- Defects found BY Phase 0, in the frozen corpus itself. These block G1/G2, not P1. ---
+  - id: DEF-4
+    fact: >-
+      The frozen corpus declares 141 machine transitions. The 13 machine files enumerate 134, and
+      the acceptance spec's OWN per-machine table sums to 134.
+    reason: >-
+      An arithmetic error propagated to six places, including release gate G1 ("141/141") and
+      AC-MACH-000 ("a bijection with the 141 spec rows"). A correct implementation of all 134 spec
+      transitions would FAIL that bijection forever. Both tempting fixes are bad: invent 7
+      transitions, or weaken the bijection to an inequality.
+    risk_id: P0-F2
+    acceptance: AC-MACH-000
+    removed_by_phase: owner adjudication - REQUIRED BEFORE G1 (P6)
+    accountable_unit: U0.8
+    deletion_condition: >-
+      The corpus is amended to the enumerated count, or the 7 missing transitions are specified.
+      The probe then asserts equality.
+
+  - id: DEF-5
+    fact: >-
+      The frozen corpus declares 92 emitted events. The canonical event list (events/registry.md
+      section 3) enumerates 98 across F1..F13.
+    reason: >-
+      Same class as DEF-4. F14 (13 security events) is correct. F15 is a lens and declares no
+      contracts. AC-EVT-003 asserts a "141 to 92 map" - both numbers are wrong.
+    risk_id: P0-F2
+    acceptance: AC-EVT-003
+    removed_by_phase: owner adjudication - REQUIRED BEFORE G2 (P5)
+    accountable_unit: U0.8
+    deletion_condition: the corpus is amended to the enumerated count and the probe asserts equality
+
+  - id: DEF-6
+    fact: >-
+      The frozen plan states "6 of 8 tables are not tenant-first" in seven places. Exactly one table
+      (autonomous_run_counters) is tenant-first, so the true count is 7 of 8.
+    reason: >-
+      Not a harmless typo. U2.1 is scoped to "the 6 offending tables". Executed literally, Phase 2
+      would migrate 6, leave 1 non-tenant-first, and AC-SEC-001 would stay red with the phase marked
+      done.
+    risk_id: R-06
+    acceptance: AC-SEC-001
+    removed_by_phase: P2
+    accountable_unit: U2.1
+    deletion_condition: all 8 tables are tenant-first and AC-SEC-001 is green
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_NONCANONICAL_SCHEMA - recorded, not migrated. Phase 0 changes no schema.
+# ---------------------------------------------------------------------------------------------
+expected_noncanonical_schema:
+  reason: >-
+    Tenant is not first in the key, so the uniqueness domain is global. A tenant COLUMN is not
+    tenant isolation: operation_commit_claims HAS a tenant column and is still unsafe, because its
+    PRIMARY KEY is commit_key alone.
+  risk_id: R-06
+  acceptance: AC-SEC-001
+  removed_by_phase: P2
+  accountable_unit: U2.1
+  deletion_condition: every table below is tenant-first; this list must reach empty
+  tables_not_tenant_first:
+    - workflow_runs
+    - audit_events
+    - security_events
+    - operation_action_claims
+    - delivery_action_claims
+    - operation_commit_claims
+    - operation_token_amounts
+  tables_tenant_first:
+    - autonomous_run_counters
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.
+# ---------------------------------------------------------------------------------------------
+expected_legacy_paths:
+  reason: >-
+    These paths can execute real external effects with no checkpoint, no witness, and no grant.
+    Phase 0 makes them visible. It does not make them safe.
+  risk_id: R-07
+  status: OPEN - NOT CONTAINED
+  removed_by_phase: P4
+  accountable_unit: U4.6 (delete), U4.7 (de-actuate), U4.8 (convert)
+  deletion_condition: >-
+    EP-6/7/9/10 are physically deleted, orient_tms loses its actuator import, EP-1/EP-3 are pipeline
+    clients, and the U4.9 import gate is ON.
+  containment_mechanism: >-
+    NONE. Until P4 the only mitigation is the operator's one-writer-at-a-time discipline, which is
+    discipline, not a mechanism. This entry may never be read as containment.
+  effect_capable_by_import:
+    - script: scripts/enter_invoice_discovered.py
+      ep: EP-7
+      cutover: REMOVE_BEFORE_ENABLE
+    - script: scripts/enter_tms_payable.py
+      ep: EP-12
+      cutover: test-only (mock-guarded)
+    - script: scripts/enter_truckingoffice_invoice.py
+      ep: EP-6
+      cutover: REMOVE_BEFORE_ENABLE
+    - script: scripts/orient_tms.py
+      ep: EP-8
+      cutover: MAKE_READ_ONLY (remove the cdp_actuator import)
+      note: read-only by convention, actuator-capable by import
+    - script: scripts/propose_ar_from_tms.py
+      ep: EP-3
+      cutover: CONVERT_TO_PIPELINE_CLIENT
+    - script: scripts/read_tms_browser_use.py
+      ep: UNLISTED
+      cutover: CLASSIFY
+      note: >-
+        Not present in the frozen EP-1..EP-13 inventory. Imports browser_use_adapter. Finding P0-F4.
+    - script: scripts/run_action_callback_server.py
+      ep: EP-1
+      cutover: CONVERT_TO_PIPELINE_CLIENT
+    - script: scripts/run_dogfood_pilot.py
+      ep: EP-13
+      cutover: test-only (mock-guarded)
+    - script: scripts/run_operate_request.py
+      ep: EP-9
+      cutover: REMOVE_BEFORE_ENABLE
+    - script: scripts/run_operator_agent.py
+      ep: EP-10
+      cutover: REMOVE_BEFORE_ENABLE
+  references_to_effect_capable:
+    - script: scripts/run_teammate.py
+      references:
+        - scripts/propose_ar_from_tms.py
+        - scripts/run_action_callback_server.py
+      classification: SPAWNS
+      note: >-
+        EP-2, the supervisor. Effect-capable ONLY by spawn, which an import-only guard cannot see.
+    - script: scripts/run_sunday_readiness.py
+      references:
+        - scripts/run_action_callback_server.py
+      classification: DOCUMENTS
+      note: >-
+        Emits the command as a runbook STRING for a human to copy. Launches nothing. Adjudicated as
+        not effect-capable. A first version of this probe guessed SPAWNS here and was wrong.
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_DEPRECATED_TERM - recorded and frozen at these counts. Phase 0 renames nothing.
+# ---------------------------------------------------------------------------------------------
+expected_deprecated_terms:
+  reason: >-
+    Names follow behaviour. Each rename is the LAST commit of the phase that made the name true.
+    Renaming earlier produces code that reads canonical and behaves legacy.
+  counting_rule: >-
+    Word-boundary matches in src/, scripts/ and eval/tests/ (.py files only), EXCLUDING the Phase-0
+    guard files themselves (eval/phase0/** and eval/tests/test_phase0_*). Those files necessarily
+    name the terms they guard; counting them would mean the guard inflates the number it exists to
+    hold down. The exclusion is stated here rather than left implicit, because an unstated exclusion
+    is how a count stops meaning what its label says.
+  deletion_condition: each count must reach 0 at its phase; counts may only DECREASE
+  terms:
+    - term: lane
+      count: 310
+      canonical: action_class | workflow_id | policy scope
+      removed_by_phase: P8
+      accountable_unit: U8.5
+      note: three meanings in one word. The largest mechanical change in the plan, deliberately last.
+    - term: CommandIntent
+      count: 92
+      canonical: Proposal / Effect Request
+      removed_by_phase: P8
+      accountable_unit: U8.6
+    - term: MockTmsWriteLedger
+      count: 27
+      canonical: spec-derived contract simulator
+      removed_by_phase: P3
+      accountable_unit: U3.5
+    - term: workflow_runs
+      count: 20
+      canonical: Work Item + Pipeline Instance (SPLIT, never merged back)
+      removed_by_phase: P6
+      accountable_unit: U6.4
+    - term: commit_identity
+      count: 14
+      canonical: Commit Key
+      removed_by_phase: P1
+      accountable_unit: U1.6
+    - term: operation_action_claims
+      count: 2
+      canonical: approval consumption
+      removed_by_phase: P3
+      accountable_unit: U3.2
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_ACCEPTANCE_FAILURE - red on purpose. Not skipped, not xfailed into silence.
+# ---------------------------------------------------------------------------------------------
+expected_acceptance_failures:
+  - case: AC-SAFE-012
+    status: RED_BY_DESIGN
+    reason: the amount is in the commit identity (DEF-1)
+    green_at_phase: P1
+    accountable_unit: U1.2
+  - case: AC-SAFE-013
+    status: RED_BY_DESIGN
+    reason: non-money effects get no commit identity (DEF-2)
+    green_at_phase: P1
+    accountable_unit: U1.3
+  - case: AC-SEC-001
+    status: RED_BY_DESIGN
+    reason: 7 of 8 tables are not tenant-first (DEF-6)
+    green_at_phase: P2
+    accountable_unit: U2.1
+  - case: AC-CKPT-6-missing
+    status: NOT_YET_EXECUTABLE
+    reason: >-
+      The case asserts that an action class with a NULL policy gate fails to start. Typed policy and
+      action classes do not exist until P8; the current model has lanes with a fail-safe default,
+      not a NOT-NULL gate. Running this probe today would evaluate ZERO gates and report green - the
+      exact false-green M-9 pattern. It is therefore declared not-yet-executable rather than passed.
+      See finding P0-F1: the frozen plan lists U0.3 as a Phase-0 unit, which is not achievable.
+    green_at_phase: P8
+    accountable_unit: U8.1
+
+# ---------------------------------------------------------------------------------------------
+# PROHIBITED_NEW_REGRESSION - the shrinking-only rules. These are the point of Phase 0.
+# ---------------------------------------------------------------------------------------------
+prohibited_new_regressions:
+  - id: REG-1
+    rule: no new persisted table without tenant first in its key
+    detected_by: test_phase0_tenant_posture
+  - id: REG-2
+    rule: no new direct adapter import site; the allowlist is shrinking-only
+    detected_by: test_phase0_adapter_imports
+  - id: REG-3
+    rule: no new effect-capable entry point without a classification in this manifest
+    detected_by: test_phase0_entry_points
+  - id: REG-4
+    rule: no new use of a deprecated term; counts may only decrease
+    detected_by: test_phase0_deprecated_semantics
+  - id: REG-5
+    rule: no invented acceptance identifier may be used as a completion oracle
+    detected_by: test_phase0_identifiers
+  - id: REG-6
+    rule: G4 may not be reduced to P2-P4 or omit any AC-SAFE case
+    detected_by: test_phase0_planning_graph
+  - id: REG-7
+    rule: no checker may report green after evaluating zero records
+    detected_by: test_phase0_evaluation_contract
+  - id: REG-8
+    rule: a module classified read-only may not import an actuator
+    detected_by: test_phase0_entry_points
+
+# ---------------------------------------------------------------------------------------------
+# The direct adapter import allowlist. SHRINKING-ONLY. Adding an entry is prohibited.
+# ---------------------------------------------------------------------------------------------
+adapter_import_allowlist:
+  counting_rule: >-
+    An (importer_module, imported_adapter_module) EDGE from the AST import graph, where the importer
+    is not the adapter itself. This rule is stated because the frozen plan's "13 direct adapter
+    import sites" is not reproducible: several defensible rules give 13, 16, 18 or 31. An unstated
+    counting rule is the M-4 pattern - a number nobody can adjudicate. See finding P0-F3.
+  recomputed_edges: 31
+  recomputed_importer_modules: 18
+  frozen_plan_claimed: 13
+  removed_by_phase: P4
+  accountable_unit: U4.1-U4.9
+  deletion_condition: the U4.9 CI import gate is ON and this list is empty
+  edges:
+    - src/freight_recon/brain_runtime.py -> tms_write
+    - src/freight_recon/browser_use_adapter.py -> tms_write
+    - src/freight_recon/cdp_actuator.py -> cdp_session
+    - src/freight_recon/discovered_write.py -> tms_write
+    - src/freight_recon/discovered_write.py -> truckingoffice_write
+    - src/freight_recon/mock_tms_write_server.py -> tms_write
+    - src/freight_recon/multistep_write.py -> tms_write
+    - src/freight_recon/multistep_write.py -> truckingoffice_write
+    - src/freight_recon/truckingoffice_write.py -> tms_write
+    - scripts/discover_tms_screen.py -> cdp_session
+    - scripts/enter_invoice_discovered.py -> cdp_session
+    - scripts/enter_invoice_discovered.py -> discovered_write
+    - scripts/enter_invoice_discovered.py -> tms_write
+    - scripts/enter_invoice_discovered.py -> truckingoffice_write
+    - scripts/enter_tms_payable.py -> tms_write
+    - scripts/enter_tms_payable.py -> browser_use_adapter
+    - scripts/enter_truckingoffice_invoice.py -> cdp_session
+    - scripts/enter_truckingoffice_invoice.py -> tms_write
+    - scripts/enter_truckingoffice_invoice.py -> truckingoffice_write
+    - scripts/orient_tms.py -> cdp_actuator
+    - scripts/orient_tms.py -> cdp_session
+    - scripts/propose_ar_from_tms.py -> cdp_actuator
+    - scripts/propose_ar_from_tms.py -> cdp_session
+    - scripts/read_tms_browser_use.py -> browser_use_adapter
+    - scripts/run_action_callback_server.py -> cdp_actuator
+    - scripts/run_action_callback_server.py -> cdp_session
+    - scripts/run_dogfood_pilot.py -> tms_write
+    - scripts/run_operate_request.py -> cdp_actuator
+    - scripts/run_operate_request.py -> cdp_session
+    - scripts/run_operator_agent.py -> cdp_actuator
+    - scripts/run_operator_agent.py -> cdp_session
+
+# ---------------------------------------------------------------------------------------------
+# Recomputed corpus counts. The guards assert these against the FILES, not against a headline.
+# ---------------------------------------------------------------------------------------------
+spec_counts:
+  transitions_enumerated: 134
+  transitions_declared: 141
+  emitted_events_enumerated: 98
+  emitted_events_declared: 92
+  security_events_enumerated: 13
+  domain_entities: 40
+  adapters: 18
+  loops: 11
+  safety_invariants: 28
+  false_closure_rules: 16
+  cross_loop_handoffs: 10
+  cross_domain_invariants: 20
