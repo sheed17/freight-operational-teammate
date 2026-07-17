@@ -49,6 +49,13 @@ One central `_require_schema_ready()` · fresh databases created **directly** in
 
 ### **Two are merge-gating** (`AC-SAFE-012` / `AC-SAFE-013` end-to-end) — both failing on the **router/store mismatch**, i.e. on stale fixtures, not on the money invariant. ### **Until they are green, that is a claim, not a fact, and this unit is NOT READY.**
 
+## ⛔ BLOCKER 1 — CLOSED *(2026-07-17)*
+### **The migration accepted `--assert-tenant default` and assigned every historical row to a sentinel.** Proven against a copy of the live workspace: **18 real `workflow_runs` rows came out owned by `"default"`.** ### **That hole was mine.**
+> ### **`default` is not ownership. It is missing ownership, spelled so that it compiles.** And a migration is the worst place for it: production writes one bad tenant onto one row and someone notices; a migration writes it onto every historical row at once and calls the job done.
+
+**Fix:** the assertion now goes through the **same `require_tenant()` boundary production construction uses** — validated *before* inspect, before open, before anything. ### **There is no second, looser path for migrations**, asserted by a test. The CLI refuses cleanly instead of throwing a traceback, because a traceback invites someone to work around it.
+**Proven (19 tests):** every canonical sentinel refused case-insensitively *(iterating `FORBIDDEN_TENANTS`, so a new sentinel is covered the day it is added)* · blank/whitespace/non-string refused · ### **an invalid assertion costs ZERO rows, ZERO ledger inserts and ZERO quarantine entries — quarantining under `"default"` would be the same defect wearing a safety label** · the dry run refuses too · a valid tenant succeeds and normalises exactly as production does · ### **no assertion still quarantines all 120 rows rather than guessing.**
+
 ## 24–25. Concurrency · mutation: ### **NOT RUN.** No qualification was performed.
 
 ## 26–32. Open findings — ### **ALL PRESERVED**
@@ -69,6 +76,8 @@ One central `_require_schema_ready()` · fresh databases created **directly** in
 ## ### **NOT READY**
 
 **The snapshot is the best implementation of U2.6BC that exists, and it is close.** 21/22 methods scoped, one central readiness contract with no fallback, canonical fresh-schema creation, tenant-consistent FKs verified rather than assumed — and ### **it fixes a real cross-tenant money defect that my own U2.6A left open.**
+
+### **Blockers 2–6 remain OPEN:** auditable owner assertions (actor/basis/scope, fail-closed) · the **complete** schema-readiness oracle (the 8 malformed-but-plausible schemas) · exact-set method/table/site qualification · the 16-shape migration matrix · concurrency schedules · the mutation suite.
 
 ### **What stands between it and READY is small and known:**
 1. ### **Update the stale fixtures so router and store tenants agree** (7 failures, incl. both merge-gating cases — the guard is right, the tests are old).

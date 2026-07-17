@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from freight_recon.migrations.phase2_tenant_first import MigrationRefused, migrate  # noqa: E402
+from freight_recon.tenant import InvalidTenant, MissingTenant  # noqa: E402
 
 
 def main() -> int:
@@ -34,6 +35,11 @@ def main() -> int:
     args = ap.parse_args()
     try:
         rep = migrate(args.db, assert_tenant=args.assert_tenant, dry_run=not args.apply)
+    except (InvalidTenant, MissingTenant) as exc:
+        # A rejected owner assertion is an operator error, not a crash. It gets the same clean
+        # refusal as any other, because a traceback invites someone to "work around" it.
+        print(f"MIGRATION REFUSED — invalid owner assertion: {exc}", file=sys.stderr)
+        return 2
     except MigrationRefused as exc:
         print(f"MIGRATION REFUSED: {exc}", file=sys.stderr)
         return 2

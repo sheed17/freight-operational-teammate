@@ -38,6 +38,11 @@ from typing import Any
 
 MIGRATION_ID = "phase2_tenant_first"
 
+# The SAME boundary production uses. An asserted migration tenant is not a lesser kind of tenant
+# identity that may be spelled loosely - it is the identity every migrated row will carry forever,
+# and it is the one place where a bad value is written to 120 rows at once instead of one.
+from ..tenant import require_tenant  # noqa: E402
+
 # The exact seven. Enumerated, never counted: the plan once said "6 of 8" and Phase 2 executed
 # literally would have left `operation_token_amounts` behind with AC-SEC-001 still red and the phase
 # marked done. The guard compares this SET against the live schema.
@@ -471,6 +476,13 @@ def migrate(db: str, *, assert_tenant: str | None = None, dry_run: bool = True) 
     are quarantined intact. There is deliberately no fallback value, because a sentinel tenant is an
     inference that merges two tenants' history the first time a database is shared.
     """
+    # Validate BEFORE inspecting, before opening, before anything: an invalid assertion must cost
+    # zero rows, zero ledger inserts, and zero quarantine entries under the bad value. `default` is
+    # not ownership - it is missing ownership spelled so it compiles, and a migration is exactly
+    # where that mistake becomes permanent for every historical row at once.
+    if assert_tenant is not None:
+        assert_tenant = require_tenant(
+            assert_tenant, context=f"migration owner assertion for {db}")
     rep = inspect(db)
     rep.dry_run = dry_run
     rep.tenant_assertion = assert_tenant
