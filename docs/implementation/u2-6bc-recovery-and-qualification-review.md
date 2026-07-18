@@ -56,6 +56,10 @@ One central `_require_schema_ready()` · fresh databases created **directly** in
 **Fix:** the assertion now goes through the **same `require_tenant()` boundary production construction uses** — validated *before* inspect, before open, before anything. ### **There is no second, looser path for migrations**, asserted by a test. The CLI refuses cleanly instead of throwing a traceback, because a traceback invites someone to work around it.
 **Proven (19 tests):** every canonical sentinel refused case-insensitively *(iterating `FORBIDDEN_TENANTS`, so a new sentinel is covered the day it is added)* · blank/whitespace/non-string refused · ### **an invalid assertion costs ZERO rows, ZERO ledger inserts and ZERO quarantine entries — quarantining under `"default"` would be the same defect wearing a safety label** · the dry run refuses too · a valid tenant succeeds and normalises exactly as production does · ### **no assertion still quarantines all 120 rows rather than guessing.**
 
+## ⛔ BLOCKER 2 — CLOSED *(2026-07-17)*
+Historical ownership now requires a durable **owner assertion**: `actor_id` · `tenant` · `scope` · `operational_basis` · `evidence_reference`, recorded in the **existing** audit architecture (no competing system) ### **BEFORE the rows it authorises move.** 18 sentinel actors and 20 generic bases refused; `--assert-tenant` alone no longer authorises anything; a changed tenant is a **conflict**, refused, with both claims preserved. Append-only — a guard forbids rewriting an assertion. ### **23 tests against the real migration and a real copy of the live workspace; 19/19 mutations detected.** Detail: `u2-6bc-blocker-2-owner-assertion-review.md`.
+> ### **Two lessons paid for in this blocker:** six mutations first read as MISSED and all six were *my* mutations disabling one of two defending branches — a mutation that does not reintroduce the defect proves nothing. And I ran `git checkout` inside a debugging loop and **destroyed my own uncommitted implementation**, rebuilding it from the surviving tests.
+
 ## 24–25. Concurrency · mutation: ### **NOT RUN.** No qualification was performed.
 
 ## 26–32. Open findings — ### **ALL PRESERVED**

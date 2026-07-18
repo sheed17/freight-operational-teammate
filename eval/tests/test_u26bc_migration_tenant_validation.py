@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from freight_recon.migrations.phase2_tenant_first import migrate
+from freight_recon.migrations.phase2_tenant_first import OwnerAssertion, migrate
 from freight_recon.tenant import FORBIDDEN_TENANTS, InvalidTenant, MissingTenant
 
 REAL = Path(__file__).resolve().parents[2] / "data" / "active_workspace" / "neyma_workflow.sqlite3"
@@ -61,19 +61,19 @@ def _count(db: str, table: str) -> int:
                                  "unknown", "test", "none", "system", "shared"])
 def test_1_2_6_every_sentinel_is_rejected_case_insensitively(bad):
     with pytest.raises(InvalidTenant):
-        migrate(_legacy_copy(), assert_tenant=bad, dry_run=False)
+        migrate(_legacy_copy(), assertion=_assertion(bad), dry_run=False)
 
 
 def test_3_4_blank_and_whitespace_are_rejected():
     for bad in ("", "   ", "\t\n"):
         with pytest.raises(MissingTenant):
-            migrate(_legacy_copy(), assert_tenant=bad, dry_run=False)
+            migrate(_legacy_copy(), assertion=_assertion(bad), dry_run=False)
 
 
 def test_5_non_string_is_rejected():
     for bad in (123, 0, [], {}, object()):
         with pytest.raises(InvalidTenant):
-            migrate(_legacy_copy(), assert_tenant=bad, dry_run=False)   # type: ignore[arg-type]
+            migrate(_legacy_copy(), assertion=_assertion(bad), dry_run=False)   # type: ignore[arg-type]
 
 
 def test_every_canonical_sentinel_is_covered_not_just_the_ones_i_thought_of():
@@ -81,7 +81,7 @@ def test_every_canonical_sentinel_is_covered_not_just_the_ones_i_thought_of():
     assert len(FORBIDDEN_TENANTS) >= 15
     for sentinel in FORBIDDEN_TENANTS:
         with pytest.raises(InvalidTenant):
-            migrate(_legacy_copy(), assert_tenant=sentinel, dry_run=False)
+            migrate(_legacy_copy(), assertion=_assertion(sentinel), dry_run=False)
 
 
 def test_8_9_10_an_invalid_assertion_costs_zero_rows_zero_ledger_and_zero_quarantine():
@@ -94,7 +94,7 @@ def test_8_9_10_an_invalid_assertion_costs_zero_rows_zero_ledger_and_zero_quaran
     assert before == 18, "the fixture is not the real legacy workspace"
 
     with pytest.raises(InvalidTenant):
-        migrate(db, assert_tenant="default", dry_run=False)
+        migrate(db, assertion=_assertion("default"), dry_run=False)
 
     tables = _tables(db)
     assert "migration_quarantine" not in tables, "a refused migration created quarantine rows"
@@ -103,9 +103,21 @@ def test_8_9_10_an_invalid_assertion_costs_zero_rows_zero_ledger_and_zero_quaran
     assert _count(db, "workflow_runs") == before, "a refused migration touched the data"
 
 
+def _assertion(tenant: str) -> OwnerAssertion:
+    """Blocker 2 retired the bare-tenant path: a tenant alone no longer authorises assignment.
+    These tests still prove what they always did — that a VALID tenant is accepted and normalised
+    exactly as production normalises it — they just carry the full assertion now."""
+    return OwnerAssertion(
+        actor_id="rasheed@neyma", tenant=tenant,
+        scope="neyma_workflow.sqlite3 — all pre-migration legacy rows",
+        operational_basis="sole workspace onboarded for Acme in June 2026; verified against the onboarding record",
+        evidence_reference="docs/onboarding/acme-2026-06.md",
+    )
+
+
 def test_7_a_valid_explicit_tenant_succeeds():
     db = _legacy_copy()
-    rep = migrate(db, assert_tenant="acme-brokerage", dry_run=False)
+    rep = migrate(db, assertion=_assertion("acme-brokerage"), dry_run=False)
     assert rep.tenant_assertion == "acme-brokerage"
     assert sum(rep.rows_migrated.values()) > 0
     assert sum(rep.rows_quarantined.values()) == 0
@@ -113,7 +125,7 @@ def test_7_a_valid_explicit_tenant_succeeds():
 
 def test_a_valid_tenant_is_normalised_the_same_way_production_normalises_it():
     db = _legacy_copy()
-    rep = migrate(db, assert_tenant="  Acme-Brokerage  ", dry_run=False)
+    rep = migrate(db, assertion=_assertion("  Acme-Brokerage  "), dry_run=False)
     assert rep.tenant_assertion == "Acme-Brokerage", "migration normalisation drifted from production"
 
 
@@ -129,7 +141,7 @@ def test_no_assertion_still_quarantines_rather_than_guessing():
 def test_the_dry_run_also_refuses_an_invalid_assertion():
     """A dry run that accepts `default` teaches an operator the value is fine."""
     with pytest.raises(InvalidTenant):
-        migrate(_legacy_copy(), assert_tenant="default", dry_run=True)
+        migrate(_legacy_copy(), assertion=_assertion("default"), dry_run=True)
 
 
 def test_there_is_no_second_looser_assertion_path():

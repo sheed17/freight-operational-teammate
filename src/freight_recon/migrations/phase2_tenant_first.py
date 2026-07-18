@@ -31,6 +31,7 @@ Nothing destructive runs before validation, and `--dry-run` writes nothing at al
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass, field
@@ -104,6 +105,110 @@ CLASS_DUPLICATE_LEGACY = "DUPLICATE_LEGACY_RESERVATION"
 CLASS_TEST_ONLY = "TEST_ONLY"
 CLASS_INVALID = "INVALID_LEGACY_STATE"
 CLASS_MANUAL = "MANUAL_REVIEW_REQUIRED"
+
+
+# Actor values that name nobody. Same reasoning as the tenant sentinels: each is a real habit, and
+# each turns "who decided this?" into a question the audit trail cannot answer.
+FORBIDDEN_ACTORS = frozenset({
+    "system", "migration", "admin", "operator", "unknown", "default", "none", "null",
+    "root", "user", "automation", "script", "bot", "ci", "n/a", "na", "-", "test",
+})
+
+# Phrases that look like a reason and carry none. The basis exists so a reader in a year can tell
+# WHY these rows were assigned; "confirmed" tells them nothing.
+GENERIC_BASIS = frozenset({
+    "requested", "confirmed", "migration", "existing data", "assumed single tenant",
+    "ok", "yes", "approved", "as discussed", "per request", "obvious", "same as before",
+    "single tenant", "only tenant", "it's fine", "sure", "done", "n/a", "na", "-",
+})
+
+MIN_BASIS_WORDS = 4
+
+
+class AssertionIncomplete(ValueError):
+    """An owner assertion is missing something it cannot be honest without. Fail closed."""
+
+
+@dataclass(frozen=True)
+class OwnerAssertion:
+    """An authorized human stating who owns historical rows that carry no ownership.
+
+    Every field is required, because the assertion answers a question a machine cannot: these six
+    tables have no tenant anywhere in them, so SOMEONE decided, and the record must say who, what
+    they authorised, and on what basis. An assertion missing any of that is not a weaker assertion -
+    it is a guess with paperwork.
+
+    Frozen: the scope that was validated is the scope that gets applied, with no window in which it
+    could widen between the check and the use.
+    """
+
+    actor_id: str
+    tenant: str
+    scope: str
+    operational_basis: str
+    evidence_reference: str
+    affected_tables: tuple[str, ...] = TENANT_FIRST_TABLES
+
+    def __post_init__(self) -> None:
+        # The SAME production boundary (Blocker 1). No second, looser path for migrations.
+        object.__setattr__(self, "tenant", require_tenant(
+            self.tenant, context="migration owner assertion"))
+
+        actor = str(self.actor_id or "").strip()
+        if not actor:
+            raise AssertionIncomplete(
+                "an owner assertion needs an actor: WHO is asserting that these rows belong to this "
+                "tenant. It is never inferred from the OS user, git, the environment, or the "
+                "configured client - a machine that names the actor has named nobody."
+            )
+        if actor.lower() in FORBIDDEN_ACTORS:
+            raise AssertionIncomplete(
+                f"{self.actor_id!r} does not name a person or an authorized operator. An audit trail "
+                f"whose actor is {actor.lower()!r} cannot answer 'who decided this?'."
+            )
+        object.__setattr__(self, "actor_id", actor)
+
+        scope = str(self.scope or "").strip()
+        if not scope:
+            raise AssertionIncomplete(
+                "an owner assertion needs an explicit bounded scope: which database and which rows "
+                "it authorises. An unbounded assertion silently covers whatever is found later."
+            )
+        object.__setattr__(self, "scope", scope)
+
+        basis = str(self.operational_basis or "").strip()
+        if not basis:
+            raise AssertionIncomplete(
+                "an owner assertion needs an operational basis: WHY the actor believes these rows "
+                "belong to this tenant."
+            )
+        if basis.lower() in GENERIC_BASIS or len(basis.split()) < MIN_BASIS_WORDS:
+            raise AssertionIncomplete(
+                f"{basis!r} is not an operational basis - it is an acknowledgement. State the "
+                f"specific reason a reader could check in a year."
+            )
+        object.__setattr__(self, "operational_basis", basis)
+
+        evidence = str(self.evidence_reference or "").strip()
+        if not evidence:
+            raise AssertionIncomplete(
+                "an owner assertion needs an evidence reference: where the basis can be verified "
+                "(a ticket, a signed message, an onboarding record, a file path)."
+            )
+        object.__setattr__(self, "evidence_reference", evidence)
+
+        if not self.affected_tables:
+            raise AssertionIncomplete("an owner assertion must name the tables it affects")
+
+    def fingerprint(self) -> str:
+        """Identity of WHAT was asserted. A rerun of the same claim matches; a changed tenant, scope,
+        actor or basis does NOT - it must surface as a conflict, never a quiet reassignment."""
+        raw = "|".join([
+            self.actor_id.lower(), self.tenant.lower(), self.scope.lower(),
+            self.operational_basis.lower(), self.evidence_reference.lower(),
+            ",".join(sorted(self.affected_tables)),
+        ])
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
 class MigrationRefused(RuntimeError):
@@ -278,6 +383,33 @@ TARGET_SCHEMA: dict[str, str] = {
             updated_at TEXT NOT NULL,
             PRIMARY KEY (tenant, lane, day)
         )""",
+    # THE OWNER ASSERTION. Append-only: a prior assertion is never rewritten, because rewriting one
+    # to hide a failed attempt is precisely how an audit trail stops being evidence. A rerun that
+    # disagrees is a CONFLICT, recorded beside the original, not a correction of it.
+    "owner_assertions": """
+        CREATE TABLE owner_assertions (
+            assertion_id TEXT PRIMARY KEY,
+            migration_run_id TEXT NOT NULL,
+            migration TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            asserted_tenant TEXT NOT NULL,
+            assertion_scope TEXT NOT NULL,
+            affected_table_set TEXT NOT NULL,
+            operational_basis TEXT NOT NULL,
+            evidence_reference TEXT NOT NULL,
+            source_schema_version TEXT,
+            source_commit TEXT,
+            asserted_at TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN
+                ('PENDING','APPLIED','PARTIALLY_APPLIED','FAILED','DRY_RUN','CONFLICT')),
+            rows_considered INTEGER NOT NULL DEFAULT 0,
+            rows_assigned INTEGER NOT NULL DEFAULT 0,
+            rows_quarantined INTEGER NOT NULL DEFAULT 0,
+            conflicts_detected INTEGER NOT NULL DEFAULT 0,
+            unresolved_rows INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT
+        )""",
+
     # Ambiguous history lives here, intact, until a human settles it. Not deleted, not guessed at.
     "migration_quarantine": """
         CREATE TABLE migration_quarantine (
@@ -468,7 +600,72 @@ def inspect(db: str) -> Report:
         conn.close()
 
 
-def migrate(db: str, *, assert_tenant: str | None = None, dry_run: bool = True) -> Report:
+def _record_assertion(conn: sqlite3.Connection, assertion: "OwnerAssertion", run_id: str,
+                      *, status: str, considered: int = 0) -> str:
+    """Persist the assertion BEFORE the assignment it authorises. Append-only.
+
+    Ordering is the whole point. Assign-then-record leaves a window in which rows are owned by a
+    tenant nobody is recorded as having chosen - and if the recording then fails, that window is
+    permanent and invisible. So the authority exists first, as PENDING, and is completed afterwards.
+    """
+    assertion_id = f"{run_id}:{assertion.fingerprint()}"
+    conn.execute(
+        """
+        INSERT INTO owner_assertions (
+            assertion_id, migration_run_id, migration, actor_id, asserted_tenant, assertion_scope,
+            affected_table_set, operational_basis, evidence_reference, source_schema_version,
+            source_commit, asserted_at, status, rows_considered
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (assertion_id, run_id, MIGRATION_ID, assertion.actor_id, assertion.tenant,
+         assertion.scope, ",".join(sorted(assertion.affected_tables)),
+         assertion.operational_basis, assertion.evidence_reference,
+         str(conn.execute("PRAGMA schema_version").fetchone()[0]), _source_commit(),
+         _now(), status, considered),
+    )
+    return assertion_id
+
+
+def _source_commit() -> str | None:
+    import subprocess
+    try:
+        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def _prior_assertions(conn: sqlite3.Connection) -> list[dict]:
+    if "owner_assertions" not in _tables(conn):
+        return []
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM owner_assertions WHERE status IN ('APPLIED','PARTIALLY_APPLIED')").fetchall()]
+
+
+def _refuse_conflicting_assertion(db: str, assertion: "OwnerAssertion") -> None:
+    """A prior APPLIED assertion naming a different tenant is a conflict, always - even when the rows
+    are already migrated and nothing would change. Both claims are preserved; a human decides."""
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        for prior in _prior_assertions(conn):
+            if prior["asserted_tenant"] != assertion.tenant:
+                conn.execute(
+                    "UPDATE owner_assertions SET conflicts_detected = conflicts_detected + 1 "
+                    "WHERE assertion_id = ?", (prior["assertion_id"],))
+                conn.commit()
+                raise MigrationRefused(
+                    f"CONFLICTING OWNER ASSERTION: {prior['actor_id']} already asserted these rows "
+                    f"belong to {prior['asserted_tenant']!r}; this run asserts {assertion.tenant!r}. "
+                    f"Both claims are preserved. Zero rows reassigned - a human resolves which is "
+                    f"correct."
+                )
+    finally:
+        conn.close()
+
+
+def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
+            assert_tenant: str | None = None, dry_run: bool = True) -> Report:
     """Apply the Phase-2 migration. Resumable, idempotent, and destructive of nothing unvalidated.
 
     `assert_tenant` is a HUMAN ASSERTION - an owner stating that this workspace's untenanted history
@@ -480,14 +677,31 @@ def migrate(db: str, *, assert_tenant: str | None = None, dry_run: bool = True) 
     # zero rows, zero ledger inserts, and zero quarantine entries under the bad value. `default` is
     # not ownership - it is missing ownership spelled so it compiles, and a migration is exactly
     # where that mistake becomes permanent for every historical row at once.
+    if assertion is not None and assert_tenant is not None:
+        raise AssertionIncomplete(
+            "pass an OwnerAssertion or nothing. `assert_tenant` alone no longer authorises "
+            "assignment (Blocker 2): a tenant with no actor, scope, basis or evidence is a guess."
+        )
     if assert_tenant is not None:
-        assert_tenant = require_tenant(
-            assert_tenant, context=f"migration owner assertion for {db}")
+        # Blocker 1's validation still runs first, so a sentinel is named as the real problem - but
+        # a bare tenant no longer AUTHORISES anything.
+        require_tenant(assert_tenant, context=f"migration owner assertion for {db}")
+        raise AssertionIncomplete(
+            "a bare tenant no longer authorises historical assignment. Supply an OwnerAssertion "
+            "with actor_id, scope, operational_basis and evidence_reference: these six tables have "
+            "no ownership in them, so the record must say WHO decided and on what basis."
+        )
+    assert_tenant = assertion.tenant if assertion else None
     rep = inspect(db)
     rep.dry_run = dry_run
     rep.tenant_assertion = assert_tenant
 
     if rep.already_applied:
+        # An applied migration is a no-op for the ROWS - but a DIFFERENT assertion arriving now is
+        # still a conflicting claim about who owns them, and returning "already applied" would let
+        # it pass unremarked. Check the claim first, then no-op.
+        if assertion is not None:
+            _refuse_conflicting_assertion(db, assertion)
         rep.findings.append({"note": "already applied - rerun is a no-op"})
         return rep
     if dry_run:
@@ -501,11 +715,39 @@ def migrate(db: str, *, assert_tenant: str | None = None, dry_run: bool = True) 
         present = _tables(conn)
 
         # ---- STEP 1: introduce structures (bookkeeping + quarantine first, so steps 2-3 can record)
-        for t in ("schema_migrations", "migration_quarantine", "effect_grants"):
+        for t in ("schema_migrations", "migration_quarantine", "owner_assertions", "effect_grants"):
             if t not in present:
                 conn.execute(TARGET_SCHEMA[t])
         conn.commit()
         done = _applied(conn)
+
+        # ---- STEP 1b: the AUTHORITY, recorded BEFORE the assignment it authorises ----
+        run_id = f"{MIGRATION_ID}:{_now()}"
+        assertion_id = None
+        if assertion is not None:
+            for prior in _prior_assertions(conn):
+                if prior["asserted_tenant"] != assertion.tenant:
+                    conn.execute(
+                        "UPDATE owner_assertions SET conflicts_detected = conflicts_detected + 1 "
+                        "WHERE assertion_id = ?", (prior["assertion_id"],))
+                    conn.commit()
+                    raise MigrationRefused(
+                        f"CONFLICTING OWNER ASSERTION: {prior['actor_id']} already asserted these "
+                        f"rows belong to {prior['asserted_tenant']!r}; this run asserts "
+                        f"{assertion.tenant!r}. Both claims are preserved. Zero rows assigned."
+                    )
+                if prior["assertion_id"].endswith(assertion.fingerprint()):
+                    rep.already_applied = True
+                    rep.findings.append({"note": "identical assertion already applied - no-op",
+                                         "assertion_id": prior["assertion_id"],
+                                         "actor_id": prior["actor_id"]})
+                    return rep
+            considered = sum(rep.rows_inspected.values())
+            assertion_id = _record_assertion(conn, assertion, run_id,
+                                             status="PENDING", considered=considered)
+            conn.commit()   # durable BEFORE any row moves
+            rep.findings.append({"assertion_id": assertion_id, "actor_id": assertion.actor_id,
+                                 "asserted_tenant": assertion.tenant, "status": "PENDING"})
 
         # ---- STEPS 2-4: rebuild each table tenant-first, backfilling or quarantining every row
         for table in TENANT_FIRST_TABLES:
@@ -544,6 +786,18 @@ def migrate(db: str, *, assert_tenant: str | None = None, dry_run: bool = True) 
             rep.rows_migrated[table] = migrated
             rep.rows_quarantined[table] = quarantined
             _mark(conn, step, f"migrated={migrated} quarantined={quarantined}")
+            conn.commit()
+
+        # ---- STEP 3b: complete the assertion with what ACTUALLY happened ----
+        if assertion_id is not None:
+            assigned = sum(rep.rows_migrated.values())
+            quarantined = sum(rep.rows_quarantined.values())
+            status = "APPLIED" if quarantined == 0 else "PARTIALLY_APPLIED"
+            conn.execute(
+                "UPDATE owner_assertions SET status = ?, rows_assigned = ?, rows_quarantined = ?, "
+                "unresolved_rows = ?, completed_at = ? WHERE assertion_id = ?",
+                (status, assigned, quarantined, quarantined, _now(), assertion_id),
+            )
             conn.commit()
 
         # ---- STEP 4: validate the backfill BEFORE anything destructive or constraining
