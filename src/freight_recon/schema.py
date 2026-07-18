@@ -29,6 +29,7 @@ import sqlite3
 
 from .migrations.phase2_tenant_first import (
     CANONICAL_TENANT_TABLES,
+    TARGET_SCHEMA,
     GRANT_STATES,
     INDEXES,
     MIGRATION_ID,
@@ -166,9 +167,23 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
             "document would block another tenant's identical bytes."
         )
 
-    if "effect_grants" in present:
-        problems.extend(_ledger_problems(conn))
+    # Nullability, defaults and tenant-consistent foreign keys, per canonical table.
+    for table in CANONICAL_TENANT_TABLES:
+        if table in present:
+            problems.extend(_column_problems(conn, table))
+            problems.extend(_foreign_key_problems(conn, table))
 
+    if "effect_grants" not in present:
+        problems.append(
+            "the canonical effect_grants ledger is missing: there is nowhere to record a logical "
+            "effect's single commitment."
+        )
+    else:
+        problems.extend(_ledger_problems(conn))
+        problems.extend(_column_problems(conn, "effect_grants"))
+
+    problems.extend(_second_ledger_problems(conn, present))
+    problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))
     return problems
 
@@ -215,6 +230,163 @@ def _ledger_problems(conn: sqlite3.Connection) -> list[str]:
             f"unexpected: {sorted(constrained - set(GRANT_STATES))}"
         ]
     return []
+
+
+# --------------------------------------------------------------------------------------------
+# Blocker 3: the invariants a database must actually ENFORCE, not merely declare in a name.
+#
+# Everything below reads structure out of the live database and compares it to what TARGET_SCHEMA
+# says. Nothing is trusted because an index has a familiar name or a migration marker says done -
+# a marker is a claim about the past, and the question this oracle answers is about the present.
+# --------------------------------------------------------------------------------------------
+
+def _canonical_fks() -> dict[str, list[tuple[tuple[str, ...], str, tuple[str, ...]]]]:
+    """Parse the REQUIRED foreign keys out of TARGET_SCHEMA itself.
+
+    Derived, never hand-maintained: a second list would drift from the schema the moment either
+    moved, and a readiness oracle that disagrees with the thing it validates is worse than none.
+    """
+    out: dict[str, list[tuple[tuple[str, ...], str, tuple[str, ...]]]] = {}
+    for table, ddl in TARGET_SCHEMA.items():
+        fks = []
+        for m in re.finditer(
+            r"FOREIGN\s+KEY\s*\(([^)]*)\)\s*REFERENCES\s+(\w+)\s*\(([^)]*)\)", ddl, re.IGNORECASE
+        ):
+            child = tuple(c.strip() for c in m.group(1).split(",") if c.strip())
+            parent_cols = tuple(c.strip() for c in m.group(3).split(",") if c.strip())
+            fks.append((child, m.group(2), parent_cols))
+        if fks:
+            out[table] = fks
+    return out
+
+
+def _canonical_columns(table: str) -> dict[str, dict]:
+    """Column contract (nullability + default) for one canonical table, from TARGET_SCHEMA."""
+    ddl = TARGET_SCHEMA.get(table, "")
+    spec: dict[str, dict] = {}
+    body = ddl[ddl.find("(") + 1: ddl.rfind(")")] if "(" in ddl else ""
+    for raw in body.split("\n"):
+        line = raw.strip().rstrip(",")
+        if not line or line.upper().startswith(("PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK", "--")):
+            continue
+        # Strip the trailing comment FIRST. `gate_decision TEXT,  -- P8: ... NOT NULL at P8` is a
+        # NULLABLE column whose comment says when it becomes required; reading the whole line makes
+        # the oracle demand NOT NULL today and call every canonical database unready. A parser that
+        # reads prose as schema will eventually read the wrong prose.
+        definition = line.split("--", 1)[0].strip().rstrip(",")
+        if not definition:
+            continue
+        parts = definition.split()
+        if len(parts) < 2:
+            continue
+        upper = definition.upper()
+        spec[parts[0]] = {
+            "notnull": "NOT NULL" in upper,
+            "has_default": " DEFAULT " in f" {upper} ",
+        }
+    return spec
+
+
+def _column_problems(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Nullability and defaults on the tenant column and every other canonical NOT NULL column.
+
+    A nullable tenant is a row whose owner is unknown, and a tenant DEFAULT is worse: it invents an
+    owner silently. Both would satisfy a check that only asked whether the column exists.
+    """
+    problems: list[str] = []
+    canonical = _canonical_columns(table)
+    live = {r[1]: r for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, spec in canonical.items():
+        row = live.get(name)
+        if row is None:
+            problems.append(f"{table}.{name} is missing (canonical schema declares it)")
+            continue
+        notnull, default = bool(row[3]), row[4]
+        if spec["notnull"] and not notnull:
+            problems.append(
+                f"{table}.{name} is NULLABLE; the canonical schema declares it NOT NULL"
+                + (" — a nullable tenant is a row whose owner is unknown"
+                   if name == TENANT_COLUMN else "")
+            )
+        if name == TENANT_COLUMN and default is not None:
+            problems.append(
+                f"{table}.{TENANT_COLUMN} carries DEFAULT {default!r}: a defaulted tenant invents an "
+                f"owner nobody chose. Ownership is asserted, never defaulted."
+            )
+    return problems
+
+
+def _foreign_key_problems(conn: sqlite3.Connection, table: str) -> list[str]:
+    """The declared FKs must MATCH the canonical composite tenant-aware ones, in order.
+
+    Column ORDER matters: (tenant, run_id) -> (tenant, id) and (run_id, tenant) -> (tenant, id) are
+    different constraints, and only one of them says "a child may not reference another tenant's
+    parent". A count of foreign keys would call both fine.
+    """
+    required = _canonical_fks().get(table, [])
+    if not required:
+        return []
+    live = []
+    for r in conn.execute(f"PRAGMA foreign_key_list({table})").fetchall():
+        live.append((r[0], r[2], r[3], r[4], r[5], r[6]))   # id, parent, from, to, on_update, on_delete
+    grouped: dict[int, dict] = {}
+    for fid, parent, frm, to, on_update, on_delete in live:
+        g = grouped.setdefault(fid, {"parent": parent, "from": [], "to": [],
+                                     "on_update": on_update, "on_delete": on_delete})
+        g["from"].append(frm)
+        g["to"].append(to)
+    declared = {
+        (tuple(g["from"]), g["parent"], tuple(g["to"])) for g in grouped.values()
+    }
+    problems = []
+    for child_cols, parent, parent_cols in required:
+        if (child_cols, parent, parent_cols) not in declared:
+            problems.append(
+                f"{table} is missing its tenant-consistent foreign key "
+                f"{child_cols} -> {parent}{parent_cols}. Declared: {sorted(declared) or 'none'}. "
+                f"Without it a child may reference another tenant's parent."
+            )
+    return problems
+
+
+def _enforcement_problems(conn: sqlite3.Connection) -> list[str]:
+    """Declarations are not enforcement, and enforcement is not integrity.
+
+    A database can declare every foreign key, have the pragma off, and hold orphans - all three are
+    separate failures and each is reported separately.
+    """
+    problems: list[str] = []
+    enabled = conn.execute("PRAGMA foreign_keys").fetchone()
+    if not enabled or not enabled[0]:
+        problems.append(
+            "PRAGMA foreign_keys is OFF on this connection: every tenant-consistent foreign key is "
+            "decoration. (It is silently ignored inside a transaction — enable it outside one.)"
+        )
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        # Observation, not repair: readiness never deletes an orphan to make itself pass.
+        tables = sorted({str(v[0]) for v in violations})
+        problems.append(
+            f"foreign_key_check reports {len(violations)} existing violation(s) in {tables}: the "
+            f"declarations are correct but the DATA already breaks them. Manual repair required — "
+            f"readiness observes, it does not delete rows to make itself green."
+        )
+    return problems
+
+
+def _second_ledger_problems(conn: sqlite3.Connection, present: set[str]) -> list[str]:
+    """One ledger. A second table carrying commit_key + state is a second effect authority."""
+    problems = []
+    for table in sorted(present):
+        if table in ("effect_grants",) or table.startswith("_legacy_"):
+            continue
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "commit_key" in cols and "state" in cols:
+            problems.append(
+                f"{table!r} carries both commit_key and state: a second effect ledger can reserve "
+                f"the same logical effect independently of effect_grants."
+            )
+    return problems
 
 
 def _has_global_unique_document_hash(conn: sqlite3.Connection) -> bool:

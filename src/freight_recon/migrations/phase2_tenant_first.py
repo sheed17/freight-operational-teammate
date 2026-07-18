@@ -78,7 +78,13 @@ CANONICAL_TENANT_TABLES: tuple[str, ...] = (
 #   exists BECAUSE ownership could not be established. A tenant column here would force the exact
 #   inference the phase refuses, at the one moment we have already proven we cannot make it.
 #   `schema_migrations` records what ran against the DATABASE. A database is not a tenant.
-TENANT_EXEMPT_TABLES: tuple[str, ...] = ("migration_quarantine", "schema_migrations")
+TENANT_EXEMPT_TABLES: tuple[str, ...] = (
+    "migration_quarantine",
+    "schema_migrations",
+    # Blocker 2's audit record: migration bookkeeping, not tenant-owned business data - but it must
+    # exist in BOTH the fresh and migrated shapes, or "canonical" quietly means two things.
+    "owner_assertions",
+)
 
 # Bumped when the canonical shape changes in a way an older binary cannot speak to. A database
 # stamped with a version this code does not know is refused, not guessed at.
@@ -715,7 +721,12 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
         present = _tables(conn)
 
         # ---- STEP 1: introduce structures (bookkeeping + quarantine first, so steps 2-3 can record)
-        for t in ("schema_migrations", "migration_quarantine", "owner_assertions", "effect_grants"):
+        # Every canonical table, not merely the ones this legacy database happened to have. A
+        # workspace that never recorded a delivery claim still needs `delivery_action_claims` to
+        # exist afterwards: otherwise the migration reports success and the application meets
+        # "no such table" at runtime instead of a clean readiness refusal. Found by the Blocker-3
+        # oracle - the migrated shape was missing three canonical tables.
+        for t in ("schema_migrations", "migration_quarantine", "owner_assertions"):
             if t not in present:
                 conn.execute(TARGET_SCHEMA[t])
         conn.commit()
@@ -799,6 +810,24 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
                 (status, assigned, quarantined, quarantined, _now(), assertion_id),
             )
             conn.commit()
+
+        # ---- STEP 3c: create canonical tables this legacy database never had ----
+        # AFTER the rebuild, deliberately. SQLite resolves a foreign key to whatever table holds the
+        # name at CREATE time, so building `delivery_action_claims` while `workflow_runs` is still
+        # renamed to `_legacy_workflow_runs` binds its FK to the legacy table - permanently, and
+        # invisibly until PRAGMA foreign_key_check reports a mismatch. Both defects in this step were
+        # found by the Blocker-3 oracle rather than by reading the code.
+        # EVERY canonical table, from the same list fresh creation uses - not just the tenant-owned
+        # ones. Two lists would mean "canonical" quietly means two different shapes, which is exactly
+        # the drift the readiness oracle exists to make impossible.
+        from ..schema import CANONICAL_TABLES  # single source of truth, imported not duplicated
+
+        live = _tables(conn)
+        for table in CANONICAL_TABLES:
+            if table not in live and table in TARGET_SCHEMA:
+                conn.execute(TARGET_SCHEMA[table])
+                _mark(conn, f"create:{table}", "absent from the legacy database")
+        conn.commit()
 
         # ---- STEP 4: validate the backfill BEFORE anything destructive or constraining
         for table in TENANT_FIRST_TABLES:

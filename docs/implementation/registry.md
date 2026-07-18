@@ -19,6 +19,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [u2-6bc-blocker-3-schema-readiness-review.md](u2-6bc-blocker-3-schema-readiness-review.md) | ### **Blocker 3 CLOSED — the complete readiness oracle; found 2 real migration defects** |
 | [u2-6bc-blocker-2-owner-assertion-review.md](u2-6bc-blocker-2-owner-assertion-review.md) | ### **Blocker 2 CLOSED — auditable owner assertions (who/what/why), recorded before assignment** |
 | [u2-6bc-recovery-and-qualification-review.md](u2-6bc-recovery-and-qualification-review.md) | ### **U2.6BC — the recovered snapshot (`42a87e2`): what it implements, the 16 failures, and why NOT READY** |
 | [u2-6b-tenant-method-review.md](u2-6b-tenant-method-review.md) | ### **U2.6B — NOT READY: zero methods scoped, by design. The all-or-nothing reasoning + the plan.** |

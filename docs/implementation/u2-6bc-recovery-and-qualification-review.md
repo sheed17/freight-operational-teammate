@@ -60,6 +60,12 @@ One central `_require_schema_ready()` · fresh databases created **directly** in
 Historical ownership now requires a durable **owner assertion**: `actor_id` · `tenant` · `scope` · `operational_basis` · `evidence_reference`, recorded in the **existing** audit architecture (no competing system) ### **BEFORE the rows it authorises move.** 18 sentinel actors and 20 generic bases refused; `--assert-tenant` alone no longer authorises anything; a changed tenant is a **conflict**, refused, with both claims preserved. Append-only — a guard forbids rewriting an assertion. ### **23 tests against the real migration and a real copy of the live workspace; 19/19 mutations detected.** Detail: `u2-6bc-blocker-2-owner-assertion-review.md`.
 > ### **Two lessons paid for in this blocker:** six mutations first read as MISSED and all six were *my* mutations disabling one of two defending branches — a mutation that does not reintroduce the defect proves nothing. And I ran `git checkout` inside a debugging loop and **destroyed my own uncommitted implementation**, rebuilding it from the surviving tests.
 
+## ⛔ BLOCKER 3 — CLOSED *(2026-07-17)*
+One readiness oracle, its contract **derived from `TARGET_SCHEMA`** rather than hand-listed, now proves what the database **enforces**: tenant nullability and defaults · **composite tenant-aware FK declarations including column order** · `PRAGMA foreign_keys` on the live connection · **`foreign_key_check` orphans (observed, never repaired)** · the eight ledger states · **no second effect ledger** · structure over migration markers. ### **27 real malformed-schema fixtures; fresh ≡ migrated proven structurally; 19/19 mutations detected.**
+> ### **It found two real migration defects by being RUN, not read:** a migrated database was left **missing three canonical tables** (the migration rebuilt only what the legacy DB happened to have), and creating them naïvely **bound their foreign keys to `_legacy_workflow_runs`** — permanently broken, invisible until `foreign_key_check`. Both were latent in the inherited snapshot and had passed every previous run.
+> ### **The safe restoration harness held:** in-memory save, digest-verified, **no git command anywhere** — written before any mutation ran. Nothing was lost this time.
+Detail: `u2-6bc-blocker-3-schema-readiness-review.md`.
+
 ## 24–25. Concurrency · mutation: ### **NOT RUN.** No qualification was performed.
 
 ## 26–32. Open findings — ### **ALL PRESERVED**

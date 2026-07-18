@@ -186,6 +186,18 @@ expected_noncanonical_schema:
       removed_by_phase: never (structural)
       accountable_unit: U2.6BC
       deletion_condition: none
+    - table: owner_assertions
+      reason: >-
+        Blocker 2's owner-assertion audit record. It is migration BOOKKEEPING, not tenant-owned
+        business data: a row records WHO asserted that some tenant owns historical rows, so the
+        tenant is the subject of the record rather than its owner. Tenant-first keying would make
+        the audit of a disputed ownership claim itself owned by one of the disputing tenants.
+      removed_by_phase: not removed - permanent audit surface
+      accountable_unit: U2.6BC Blocker 2
+      deletion_condition: >-
+        None. This is a durable audit table. Its exemption is bounded instead by a guard: it may
+        never carry commit_key + state (that would make it a second effect ledger), and readiness
+        asserts the canonical table set exactly, so it cannot quietly become business data.
 
 # ---------------------------------------------------------------------------------------------
 # EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.
