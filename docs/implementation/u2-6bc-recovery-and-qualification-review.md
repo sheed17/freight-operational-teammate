@@ -72,6 +72,12 @@ The **application** boundary now matches the database's: 22/22 methods carry the
 > The 5 stale router/store fixtures were corrected by aligning them to one canonical tenant — ### **the guard was right and the fixtures predated it. Nothing was weakened to make production pass.**
 Detail: `u2-6bc-blocker-4-tenant-scope-review.md`.
 
+## ⛔ BLOCKER 5 — CLOSED *(2026-07-17)*
+20 database shapes, 27 cases: every input reaches ### **exactly one of 10 classified outcomes**, each naming a safe next action. ### **The completion marker is written LAST and only if readiness passes.** Dry run is **byte-identical** on every shape; a timeout is ### **`UNKNOWN_OUTCOME`, never `FAILED`**; duplicate legacy reservations are preserved with their material-fact disagreement intact; a future schema version is refused rather than downgraded; an already-canonical database is a true no-op. **16/16 mutations detected.**
+> ### **The matrix found three real defects by being run:** quarantined rows were reported **`CANONICAL_READY`** (a tidy shape holding 120 unowned rows is not ready); ### **re-migrating a canonical database DESTROYED its tenant doc-hash index** — leaving a database that documented the constraint without enforcing it; and index creation was not idempotent. All three were latent at `1d31f07`.
+> ### **And my own next-action guard was too weak** — it checked word count, so `"okand settle each row…"` passed. Tightening it to *a verb must OPEN the instruction* then failed three real outcome texts that described rather than instructed. ### **A status an operator cannot act on is a status that gets ignored.**
+Detail: `u2-6bc-blocker-5-migration-matrix-review.md`.
+
 ## 24–25. Concurrency · mutation: ### **NOT RUN.** No qualification was performed.
 
 ## 26–32. Open findings — ### **ALL PRESERVED**

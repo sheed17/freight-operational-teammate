@@ -131,6 +131,55 @@ GENERIC_BASIS = frozenset({
 MIN_BASIS_WORDS = 4
 
 
+# --------------------------------------------------------------------------------------------
+# Blocker 5: every input database reaches EXACTLY ONE classified outcome.
+#
+# The point of naming them is that an operator can act on the answer. "It failed" is not an outcome
+# - it does not say whether to retry, to supply an assertion, to repair a schema by hand, or to stop
+# and call someone. Each value below carries a safe next action, and the migration must always land
+# on exactly one of them rather than on a traceback.
+# --------------------------------------------------------------------------------------------
+
+CANONICAL_READY = "CANONICAL_READY"
+DRY_RUN_ONLY = "DRY_RUN_ONLY"
+OWNER_ASSERTION_REQUIRED = "OWNER_ASSERTION_REQUIRED"
+QUARANTINED_PENDING_REVIEW = "QUARANTINED_PENDING_REVIEW"
+CONFLICTING_OWNER_ASSERTION = "CONFLICTING_OWNER_ASSERTION"
+PARTIAL_MIGRATION_DETECTED = "PARTIAL_MIGRATION_DETECTED"
+MANUAL_SCHEMA_REPAIR_REQUIRED = "MANUAL_SCHEMA_REPAIR_REQUIRED"
+UNSUPPORTED_SCHEMA_VERSION = "UNSUPPORTED_SCHEMA_VERSION"
+MIGRATION_FAILED_RETRY_SAFE = "MIGRATION_FAILED_RETRY_SAFE"
+MIGRATION_COMPLETE_RESTART_SAFE = "MIGRATION_COMPLETE_RESTART_SAFE"
+
+MIGRATION_OUTCOMES: tuple[str, ...] = (
+    CANONICAL_READY, DRY_RUN_ONLY, OWNER_ASSERTION_REQUIRED, QUARANTINED_PENDING_REVIEW,
+    CONFLICTING_OWNER_ASSERTION, PARTIAL_MIGRATION_DETECTED, MANUAL_SCHEMA_REPAIR_REQUIRED,
+    UNSUPPORTED_SCHEMA_VERSION, MIGRATION_FAILED_RETRY_SAFE, MIGRATION_COMPLETE_RESTART_SAFE,
+)
+
+# What an operator should DO. An outcome without a next action is a status nobody can act on.
+NEXT_ACTION: dict[str, str] = {
+    CANONICAL_READY: "none - the database is canonical and the application may run against it",
+    DRY_RUN_ONLY: "review the report, then re-run with --apply and a complete owner assertion",
+    OWNER_ASSERTION_REQUIRED: (
+        "supply --actor/--assert-tenant/--scope/--basis/--evidence. Ownership of these rows cannot "
+        "be inferred; a human must assert it"),
+    QUARANTINED_PENDING_REVIEW: (
+        "inspect migration_quarantine and settle each row by hand. Nothing was guessed"),
+    CONFLICTING_OWNER_ASSERTION: (
+        "resolve the disagreement by hand: two assertions claim different owners for these rows. "
+        "Both claims are preserved and zero rows were reassigned"),
+    PARTIAL_MIGRATION_DETECTED: "re-run the migration; it resumes from durable evidence",
+    MANUAL_SCHEMA_REPAIR_REQUIRED: (
+        "repair the schema by hand: it is malformed in a way migration must not silently rewrite"),
+    UNSUPPORTED_SCHEMA_VERSION: (
+        "deploy the matching application version: this database was written by a newer binary and "
+        "must NOT be downgraded"),
+    MIGRATION_FAILED_RETRY_SAFE: "re-run; no partial authority was created",
+    MIGRATION_COMPLETE_RESTART_SAFE: "re-run to confirm; the completed work is durable",
+}
+
+
 class AssertionIncomplete(ValueError):
     """An owner assertion is missing something it cannot be honest without. Fail closed."""
 
@@ -223,6 +272,8 @@ class MigrationRefused(RuntimeError):
 
 @dataclass
 class Report:
+    """What the migration saw, did, and what an operator should do next."""
+
     """What the migration saw and did. A dry run produces this and writes nothing."""
 
     dry_run: bool
@@ -235,6 +286,18 @@ class Report:
     findings: list[dict] = field(default_factory=list)
     already_applied: bool = False
     validated: bool = False
+    outcome: str = DRY_RUN_ONLY
+    migration_run_id: str | None = None
+    assertion_id: str | None = None
+    source_schema_version: str | None = None
+    target_schema_version: str | None = None
+    database: str | None = None
+    canonical_effect_rows: int = 0
+    readiness_problems: list[str] = field(default_factory=list)
+
+    @property
+    def next_action(self) -> str:
+        return NEXT_ACTION.get(self.outcome, "unclassified outcome - do not proceed")
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -249,6 +312,15 @@ class Report:
             "rows_quarantined": self.rows_quarantined,
             "classifications": self.classifications,
             "findings": self.findings,
+            "outcome": self.outcome,
+            "next_action": self.next_action,
+            "migration_run_id": self.migration_run_id,
+            "assertion_id": self.assertion_id,
+            "database": self.database,
+            "source_schema_version": self.source_schema_version,
+            "target_schema_version": self.target_schema_version,
+            "canonical_effect_rows": self.canonical_effect_rows,
+            "readiness_problems": self.readiness_problems,
         }
 
 
@@ -482,6 +554,11 @@ def _now() -> str:
     return utc_now()
 
 
+def _index_names(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name IS NOT NULL").fetchall()}
+
+
 def _tables(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 
@@ -562,6 +639,8 @@ def inspect(db: str) -> Report:
     conn.row_factory = sqlite3.Row
     try:
         rep = Report(dry_run=True)
+        rep.database = db
+        rep.target_schema_version = SCHEMA_VERSION
         present = _tables(conn)
         # Idempotency is decided by what this migration RECORDED, not by whether some table happens
         # to exist. Keying it on `effect_grants` was wrong: that table is only created when there are
@@ -604,6 +683,38 @@ def inspect(db: str) -> Report:
         return rep
     finally:
         conn.close()
+
+
+def _final_outcome(db: str, rep: "Report", *, already: bool) -> str:
+    """Readiness decides the outcome. Reaching the last line of the migration does not.
+
+    A migration that finished its steps but left a database the application cannot safely serve is
+    not COMPLETE - it is PARTIAL, and saying so is the difference between an operator re-running it
+    and an operator deploying on top of it.
+    """
+    from ..schema import schema_readiness_problems
+
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        problems = schema_readiness_problems(conn)
+    finally:
+        conn.close()
+    rep.readiness_problems = problems
+    # Quarantine outranks a clean schema. A canonical structure holding rows whose owner nobody has
+    # asserted is not "ready" - it is a database with unresolved history and a tidy shape, and
+    # reporting READY there would invite exactly the deployment this phase exists to prevent.
+    if sum(rep.rows_quarantined.values()):
+        return QUARANTINED_PENDING_REVIEW
+    if not problems:
+        return MIGRATION_COMPLETE_RESTART_SAFE if already else CANONICAL_READY
+    if any("schema version" in p for p in problems):
+        return UNSUPPORTED_SCHEMA_VERSION
+    if sum(rep.rows_quarantined.values()):
+        return QUARANTINED_PENDING_REVIEW
+    if any("foreign_key_check" in p or "manual repair" in p for p in problems):
+        return MANUAL_SCHEMA_REPAIR_REQUIRED
+    return PARTIAL_MIGRATION_DETECTED
 
 
 def _record_assertion(conn: sqlite3.Connection, assertion: "OwnerAssertion", run_id: str,
@@ -702,6 +813,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
     rep.dry_run = dry_run
     rep.tenant_assertion = assert_tenant
 
+    rep.outcome = MIGRATION_COMPLETE_RESTART_SAFE if rep.already_applied else DRY_RUN_ONLY
     if rep.already_applied:
         # An applied migration is a no-op for the ROWS - but a DIFFERENT assertion arriving now is
         # still a conflicting claim about who owns them, and returning "already applied" would let
@@ -709,8 +821,12 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
         if assertion is not None:
             _refuse_conflicting_assertion(db, assertion)
         rep.findings.append({"note": "already applied - rerun is a no-op"})
+        rep.outcome = _final_outcome(db, rep, already=True)
         return rep
     if dry_run:
+        # A dry run that would need an assertion says so, so an operator learns it BEFORE apply.
+        needs = rep.classifications.get(CLASS_AMBIGUOUS_TENANT, 0)
+        rep.outcome = OWNER_ASSERTION_REQUIRED if (needs and assertion is None) else DRY_RUN_ONLY
         return rep
 
     conn = sqlite3.connect(db)
@@ -742,6 +858,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
                         "UPDATE owner_assertions SET conflicts_detected = conflicts_detected + 1 "
                         "WHERE assertion_id = ?", (prior["assertion_id"],))
                     conn.commit()
+                    rep.outcome = CONFLICTING_OWNER_ASSERTION
                     raise MigrationRefused(
                         f"CONFLICTING OWNER ASSERTION: {prior['actor_id']} already asserted these "
                         f"rows belong to {prior['asserted_tenant']!r}; this run asserts "
@@ -766,6 +883,12 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             if step in done or table not in present:
                 continue
             target = "effect_grants" if table == "operation_commit_claims" else table
+            if _is_tenant_first(conn, table):
+                # ALREADY canonical: rebuilding it would drop the table and take its indexes with
+                # it, leaving a database that documents its tenant constraints without enforcing
+                # them. Re-migrating a canonical database must be a no-op, not a demotion.
+                _mark(conn, step, "already tenant-first - no rebuild")
+                continue
             rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()]
             has_tenant = any(r[1] in ("tenant", "tenant_id")
                              for r in conn.execute(f"PRAGMA table_info({table})").fetchall())
@@ -846,10 +969,18 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
 
         # ---- STEP 5: constraints/indexes, only now that the data is proven
         for name, ddl in INDEXES.items():
-            if f"index:{name}" in _applied(conn):
-                continue
+            # Deliberately NOT gated on the step marker. A marker records that this migration once
+            # created the index; the rebuild above may since have dropped the table it sat on.
+            # Liveness is checked below, against the database as it is now.
             table = ddl.split(" ON ")[1].split(" ")[0]
             if table not in _tables(conn):
+                continue
+            if name in _index_names(conn):
+                # Already present RIGHT NOW - not "was present earlier". The rebuild drops a table
+                # and its indexes with it, so an existence check cached from before the rebuild
+                # would skip re-creating an index that no longer exists and leave the database
+                # documenting a constraint it does not enforce.
+                _mark(conn, f"index:{name}", "already present")
                 continue
             try:
                 conn.execute(ddl)
@@ -888,6 +1019,19 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             raise MigrationRefused(f"foreign-key violations after cleanup: {residual[:5]}")
         _mark(conn, "verify:post_cleanup")
         conn.commit()
+
+        # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
+        # A marker written before readiness is a claim about the past that outranks the present.
+        # Structure decides; the marker only records what structure already proved.
+        rep.outcome = _final_outcome(db, rep, already=False)
+        rep.migration_run_id = run_id
+        rep.assertion_id = assertion_id
+        if "effect_grants" in _tables(conn):
+            rep.canonical_effect_rows = conn.execute(
+                "SELECT COUNT(*) FROM effect_grants").fetchone()[0]
+        if rep.outcome in (CANONICAL_READY, MIGRATION_COMPLETE_RESTART_SAFE):
+            _mark(conn, f"version:{SCHEMA_VERSION}", "readiness proven")
+            conn.commit()
         return rep
     finally:
         conn.close()
