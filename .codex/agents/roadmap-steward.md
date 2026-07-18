@@ -1,3 +1,21 @@
+
+> ## ⛔ SUPERSEDED STATUS — READ `CLAUDE.md` FIRST
+>
+> **This file is a TASK LENS, not an authority on product, status or roadmap.**
+>
+> - **Product identity:** [`PRODUCT.md`](../../PRODUCT.md) — Neyma is an **operational execution
+>   layer** for freight brokerages across **eleven** loops. **Not** an invoice processor.
+> - **Current status:** [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) —
+>   Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED**.
+> - **Roadmap:** [`docs/implementation/PHASE-OUTPUTS.md`](../../docs/implementation/PHASE-OUTPUTS.md)
+>   — phases **P0–P14**, gates G0–G10.
+>
+> ### **Any "Stage 1–8" roadmap, "Current Phase" or "Current status" block below is HISTORICAL and
+> must not be followed.** The 8-stage roadmap is superseded. Where this file and `CLAUDE.md`
+> disagree, **`CLAUDE.md` wins.**
+>
+> Full audit: [`docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](../../docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md)
+
 # Codex Roadmap Steward
 
 Use this as the Codex planning and gatekeeping lens for the Neyma Freight Ops Agentic
@@ -44,7 +62,12 @@ For the broader Neyma product roadmap, use `docs/PRODUCT_ROADMAP.md`, which star
 Stage 0 discovery and continues through pilot deployment, workflow pack expansion, and
 production hardening.
 
-## Current Verified Status
+## ⛔ Current Verified Status — SUPERSEDED
+
+### **Superseded by [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md)**
+(P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN). The snapshot below predates the reset.
+
+<details><summary>Historical snapshot — not authoritative</summary>
 
 As of this repo snapshot:
 
@@ -59,7 +82,13 @@ As of this repo snapshot:
   production use.
 - The broader agentic workflow architecture is now documented, but not yet implemented.
 
-## Next Actions To Advance Stage 1
+</details>
+
+## ⛔ Next Actions To Advance Stage 1 — SUPERSEDED
+
+### **The next approved unit is `U-HANDOFF-1`**, per `docs/implementation/CURRENT.md`. The steps below target a gate passed long ago.
+
+<details><summary>Historical</summary>
 
 1. Generate the realistic synthetic corpus:
 
@@ -86,3 +115,5 @@ If real/client-approved docs arrive later, add them as a separate validation sli
 - Keep money as decimal values in production code and preserve exact tolerance rules.
 - Track overconfidence separately from raw accuracy because confident wrong money fields are
   the dangerous failure mode.
+
+</details>

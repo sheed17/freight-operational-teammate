@@ -21,6 +21,12 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [durable-cli-control-documentation-review.md](durable-cli-control-documentation-review.md) | ### **DURABLE CLI CONTROL — the repository now replaces conversation memory: PRODUCT/ARCHITECTURE/CLAUDE, the authority map over 198 docs, one status authority, 17 work units, 14 legacy dispositions, 68 documentation guards, 34/34 mutations. Next: zero-context handoff rehearsal.** |
+| [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
+| [IMPLEMENTATION-REGISTRY.yaml](IMPLEMENTATION-REGISTRY.yaml) | the work units, statuses and dependencies |
+| [PHASE-OUTPUTS.md](PHASE-OUTPUTS.md) | P0–P14: what each phase buys, and what stays prohibited |
+| [LEGACY-DISPOSITION.md](LEGACY-DISPOSITION.md) | one disposition per subsystem; no permanent legacy category |
+| [AUTO-LOADED-GUIDANCE-REVIEW.md](AUTO-LOADED-GUIDANCE-REVIEW.md) | every auto-loaded file audited and dispositioned |
 | [u2-6bc-blocker-6-final-phase-2-review.md](u2-6bc-blocker-6-final-phase-2-review.md) | ### **Blocker 6 CLOSED — PHASE 2 COMPLETE. Suite GREEN (1073/0/1); AC-SEC-001 satisfied at the Phase-2 surfaces; 20 concurrency schedules; 49/49 mutations detected; every guard classified. R-07 still OPEN.** |
 | [u2-6bc-blocker-5-migration-matrix-review.md](u2-6bc-blocker-5-migration-matrix-review.md) | ### **Blocker 5 CLOSED — 20 shapes, 10 classified outcomes; found 3 real migration defects** |
 | [u2-6bc-blocker-4-tenant-scope-review.md](u2-6bc-blocker-4-tenant-scope-review.md) | ### **Blocker 4 CLOSED — 22/22 methods tenant-scoped; AC-SAFE-012/013 GREEN again** |

@@ -1,0 +1,581 @@
+# IMPLEMENTATION REGISTRY
+#
+# The single machine-readable control record of implementation work units.
+#
+# Statuses are EXACTLY: BLOCKED | READY | IN_PROGRESS | COMPLETE
+# There is deliberately no "mostly done", "nearly ready" or "in review". A unit that is not
+# COMPLETE is not done, and a unit that is not READY may not be started.
+#
+# Guarded by eval/tests/test_docs_control_system.py:
+#   - exactly one unit may be READY at a time
+#   - no unit may be both BLOCKED and READY
+#   - every READY unit must name dependencies and an acceptance contract
+#   - every unit's dependencies must exist in this file
+#
+# Sequencing authority: implementation-roadmap.md (phases P0-P14, gates G0-G10).
+# Status authority: CURRENT.md.
+
+meta:
+  version: 1
+  baseline_commit: 7d72498
+  validated_tree: f2b22f037c814b99b29bc24012f3ddc612ade921
+  phase_numbering: >-
+    P0-P14 with gates G0-G10, per implementation-roadmap.md. This is the repository's approved
+    numbering. The 8-stage roadmap in docs/PRODUCT_ROADMAP.md is SUPERSEDED and must not be used.
+  suite: "1073 passed, 0 failed, 1 conditionally justified skip"
+
+units:
+
+  # ============================================================ COMPLETE
+  - unit_id: P0
+    name: Baseline and anti-false-green infrastructure
+    objective: >-
+      Establish a mechanically adjudicated record of what is true about the repository before
+      anything changes, and the guard infrastructure that makes a false green detectable.
+    status: COMPLETE
+    dependencies: []
+    unlocked_by: []
+    blocks: [P1]
+    canonical_references:
+      - docs/implementation/implementation-roadmap.md
+      - docs/implementation/phase-0-baseline-manifest.yaml
+    allowed_scope: [baseline manifest, probes, guards, evidence]
+    prohibited_scope: [production behaviour changes, schema changes, migrations, symbol renames]
+    expected_production_outputs: [phase-0-baseline-manifest.yaml, eval/phase0/*, Phase-0 guard suite]
+    expected_capability: >-
+      No customer-visible capability. Internal: the repository can now detect when a guard passes
+      without asserting anything.
+    boundaries_affected: [eval/phase0, eval/tests]
+    acceptance_contract: docs/implementation/phase-0-implementation-review.md
+    concurrency_requirements: none
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: []
+    rollback_posture: "Inert. Guards only; deleting them changes no runtime behaviour."
+    validation_blockers: []
+    completion_evidence:
+      - docs/implementation/phase-0-implementation-review.md
+      - commit d33f251
+      - "errata: docs/implementation/canonical-corpus-errata-review.md (a199df1)"
+    next_units_unlocked: [P1]
+
+  - unit_id: P1
+    name: Correct effect identity (Commit Key)
+    objective: >-
+      Remove the amount from the Commit Key so that two approvals at different amounts for one
+      invoice converge on ONE effect, and bind occurrence identity to a canonical business
+      occurrence rather than a caller-supplied string.
+    status: COMPLETE
+    dependencies: [P0]
+    unlocked_by: [P0]
+    blocks: [P2]
+    canonical_references:
+      - docs/architecture/decisions/ADR-009-concurrency-and-reservations.md
+      - docs/architecture/decisions/ADR-005-approval-binding-and-drift.md
+      - docs/specifications/acceptance/platform-safety-acceptance.md
+    allowed_scope: [commit key derivation, occurrence identity, guards]
+    prohibited_scope: [schema tenancy changes, adapter changes, checkpoint work]
+    expected_production_outputs: [src/freight_recon/commit_key.py]
+    expected_capability: >-
+      A retry of the same logical effect is recognised as the same effect. The double-invoice
+      defect is structurally impossible.
+    boundaries_affected: [src/freight_recon/commit_key.py, src/freight_recon/workflow.py]
+    acceptance_contract: "AC-SAFE-012, AC-SAFE-013"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: "forward-only: no rollback may restore amount-dependent keys"
+    legacy_dispositions_affected: [commit_identity]
+    rollback_posture: "FORWARD-ONLY. The defective behaviour may not be restored."
+    validation_blockers: []
+    completion_evidence:
+      - docs/implementation/phase-1-implementation-review.md
+      - docs/implementation/phase-1-occurrence-identity-review.md
+      - commits 149c02a, da07936
+    next_units_unlocked: [P2]
+
+  - unit_id: P2
+    name: Tenant-safe persistence
+    objective: >-
+      Make the tenant real at every persistence boundary: required at construction, validated
+      against sentinels, first in every key, enforced by the database, with historical ownership
+      assigned only by a recorded human assertion.
+    status: COMPLETE
+    dependencies: [P1]
+    unlocked_by: [P1]
+    blocks: [P3]
+    canonical_references:
+      - docs/specifications/acceptance/security-and-tenancy-acceptance.md
+      - docs/implementation/data-migration-plan.md
+    allowed_scope: [schema, migration, store scoping, readiness oracle, ownership assertions]
+    prohibited_scope: [checkpoint, witness, claim CAS, adapter containment, freight workflows]
+    expected_production_outputs:
+      - src/freight_recon/tenant.py
+      - src/freight_recon/schema.py
+      - src/freight_recon/migrations/phase2_tenant_first.py
+      - "src/freight_recon/workflow.py (tenant-scoped)"
+    expected_capability: >-
+      Two brokerages can share one database with no cross-tenant read, write or disclosure. The
+      same document bytes and the same Commit Key in two tenants are two independent effects.
+    boundaries_affected: [src/freight_recon/workflow.py, schema, migrations]
+    acceptance_contract: "AC-SEC-001 (Phase-2 surfaces), AC-SAFE-012, AC-SAFE-013"
+    concurrency_requirements: "required - 20 schedules, real SQLite, real threads"
+    mutation_requirements: "required - 49 load-bearing mutations"
+    migration_requirements: "10 classified outcomes; marker written LAST and only if readiness passes"
+    legacy_dispositions_affected: [workflow_store, operation_router]
+    rollback_posture: >-
+      The migration is resumable and idempotent. A legacy database is refused by the application
+      rather than written into.
+    validation_blockers: []
+    completion_evidence:
+      - docs/implementation/u2-6bc-blocker-6-final-phase-2-review.md
+      - "blocker reviews 2-5"
+      - commit 7d72498
+    next_units_unlocked: [U-DOC-1]
+
+  - unit_id: U-DOC-1
+    name: Durable CLI-control documentation
+    objective: >-
+      Convert the repository into a self-contained product, architecture and implementation control
+      system so a zero-context agent can work correctly without conversation history.
+    status: COMPLETE
+    dependencies: [P2]
+    unlocked_by: [P2]
+    blocks: [U-HANDOFF-1]
+    canonical_references:
+      - PRODUCT.md
+      - ARCHITECTURE.md
+      - CLAUDE.md
+      - docs/CANONICAL-DOCUMENTS.md
+    allowed_scope: [documentation, registries, guidance alignment, documentation guards]
+    prohibited_scope:
+      - Phase 3 implementation
+      - new runtime capabilities
+      - adapter containment
+      - closing R-07
+      - deleting legacy production code
+      - pushing the branch
+    expected_production_outputs:
+      - PRODUCT.md
+      - ARCHITECTURE.md
+      - CLAUDE.md
+      - docs/CANONICAL-DOCUMENTS.md
+      - docs/implementation/CURRENT.md
+      - docs/implementation/IMPLEMENTATION-REGISTRY.yaml
+      - docs/implementation/PHASE-OUTPUTS.md
+      - docs/implementation/LEGACY-DISPOSITION.md
+      - docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md
+      - docs/product/OPEN-VALIDATION-ITEMS.md
+      - docs/product/design-partner-observations.md
+      - eval/tests/test_docs_control_system.py
+    expected_capability: >-
+      No customer-visible capability. Internal: the repository replaces conversation memory.
+    boundaries_affected: [root documents, docs/, .claude/agents, .codex/agents, eval/tests]
+    acceptance_contract: eval/tests/test_docs_control_system.py
+    concurrency_requirements: none
+    mutation_requirements: "required - the documentation control system must be mutation-proven"
+    migration_requirements: none
+    legacy_dispositions_affected: "all - the disposition registry is an output of this unit"
+    rollback_posture: "Documentation only. No runtime behaviour changes."
+    validation_blockers: []
+    completion_evidence:
+      - docs/implementation/durable-cli-control-documentation-review.md
+    next_units_unlocked: [U-HANDOFF-1]
+
+  # ============================================================ READY (exactly one)
+  - unit_id: U-HANDOFF-1
+    name: Zero-context CLI handoff rehearsal and hostile readiness review
+    objective: >-
+      Determine empirically whether a clean-session agent, given only this repository and no
+      conversation history, works correctly. This is a rehearsal and a hostile review. It is the
+      gate in front of Phase 3.
+    status: READY
+    dependencies: [U-DOC-1]
+    unlocked_by: [U-DOC-1]
+    blocks: [P3]
+    canonical_references:
+      - CLAUDE.md
+      - docs/implementation/CURRENT.md
+      - docs/CANONICAL-DOCUMENTS.md
+    allowed_scope:
+      - running a zero-context agent against the repository
+      - recording what it concluded, correctly and incorrectly
+      - hostile review of the control documents
+      - documentation corrections found necessary by the rehearsal
+    prohibited_scope:
+      - Phase 3 implementation
+      - Checkpoint Witness, seven-step checkpoint, claim CAS
+      - adapter containment
+      - closing R-07
+      - freight workflow implementation
+      - deleting legacy production code
+      - inventing design-partner observations
+    expected_production_outputs:
+      - a rehearsal transcript and its adjudication
+      - docs/implementation/zero-context-handoff-rehearsal-review.md
+      - "corrections to the control documents where the rehearsal proves them insufficient"
+    expected_capability: >-
+      No customer-visible capability. Internal: evidence that the repository can be handed to a
+      new agent without a human re-explaining the project.
+    boundaries_affected: [documentation only]
+    acceptance_contract: >-
+      The rehearsed agent must, unprompted: (1) define Neyma as an operational execution layer and
+      explicitly reject the invoice-processor reading; (2) state P0/P1/P2 complete and P3 not
+      started; (3) state R-07 OPEN - NOT CONTAINED; (4) name U-HANDOFF-1 as the next unit;
+      (5) describe that unit's expected outputs; (6) REFUSE to invent an unvalidated freight rule
+      when asked to; (7) describe the acceptance and commit discipline. A failure on any of these
+      is a documentation defect, not an agent defect.
+    concurrency_requirements: none
+    mutation_requirements: >-
+      required - the rehearsal must include at least one deliberately misleading stale document to
+      confirm the agent follows the authority map rather than the most confident-sounding file
+    migration_requirements: none
+    legacy_dispositions_affected: []
+    rollback_posture: "Documentation only."
+    validation_blockers: []
+    completion_evidence:
+      - docs/implementation/zero-context-handoff-rehearsal-review.md
+      - "an independent repository inspection agreeing that Phase 3 may begin"
+    next_units_unlocked: [P3]
+
+  # ============================================================ BLOCKED
+  - unit_id: P3
+    name: Checkpoint Witness, seven-step atomic checkpoint, and claim CAS
+    objective: >-
+      Make the two-key rule real: a grant becomes necessary but not sufficient, and no external
+      effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
+    status: BLOCKED
+    dependencies: [P2, U-HANDOFF-1]
+    unlocked_by: [U-HANDOFF-1]
+    blocks: [P4]
+    canonical_references:
+      - docs/architecture/decisions/ADR-004-effect-boundary.md
+      - docs/architecture/decisions/ADR-005-approval-binding-and-drift.md
+      - docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+      - docs/architecture/decisions/ADR-011-human-brake.md
+      - docs/specifications/entities/05-checkpoint-witness.md
+    allowed_scope: [checkpoint, witness, grant mint and claim CAS, brake admission]
+    prohibited_scope: [adapter containment (P4), events (P5), freight workflows]
+    expected_production_outputs:
+      - an unconstructable CheckpointPassed witness type
+      - the seven-step atomic checkpoint
+      - grant mint + claim CAS
+      - brake admission read inside the checkpoint transaction
+    expected_capability: >-
+      System: commit-once becomes a database constraint at the effect boundary. Replay becomes
+      structurally inert. User-visible: none yet - P4 still has to route effects through it.
+    boundaries_affected: [src/freight_recon/workflow.py, new checkpoint module]
+    acceptance_contract: "the AC-SAFE cases named in platform-safety-acceptance.md; gate G4 qualifies at P8"
+    concurrency_requirements: "required - the claim CAS is a concurrency primitive"
+    mutation_requirements: required
+    migration_requirements: "the grant ledger gains checkpoint binding"
+    legacy_dispositions_affected: [action_callback, operation_router, browser_write_path]
+    rollback_posture: "Ships dark - capability flag OFF. Deploy and enable are separate decisions."
+    validation_blockers:
+      - "U-HANDOFF-1 must pass"
+      - "an independent repository inspection must agree Phase 3 may begin"
+    completion_evidence: ["a phase-3 implementation review with final-tree digests"]
+    next_units_unlocked: [P4]
+
+  - unit_id: P4
+    name: Adapter containment
+    objective: >-
+      Route every external effect through the adapter boundary and the two-key rule, then turn on
+      the CI import gate. THIS IS THE UNIT THAT CLOSES R-07.
+    status: BLOCKED
+    dependencies: [P3]
+    unlocked_by: [P3]
+    blocks: [P5]
+    canonical_references:
+      - docs/architecture/decisions/ADR-004-effect-boundary.md
+      - docs/implementation/effect-entry-point-cutover-plan.md
+      - docs/specifications/adapters/registry.md
+    allowed_scope: [adapter conversion, entry-point removal, CI import gate, orphan detection]
+    prohibited_scope: [events (P5), entities (P6), freight workflows]
+    expected_production_outputs:
+      - "the 31 adapter-import edges converted or removed"
+      - "the 6 production-reachable live-write paths deleted or de-actuated"
+      - "the U4.9 CI import gate ON"
+      - orphan-adapter detection as Sev-0
+    expected_capability: >-
+      System: an external effect without a grant becomes structurally impossible rather than
+      merely discouraged. R-07 closes here and nowhere earlier.
+    boundaries_affected:
+      - scripts/enter_invoice_discovered.py
+      - scripts/enter_truckingoffice_invoice.py
+      - scripts/orient_tms.py
+      - src/freight_recon/tms_write.py
+      - src/freight_recon/cdp_actuator.py
+    acceptance_contract: "adapter-boundary-acceptance.md; the import-gate guard"
+    concurrency_requirements: required
+    mutation_requirements: "required - an orphan adapter call must be detected"
+    migration_requirements: none
+    legacy_dispositions_affected:
+      [browser_write_path, tms_write, cdp_actuator, discovered_write, entry_point_scripts]
+    rollback_posture: >-
+      Ships dark. The import gate is the last thing enabled, and a gate with nothing behind it is
+      theatre - which is why P4 cannot precede P3.
+    validation_blockers: ["P3 complete"]
+    completion_evidence:
+      - "R-07 marked CONTAINED with the mechanism named, in phase-0-baseline-manifest.yaml"
+      - "the adapter_import_allowlist edges list empty"
+    next_units_unlocked: [P5]
+
+  - unit_id: P5
+    name: Canonical events, outbox/inbox, replay isolation
+    objective: >-
+      Implement the 98 event contracts with a transactional outbox and a dedup inbox, and prove
+      replay is sandboxed and structurally inert.
+    status: BLOCKED
+    dependencies: [P2]
+    unlocked_by: [P4]
+    blocks: [P6]
+    canonical_references:
+      - docs/architecture/decisions/ADR-008-durable-workflows.md
+      - docs/specifications/events/registry.md
+    allowed_scope: [outbox, inbox, event contracts, replay sandbox, the GC-1 digest]
+    prohibited_scope: [entities (P6), provenance (P7)]
+    expected_production_outputs: ["98 event contracts", transactional outbox, dedup inbox, sandboxed replay]
+    expected_capability: >-
+      System: state can be rebuilt from history, and rebuilding it can never re-execute an effect.
+    boundaries_affected: [new event infrastructure]
+    acceptance_contract: "event-and-replay-acceptance.md; gate G2"
+    concurrency_requirements: required
+    mutation_requirements: "required - replay must be proven unable to call an adapter"
+    migration_requirements: "the outbox is a new durable surface"
+    legacy_dispositions_affected: [legacy_state_management]
+    rollback_posture: "Ships dark."
+    validation_blockers:
+      - "THE 24 EVENT-LESS TRANSITIONS MUST BE SETTLED FIRST (G2). Whether they are legitimately
+         non-producing or a real gap in AC-EVT-003's map is unresolved and blocks this unit."
+    completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
+    next_units_unlocked: [P6]
+
+  - unit_id: P6
+    name: Foundational entities and state machines
+    status: BLOCKED
+    objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
+    dependencies: [P5]
+    unlocked_by: [P5]
+    blocks: [P7]
+    canonical_references: [docs/specifications/entities/, docs/specifications/state-machines/]
+    allowed_scope: [platform primitives, state machines]
+    prohibited_scope: [freight domain projections (P9), policy (P8)]
+    expected_production_outputs: ["17 platform primitives", "13 machines", "134 transitions"]
+    expected_capability: "System: every unit of work has an accountable owner, structurally."
+    boundaries_affected: [new entity layer]
+    acceptance_contract: "foundational-machine-acceptance.md; gate G1; AC-SAFE-028"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: "entity tables, tenant-first"
+    legacy_dispositions_affected: [legacy_state_management, workflow_store]
+    rollback_posture: "Ships dark."
+    validation_blockers: []
+    completion_evidence: ["a phase-6 implementation review"]
+    next_units_unlocked: [P7]
+
+  - unit_id: P7
+    name: Provenance, Evidence, Observation, Claims, Identity Binding
+    status: BLOCKED
+    objective: "The 6 provenance classes, content-addressed Evidence, the deterministic linker, Conflict."
+    dependencies: [P6]
+    unlocked_by: [P6]
+    blocks: [P8]
+    canonical_references:
+      - docs/architecture/decisions/ADR-002-state-classes-and-lineage.md
+      - docs/architecture/decisions/ADR-007-identity-claims-and-conflict.md
+    allowed_scope: [provenance, evidence, observations, identity binding, conflict]
+    prohibited_scope: [policy (P8), domain projections (P9)]
+    expected_production_outputs: ["6 provenance classes", content-addressed evidence, deterministic linker]
+    expected_capability: >-
+      System: MODEL_INFERRED can no longer authorise consequential action, and OWNER_ASSERTED can
+      no longer be silently overwritten - enforced rather than documented.
+    boundaries_affected: [extraction paths, knowledge base]
+    acceptance_contract: "AC-SAFE-015, AC-SAFE-016; gate G1"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: "provenance columns; THE KNOWLEDGE-BASE tenant='default' FINDING CLOSES HERE"
+    legacy_dispositions_affected: [knowledge_base, extraction, ops_control]
+    rollback_posture: "Ships dark."
+    validation_blockers: []
+    completion_evidence: ["a phase-7 implementation review"]
+    next_units_unlocked: [P8]
+
+  - unit_id: P8
+    name: Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation
+    status: BLOCKED
+    objective: "Typed policy, compile-or-refuse rules, the real brake. Gate G4 qualifies here."
+    dependencies: [P7]
+    unlocked_by: [P7]
+    blocks: [P9]
+    canonical_references:
+      - docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+      - docs/architecture/decisions/ADR-011-human-brake.md
+    allowed_scope: [policy engine, rules, brake, expectations, exceptions, compensation]
+    prohibited_scope: [domain projections (P9), vertical slice (P10)]
+    expected_production_outputs: [typed policy engine, compile-or-refuse rules, admission-control brake]
+    expected_capability: >-
+      System: autonomy becomes admissible per action class, capped and revocable. The brake becomes
+      admission control rather than a flag checked by convention.
+    boundaries_affected: [new policy layer, brake]
+    acceptance_contract: "platform-safety-acceptance.md; GATE G4 QUALIFIES HERE (not at P4)"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: "policy and brake tables"
+    legacy_dispositions_affected: [review_approval_surfaces, slack_interface]
+    rollback_posture: "Ships dark. The brake is armed in every environment from P3 forward."
+    validation_blockers: []
+    completion_evidence: ["a phase-8 implementation review", "the G4 gate record"]
+    next_units_unlocked: [P9]
+
+  - unit_id: P9
+    name: Freight-domain projections and mappings
+    status: BLOCKED
+    objective: "The 40 domain entities, External Entity Mapping, field-level authority."
+    dependencies: [P8]
+    unlocked_by: [P8]
+    blocks: [P10]
+    canonical_references: [docs/specifications/domain-entities/registry.md]
+    allowed_scope: [domain entities, external entity mapping, field authority]
+    prohibited_scope: [the vertical slice itself (P10)]
+    expected_production_outputs: ["40 domain entities", external entity mapping]
+    expected_capability: "System: freight concepts are modelled canonically rather than ad hoc."
+    boundaries_affected: [domain layer]
+    acceptance_contract: "domain-model-acceptance.md; gate G1"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: "domain tables, tenant-first"
+    legacy_dispositions_affected: [document_processing, reconciliation]
+    rollback_posture: "Ships dark."
+    validation_blockers:
+      - "SEVERAL DOMAIN RULES REQUIRE DESIGN-PARTNER VALIDATION. See OPEN-VALIDATION-ITEMS.md."
+    completion_evidence: ["a phase-9 implementation review"]
+    next_units_unlocked: [P10]
+
+  - unit_id: P10
+    name: First vertical slice (W6 Documentation -> W8 Billing)
+    status: BLOCKED
+    objective: "Document intake -> packet -> eligibility -> prepared invoice. NO WRITES."
+    dependencies: [P9]
+    unlocked_by: [P9]
+    blocks: [P11]
+    canonical_references:
+      - docs/specifications/workflows/W6-documentation.md
+      - docs/specifications/workflows/W8-billing.md
+    allowed_scope: [the W6->W8 slice, read-only]
+    prohibited_scope: [external writes of any kind]
+    expected_production_outputs: [the first canonical vertical slice, no effects]
+    expected_capability: >-
+      USER-VISIBLE, FIRST TIME: a brokerage sees a prepared invoice assembled from real documents
+      with evidence attached - and Neyma writes nothing.
+    boundaries_affected: [W6 and W8 pipelines]
+    acceptance_contract: "W6-acceptance.md, W8-acceptance.md; gate G5"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: [document_processing, mailbox_workflows, reconciliation]
+    rollback_posture: "Read-only by construction."
+    validation_blockers:
+      - "THE W6->W8 SLICE IS PROVISIONAL AND NEEDS DESIGN-PARTNER VALIDATION. It may not be
+         promoted to validated product truth without recorded evidence."
+    completion_evidence: ["a phase-10 implementation review", "the G5 gate record"]
+    next_units_unlocked: [P11]
+
+  - unit_id: P11
+    name: Shadow mode and human-executed operation
+    status: BLOCKED
+    objective: "Live reads, zero effects; then the human executes and Neyma captures evidence."
+    dependencies: [P10]
+    unlocked_by: [P10]
+    blocks: [P12]
+    canonical_references: [docs/implementation/release-gate-plan.md]
+    allowed_scope: [live reads, shadow comparison, evidence capture]
+    prohibited_scope: [any external write by Neyma]
+    expected_production_outputs: [shadow-mode runtime, shadow-vs-human diff instrumentation]
+    expected_capability: "USER-VISIBLE: Neyma proposes; a human executes; the diff rate is measured."
+    boundaries_affected: [runtime]
+    acceptance_contract: "gates G6 -> G7"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: [browser_write_path]
+    rollback_posture: "Zero effects by construction."
+    validation_blockers: []
+    completion_evidence: ["the G6 and G7 gate records"]
+    next_units_unlocked: [P12]
+
+  - unit_id: P12
+    name: Supervised external effects
+    status: BLOCKED
+    objective: "The first live gated write through the full kernel."
+    dependencies: [P11]
+    unlocked_by: [P11]
+    blocks: [P13]
+    canonical_references: [docs/architecture/decisions/ADR-004-effect-boundary.md]
+    allowed_scope: [supervised live writes through the checkpoint and grant]
+    prohibited_scope: [unattended operation, multi-loop expansion]
+    expected_production_outputs: [the first grant-backed, witness-gated live write]
+    expected_capability: >-
+      USER-VISIBLE: Neyma writes to the TMS - once, verifiably, under a human's authority, with the
+      UNKNOWN_OUTCOME rate instrumented.
+    boundaries_affected: [effect boundary, adapters]
+    acceptance_contract: "gate G8; G4 RE-RUN LIVE"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: [browser_write_path, tms_write]
+    rollback_posture: "Capability flag; the brake refuses admission."
+    validation_blockers: []
+    completion_evidence: ["the G8 gate record", "a live G4 re-run"]
+    next_units_unlocked: [P13]
+
+  - unit_id: P13
+    name: Multi-loop expansion
+    status: BLOCKED
+    objective: "Additional operational loops plus atomic cross-loop handoffs."
+    dependencies: [P12]
+    unlocked_by: [P12]
+    blocks: [P14]
+    canonical_references: [docs/specifications/workflows/registry.md]
+    allowed_scope: [additional loops, cross-loop handoffs]
+    prohibited_scope: [unattended autonomy]
+    expected_production_outputs: [additional canonical loops, 10 cross-loop handoffs]
+    expected_capability: "USER-VISIBLE: more of the back office is carried, not just W6->W8."
+    boundaries_affected: [workflow layer]
+    acceptance_contract: "the per-workflow acceptance files; gate G9"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: [slack_interface, scheduled_jobs]
+    rollback_posture: "Per-loop capability flags."
+    validation_blockers: ["each loop's freight rules require design-partner validation"]
+    completion_evidence: ["the G9 gate record"]
+    next_units_unlocked: [P14]
+
+  - unit_id: P14
+    name: Bounded autonomy
+    status: BLOCKED
+    objective: "Per action class, capped, time-boxed, revocable autonomy."
+    dependencies: [P13]
+    unlocked_by: [P13]
+    blocks: []
+    canonical_references:
+      - docs/architecture/decisions/ADR-003-authorization-assertion.md
+      - docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+    allowed_scope: [autonomy admission per action class]
+    prohibited_scope:
+      - "global autonomy"
+      - "graduating away the authorization assertion - ADR-003 is PERMANENT PRODUCT TRUTH"
+    expected_production_outputs: [per-class autonomy admission, the graduation dossier]
+    expected_capability: >-
+      USER-VISIBLE: Neyma acts without per-action approval for specific, capped, revocable action
+      classes - and never for the ones ADR-003 permanently reserves for a human.
+    boundaries_affected: [policy layer]
+    acceptance_contract: "gate G10; the graduation dossier"
+    concurrency_requirements: required
+    mutation_requirements: required
+    migration_requirements: none
+    legacy_dispositions_affected: []
+    rollback_posture: "Revocable by construction; the brake refuses admission."
+    validation_blockers: ["the graduation dossier requires operational evidence from P12-P13"]
+    completion_evidence: ["the G10 gate record"]
+    next_units_unlocked: []

@@ -1,0 +1,282 @@
+# Legacy Disposition Registry
+
+> ### **No module in this repository is protected by being large, old, working, or well tested.**
+> The current runtime was built before the canonical architecture existed. Where it conflicts with
+> the architecture, **the architecture wins.**
+
+**Every production module carries exactly one disposition.** There is deliberately **no permanent
+category equivalent to `LEGACY_BUT_ACTIVE_FOREVER`** — every disposition names a target phase and a
+deletion or graduation condition. A module that is going to be replaced eventually is not `KEEP`;
+it is `ADAPT` or `REWRITE` with a phase attached.
+
+**Coverage is machine-checked.** [`eval/tests/test_docs_control_system.py`](../../eval/tests/test_docs_control_system.py)
+asserts that every module under `src/freight_recon/` appears in exactly one subsystem below —
+so a new module cannot quietly arrive without a disposition.
+
+---
+
+## The six dispositions
+
+| Disposition | Meaning |
+|---|---|
+| **KEEP** | Canonical or architecture-neutral. Survives as-is. |
+| **ADAPT** | The responsibility is right; the implementation must move behind canonical boundaries. |
+| **REWRITE** | The responsibility is right; the implementation conflicts with the architecture. |
+| **MAKE_READ_ONLY** | May observe, may never act. Its effect capability is removed. |
+| **QUARANTINE** | Retained for evidence or reference; excluded from production paths. |
+| **DELETE** | Removed entirely once its deletion condition is met. |
+
+> **`KEEP` is never awarded because a module is large, old, working or well tested.** It is awarded only where the module is
+> already canonical (Phase 0–2 output) or genuinely architecture-neutral (I/O helpers, config).
+
+---
+
+## S1 — Effect-bearing write paths ⛔ THE R-07 SURFACE
+
+**Modules:** `tms_write.py` · `truckingoffice_write.py` · `discovered_write.py` · `multistep_write.py` · `cdp_actuator.py` · `cdp_session.py` · `browser_use_adapter.py` · `browser_lock.py` · `browser_session_health.py` · `browser_failures.py` · `browser_learning.py` · `mock_tms_write_server.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Drive a real browser against a live TMS and commit real money effects |
+| **Current execution authority** | ### **NONE. They act on import and call.** No checkpoint, no witness, no grant. |
+| **Current risk** | ### **R-07 — OPEN, NOT CONTAINED.** This is the highest-risk subsystem in the repository. |
+| **Canonical destination** | Adapter boundary contracts ([`adapters/02-tms.md`](../specifications/adapters/02-tms.md), [`10-browser.md`](../specifications/adapters/10-browser.md)) behind ADR-004's effect boundary |
+| **Disposition** | ### **ADAPT** — converted to grant-and-witness-gated adapters (`mock_tms_write_server.py`: **QUARANTINE**, test-only) |
+| **Target phase** | **P4** (requires P3's witness to exist first) |
+| **Compatibility requirement** | None. There is no supported path that writes without a grant. |
+| **Deletion condition** | The U4.9 CI import gate is ON and `adapter_import_allowlist.edges` is empty |
+| **Evidence required before deletion** | Every effect routed through a claimed grant + fresh witness; orphan-adapter detection live at Sev-0; `adapter-boundary-acceptance.md` green |
+
+> **These modules are the reason `PRODUCT.md` §19 exists.** They work, they are proven live, and
+> they are the single largest source of unbounded risk in the system.
+
+## S2 — Effect-capable entry-point scripts ⛔
+
+**Modules:** `scripts/enter_invoice_discovered.py` (EP-7) · `scripts/enter_truckingoffice_invoice.py` (EP-6) · `scripts/orient_tms.py` (EP-8) · `scripts/enter_tms_payable.py` (EP-12, test-only) · and the remaining effect-reachable scripts inventoried in [`effect-entry-point-cutover-plan.md`](effect-entry-point-cutover-plan.md)
+
+| | |
+|---|---|
+| **Current responsibility** | Operator-invoked live writes, bypassing every review surface |
+| **Current execution authority** | ### **Full, ungated.** EP-8 was *"read-only by convention, actuator-capable by import"* |
+| **Current risk** | 6 of these are production-reachable; the only mitigation is operator discipline |
+| **Canonical destination** | Pipeline clients (EP-1, EP-3) or nothing at all |
+| **Disposition** | ### **DELETE** — EP-6, EP-7, EP-9, EP-10 (`REMOVE_BEFORE_ENABLE`) · **ADAPT** — EP-1, EP-3 → pipeline clients · **MAKE_READ_ONLY** — EP-8 |
+| **Target phase** | **P4** |
+| **Compatibility requirement** | None. **A deleted script has no compatibility surface** — that is the point. |
+| **Deletion condition** | EP-6/7/9/10 physically deleted; `orient_tms` loses its actuator import; the import gate is ON |
+| **Evidence required before deletion** | `effect-entry-point-cutover-plan.md` fully executed; no import path from any script to an actuator |
+
+## S3 — Orchestration and routing
+
+**Modules:** `action_callback.py` (1964 lines) · `operation_router.py` · `operation_proposal.py` · `delivery_dispatch.py` · `delivery.py` · `flow_recipe.py` · `brain_runtime.py` · `brain_operator.py` · `operator_brain.py` · `operator_agent.py` · `system_orientation.py` · `screen_discovery.py` · `screen_mapping.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Decide what to do next and route to an executor — a second orchestration system |
+| **Current execution authority** | Dispatches effects directly; `action_callback.py` is the largest module in the repo |
+| **Current risk** | ### **This is the "no permanent second orchestration system" violation.** Pipeline Instances (P6) are the canonical orchestrator. |
+| **Canonical destination** | Pipeline Instance + state machines (ADR-008), policy admission (ADR-010) |
+| **Disposition** | ### **REWRITE** |
+| **Target phase** | **P6** (machines) with effect routing moved at **P4** |
+| **Compatibility requirement** | May run in parallel **only** while behind a capability flag, with a deletion condition recorded — **never permanently** |
+| **Deletion condition** | All 13 canonical machines live; no effect dispatch outside the Pipeline Instance |
+| **Evidence required before deletion** | `foundational-machine-acceptance.md` green; no dual-orchestration import edges |
+
+> **`action_callback.py` also carries a hardcoded knowledge-base `tenant="default"` at line 1639.**
+> That finding closes at **P7**, not here.
+
+## S4 — Legacy state management
+
+**Modules:** `workflow.py` · `schema.py` · `migrations/` · `tenant.py` · `cli_tenant.py` · `commit_key.py` · `workflow_direction.py` · `models.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Canonical persistence, tenancy, effect identity, migration |
+| **Current execution authority** | Persistence only. **No effect capability.** |
+| **Current risk** | Low — this is the Phase 0–2 output and the most hardened code in the repository |
+| **Canonical destination** | Absorbed into the entity layer (P6); the effect ledger gains checkpoint binding (P3) |
+| **Disposition** | ### **ADAPT** — `commit_key.py`, `tenant.py`, `cli_tenant.py`, `schema.py`, `migrations/`: **KEEP** (canonical, forward-only) |
+| **Target phase** | **P3** (grant binding) → **P6** (entity absorption) |
+| **Compatibility requirement** | `WorkflowStore`'s tenant contract is forward-only and may never be relaxed |
+| **Deletion condition** | `workflow.py`'s responsibilities are held by Work Item + Pipeline Instance |
+| **Evidence required before deletion** | The 22 tenant-scoped methods have canonical equivalents; AC-SEC-001 stays green |
+
+## S5 — Document processing and extraction
+
+**Modules:** `ingestion.py` · `extraction.py` · `extraction_bridge.py` · `document_identifier.py` · `packet_page.py` · `email_corpus.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Read documents, produce structured data |
+| **Current execution authority** | None directly, but its output feeds consequential decisions |
+| **Current risk** | ### **Extraction output is `MODEL_INFERRED` and is not yet marked as such.** Until P7, an inferred value can reach a decision without its provenance travelling with it. |
+| **Canonical destination** | Document adapter ([`adapters/07-documents.md`](../specifications/adapters/07-documents.md)) producing Evidence + Observations with provenance |
+| **Disposition** | ### **ADAPT** |
+| **Target phase** | **P7** |
+| **Compatibility requirement** | Output must carry `provenance_class` before it may inform a consequential action |
+| **Deletion condition** | Not deleted — adapted behind the adapter boundary |
+| **Evidence required before deletion** | AC-SAFE-015/016 green; no `MODEL_INFERRED` value authorising an action |
+
+## S6 — Mailbox and inbound communications
+
+**Modules:** `mailbox_workflow.py` · `mailbox_intake.py` · `imap_mailbox.py` · `email_adapter.py` · `email_triage.py` · `inbox_discovery.py` · `inbox_brain.py` · `thread_reply.py` · `follow_up.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Ingest email, triage relevance, link to loads, send follow-ups |
+| **Current execution authority** | ### **Outbound email is an external effect** and is not currently gated |
+| **Current risk** | An outbound message to a carrier or customer is consequential and ungated |
+| **Canonical destination** | Inbound-comms adapter ([`adapters/01-inbound-comms.md`](../specifications/adapters/01-inbound-comms.md)); W10 Customer Communications |
+| **Disposition** | ### **ADAPT** — outbound paths **MAKE_READ_ONLY** until gated |
+| **Target phase** | **P4** (outbound gating) → **P13** (W10) |
+| **Compatibility requirement** | Inbound ingestion may continue; outbound requires a grant |
+| **Deletion condition** | Not deleted — adapted |
+| **Evidence required before deletion** | No outbound send without a claimed grant + fresh witness |
+
+## S7 — Reconciliation and matching
+
+**Modules:** `reconciliation.py` · `ar_collections.py` · `roi_ledger.py` · `lane_graduation.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Compare documents against records; decide clean vs exception |
+| **Current execution authority** | Produces decisions that gate money |
+| **Current risk** | The comparison is deterministic (good), but predates the canonical Expectation/Exception model |
+| **Canonical destination** | Expectation + Exception + Conflict machinery (P8); W7 Exceptions |
+| **Disposition** | ### **REWRITE** |
+| **Target phase** | **P8** |
+| **Compatibility requirement** | Determinism must be preserved through the rewrite — **the model never decides an amount** |
+| **Deletion condition** | Expectations and Exceptions carry these decisions canonically |
+| **Evidence required before deletion** | `recovery-and-compensation-acceptance.md` green |
+
+## S8 — Review and approval surfaces
+
+**Modules:** `review.py` · `review_actions.py` · `operator_console.py` · `render.py` · `summary.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Present decisions to a human and capture approval |
+| **Current execution authority** | Approval here authorises downstream effects |
+| **Current risk** | ### **Approval is not yet bound to Material Facts and does not void on drift** (ADR-005) |
+| **Canonical destination** | Approval entity + binding + drift voiding |
+| **Disposition** | ### **REWRITE** |
+| **Target phase** | **P8** |
+| **Compatibility requirement** | An approval captured under the old model may not authorise an effect under the new one |
+| **Deletion condition** | All approvals are canonical Approval entities |
+| **Evidence required before deletion** | AC-SAFE cases for approval binding and drift green |
+
+## S9 — Slack and channel interfaces
+
+**Modules:** `slack_adapter.py` · `slack_delegate.py` · `channels.py` · `alert_channel.py` · `nl_command.py` · `ops_control.py` · `activity_log.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Two-way operator surface: notify, ask, accept commands |
+| **Current execution authority** | ### **Commands from Slack can trigger consequential actions** |
+| **Current risk** | Prompt-injection surface; **`ops_control.py` carries 5 hardcoded `tenant="default"` sites** |
+| **Canonical destination** | Notification adapter ([`13-notification.md`](../specifications/adapters/13-notification.md)); brake and policy admission |
+| **Disposition** | ### **ADAPT** |
+| **Target phase** | **P7** (the tenant finding) → **P8** (brake/policy admission) |
+| **Compatibility requirement** | A channel message may never itself be authority — it carries a request, not a grant |
+| **Deletion condition** | Not deleted — adapted |
+| **Evidence required before deletion** | No hardcoded tenant; all commands pass policy admission |
+
+## S10 — Knowledge and memory
+
+**Modules:** `knowledge.py` · `agent_memory.py` · `tool_permissions.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Store learned operational knowledge and agent memory |
+| **Current execution authority** | Informs decisions; does not act |
+| **Current risk** | ### **Hardcoded `tenant="default"` — a different store, outside the seven-table scope.** It is exactly the pattern P2 forbids, recorded rather than found later. |
+| **Canonical destination** | Tenant-scoped, provenance-carrying knowledge with authority classes |
+| **Disposition** | ### **REWRITE** |
+| **Target phase** | **P7** |
+| **Compatibility requirement** | Existing knowledge rows need an owner assertion before they can be tenant-assigned |
+| **Deletion condition** | A canonical tenant reaches `KnowledgeBase` and no `"default"` remains |
+| **Evidence required before deletion** | A guard proving no hardcoded tenant in any knowledge write |
+
+## S11 — Adapters and external clients
+
+**Modules:** `tms_adapter.py` · `mock_tms.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Talk to the TMS |
+| **Current execution authority** | `tms_adapter.py` reads; `mock_tms.py` is a fixture |
+| **Current risk** | Predates the adapter contract; capability is not declared |
+| **Canonical destination** | [`adapters/02-tms.md`](../specifications/adapters/02-tms.md) contract |
+| **Disposition** | ### **ADAPT** (`mock_tms.py`: **KEEP** — test fixture) |
+| **Target phase** | **P4** |
+| **Compatibility requirement** | Each operation declares action class, effect class and verification mode |
+| **Deletion condition** | Not deleted — adapted |
+| **Evidence required before deletion** | The adapter registry matches the implementation exactly |
+
+## S12 — Pilot, onboarding and operational tooling
+
+**Modules:** `pilot_session.py` · `owner_onboarding.py` · `first_design_partner.py` · `design_partner_package.py` · `teammate_health.py` · `run_diagnostics.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Stand up and monitor a pilot deployment |
+| **Current execution authority** | Orchestrates sessions; no direct money effects |
+| **Current risk** | Encodes the **pre-reset** pilot model and the superseded product framing |
+| **Canonical destination** | Re-derived from the P11 shadow-mode and P12 supervised-effect gates |
+| **Disposition** | ### **QUARANTINE** |
+| **Target phase** | **P11** |
+| **Compatibility requirement** | Must not be presented as the current pilot model — it describes the superseded one |
+| **Deletion condition** | P11 shadow mode defines the pilot canonically |
+| **Evidence required before deletion** | The G6/G7 gate records |
+
+## S13 — Infrastructure and configuration (architecture-neutral)
+
+**Modules:** `config.py` · `atomic_io.py` · `__init__.py`
+
+| | |
+|---|---|
+| **Current responsibility** | Configuration loading and atomic file I/O |
+| **Current execution authority** | None |
+| **Current risk** | None identified |
+| **Canonical destination** | Unchanged |
+| **Disposition** | ### **KEEP** |
+| **Target phase** | — |
+| **Compatibility requirement** | — |
+| **Deletion condition** | **N/A — architecture-neutral.** This is the only category where a module survives without a phase, and it is restricted to genuine infrastructure with no execution authority. |
+| **Evidence required before deletion** | — |
+
+## S14 — Tests protecting legacy behaviour
+
+**Scope:** the non-guard test suites under `eval/` that assert the pre-reset runtime's behaviour.
+
+| | |
+|---|---|
+| **Current responsibility** | Protect current behaviour |
+| **Current risk** | ### **A test asserting a behaviour the architecture forbids is a defect with a passing status.** It will resist the rewrite and look authoritative while doing so. |
+| **Canonical destination** | The canonical acceptance suites |
+| **Disposition** | ### **ADAPT** — replaced case-by-case as each subsystem is rewritten |
+| **Target phase** | with the subsystem each defends |
+| **Compatibility requirement** | ### **Replaced, never blindly preserved, and never merely deleted** — the replacement must assert what is now true |
+| **Deletion condition** | The canonical acceptance case covering the same behaviour is green |
+| **Evidence required before deletion** | The replacing case named in the phase review |
+
+---
+
+## Summary
+
+| Disposition | Subsystems |
+|---|---|
+| **KEEP** | S13 (+ canonical members of S4, S11) |
+| **ADAPT** | S1, S5, S6, S9, S11, S14 (+ S4) |
+| **REWRITE** | S3, S7, S8, S10 |
+| **MAKE_READ_ONLY** | parts of S2 (EP-8), outbound paths in S6 |
+| **QUARANTINE** | S12 (+ `mock_tms_write_server.py`) |
+| **DELETE** | S2 (EP-6, EP-7, EP-9, EP-10) |
+
+> ### **No subsystem is KEEP because it is large or tested.** The two largest modules in the
+> repository — `action_callback.py` (1964 lines) and `workflow.py` (1157) — are **REWRITE** and
+> **ADAPT** respectively. `workflow.py` is the most heavily guarded code here, and it still does not
+> survive P6 in its current form.
+
+**Nothing in this document authorises deleting production code today.** Each deletion condition
+belongs to its target phase, and the current approved unit is `U-HANDOFF-1`.

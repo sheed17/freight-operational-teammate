@@ -57,10 +57,11 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_ac_sec_001_registry.py": (RETAIN, "AC-SEC-001 reconstructed from the frozen acceptance spec, not from the implementation"),
     "test_phase2_integrated_acceptance.py": (RETAIN, "the one integrated entry point: real SQLite, real threads, 20 schedules"),
     "test_phase2_guard_registry.py": (RETAIN, "this registry, which fails when a guard file is added and left unclassified"),
+    "test_docs_control_system.py": (RETAIN, "the documentation control system guards - product identity, status, registries, findings"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_")
-EXTRA_GUARDS = ("test_ac_sec_001_registry.py",)
+EXTRA_GUARDS = ("test_ac_sec_001_registry.py", "test_docs_control_system.py")
 
 
 def guard_files() -> list[str]:
@@ -117,9 +118,13 @@ def test_r07_is_never_reclassified_away():
     assert cls in {RETAIN, UPDATE}, f"the R-07 record is classified {cls}"
 
 
-def test_no_guard_file_in_the_registry_is_entirely_skipped():
-    """Structural, by AST over each guard file: a file whose every test is skipped is classified
-    RETAIN while asserting nothing at all."""
+def test_no_guard_in_the_registry_is_skipped_or_xfailed():
+    """Structural, by AST over each guard file.
+
+    This originally only failed when EVERY test in a file was disabled - so skipping one
+    load-bearing guard (the R-07 check, say) passed. Mutation caught it. Any disabled guard now
+    fails: silence is not a pass.
+    """
     offenders = []
     for name in guard_files():
         tree = ast.parse((TESTS / name).read_text(encoding="utf-8"))
@@ -130,6 +135,5 @@ def test_no_guard_file_in_the_registry_is_entirely_skipped():
             n for n in tests
             if any("mark.skip" in ast.unparse(d) or "mark.xfail" in ast.unparse(d) for d in n.decorator_list)
         ]
-        if len(skipped) == len(tests):
-            offenders.append(name)
-    assert not offenders, f"guard files that are entirely disabled: {offenders}"
+        offenders.extend(f"{name}::{n.name}" for n in skipped)
+    assert not offenders, f"disabled guard(s) - silence is not a pass: {offenders}"

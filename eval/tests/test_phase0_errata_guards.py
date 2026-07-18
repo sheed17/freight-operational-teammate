@@ -131,7 +131,10 @@ def test_no_normative_document_still_requires_141_transitions():
                 continue
             scanned += 1
             for i, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
-                if "141" in line and not _names_the_defect(line):
+                # WHOLE-TOKEN, not substring: "141" appears inside "1141" (a test count), and a
+                # bare substring made this guard fire on an unrelated number. Same lesson as the
+                # other substring false-positives in this programme - match the token.
+                if re.search(r"(?<!\d)141(?!\d)", line) and not _names_the_defect(line):
                     offenders.append(f"{path.relative_to(path.parents[2])}:{i}: {line.strip()[:70]}")
     assert scanned >= 20, f"only {scanned} normative documents scanned - a negative result over too small a population proves nothing"
     assert not offenders, "normative document(s) still cite 141 transitions:\n  " + "\n  ".join(offenders)
