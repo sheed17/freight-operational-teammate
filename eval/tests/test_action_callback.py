@@ -581,10 +581,20 @@ def test_operation_action_claim_is_atomic(tmp_path):
 
 
 def test_delivery_action_claim_is_atomic(tmp_path):
+    """STALE_FIXTURE, corrected: the claim now needs a run that EXISTS in this tenant.
+
+    The oracle is unchanged — the first claim wins, the second is refused. What changed is that the
+    fixture used to invent `run_id=1` without creating it; the tenant-consistent foreign key added in
+    Blocker 3 now refuses a claim against a run that does not exist, which is the protection working.
+    Seeding the real parent tests the atomicity rather than the absence of a constraint.
+    """
     store = WorkflowStore(tmp_path / "workflow.sqlite3", tenant="tenant-fixture-a")
     try:
-        assert store.claim_delivery_action("review-1", run_id=1, actor="a", payload={"first": True}) is True
-        assert store.claim_delivery_action("review-1", run_id=1, actor="b", payload={"second": True}) is False
+        run = store.receive_document(load_id="LD-1", document_hash="delivery-atomic", payload={})
+        assert store.claim_delivery_action("review-1", run_id=run.id, actor="a",
+                                           payload={"first": True}) is True
+        assert store.claim_delivery_action("review-1", run_id=run.id, actor="b",
+                                           payload={"second": True}) is False
     finally:
         store.close()
 

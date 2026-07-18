@@ -108,7 +108,7 @@ def test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice(tmp_path):
 
     A local write is never an oracle for an external effect — so this asserts on the external calls.
     """
-    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant_a")
     try:
         actuator = _CountingActuator()
         params = {"load_ref": "LD-560010", "customer": "ACME", "commit": True}
@@ -134,7 +134,7 @@ def test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice(tmp_path):
             "because the amount differed"
         )
         assert second.status == "DONE" and "refusing to repeat" in second.note.lower()
-        rows = store.conn.execute("SELECT COUNT(*) c FROM operation_commit_claims").fetchone()["c"]
+        rows = store.conn.execute("SELECT COUNT(*) c FROM effect_grants").fetchone()["c"]
         assert rows == 1, f"exactly one reservation must exist for one logical effect; found {rows}"
     finally:
         store.close()
@@ -158,7 +158,7 @@ def test_ac_safe_013_commit_key_exists_for_non_money_effects(tmp_path):
 
 def test_ac_safe_013_filing_the_same_pod_twice_attaches_it_once(tmp_path):
     """Frozen oracle: "filing the same POD twice => one attachment; no second upload"."""
-    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant_a")
     try:
         pod = tmp_path / "pod.pdf"
         pod.write_bytes(b"%PDF-1.4 proof of delivery")
@@ -179,7 +179,7 @@ def test_ac_safe_013_filing_the_same_pod_twice_attaches_it_once(tmp_path):
             "AC-SAFE-013 VIOLATED: the same POD was uploaded a second time"
         )
         assert second.status == "DONE" and "refusing to repeat" in second.note.lower()
-        rows = store.conn.execute("SELECT COUNT(*) c FROM operation_commit_claims").fetchone()["c"]
+        rows = store.conn.execute("SELECT COUNT(*) c FROM effect_grants").fetchone()["c"]
         assert rows == 1, f"one POD filing = one reservation; found {rows}"
         assert first.status in ("DONE", "ESCALATED")
     finally:

@@ -168,8 +168,14 @@ def test_the_amount_survives_as_a_material_fact():
         "the approved amount is no longer preserved alongside the reservation; drift would become "
         "invisible and Phase 3's fingerprint would have nothing to compare"
     )
-    assert "approved_amount TEXT NOT NULL" in WORKFLOW.read_text(encoding="utf-8"), (
-        "the schema changed - Phase 1 must not touch it"
+    # STALE_ORACLE, corrected: Phase 2 moved the canonical DDL out of workflow.py into
+    # TARGET_SCHEMA (one source of truth). The invariant is unchanged and still asserted — the
+    # approved amount survives as a stored MATERIAL FACT and never as part of an identity — it is
+    # simply read from where the schema now lives.
+    from freight_recon.migrations.phase2_tenant_first import TARGET_SCHEMA
+
+    assert "approved_amount TEXT NOT NULL" in TARGET_SCHEMA["effect_grants"], (
+        "the approved amount is no longer stored as a material fact on the ledger"
     )
 
 

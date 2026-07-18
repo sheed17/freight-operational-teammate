@@ -66,6 +66,12 @@ One readiness oracle, its contract **derived from `TARGET_SCHEMA`** rather than 
 > ### **The safe restoration harness held:** in-memory save, digest-verified, **no git command anywhere** — written before any mutation ran. Nothing was lost this time.
 Detail: `u2-6bc-blocker-3-schema-readiness-review.md`.
 
+## ⛔ BLOCKER 4 — CLOSED *(2026-07-17)*
+The **application** boundary now matches the database's: 22/22 methods carry the bound tenant into the SQL and sit behind the readiness gate; ### **no method accepts a tenant argument**, so ownership cannot be supplied by a caller. All three merge-gating methods qualified — identical document bytes, identical load references and identical Commit Keys are **independent across tenants** while duplicates are still refused **within** one. ### **AC-SAFE-012 and AC-SAFE-013 are GREEN again.** 24 hostile tests · **17/17 mutations detected**.
+> ### **Mutation found two real gaps in my own suite:** the unfiltered `audit_events()` branch — *"the branch a support tool reaches for"* — was untested and returned every tenant's history when made global; and the exact-set test **compared the registry to itself**, so dropping a table moved both sides together and stayed green. ### **A registry that validates itself validates nothing.**
+> The 5 stale router/store fixtures were corrected by aligning them to one canonical tenant — ### **the guard was right and the fixtures predated it. Nothing was weakened to make production pass.**
+Detail: `u2-6bc-blocker-4-tenant-scope-review.md`.
+
 ## 24–25. Concurrency · mutation: ### **NOT RUN.** No qualification was performed.
 
 ## 26–32. Open findings — ### **ALL PRESERVED**

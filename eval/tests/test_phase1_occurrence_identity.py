@@ -112,7 +112,7 @@ def test_4_changing_the_free_form_value_between_retries_cannot_produce_a_second_
     Under the old code these three payloads produced three different Commit Keys and three
     reservations for one logical payment. Now all three are refused identically.
     """
-    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="acme")
     try:
         actuator = _Actuator()
         for attempt in ("attempt-1", "attempt-2", "attempt-3"):
@@ -123,7 +123,7 @@ def test_4_changing_the_free_form_value_between_retries_cannot_produce_a_second_
                            _payment_params(occurrence_key=attempt, commit=True)),
                   approve=lambda a: True)
             assert result.status == "ESCALATED"
-        rows = store.conn.execute("SELECT COUNT(*) c FROM operation_commit_claims").fetchone()["c"]
+        rows = store.conn.execute("SELECT COUNT(*) c FROM effect_grants").fetchone()["c"]
         assert rows == 0, "a caller-authored string created a reservation"
         assert actuator.calls == [], "a caller-authored string reached the TMS"
     finally:
@@ -255,7 +255,7 @@ def test_14_and_15_missing_canonical_occurrence_means_zero_actuator_calls_and_no
     tmp_path, lane_name, params, amount
 ):
     """The two negatives that matter: nothing happened outside, and nothing was written inside."""
-    store = WorkflowStore(tmp_path / f"{lane_name}.sqlite3", tenant="tenant-fixture-a")
+    store = WorkflowStore(tmp_path / f"{lane_name}.sqlite3", tenant="acme")
     try:
         actuator = _Actuator()
         result = OperationRouter(
@@ -268,7 +268,7 @@ def test_14_and_15_missing_canonical_occurrence_means_zero_actuator_calls_and_no
 
         assert result.status == "ESCALATED"
         assert actuator.calls == [], f"{lane_name} reached the TMS with no canonical occurrence"
-        rows = store.conn.execute("SELECT COUNT(*) c FROM operation_commit_claims").fetchone()["c"]
+        rows = store.conn.execute("SELECT COUNT(*) c FROM effect_grants").fetchone()["c"]
         assert rows == 0, f"{lane_name} reserved with no canonical occurrence"
     finally:
         store.close()
