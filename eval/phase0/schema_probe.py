@@ -100,9 +100,22 @@ def tables() -> tuple[list[Table], Evaluation]:
     return found, ev
 
 
-def noncanonical_tables() -> list[Table]:
+def noncanonical_tables(*, include_exempt: bool = False) -> list[Table]:
+    """Tables that should be tenant-first and are not.
+
+    `include_exempt=False` excludes the canonical bookkeeping tables (schema_migrations,
+    migration_quarantine, owner_assertions). They are migration audit surfaces, not tenant-owned
+    business data - the audit of a DISPUTED ownership claim must not itself be owned by one of the
+    disputing tenants. The exemption is adjudicated in the baseline manifest with a reason, an owner
+    and a bounded deletion condition; it is not a hole.
+    """
+    from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+
     ts, _ = tables()
-    return [t for t in ts if not t.canonical]
+    out = [t for t in ts if not t.canonical]
+    if not include_exempt:
+        out = [t for t in out if t.name not in TENANT_EXEMPT_TABLES]
+    return out
 
 
 def live_tables() -> tuple[list[Table], Evaluation]:

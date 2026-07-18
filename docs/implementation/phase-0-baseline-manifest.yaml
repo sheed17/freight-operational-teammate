@@ -319,6 +319,7 @@ expected_deprecated_terms:
     - src/freight_recon/operator_agent.py
     - src/freight_recon/ops_control.py
     - src/freight_recon/roi_ledger.py
+    - src/freight_recon/schema.py
     - src/freight_recon/slack_delegate.py
     - src/freight_recon/thread_reply.py
     - src/freight_recon/tms_write.py
@@ -352,7 +353,11 @@ expected_deprecated_terms:
       removed_by_phase: P3
       accountable_unit: U3.5
     - term: workflow_runs
-      count: 24
+      count: 29
+      note: >-
+        ADJUDICATED 2026-07-17 (U2.6BC): the Phase-2 migration, the schema-readiness oracle and
+        their guards must NAME the tables they migrate and validate - a migration that cannot say
+        `workflow_runs` cannot migrate workflow_runs. The rename itself remains P6 (U6.4).
       canonical: Work Item + Pipeline Instance (SPLIT, never merged back)
       removed_by_phase: P6
       accountable_unit: U6.4

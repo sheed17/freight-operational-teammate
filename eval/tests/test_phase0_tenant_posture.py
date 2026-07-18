@@ -51,7 +51,10 @@ def test_ac_sec_001_is_green_in_source_and_the_probe_names_every_table_it_checke
     """The oracle is the exact SET, in both legs. 'No offenders' from an empty scan is not a pass."""
     tables, ev = schema_probe.tables()
     ev.require_population()
-    offenders = sorted(t.name for t in tables if not t.canonical)
+    from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+
+    offenders = sorted(t.name for t in tables
+                       if not t.canonical and t.name not in TENANT_EXEMPT_TABLES)
     exempt = manifest.tables_tenant_exempt()
     unexplained = sorted(set(offenders) - exempt)
     assert not unexplained, (

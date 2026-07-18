@@ -110,3 +110,27 @@ Detail: `u2-6bc-blocker-5-migration-matrix-review.md`.
 6. Then: concurrency schedules · the mutation suite · migration qualification · final-tree digests.
 
 > ### **I did not attempt those corrections, because I could not also verify them in this pass — and an unverified green on a tenant boundary is precisely the failure this programme exists to prevent.** The work is preserved at **`42a87e2`** on `recovery/u2-6bc-atomic-cutover`, the branch is clean, and nothing was lost.
+
+
+---
+
+# ⬛ SUPERSEDED BY BLOCKER 6 — PHASE 2 IS COMPLETE
+
+The verdict above was accurate when written and is retained as the record of that moment. It has
+since been discharged in full by the six U2.6BC blockers, closed at
+[`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md).
+
+**Final Phase-2 state:** the suite is GREEN — **1073 passed · 0 failed · 1 skipped** (the skip names
+its own reason). All 22 store methods are tenant-scoped and readiness-gated; the migration validates
+its tenant canonically, records auditable human ownership before assigning a single row, and writes
+its completion marker LAST and only if readiness passes. **AC-SEC-001 is satisfied at the Phase-2
+surfaces** (records, grants, api), with seven surfaces deferred by name and phase (P3/P4/P5/P9).
+The integrated acceptance suite runs 20 concurrency schedules against real SQLite, and **49/49
+load-bearing mutations are detected**.
+
+**Still open, and deliberately so:** **R-07 — OPEN, NOT CONTAINED** · six production-reachable
+live-write paths · 31 direct adapter import edges (P4) · 24 event-less transitions (P5) ·
+checkpoint/witness/claim CAS (P3) · the hardcoded knowledge-base `tenant="default"` findings.
+
+> **This closed a phase, not the product.** Phase 2 made the tenant real in the database; it did not
+> make the effect boundary safe — that is Phase 3, and the two-key rule is still unbuilt.

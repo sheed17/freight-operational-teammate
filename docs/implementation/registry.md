@@ -1,6 +1,8 @@
 # Implementation Planning Registry
 
-*The index of the implementation-planning layer. ### **Planning artifacts only — NO production code, NO migration files, NO schema changes, NO symbol renames have been performed.***
+*The index of the implementation-planning layer, and now of the implementation itself.*
+
+> ### **The "planning artifacts only" banner this file used to carry is no longer true, and leaving it would be a lie by omission.** Phases 0–2 have shipped production code, a migration, canonical schema changes and executable guards. What has NOT happened: no symbol renames, no Phase-3 checkpoint or witness, no adapter containment, and **R-07 remains OPEN — NOT CONTAINED**.
 
 ## Documents
 | Doc | Contents |
@@ -19,6 +21,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [u2-6bc-blocker-6-final-phase-2-review.md](u2-6bc-blocker-6-final-phase-2-review.md) | ### **Blocker 6 CLOSED — PHASE 2 COMPLETE. Suite GREEN (1073/0/1); AC-SEC-001 satisfied at the Phase-2 surfaces; 20 concurrency schedules; 49/49 mutations detected; every guard classified. R-07 still OPEN.** |
 | [u2-6bc-blocker-5-migration-matrix-review.md](u2-6bc-blocker-5-migration-matrix-review.md) | ### **Blocker 5 CLOSED — 20 shapes, 10 classified outcomes; found 3 real migration defects** |
 | [u2-6bc-blocker-4-tenant-scope-review.md](u2-6bc-blocker-4-tenant-scope-review.md) | ### **Blocker 4 CLOSED — 22/22 methods tenant-scoped; AC-SAFE-012/013 GREEN again** |
 | [u2-6bc-blocker-3-schema-readiness-review.md](u2-6bc-blocker-3-schema-readiness-review.md) | ### **Blocker 3 CLOSED — the complete readiness oracle; found 2 real migration defects** |

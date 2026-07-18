@@ -15,6 +15,7 @@ naming whose data it is about to touch.
 """
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -31,26 +32,58 @@ from phase0.sources import ROOT, python_files, rel
 FIXTURE_A, FIXTURE_B = "tenant-fixture-a", "tenant-fixture-b"
 
 
+def _refusal_probe_lines(tree: ast.AST) -> set[int]:
+    """Lines inside a `with pytest.raises(...)` block.
+
+    A WorkflowStore built there is a REFUSAL PROBE: the test asserts the construction fails, so
+    counting it would make the guard report the very defect it exists to prove is absent. This is
+    decided STRUCTURALLY rather than by exempting filenames - three separate guards in this program
+    enumerated the files they knew about and silently stopped covering the ones added afterwards.
+    """
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.With, ast.AsyncWith)):
+            continue
+        raises = False
+        for item in node.items:
+            call = item.context_expr
+            if isinstance(call, ast.Call):
+                fn = call.func
+                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                if name == "raises":
+                    raises = True
+        if raises:
+            for child in ast.walk(node):
+                if hasattr(child, "lineno"):
+                    out.add(child.lineno)
+    return out
+
+
 def _sites():
     """Every real WorkflowStore(...) call, by AST. Text matching would count comments and strings."""
     ev = Evaluation(name="u26a.construction_sites")
     out = []
     for p in python_files(ROOT / "src", ROOT / "scripts", ROOT / "eval"):
-        # This file's own probes construct a store WITHOUT a tenant on purpose, to prove it is
-        # refused. Counting them would make the guard report the very defect it verifies is absent.
-        if p.name == "test_u26a_tenant_construction.py":
-            continue
+        # This file's refusal probes are excluded STRUCTURALLY by _refusal_probe_lines, not by
+        # skipping the file. Skipping the file also hid its LEGITIMATE construction sites from the
+        # guard, which is a hole exactly the size of one test module.
         ev.sources_inspected.append(rel(p))
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        probes = _refusal_probe_lines(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "WorkflowStore":
                 kw = {k.arg: k.value for k in node.keywords}
+                is_probe = node.lineno in probes
+                # EVERY site enters the population, probe or not. Excluding probes from the count
+                # as well as the check would let a widened exemption shrink the denominator
+                # silently - and a guard that inspects fewer things while still reporting green is
+                # the exact failure this floor exists to catch.
                 ev.candidates.append(f"{rel(p)}:{node.lineno}")
                 ev.accepted.append((rel(p), node.lineno, kw.get("tenant")))
-                out.append((rel(p), node.lineno, kw.get("tenant")))
+                out.append((rel(p), node.lineno, kw.get("tenant"), is_probe))
     return out, ev
 
 
@@ -116,11 +149,29 @@ def test_7_and_8_callbackappconfig_requires_and_validates_tenant():
 def test_9_and_10_every_construction_site_supplies_an_explicit_tenant():
     sites, ev = _sites()
     ev.require_population(minimum=100)
-    missing = [f"{f}:{ln}" for f, ln, t in sites if t is None]
+    missing = [f"{f}:{ln}" for f, ln, t, probe in sites if t is None and not probe]
     assert not missing, (
         f"{len(missing)} WorkflowStore construction site(s) supply no tenant:\n  "
         + "\n  ".join(missing[:12])
     )
+
+
+def test_the_refusal_probe_exemption_stays_a_narrow_exception():
+    """The exemption must stay small and must never touch production.
+
+    Widening it is the cheap way to make this guard green: exempt enough and there is nothing left
+    to check. Mutation proved that a blanket exemption slipped past the population floor alone.
+    """
+    sites, _ = _sites()
+    assert sites, "no construction sites - this test would pass over an empty set"
+    probes = [(f, ln) for f, ln, _t, probe in sites if probe]
+    assert probes, "no refusal probes found - the exemption mechanism is not being exercised"
+    assert len(probes) <= len(sites) // 10, (
+        f"{len(probes)} of {len(sites)} construction sites are exempted as refusal probes - "
+        "the exception has become the rule"
+    )
+    leaked = [f"{f}:{ln}" for f, ln in probes if not f.startswith("eval/")]
+    assert not leaked, f"production code exempted as a refusal probe: {leaked}"
 
 
 def test_14_no_production_site_uses_a_fixture_tenant():
@@ -128,7 +179,7 @@ def test_14_no_production_site_uses_a_fixture_tenant():
     sites, ev = _sites()
     ev.require_population(minimum=100)
     leaked = [
-        f"{f}:{ln}" for f, ln, t in sites
+        f"{f}:{ln}" for f, ln, t, _probe in sites
         if not f.startswith("eval/") and isinstance(t, ast.Constant)
         and isinstance(t.value, str) and "fixture" in t.value.lower()
     ]
@@ -139,7 +190,7 @@ def test_15_no_construction_site_hardcodes_a_sentinel_tenant():
     sites, ev = _sites()
     ev.require_population(minimum=100)
     bad = [
-        f"{f}:{ln} -> {t.value!r}" for f, ln, t in sites
+        f"{f}:{ln} -> {t.value!r}" for f, ln, t, _probe in sites
         if isinstance(t, ast.Constant) and isinstance(t.value, str)
         and t.value.strip().lower() in FORBIDDEN_TENANTS
     ]
@@ -151,7 +202,7 @@ def test_no_production_site_hardcodes_any_string_tenant():
     sites, ev = _sites()
     ev.require_population(minimum=100)
     literals = [
-        f"{f}:{ln} -> {t.value!r}" for f, ln, t in sites
+        f"{f}:{ln} -> {t.value!r}" for f, ln, t, _probe in sites
         if not f.startswith("eval/") and isinstance(t, ast.Constant) and isinstance(t.value, str)
     ]
     assert not literals, (
@@ -215,21 +266,56 @@ def test_no_ambient_thread_local_or_process_wide_current_tenant():
 
 # ------------------------------------------------------------------- what this does NOT claim
 
-def test_u26a_does_not_claim_tenant_isolation():
-    """The honest boundary, asserted so it cannot quietly drift into a false claim."""
-    src = (ROOT / "src" / "freight_recon" / "workflow.py").read_text()
-    assert "U2.6A SCOPE" in src
-    assert "does NOT yet make the store" in src and "tenant-safe" in src
-    # The 22 methods really are still unscoped. When U2.6B lands, this test SHOULD fail and be
-    # replaced — it is a marker of an intermediate state, not a permanent truth.
+def test_the_tenant_boundary_is_now_complete_not_merely_bound():
+    """SUPERSEDED BY U2.6BC — and this is the assertion it was always waiting for.
+
+    U2.6A deliberately shipped a test saying "a store that knows its tenant and does not use it is
+    exactly that", so nobody could mistake a construction boundary for isolation. That intermediate
+    state has ended: the methods are scoped (Blocker 4), the schema enforces it (Blocker 3), and the
+    migration reaches it safely (Blocker 5). Deleting the old test would erase the record of a
+    deliberate half-step; replacing it records that the half-step finished.
+    """
+    import ast
+
+    from freight_recon.migrations.phase2_tenant_first import CANONICAL_TENANT_TABLES
+
+    src = (ROOT / "src" / "freight_recon" / "workflow.py").read_text(encoding="utf-8")
+
+    # 1. still tenant-BOUND (U2.6A's guarantee survives)
     assert "self._tenant" in src
 
+    # 2. and now tenant-SCOPED: every affected method carries the tenant into the SQL.
+    tree = ast.parse(src)
+    cls = next(n for n in ast.walk(tree)
+               if isinstance(n, ast.ClassDef) and n.name == "WorkflowStore")
+    unscoped = []
+    for m in [n for n in cls.body if isinstance(n, ast.FunctionDef)]:
+        seg = ast.get_source_segment(src, m) or ""
+        if not any(t in seg for t in CANONICAL_TENANT_TABLES) or m.name == "_migrate":
+            continue
+        scoped = ("self._tenant" in seg) and (
+            re.search(r"tenant\s*=\s*\?", seg) or "tenant," in seg)
+        if not scoped:
+            unscoped.append(m.name)
+    assert not unscoped, f"the boundary is incomplete again: {unscoped}"
 
-def test_22_ac_sec_001_remains_red():
-    """The live schema is untouched: 7 of 8 tables are still not tenant-first."""
-    from phase0 import manifest, schema_probe
+    # 3. the U2.6A caveat is gone from the source, because it is no longer true.
+    assert "U2.6A SCOPE" not in src, (
+        "the interim 'bound but not scoped' caveat is still in the code after U2.6BC"
+    )
+
+
+def test_22_ac_sec_001_is_now_satisfied_at_the_schema_level():
+    """SUPERSEDED BY U2.6BC. This asserted AC-SEC-001 was RED (7 of 8 tables non-tenant-first) so
+    U2.6A could not drift into claiming it. All seven have since migrated, so the honest assertion
+    is the opposite one - and it is still a guard: it fails the moment a business table regresses.
+    """
+    from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+    from phase0 import schema_probe
+
     tables, ev = schema_probe.tables()
     ev.require_population(minimum=8)
-    offenders = {t.name for t in tables if not t.canonical}
-    assert offenders == manifest.tables_not_tenant_first()
-    assert len(offenders) == 7, "the schema changed — U2.6A must not activate the migration"
+    offending = [t.name for t in tables
+                 if not t.canonical and t.name not in TENANT_EXEMPT_TABLES]
+    assert offending == [], f"AC-SEC-001 regressed: {offending} are not tenant-first"
+

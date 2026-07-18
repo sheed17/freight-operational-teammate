@@ -64,6 +64,33 @@ def _affected_methods() -> dict[str, dict]:
     return out
 
 
+def _refusal_probe_lines(tree: ast.AST) -> set[int]:
+    """Lines inside a `with pytest.raises(...)` block.
+
+    A WorkflowStore built there is a REFUSAL PROBE: the test asserts the construction fails, so
+    counting it would make the guard report the very defect it exists to prove is absent. This is
+    decided STRUCTURALLY rather than by exempting filenames - three separate guards in this program
+    enumerated the files they knew about and silently stopped covering the ones added afterwards.
+    """
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.With, ast.AsyncWith)):
+            continue
+        raises = False
+        for item in node.items:
+            call = item.context_expr
+            if isinstance(call, ast.Call):
+                fn = call.func
+                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                if name == "raises":
+                    raises = True
+        if raises:
+            for child in ast.walk(node):
+                if hasattr(child, "lineno"):
+                    out.add(child.lineno)
+    return out
+
+
 def _construction_sites() -> list[tuple[str, int, bool]]:
     sites = []
     for p in sorted(ROOT.rglob("*.py")):
@@ -73,8 +100,11 @@ def _construction_sites() -> list[tuple[str, int, bool]]:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        probes = _refusal_probe_lines(tree)
         for n in ast.walk(tree):
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "WorkflowStore":
+                if n.lineno in probes:
+                    continue
                 sites.append((str(p.relative_to(ROOT)), n.lineno,
                               any(k.arg == "tenant" for k in n.keywords)))
     return sites
@@ -140,8 +170,7 @@ def test_the_exact_construction_site_set():
     ev = Evaluation(name="b4.sites", sources_inspected=[str(WORKFLOW_SRC)],
                     accepted=[f"{f}:{l}" for f, l, _ in sites])
     ev.require_population(minimum=100)
-    missing = [f"{f}:{l}" for f, l, has in sites
-               if not has and "test_u26a_tenant_construction" not in f]
+    missing = [f"{f}:{l}" for f, l, has in sites if not has]
     assert not missing, f"construction site(s) without an explicit tenant: {missing}"
     production = [s for s in sites if s[0].startswith(("src/", "scripts/"))]
     assert all(has for _, _, has in production), "a production site omits its tenant"

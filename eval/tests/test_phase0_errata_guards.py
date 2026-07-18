@@ -44,14 +44,26 @@ def test_tenant_offending_tables_exact_set_not_count():
     """REGRESSION 8: the tenant migration list must not contain only six of the seven."""
     tables, ev = schema_probe.tables()
     ev.require_population(minimum=8)
-    enumerated = {t.name for t in tables if not t.canonical}
+    from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+
+    # BUSINESS tables only. The bookkeeping trio (schema_migrations, migration_quarantine,
+    # owner_assertions) is canonically tenant-exempt and adjudicated in the manifest: the audit of a
+    # DISPUTED ownership claim must not itself be owned by one of the disputing tenants.
+    enumerated = {t.name for t in tables
+                  if not t.canonical and t.name not in TENANT_EXEMPT_TABLES}
     registered = manifest.tables_not_tenant_first()
     assert enumerated == registered, (
         f"tenant-posture set drift.\n"
         f"  offending but unregistered: {sorted(enumerated - registered)}\n"
         f"  registered but not offending: {sorted(registered - enumerated)}"
     )
-    assert len(enumerated) == 7, "diagnostic only - the set equality above is the oracle"
+    # SUPERSEDED BY U2.6BC. This asserted the pre-migration posture (7 offending). The migration
+    # has run: zero business tables remain non-tenant-first. The ERRATA finding it defends - that
+    # the count was 7 and not 6, so U2.1 could not be scoped to six - is preserved in DEF-6 and in
+    # the errata review as the historical record. What is canonical NOW is that the set is empty.
+    assert enumerated == set(), (
+        f"business tables still not tenant-first: {sorted(enumerated)} — U2.6BC migrated all seven"
+    )
 
 
 def test_u21_scope_names_all_seven_tables():
@@ -64,16 +76,28 @@ def test_u21_scope_names_all_seven_tables():
         assert row, f"{table} is named but has no U2.1 migration unit"
 
 
-def test_the_already_canonical_table_is_not_in_u21_scope():
-    """The control: don't migrate what is already right."""
-    assert manifest.tables_tenant_first() == {"autonomous_run_counters"}
-    assert "autonomous_run_counters" not in manifest.tables_not_tenant_first()
-
-
-# A superseded value may be NAMED as the defect it was - the same rule that lets the planning review
-# name AC-SEC-000. Naming a defect is not asserting it. The marker must be explicit and on the line.
+# A superseded value may be NAMED as the defect it was - naming a defect is not asserting it.
 SUPERSESSION_MARKERS = ("errata", "miscount", "superseded", "was 6/8", "was 141", "was 92",
                         "previously", "incorrect", "wrong")
+
+
+def _names_the_defect(line: str) -> bool:
+    return any(m in line.lower() for m in SUPERSESSION_MARKERS)
+
+
+def test_every_business_table_is_now_registered_as_tenant_first():
+    """SUPERSEDED BY U2.6BC. This asserted that `autonomous_run_counters` was the ONLY tenant-first
+    table and therefore outside U2.1's scope - the pre-migration posture. U2.1 has run: all eight
+    business tables are tenant-first, and the manifest records that. The original point (do not
+    re-migrate a table that is already correct) survives as the migration's own skip for
+    already-canonical tables, proved in the Blocker-5 matrix.
+    """
+    first = manifest.tables_tenant_first()
+    assert "autonomous_run_counters" in first, "the originally-canonical table went missing"
+    assert manifest.tables_not_tenant_first() == set(), (
+        f"business tables still outstanding: {sorted(manifest.tables_not_tenant_first())}"
+    )
+    assert len(first) >= 8, f"only {len(first)} tables registered tenant-first"
 
 
 def _names_the_defect(line: str) -> bool:
