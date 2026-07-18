@@ -202,7 +202,7 @@ repository documents, caught before commit; the table above is from the actual r
 
 ## 20–21. Regression and full suite
 Phase-2 regressions, AC-SAFE-012, AC-SAFE-013, AC-SEC-001: **GREEN** (36 gate cases). Full suite
-on the final content tree: **SUITE_INSERTED_BY_FINALIZER** — and re-validated identically on the
+on the final content tree: **1179 passed · 0 failed · 1 skipped** — and re-validated identically on the
 committed checkout. **No production runtime module changed** (`git diff` over `src/` is empty; the
 only `scripts/` change is the new status finalizer, dispositioned S15g).
 
@@ -210,8 +210,8 @@ only `scripts/` change is the new status finalizer, dispositioned S15g).
 
 | | |
 |---|---|
-| **Content commit** | `CONTENT_COMMIT_INSERTED_BY_FINALIZER` |
-| **Content tree** | `CONTENT_TREE_INSERTED_BY_FINALIZER` |
+| **Content commit** | `fde6c9531fa22761799f81e55d6022640697f85c` |
+| **Content tree** | `1f046f3925fde9e57d8c7de470a4f9f30a4fc4a2` |
 | **HEAD** | the single status-metadata commit directly on top (hash in `git log`; per the two-commit convention it cannot be recorded here) |
 | **Status-reality guard on the committed checkout** | ### **GREEN** |
 | **Working tree** | clean · **not pushed** |
