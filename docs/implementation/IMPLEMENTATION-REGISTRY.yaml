@@ -16,13 +16,20 @@
 # Status authority: CURRENT.md.
 
 meta:
-  version: 1
-  baseline_commit: 7d72498
-  validated_tree: f2b22f037c814b99b29bc24012f3ddc612ade921
+  version: 2
+  # The three fields below MIRROR the machine-maintained status block in CURRENT.md and are
+  # rewritten by the same script (scripts/update_current_status.py). test_status_reality.py fails
+  # the build if they disagree with CURRENT.md or with the checked-out commit.
+  baseline_commit: 8a08a4a0641850f981fd0a46a9c7af515565a393
+  validated_tree: db7257dcd1055f84d31bccf775128c2a99a8baf1
+  suite: "1179 passed, 0 failed, 1 conditionally justified skip"
+  status_convention: >-
+    Two-commit convention: content commit first, then exactly one status-metadata commit that
+    records it. A commit cannot contain its own hash, so baseline_commit names the content
+    baseline and HEAD is either that commit or the single metadata commit on top of it.
   phase_numbering: >-
     P0-P14 with gates G0-G10, per implementation-roadmap.md. This is the repository's approved
     numbering. The 8-stage roadmap in docs/PRODUCT_ROADMAP.md is SUPERSEDED and must not be used.
-  suite: "1073 passed, 0 failed, 1 conditionally justified skip"
 
 units:
 
@@ -196,6 +203,8 @@ units:
       - CLAUDE.md
       - docs/implementation/CURRENT.md
       - docs/CANONICAL-DOCUMENTS.md
+      - docs/implementation/TOOL-ACCESS-POLICY.md
+      - docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml
     allowed_scope:
       - running a zero-context agent against the repository
       - recording what it concluded, correctly and incorrectly
@@ -218,12 +227,12 @@ units:
       new agent without a human re-explaining the project.
     boundaries_affected: [documentation only]
     acceptance_contract: >-
-      The rehearsed agent must, unprompted: (1) define Neyma as an operational execution layer and
-      explicitly reject the invoice-processor reading; (2) state P0/P1/P2 complete and P3 not
-      started; (3) state R-07 OPEN - NOT CONTAINED; (4) name U-HANDOFF-1 as the next unit;
-      (5) describe that unit's expected outputs; (6) REFUSE to invent an unvalidated freight rule
-      when asked to; (7) describe the acceptance and commit discipline. A failure on any of these
-      is a documentation defect, not an agent defect.
+      The rehearsal must be run by an agent that did NOT author the control documents, and must
+      produce a structured result against the 13-criterion executable checklist in
+      docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml (all criteria currently PENDING). A failure
+      on any criterion is a documentation defect, not an agent defect. One non-independent
+      rehearsal has already run and returned NOT READY; its findings were corrected by
+      U-HANDOFF-1A and it does not satisfy this contract.
     concurrency_requirements: none
     mutation_requirements: >-
       required - the rehearsal must include at least one deliberately misleading stale document to

@@ -118,6 +118,9 @@ its names.
 | [`implementation/phase-0-baseline-manifest.yaml`](implementation/phase-0-baseline-manifest.yaml) | Adjudicated current-state facts (machine-checked) | **CURRENT_STATUS** |
 | [`implementation/registry.md`](implementation/registry.md) | Index of the implementation layer | **IMPLEMENTATION_CONTROL** |
 | [`implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](implementation/AUTO-LOADED-GUIDANCE-REVIEW.md) | Disposition of every auto-loaded file | **IMPLEMENTATION_CONTROL** |
+| [`implementation/TOOL-ACCESS-POLICY.md`](implementation/TOOL-ACCESS-POLICY.md) | Broad tool access for formal sessions; research vs authority boundary | **IMPLEMENTATION_CONTROL** |
+| [`implementation/U-HANDOFF-1-ACCEPTANCE.yaml`](implementation/U-HANDOFF-1-ACCEPTANCE.yaml) | The executable rehearsal acceptance checklist | **ACCEPTANCE_ORACLE** |
+| [`implementation/IMPLEMENTATION-SURFACE.yaml`](implementation/IMPLEMENTATION-SURFACE.yaml) | Which architecture concepts are implemented vs specification-only | **CURRENT_STATUS** |
 | `implementation/release-gate-plan.md` · `pr-sequence.md` · `red-to-green-acceptance-plan.md` · `migration-plan.md` · `data-migration-plan.md` · `effect-entry-point-cutover-plan.md` · `implementation-risk-register.md` · `current-to-target-gap-matrix.md` | Planning detail | **IMPLEMENTATION_CONTROL** |
 | `implementation/current-state-inventory.md` | The mechanical recon at reset time | **HISTORICAL** |
 | **Phase and blocker reviews** — `phase-0-implementation-review.md` · `phase-1-*` · `phase-2-implementation-review.md` · `u2-6a-*` · `u2-6b-*` · `u2-6bc-*` (6 files) · `canonical-corpus-errata-review.md` · `implementation-planning-review.md` | Evidence of what was done and found | **HISTORICAL (evidence)** |

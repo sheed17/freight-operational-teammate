@@ -1,3 +1,9 @@
+> ### COMPATIBILITY SURFACE — NOT THE CANONICAL AGENT DEFINITION
+> **The canonical surface is [`.claude/agents/build-supervisor.md`](../../.claude/agents/build-supervisor.md)**
+> (decision recorded by U-HANDOFF-1A: the formal CLI environment is Claude Code, so
+> `.claude/agents/` is canonical and this file is compatibility-only). Corrections land
+> there first; if this file and its canonical counterpart disagree, the counterpart wins.
+
 
 > ## ⛔ SUPERSEDED STATUS — READ `CLAUDE.md` FIRST
 >

@@ -83,16 +83,26 @@ help a real owner/controller/AP/billing/ops role or clearly unlock the next owne
 Side-exits, each with a reason: `NEEDS_REVIEW`, `FAILED`, `WAITING_FOR_SESSION`. `ENTERING` must
 be explicit so a crash mid-entry is recoverable without double-entry.
 
-## Model/API correctness (this project calls Claude)
+## Provider posture (dual-provider — do not flag valid usage by provider alone)
 
-- Vision extraction should target a current vision model. The original spec hardcoded
-  `claude-sonnet-4-20250514`, which is the **deprecated** Sonnet 4.0 (retires 2026-06-15).
-  Current Sonnet is `claude-sonnet-4-6`; the most capable is `claude-opus-4-8`. Flag any
-  deprecated/invented model ID, and any date-suffixed alias that doesn't exist.
-- Instructor's `from_anthropic` wraps the official Anthropic SDK — that's acceptable. Flag any
-  OpenAI-compatible shim used to reach Claude.
-- For anything Claude-API-shaped you're unsure about, recommend the implementing agent consult
-  the `claude-api` skill rather than guessing from memory.
+**The runtime is currently dual-provider, and that is a fact, not an architecture decision.**
+Anthropic is used for vision extraction (`extraction.py` via `instructor.from_anthropic`); OpenAI
+models drive the browser/operation/orientation surfaces (`from_openai`, `NEYMA_OPERATION_MODEL`,
+`NEYMA_BROWSER_USE_MODEL`). Both SDKs are declared dependencies.
+
+Review rules:
+
+- **Do not flag provider-valid code solely because it is not Claude** (or not OpenAI). This
+  file previously asserted a single universal provider, which would have made a reviewer mark
+  correct OpenAI code defective — the rehearsal caught it.
+- Provider choice is **not canonical product architecture**. No canonical document selects a
+  final provider; consolidation, if it ever happens, requires an explicit approved work unit.
+  Until then the split is **implementation-specific and unresolved by design**.
+- What IS reviewable: provider-specific code must sit behind the relevant boundary per the
+  legacy dispositions and current implementation status; model IDs should be current for their
+  provider; and no provider output is ever canonical truth or an amount (CLAUDE.md §5).
+- For anything Claude-API-shaped you're unsure about, consult the `claude-api` skill rather than
+  guessing from memory; verify OpenAI specifics against their current docs likewise.
 
 ## How to run your review
 

@@ -10,8 +10,8 @@ deletion or graduation condition. A module that is going to be replaced eventual
 it is `ADAPT` or `REWRITE` with a phase attached.
 
 **Coverage is machine-checked.** [`eval/tests/test_docs_control_system.py`](../../eval/tests/test_docs_control_system.py)
-asserts that every module under `src/freight_recon/` appears in exactly one subsystem below —
-so a new module cannot quietly arrive without a disposition.
+asserts that every module under `src/freight_recon/` AND every script under `scripts/` appears
+in a subsystem below — so a new module or script cannot quietly arrive without a disposition.
 
 ---
 
@@ -260,18 +260,58 @@ so a new module cannot quietly arrive without a disposition.
 | **Deletion condition** | The canonical acceptance case covering the same behaviour is green |
 | **Evidence required before deletion** | The replacing case named in the phase review |
 
+
+## S15 — Operator entry-point scripts (`scripts/`, 53 files)
+
+**Every production-relevant script resolves to exactly one disposition below**, grouped only where
+scripts genuinely share responsibility, authority, target phase and deletion condition. Coverage is
+machine-checked against the filesystem, same as `src/` — a new script cannot arrive undispositioned.
+The effect-capable subset is authoritative in
+[`effect-entry-point-cutover-plan.md`](effect-entry-point-cutover-plan.md) and the baseline
+manifest; this section must agree with them, and S2 above remains the risk narrative for that
+subset.
+
+### S15a — Effect-capable entry points ⛔ (the S2/R-07 set) — **DELETE / ADAPT / MAKE_READ_ONLY at P4**
+`scripts/enter_invoice_discovered.py` (EP-7, **DELETE**) · `scripts/enter_truckingoffice_invoice.py` (EP-6, **DELETE**) · `scripts/run_operate_request.py` (EP-9, **DELETE**) · `scripts/run_operator_agent.py` (EP-10, **DELETE**) · `scripts/run_action_callback_server.py` (EP-1, **ADAPT** → pipeline client) · `scripts/propose_ar_from_tms.py` (EP-3, **ADAPT** → pipeline client) · `scripts/orient_tms.py` (EP-8, **MAKE_READ_ONLY** — loses its actuator import) · `scripts/enter_tms_payable.py` (EP-12, **QUARANTINE** — test-only, mock-guarded) · `scripts/run_dogfood_pilot.py` (EP-13, **QUARANTINE** — test-only, mock-guarded) · `scripts/read_tms_browser_use.py` (**MAKE_READ_ONLY** — read path over the browser adapter; actuator-capable by import until P4)
+Deletion condition: identical to S2 — EP-6/7/9/10 physically deleted, the import gate ON, `adapter_import_allowlist.edges` empty.
+
+### S15b — Browser/TMS discovery and drive tooling — **ADAPT at P4**
+`scripts/discover_tms_screen.py` · `scripts/drive_real_tms.py` · `scripts/validate_screen_map.py` · `scripts/record_tms_observation.py` · `scripts/read_mock_tms.py`
+Operator tooling over the browser/TMS surface (S1). Adapted behind the adapter boundary with it; no independent deletion condition.
+
+### S15c — Mailbox, Slack and channel runners — **ADAPT at P4 (outbound gating) → P13**
+`scripts/pull_imap_mailbox.py` · `scripts/run_mailbox_intake.py` · `scripts/run_mailbox_workflow.py` · `scripts/run_gmail_to_slack_dogfood.py` · `scripts/run_gmail_to_slack_loop.py` · `scripts/discover_gmail_freight.py` · `scripts/propose_operation_to_slack.py` · `scripts/deliver_review.py` · `scripts/dispatch_review.py` · `scripts/apply_review_action.py` · `scripts/submit_signed_action.py` · `scripts/slack_probe.py` · `scripts/verify_channels.py` · `scripts/generate_follow_up_draft.py`
+Runners over S6/S8/S9. Outbound sends are external effects and gate at P4; the review/approval surfaces they drive are REWRITE at P8.
+
+### S15d — Legacy pipeline runners (pre-reset dogfood spine) — **ADAPT with their subsystems (P6–P8)**
+`scripts/run_ingestion.py` · `scripts/run_extraction.py` · `scripts/run_reconciliation.py` · `scripts/run_workflow.py` · `scripts/run_review.py` · `scripts/run_teammate.py` · `scripts/run_diagnostics.py` · `scripts/generate_daily_summary.py` · `scripts/check_tool_permission.py`
+CLI fronts for S3/S5/S7/S8/S10. They carry no authority of their own and follow their subsystem's disposition; they write only to gitignored workspace paths.
+
+### S15e — Synthetic corpus and fixture generation — **QUARANTINE**
+`scripts/generate_realistic_corpus.py` · `scripts/generate_email_corpus.py` · `scripts/generate_mock_tms.py` · `scripts/generate_packet_pages.py` · `scripts/generate_sample_invoice.py` · `scripts/download_public_freight_templates.py`
+Pre-reset fixture tooling. Retained for evidence and test-fixture regeneration; excluded from every production path; superseded for approval purposes by the canonical acceptance suites.
+
+### S15f — Pilot and onboarding runners — **QUARANTINE at P11** (with S12)
+`scripts/run_first_design_partner.py` · `scripts/run_internal_pilot_session.py` · `scripts/run_sunday_readiness.py` · `scripts/verify_design_partner_package.py` · `scripts/verify_first_design_partner_slack.py` · `scripts/verify_owner_onboarding.py`
+Encode the pre-reset pilot model. Same deletion condition as S12: P11 shadow mode defines the pilot canonically.
+
+### S15g — Migration and control-plane tooling — **KEEP**
+`scripts/migrate_phase2_tenant_first.py` (the canonical P2 migration CLI — forward-only, same standing as `migrations/`) · `scripts/update_current_status.py` (the status finalizer; the only writer of CURRENT.md's volatile block) · `scripts/report_legacy_commit_identities.py` (read-only Phase-1 evidence probe)
+KEEP is justified here exactly as in S13: canonical Phase 0–2 output or architecture-neutral control tooling with no external-effect capability.
+
+
 ---
 
 ## Summary
 
 | Disposition | Subsystems |
 |---|---|
-| **KEEP** | S13 (+ canonical members of S4, S11) |
-| **ADAPT** | S1, S5, S6, S9, S11, S14 (+ S4) |
+| **KEEP** | S13, S15g (+ canonical members of S4, S11) |
+| **ADAPT** | S1, S5, S6, S9, S11, S14, S15b, S15c, S15d (+ S4) |
 | **REWRITE** | S3, S7, S8, S10 |
-| **MAKE_READ_ONLY** | parts of S2 (EP-8), outbound paths in S6 |
-| **QUARANTINE** | S12 (+ `mock_tms_write_server.py`) |
-| **DELETE** | S2 (EP-6, EP-7, EP-9, EP-10) |
+| **MAKE_READ_ONLY** | parts of S2/S15a (EP-8, `read_tms_browser_use`), outbound paths in S6 |
+| **QUARANTINE** | S12, S15e, S15f (+ `mock_tms_write_server.py`, the EP-12/EP-13 test-only entry points) |
+| **DELETE** | S2/S15a (EP-6, EP-7, EP-9, EP-10) |
 
 > ### **No subsystem is KEEP because it is large or tested.** The two largest modules in the
 > repository — `action_callback.py` (1964 lines) and `workflow.py` (1157) — are **REWRITE** and

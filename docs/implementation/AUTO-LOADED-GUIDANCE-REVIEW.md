@@ -85,17 +85,20 @@ exists** — and made the first a *gate* (*"Use docs/MODEL_STRATEGY.md before ch
 or claiming production extraction readiness"*). **A gate pointing at a missing file cannot be
 satisfied.** **Action:** both references removed with the rewrite.
 
-## Findings recorded but deliberately NOT acted on
+## Findings recorded at U-DOC-1 — dispositions updated by U-HANDOFF-1A
 
-These are real and out of scope for a documentation task. They are recorded so they are not lost:
+The four "not acted on" findings from the original audit have since been adjudicated by the
+zero-context rehearsal (which returned NOT READY) and corrected by **U-HANDOFF-1A**. A review
+document must describe the repository state its own commit produced, so the table below records
+both what was found and where each item stands **now**:
 
-| Finding | Why not now |
+| Finding | Status after U-HANDOFF-1A |
 |---|---|
-| **Contradictory model strategy** — `README` claimed all-GPT (gpt-5.5/5.4), `AGENTS.md` claimed `ANTHROPIC_MODEL=claude-opus-4-8`, `build-supervisor` claimed `claude-sonnet-4-6` | Resolving it requires a **product decision** about the model stack, not a documentation edit. The arbitrating document (`docs/MODEL_STRATEGY.md`) does not exist. **Recorded as an open question.** |
-| **`principal-architect-supervisor.md` has no `.claude/agents/` twin** | The final verdict step in the review chain is unavailable to Claude Code. Creating a new agent definition is beyond a documentation task. |
-| **The five `.claude`/`.codex` agent pairs have drifted independently** | Two files must be edited in lockstep for every future correction and nothing enforces it. A structural fix needs a decision about which surface is canonical. |
-| **`phase-code-reviewer` verification commands target the pre-reset suites** | Retargeting them is a real change to a review process; the banner now warns, but the commands are unchanged. |
-| **"Phase" is overloaded four ways** — reset P0–P14, legacy Stage 1–8, README "Phase 1 demo", owner-readiness phases | Partially mitigated: `PHASE-OUTPUTS.md` states the convention explicitly. Full disambiguation would mean renaming things across historical documents. |
+| **Model strategy** | ### **RESOLVED as a contradiction; OPEN as a decision.** The rehearsal established the original three-way contradiction had already been removed when README/AGENTS were rewritten — the record here had simply not been updated. The one residual falsehood (`build-supervisor` asserting *"this project calls Claude"* against a dual-provider runtime) is **corrected**: the file now states the runtime is dual-provider (Anthropic vision extraction, OpenAI browser/operation), that provider choice is **not canonical architecture**, that valid provider usage must not be flagged by provider alone, and that consolidation requires an explicit approved work unit. ### **No final model strategy was invented — none is canonically decided.** Not handoff-blocking. |
+| **`principal-architect-supervisor.md` twin** | ### **RESOLVED.** `.claude/agents/principal-architect-supervisor.md` created, aligned with the canonical content, so the review chain terminates for Claude Code — the intended formal CLI environment. |
+| **Agent-pair drift** | ### **RESOLVED by decision + guard.** Decision: **`.claude/agents/` is the canonical surface** (the formal CLI environment is Claude Code); `.codex/agents/` files are **compatibility surfaces** and now declare their canonical counterpart in a header. A drift guard enforces: pair sets match, every `.codex` file carries the compatibility pointer, every agent carries the supersession banner. Full text-sync was deliberately NOT chosen — the surfaces legitimately differ in format; what is guarded is **authority**, so the pair can no longer *appear equally authoritative while drifting silently*. |
+| **`phase-code-reviewer` stale commands** | ### **RESOLVED.** Both surfaces now carry the canonical verification sequence (unit acceptance + gates, control guards, status-reality guard, concurrency, exact-set probes, mutation evidence, full suite LAST, clean tree). The pre-reset list is retained in a `<details>` block explicitly stripped of approval authority. The rehearsal also downgraded this finding's hazard honestly: the old commands write only to **gitignored** workspace paths, so they wasted effort but never dirtied tracked state. |
+| **"Phase" is overloaded four ways** — reset P0–P14, legacy Stage 1–8, README "Phase 1 demo", owner-readiness phases | **UNCHANGED (accepted).** `PHASE-OUTPUTS.md` states the convention; full disambiguation would mean renaming things across historical documents. Not handoff-blocking. |
 
 ## Verification
 

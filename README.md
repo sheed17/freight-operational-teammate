@@ -37,6 +37,7 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | [`docs/implementation/IMPLEMENTATION-REGISTRY.yaml`](docs/implementation/IMPLEMENTATION-REGISTRY.yaml) | Work units, status, dependencies |
 | [`docs/implementation/PHASE-OUTPUTS.md`](docs/implementation/PHASE-OUTPUTS.md) | What each phase buys |
 | [`docs/implementation/LEGACY-DISPOSITION.md`](docs/implementation/LEGACY-DISPOSITION.md) | What happens to every existing subsystem |
+| [`docs/implementation/TOOL-ACCESS-POLICY.md`](docs/implementation/TOOL-ACCESS-POLICY.md) | Broad tool access for formal sessions — and why it is not action authority |
 
 ## Current implementation status
 
@@ -46,7 +47,7 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **Implementation Phase 1** | ✅ COMPLETE — correct effect identity (the amount is out of the Commit Key) |
 | **Implementation Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Implementation Phase 3** | ⛔ **NOT STARTED** |
-| **Suite** | **1073 passed · 0 failed · 1 conditionally justified skip** |
+| **Suite** | green — ### **exact counts live ONLY in [`CURRENT.md`](docs/implementation/CURRENT.md)'s machine-maintained status block** |
 | **Next approved work** | **Zero-context CLI handoff rehearsal and hostile readiness review** |
 
 **Phases are `P0`–`P14` with gates `G0`–`G10`.** Older documents refer to an 8-stage roadmap
@@ -82,7 +83,7 @@ the repository are marked REWRITE and ADAPT.
 ## Running the tests
 
 ```bash
-.venv/bin/python -m pytest eval/ -q          # the full suite: 1073 passed, 1 skipped
+.venv/bin/python -m pytest eval/ -q          # the full suite; current counts: docs/implementation/CURRENT.md
 ```
 
 Targeted runs:
@@ -134,5 +135,5 @@ attaches to it (`human_established_session_only`).
 ---
 
 *The previous README described Neyma as a carrier-invoice reconciliation engine on an 8-stage
-roadmap with ~515 tests. That description was accurate before the architectural reset and is
-preserved in git history. It is not accurate now.*
+roadmap, with a much smaller suite. That description was accurate before the architectural reset
+and is preserved in git history. It is not accurate now.*

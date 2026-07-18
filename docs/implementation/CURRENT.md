@@ -4,20 +4,41 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** durable CLI-control documentation task, on top of commit `7d72498`.
+> **Last updated:** U-HANDOFF-1A bounded control-system correction.
 
 ---
 
 ## Position
 
+**The block below is machine-maintained and machine-verified.** It is written by
+`scripts/update_current_status.py` from `git rev-parse` and a real suite run — never by hand — and
+[`eval/tests/test_status_reality.py`](../../eval/tests/test_status_reality.py) fails the build when
+it disagrees with the checked-out commit. The zero-context rehearsal proved a hand-maintained
+version of this block goes stale within one commit and nothing notices.
+
+```yaml
+# status-block: maintained by scripts/update_current_status.py - do not edit by hand
+branch: recovery/u2-6bc-atomic-cutover
+content_commit: 8a08a4a0641850f981fd0a46a9c7af515565a393
+content_tree: db7257dcd1055f84d31bccf775128c2a99a8baf1
+suite_passed: 1179
+suite_failed: 0
+suite_skipped: 1
+```
+
+> ### **The two-commit convention (why this block can be truthful):** a commit cannot contain its
+> own hash, so a self-referential "current commit" field is impossible and claiming one would be a
+> lie. Instead: every substantive change lands in a **content commit**; the finalization script
+> then records that commit here and the record lands in **exactly one status-metadata commit
+> directly on top**, touching only the status files. `HEAD` is therefore either the content
+> baseline itself or that one metadata commit — and the guard verifies exactly this relationship,
+> including that the metadata commit changed nothing else.
+
 | | |
 |---|---|
-| **Branch** | `recovery/u2-6bc-atomic-cutover` |
-| **Baseline commit** | `7d72498` — *Complete final Phase 2 tenant qualification* |
-| **Latest validated tree** | `f2b22f037c814b99b29bc24012f3ddc612ade921` |
-| **Suite** | ### **1073 passed · 0 failed · 1 skipped** |
 | **The one skip** | Conditional and self-describing: *"no red-by-design cases remain: AC-SAFE-012/013 went green at Phase 1"* |
 | **Working tree** | clean |
+| **Suite counts elsewhere** | ### **Volatile commit/tree/suite figures live ONLY in the block above.** Other files link here instead of copying numbers — the rehearsal found the old figure duplicated into five files, all stale. |
 
 ## Completed phases
 
@@ -76,25 +97,37 @@
 
 ## Current documentation milestone
 
-**DURABLE CLI-CONTROL DOCUMENTATION** — converting the repository into a self-contained product,
-architecture and implementation control system for zero-context agents.
-Review: [`durable-cli-control-documentation-review.md`](durable-cli-control-documentation-review.md).
+**U-HANDOFF-1A — BOUNDED CONTROL-SYSTEM CORRECTION** — complete.
+Review: [`u-handoff-1a-control-correction-review.md`](u-handoff-1a-control-correction-review.md).
+
+### The rehearsal record so far
+A **non-independent** rehearsal (run by the agent that authored the control documents) executed the
+U-HANDOFF-1 procedure and returned **NOT READY** — one HIGH finding (this very file was stale by one
+commit, with the stale figure propagated into four more files and no guard watching), three MEDIUM,
+three LOW. Those findings are corrected and guarded as of this milestone.
+### **U-HANDOFF-1 itself remains OPEN: the INDEPENDENT zero-context rehearsal has not been run**,
+and a rehearsal by the author of the documents under test cannot close it.
 
 ## ✅ The exact next approved work program
 
-### **ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW**
+### **ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW — run INDEPENDENTLY**
 
 Unit `U-HANDOFF-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
+The executable acceptance checklist is
+[`U-HANDOFF-1-ACCEPTANCE.yaml`](U-HANDOFF-1-ACCEPTANCE.yaml) — **13 criteria, all currently
+PENDING**; the independent rehearsal produces a structured result against it.
 
 It tests whether a clean-session agent, given only this repository, can:
 
 1. identify the product correctly (and **reject** the invoice-processor interpretation)
-2. identify the current implementation state correctly
+2. identify the current implementation state correctly — **including this file's commit/tree/suite block**
 3. identify legacy code correctly
 4. identify the next work unit correctly
 5. explain that unit's expected outputs correctly
 6. **refuse to invent missing product rules**
 7. follow acceptance and commit discipline
+8. describe the broad-tool-access posture and **distinguish tool access from action authority**
+   ([`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md))
 
 **This is a rehearsal and review unit. It writes no runtime code.**
 
@@ -121,4 +154,6 @@ dependency graph.
 A session picking up `U-HANDOFF-1` must have read, in order:
 [`CLAUDE.md`](../../CLAUDE.md) → [`PRODUCT.md`](../../PRODUCT.md) →
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → [`CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md) →
-this file → [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
+this file → [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
+[`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) →
+[`U-HANDOFF-1-ACCEPTANCE.yaml`](U-HANDOFF-1-ACCEPTANCE.yaml).

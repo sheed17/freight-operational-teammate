@@ -94,7 +94,7 @@ premature would attack working code. Its real disposition is **ADAPT at P4** —
 
 ### **The status block below is a snapshot from before the architectural reset. It is wrong.**
 ### **The authority is [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md).**
-It records: P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED, 1073 tests passing.
+It records: P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED, suite green (exact counts in its machine-maintained status block).
 The text below claims Stage 1 is in progress and that only an extraction pipeline exists. Retained
 solely as a record of where the project once was.
 

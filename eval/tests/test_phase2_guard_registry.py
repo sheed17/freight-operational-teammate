@@ -58,10 +58,13 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_phase2_integrated_acceptance.py": (RETAIN, "the one integrated entry point: real SQLite, real threads, 20 schedules"),
     "test_phase2_guard_registry.py": (RETAIN, "this registry, which fails when a guard file is added and left unclassified"),
     "test_docs_control_system.py": (RETAIN, "the documentation control system guards - product identity, status, registries, findings"),
+    "test_status_reality.py": (RETAIN, "the status-reality guard - CURRENT.md must match the checked-out commit, tree and live test population"),
+    "test_tool_access_policy.py": (RETAIN, "the tool-access policy guards - breadth cannot be restricted, authority cannot be widened"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_")
-EXTRA_GUARDS = ("test_ac_sec_001_registry.py", "test_docs_control_system.py")
+EXTRA_GUARDS = ("test_ac_sec_001_registry.py", "test_docs_control_system.py",
+                "test_status_reality.py", "test_tool_access_policy.py")
 
 
 def guard_files() -> list[str]:

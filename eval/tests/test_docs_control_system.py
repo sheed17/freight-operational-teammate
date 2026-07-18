@@ -589,3 +589,212 @@ def test_pre_reset_documents_cannot_regain_canonical_authority(doc: str):
             f"{doc} was reclassified CANONICAL: {row.strip()[:120]}"
         assert re.search(r"SUPERSEDED|QUARANTINED_GUIDANCE|HISTORICAL", row), \
             f"{doc} lost its superseded classification: {row.strip()[:120]}"
+
+
+# ============================================================ implemented-vs-specified registry
+
+SURFACE = IMPL / "IMPLEMENTATION-SURFACE.yaml"
+SRC = ROOT / "src" / "freight_recon"
+
+REQUIRED_CONCEPTS = {
+    "Tenant", "Commit Key", "Material Facts", "Effect Grant ledger (foundation)",
+    "Checkpoint (seven-step)", "Checkpoint Witness", "Effect claim CAS", "Work Item",
+    "Pipeline Instance", "Expectation", "Obligation", "Evidence (content-addressed)",
+    "Provenance classes", "Policy (typed, compile-or-refuse)", "Brake (admission control)",
+    "Canonical events (98 contracts)", "Outbox / inbox", "Replay isolation",
+    "Reconciliation (canonical)", "The eleven operational loops",
+    "First vertical slice (W6 -> W8)",
+}
+SURFACE_STATUSES = {"IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "SPECIFICATION_ONLY",
+                    "LEGACY_IMPLEMENTATION", "BLOCKED"}
+
+
+def surface_concepts() -> list[dict]:
+    return yaml.safe_load(read(SURFACE))["concepts"]
+
+
+def _src_contains_symbol(symbol: str) -> bool:
+    pat = re.compile(rf"\b{re.escape(symbol)}\b")
+    for f in SRC.rglob("*.py"):
+        if pat.search(f.read_text(encoding="utf-8")):
+            return True
+    return False
+
+
+def test_surface_registry_covers_the_exact_required_concept_set():
+    names = {c["name"] for c in surface_concepts()}
+    assert names == REQUIRED_CONCEPTS, (
+        f"concept set drifted: extra={names - REQUIRED_CONCEPTS}, missing={REQUIRED_CONCEPTS - names}"
+    )
+    for c in surface_concepts():
+        assert c["status"] in SURFACE_STATUSES, f"{c['name']}: invalid status {c['status']!r}"
+        assert c.get("specification"), f"{c['name']}: no canonical specification link"
+        assert (ROOT / c["specification"]).exists(), f"{c['name']}: spec {c['specification']} missing"
+        assert c.get("owning_unit"), f"{c['name']}: no owning work unit"
+
+
+def test_implemented_concepts_cite_evidence_that_actually_exists():
+    """A concept may claim IMPLEMENTED only with living evidence - file AND symbol."""
+    checked = 0
+    for c in surface_concepts():
+        if c["status"] not in {"IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "LEGACY_IMPLEMENTATION"}:
+            continue
+        assert c.get("evidence"), f"{c['name']} claims {c['status']} with no evidence"
+        for ev in c["evidence"]:
+            path = ROOT / ev["path"]
+            assert path.exists(), f"{c['name']}: evidence file {ev['path']} does not exist"
+            assert re.search(rf"\b{re.escape(ev['symbol'])}\b", path.read_text(encoding="utf-8")), (
+                f"{c['name']}: symbol {ev['symbol']!r} not found in {ev['path']} - "
+                "the registry presents unimplemented work as implemented"
+            )
+            checked += 1
+    assert checked >= 8, f"only {checked} evidence citations verified - population too small"
+
+
+def test_specification_only_concepts_are_verifiably_absent_from_src():
+    """The inverse direction: SPECIFICATION_ONLY must stay true. If someone implements a
+    CheckpointWitness without updating this registry (or marks it spec-only while it exists),
+    this fails. This is the guard the rehearsal had to substitute with hand-run greps."""
+    checked = 0
+    for c in surface_concepts():
+        if c["status"] not in {"SPECIFICATION_ONLY", "BLOCKED"}:
+            continue
+        symbols = c.get("absent_symbols")
+        assert symbols, f"{c['name']} is {c['status']} but names no absent_symbols to verify"
+        for sym in symbols:
+            assert not _src_contains_symbol(sym), (
+                f"{c['name']} is recorded {c['status']} but {sym!r} exists in src/ - either the "
+                "registry is stale or unapproved implementation landed"
+            )
+            checked += 1
+    assert checked >= 15, f"only {checked} absence checks ran - population too small"
+
+
+def test_the_p3_concepts_are_specification_only_while_p3_is_blocked():
+    """Cross-check: the registry may not claim checkpoint work exists while P3 is BLOCKED."""
+    p3_status = next(u["status"] for u in registry_units() if u["unit_id"] == "P3")
+    for name in ("Checkpoint (seven-step)", "Checkpoint Witness", "Effect claim CAS"):
+        c = next(x for x in surface_concepts() if x["name"] == name)
+        if p3_status in {"BLOCKED", "READY"}:
+            assert c["status"] == "SPECIFICATION_ONLY", (
+                f"{name} is {c['status']} while P3 is {p3_status} - implemented checkpoint work "
+                "cannot exist before P3 runs"
+            )
+
+
+# ============================================================ U-HANDOFF-1 executable checklist
+
+CHECKLIST = IMPL / "U-HANDOFF-1-ACCEPTANCE.yaml"
+
+
+def test_the_handoff_checklist_is_exact_and_entirely_pending():
+    data = yaml.safe_load(read(CHECKLIST))
+    crits = data["criteria"]
+    ids = [c["id"] for c in crits]
+    assert ids == [f"HANDOFF-{i:02d}" for i in range(1, 14)], (
+        f"checklist criteria drifted from the exact 13: {ids}"
+    )
+    for c in crits:
+        assert c.get("statement", "").strip(), f"{c['id']}: empty statement"
+        assert c.get("evidence_required", "").strip(), f"{c['id']}: no required evidence"
+        assert c["result"] == "PENDING", (
+            f"{c['id']} is {c['result']!r} - the checklist cannot be passed by the session that "
+            "wrote it; only the INDEPENDENT rehearsal fills results in"
+        )
+    assert "independence_requirement" in data["meta"]
+    assert "READY FOR HOSTILE HANDOFF-READINESS REVIEW" in data["meta"]["verdict_vocabulary"]
+
+
+def test_the_checklist_covers_the_new_control_requirements():
+    text = read(CHECKLIST)
+    assert re.search(r"broad-tool-access|broad tool access", text, re.I), "no tool-access criterion"
+    assert re.search(r"distinguishes tool access from action authority", text, re.I)
+    assert re.search(r"status block", text, re.I), "no commit/tree/suite verification criterion"
+    assert re.search(r"WITHOUT starting it", text), "no first-formal-unit criterion"
+
+
+# ============================================================ scripts disposition coverage
+
+def test_every_script_has_a_disposition():
+    """Extends the src/ coverage guard to scripts/ - the rehearsal's L-1."""
+    doc = read(LEGACY)
+    named = set(re.findall(r"`scripts/([a-z_0-9]+\.py)`", doc))
+    actual = {p.name for p in (ROOT / "scripts").glob("*.py")}
+    require_population(actual, "scripts")
+    missing = sorted(actual - named)
+    assert not missing, f"scripts with no disposition: {missing}"
+    phantom = sorted(named - actual)
+    assert not phantom, f"dispositions naming scripts that do not exist: {phantom}"
+
+
+# ============================================================ agent-pair authority (L-3)
+
+def test_agent_surfaces_pair_exactly_and_codex_declares_compatibility():
+    """Decision (U-HANDOFF-1A): .claude/agents/ is canonical - the formal CLI environment is
+    Claude Code. .codex/agents/ files are compatibility surfaces and must say so. Text sync is
+    deliberately NOT enforced; AUTHORITY is: the pair sets must match and every codex file must
+    name its canonical counterpart, so the surfaces can no longer appear equally authoritative
+    while drifting silently."""
+    claude = {p.name for p in ROOT.glob(".claude/agents/*.md")}
+    codex = {p.name for p in ROOT.glob(".codex/agents/*.md")}
+    require_population(claude, "claude agent definitions")
+    assert claude == codex, (
+        f"agent surfaces no longer pair: claude-only={claude - codex}, codex-only={codex - claude}"
+    )
+    for p in sorted(ROOT.glob(".codex/agents/*.md")):
+        text = read(p)
+        assert "COMPATIBILITY SURFACE" in text, f"{p.name}: no compatibility declaration"
+        assert f".claude/agents/{p.name}" in text, f"{p.name}: does not name its canonical counterpart"
+
+
+# ============================================================ M-1 / M-2 / M-3 stay fixed
+
+def test_phase_reviewer_commands_carry_canonical_approval_authority_only():
+    for path in (ROOT / ".claude/agents/phase-code-reviewer.md",
+                 ROOT / ".codex/agents/phase-code-reviewer.md"):
+        text = read(path)
+        assert "Verification Commands — CANONICAL" in text, f"{path.name}: canonical section gone"
+        assert re.search(r"pytest eval/ -q\b", text), f"{path.name}: no full-suite command"
+        assert "test_status_reality.py" in text, f"{path.name}: status-reality guard not required"
+        assert re.search(r"ac_safe_012 or ac_safe_013 or ac_sec_001", text), (
+            f"{path.name}: acceptance gates not in the approval sequence"
+        )
+        assert re.search(r"Historical commands — NO approval authority", text), (
+            f"{path.name}: the historical list lost its no-authority label"
+        )
+        canonical_zone = text.split("Historical commands")[0]
+        assert "run_corpus_eval" not in canonical_zone and "generate_realistic_corpus" not in canonical_zone, (
+            f"{path.name}: a pre-reset command re-entered the canonical approval sequence"
+        )
+
+
+def test_build_supervisor_states_dual_provider_truthfully():
+    """Mutation S-7 slipped past the first version of this guard two ways: the positive check
+    matched the section HEADING while the body asserted a universal provider, and the negative
+    pattern was case-sensitive. The guard now requires the full dual-provider STATEMENT and scans
+    for universal-provider claims case-insensitively."""
+    text = read(ROOT / ".claude/agents/build-supervisor.md")
+    assert re.search(r"runtime is currently dual-provider.{0,60}not an architecture decision", text, re.S), (
+        "the dual-provider statement (not merely the word) is gone"
+    )
+    assert re.search(r"not canonical product architecture", text), (
+        "provider choice is being presented as architecture again"
+    )
+    assert re.search(r"Do not flag provider-valid code solely because", text)
+    assert re.search(r"consolidation.{0,80}explicit approved work unit", text, re.S | re.I)
+    assert not re.search(
+        r"(this project|the repo(sitory)?) calls (Claude|OpenAI|GPT)(?!-API)|"
+        r"calls (Claude|OpenAI) for everything|flag any other provider",
+        text, re.I,
+    ), "a universal-provider claim is back"
+
+
+def test_guidance_review_records_the_findings_as_adjudicated():
+    text = read(GUIDANCE_REVIEW)
+    assert re.search(r"dispositions updated by U-HANDOFF-1A", text), (
+        "the guidance review no longer records the U-HANDOFF-1A adjudication"
+    )
+    assert re.search(r"Model strategy.{0,80}RESOLVED as a contradiction", text, re.S), (
+        "the resolved model-strategy contradiction is presented as open again"
+    )
+    assert re.search(r"No final model strategy was invented", text)

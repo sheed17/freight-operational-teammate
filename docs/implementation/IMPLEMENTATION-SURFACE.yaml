@@ -1,0 +1,188 @@
+# IMPLEMENTATION SURFACE REGISTRY
+#
+# Which load-bearing architecture concepts are IMPLEMENTED versus SPECIFICATION_ONLY.
+#
+# The zero-context rehearsal had to grep the source tree to answer this question - the distinction
+# lived only in prose. This registry makes it machine-checkable, and
+# eval/tests/test_docs_control_system.py enforces it in both directions:
+#
+#   - IMPLEMENTED / PARTIALLY_IMPLEMENTED / LEGACY_IMPLEMENTATION entries must cite evidence
+#     (file + symbol) that actually exists in the tree; and
+#   - SPECIFICATION_ONLY / BLOCKED entries must cite absent_symbols that are verifiably ABSENT
+#     from src/ - so a specification-only concept cannot be presented as implemented, and an
+#     implementation cannot land without this registry noticing.
+#
+# Statuses: IMPLEMENTED | PARTIALLY_IMPLEMENTED | SPECIFICATION_ONLY | LEGACY_IMPLEMENTATION | BLOCKED
+#
+#   LEGACY_IMPLEMENTATION = a pre-reset analogue exists and carries a disposition in
+#   LEGACY-DISPOSITION.md, but the CANONICAL concept is not built. It must never be read as
+#   "done" - it is the thing the owning unit replaces.
+
+concepts:
+
+  - name: Tenant
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-001-authority-model.md
+    evidence:
+      - path: src/freight_recon/tenant.py
+        symbol: require_tenant
+      - path: src/freight_recon/workflow.py
+        symbol: _require_schema_ready
+    owning_unit: P2
+    note: required at construction, sentinel-validated, first in every key, DB-enforced
+
+  - name: Commit Key
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-009-concurrency-and-reservations.md
+    evidence:
+      - path: src/freight_recon/commit_key.py
+        symbol: LogicalEffect
+      - path: src/freight_recon/commit_key.py
+        symbol: CanonicalOccurrence
+    owning_unit: P1
+    note: amount provably excluded; occurrence identity canonical; forward-only
+
+  - name: Material Facts
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-005-approval-binding-and-drift.md
+    evidence:
+      - path: src/freight_recon/migrations/phase2_tenant_first.py
+        symbol: material_facts_json
+    owning_unit: P3
+    note: >-
+      stored as a ledger column (the content travels with the grant); the canonical fingerprint
+      and drift-voiding are checkpoint step 2 and do NOT exist yet
+
+  - name: Effect Grant ledger (foundation)
+    status: IMPLEMENTED
+    specification: docs/specifications/entities/04-effect-grant.md
+    evidence:
+      - path: src/freight_recon/migrations/phase2_tenant_first.py
+        symbol: effect_grants
+      - path: src/freight_recon/workflow.py
+        symbol: claim_operation_commit
+    owning_unit: P2
+    note: one canonical ledger, 8 states in the CHECK constraint, (tenant, commit_key) unique
+
+  - name: Checkpoint (seven-step)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-004-effect-boundary.md
+    absent_symbols: [CheckpointPassed, seven_step_checkpoint, run_checkpoint]
+    owning_unit: P3
+
+  - name: Checkpoint Witness
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/05-checkpoint-witness.md
+    absent_symbols: [CheckpointWitness, mint_checkpoint_witness]
+    owning_unit: P3
+
+  - name: Effect claim CAS
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-004-effect-boundary.md
+    absent_symbols: [claim_grant_cas, GRANTED_TO_CLAIMED]
+    owning_unit: P3
+    note: rows are written GRANTED; nothing transitions them - deliberately
+
+  - name: Work Item
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/01-work-item.md
+    absent_symbols: [WorkItem, work_items]
+    owning_unit: P6
+
+  - name: Pipeline Instance
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/02-pipeline-instance.md
+    absent_symbols: [PipelineInstance, pipeline_instances]
+    owning_unit: P6
+
+  - name: Expectation
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/11-expectation.md
+    absent_symbols: [ExpectationMachine, expectations_table]
+    owning_unit: P8
+
+  - name: Obligation
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/semantic-model.md
+    absent_symbols: [Obligation, obligations_table]
+    owning_unit: P6
+    note: the accountable-owner semantics land with Work Item ownership
+
+  - name: Evidence (content-addressed)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/08-evidence.md
+    absent_symbols: [EvidenceRecord, evidence_store]
+    owning_unit: P7
+
+  - name: Provenance classes
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-002-state-classes-and-lineage.md
+    absent_symbols: [provenance_class, OWNER_ASSERTED, MODEL_INFERRED]
+    owning_unit: P7
+    note: >-
+      the six classes exist only in specification; extraction output does not yet carry its class,
+      which is exactly why MODEL_INFERRED-cannot-authorise is unenforceable before P7
+
+  - name: Policy (typed, compile-or-refuse)
+    status: LEGACY_IMPLEMENTATION
+    specification: docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+    evidence:
+      - path: src/freight_recon/tool_permissions.py
+        symbol: ToolPermission
+    owning_unit: P8
+    note: legacy permission checks exist (S9/S3 dispositions); a prompt string is not a policy
+
+  - name: Brake (admission control)
+    status: LEGACY_IMPLEMENTATION
+    specification: docs/architecture/decisions/ADR-011-human-brake.md
+    evidence:
+      - path: src/freight_recon/ops_control.py
+        symbol: pause
+    owning_unit: P8
+    note: today a flag checked by convention; six entry points do not consult it (ADR-011)
+
+  - name: Canonical events (98 contracts)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/events/registry.md
+    absent_symbols: [EventContract, emit_canonical_event]
+    owning_unit: P5
+    note: a legacy audit_events trail exists (implemented, P2-scoped); it is not the event corpus
+
+  - name: Outbox / inbox
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-008-durable-workflows.md
+    absent_symbols: [TransactionalOutbox, dedup_inbox]
+    owning_unit: P5
+
+  - name: Replay isolation
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-008-durable-workflows.md
+    absent_symbols: [replay_sandbox, ReplayContext]
+    owning_unit: P5
+    note: replay-cannot-mint-authority is currently a rule about code that does not exist yet
+
+  - name: Reconciliation (canonical)
+    status: LEGACY_IMPLEMENTATION
+    specification: docs/architecture/decisions/ADR-006-verification-and-unknown-outcomes.md
+    evidence:
+      - path: src/freight_recon/reconciliation.py
+        symbol: reconcile_load
+    owning_unit: P8
+    note: legacy deterministic matcher (S7, REWRITE); canonical Expectation/Exception/Conflict absent
+
+  - name: The eleven operational loops
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/workflows/registry.md
+    absent_symbols: [W6DocumentationLoop, workflow_loop_registry]
+    owning_unit: P10
+    note: legacy code touches W6/W8-shaped work; no loop is implemented to canonical architecture
+
+  - name: First vertical slice (W6 -> W8)
+    status: BLOCKED
+    specification: docs/specifications/workflows/W6-documentation.md
+    absent_symbols: [vertical_slice_w6_w8]
+    owning_unit: P10
+    note: >-
+      NEEDS DESIGN-PARTNER VALIDATION (V-W1) and blocked behind P9 - recorded as BLOCKED rather
+      than merely unimplemented because a validation gate, not just sequencing, stands in front
+      of it

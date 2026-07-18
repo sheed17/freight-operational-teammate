@@ -76,23 +76,63 @@ For browser/TMS work:
 - Readback verification before done/entered.
 - Browser action evidence is auditable.
 
-## Verification Commands
+## Verification Commands — CANONICAL (the only commands with approval authority)
 
-Run relevant commands:
+A phase or unit may be called APPROVED only on evidence from this sequence, run LAST on the final
+tree. **A green run of any other command list — including the historical one below — carries zero
+approval authority.** The rehearsal found an agent could have approved a phase without executing a
+single acceptance case; this section is the correction.
 
 ```bash
-.venv/bin/python -m pytest eval/tests -q
-.venv/bin/python scripts/run_extraction.py --render-only
-.venv/bin/python eval/run_eval.py --mock eval/golden_set/mock_v1.json
-.venv/bin/python eval/run_eval.py --mock eval/golden_set/mock_v2.json
-.venv/bin/python scripts/generate_realistic_corpus.py --loads 18 --seed 42
-.venv/bin/python eval/run_corpus_eval.py --mock-from-truth
-.venv/bin/python scripts/run_reconciliation.py
-.venv/bin/python scripts/run_workflow.py --reset
-.venv/bin/python scripts/run_review.py --record-audit --age-hours 48
+# 1. The selected unit's acceptance tests (named in its IMPLEMENTATION-REGISTRY.yaml entry)
+#    plus the standing acceptance gates:
+.venv/bin/python -m pytest eval/ -q -k "ac_safe_012 or ac_safe_013 or ac_sec_001"
+
+# 2. Architecture + documentation control guards (product identity, authority map, findings):
+.venv/bin/python -m pytest eval/tests/test_docs_control_system.py eval/tests/test_tool_access_policy.py -q
+
+# 3. Status-reality guard (CURRENT.md must match the checked-out commit, tree and suite):
+.venv/bin/python -m pytest eval/tests/test_status_reality.py -q
+
+# 4. Concurrency evidence where the unit requires it (Phase-2 example - substitute the unit's own):
+.venv/bin/python -m pytest eval/tests/test_phase2_integrated_acceptance.py -q
+
+# 5. Exact-set probes and guard-registry integrity:
+.venv/bin/python -m pytest eval/tests/test_phase2_guard_registry.py eval/tests/test_phase0_errata_guards.py -q
+
+# 6. Mutation evidence where the unit requires it: the unit's review must show its mutation
+#    registry run with N/N DETECTED via the safe in-memory harness (never git restoration).
+
+# 7. The complete repository suite, run LAST, on the final tree:
+.venv/bin/python -m pytest eval/ -q
+
+# 8. Clean-tree verification - the validated tree must be the committed tree:
+git status --porcelain   # must be empty
 ```
 
-Say clearly when a command is expected to fail by design, such as the `mock_v1` failure fixture.
+If any of these fails, the verdict is not "APPROVED with notes". It is NOT APPROVED.
+
+## Historical commands — NO approval authority
+
+The pre-reset review sequence is retained for archaeology only. These target the legacy dogfood
+surfaces, several of them WRITE (to gitignored workspace paths), and none of them exercises a
+single canonical acceptance case:
+
+<details><summary>Pre-reset command list (historical, non-authoritative)</summary>
+
+```text
+pytest eval/tests -q                                     (subset - not the full suite)
+scripts/run_extraction.py --render-only
+eval/run_eval.py --mock eval/golden_set/mock_v1.json     (mock_v1 is a failure fixture)
+eval/run_eval.py --mock eval/golden_set/mock_v2.json
+scripts/generate_realistic_corpus.py --loads 18 --seed 42
+eval/run_corpus_eval.py --mock-from-truth
+scripts/run_reconciliation.py
+scripts/run_workflow.py --reset
+scripts/run_review.py --record-audit --age-hours 48
+```
+
+</details>
 
 ## Output Format
 

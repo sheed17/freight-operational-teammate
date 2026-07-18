@@ -42,6 +42,7 @@ Read in this order. Do not skip 1–5.
 | 7 | the acceptance registry for your selected unit | [`docs/specifications/acceptance/registry.md`](docs/specifications/acceptance/registry.md) |
 | 8 | the relevant ADRs, entity, event, state-machine and workflow specs | the binding detail |
 | 9 | [`docs/implementation/LEGACY-DISPOSITION.md`](docs/implementation/LEGACY-DISPOSITION.md) | the disposition of every module you are about to touch |
+| 10 | [`docs/implementation/TOOL-ACCESS-POLICY.md`](docs/implementation/TOOL-ACCESS-POLICY.md) | what you may research and what research can never authorise |
 
 ## 2. Project identity
 
@@ -66,7 +67,7 @@ missing events, manages exceptions, and helps accountable humans close operation
 | Adapter imports | **31 direct adapter-import edges** remain across 18 importer modules |
 | Event-less transitions | **24 of 134** transitions cite no event — a G2 question, unsettled |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py:1639`) |
-| **Durable handoff readiness** | ### **NOT complete.** The zero-context rehearsal has not been run. |
+| **Durable handoff readiness** | ### **NOT complete.** A non-independent rehearsal ran and returned NOT READY; its findings are corrected, and ### **the INDEPENDENT rehearsal has not been run.** |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -211,6 +212,11 @@ These are not style preferences. Each one is a defect this repository actually s
 - Memory and logs must **never** store money values.
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 - Run the suite with: `.venv/bin/python -m pytest eval/ -q`
+- **Tool access is intentionally broad so missing technical context is investigated rather than
+  guessed. Tool access expands evidence retrieval, not canonical decision authority.** Search
+  aggressively; infer cautiously; execute according to authority — the full policy, including the
+  mandatory missing-context classification, is
+  [`docs/implementation/TOOL-ACCESS-POLICY.md`](docs/implementation/TOOL-ACCESS-POLICY.md).
 
 ## 11. What you must NOT begin
 

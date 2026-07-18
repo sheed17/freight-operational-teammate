@@ -21,8 +21,12 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [u-handoff-1a-control-correction-review.md](u-handoff-1a-control-correction-review.md) | ### **U-HANDOFF-1A — the rehearsal's findings corrected: status-reality guard (two-commit convention), tool-access policy, implemented-vs-specified registry, executable rehearsal checklist. Next: the INDEPENDENT rehearsal.** |
 | [durable-cli-control-documentation-review.md](durable-cli-control-documentation-review.md) | ### **DURABLE CLI CONTROL — the repository now replaces conversation memory: PRODUCT/ARCHITECTURE/CLAUDE, the authority map over 198 docs, one status authority, 17 work units, 14 legacy dispositions, 68 documentation guards, 34/34 mutations. Next: zero-context handoff rehearsal.** |
 | [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
+| [TOOL-ACCESS-POLICY.md](TOOL-ACCESS-POLICY.md) | broad tool access for formal CLI sessions — research capability vs consequential authority |
+| [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist (all PENDING until the independent rehearsal) |
+| [IMPLEMENTATION-SURFACE.yaml](IMPLEMENTATION-SURFACE.yaml) | implemented vs specification-only, machine-checked |
 | [IMPLEMENTATION-REGISTRY.yaml](IMPLEMENTATION-REGISTRY.yaml) | the work units, statuses and dependencies |
 | [PHASE-OUTPUTS.md](PHASE-OUTPUTS.md) | P0–P14: what each phase buys, and what stays prohibited |
 | [LEGACY-DISPOSITION.md](LEGACY-DISPOSITION.md) | one disposition per subsystem; no permanent legacy category |

@@ -167,8 +167,9 @@ Neyma is **not**:
 | **P1** | **Correct effect identity** — the Commit Key identifies the *effect*, and the amount is provably not in it |
 | **P2** | **Tenant-safe persistence** — tenant required at construction, first in every key, enforced by the database, with auditable human-asserted ownership of historical rows |
 
-Current suite: **1073 passed · 0 failed · 1 conditionally justified skip.**
-Authoritative status: [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).
+The suite is green; ### **exact suite counts and the current commit/tree live ONLY in the
+machine-maintained status block of [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md)** —
+this file deliberately does not copy them, because a copied figure is a stale figure within one commit.
 
 ## 14. Current unimplemented state
 
