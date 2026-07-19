@@ -1,16 +1,26 @@
 {
-  "collected": 1206,
-  "command": ".venv/bin/python -m pytest eval/ -q",
-  "commit": "e563a4fc6153c3b44e775ebaa95b0fe01009df7f",
-  "completed_at": "2026-07-19T07:02:20.866681+00:00",
+  "collected": 1233,
+  "command": ".venv/bin/python -m pytest -c pytest-canonical.ini -v",
+  "commit": "d3c85f3974ef7624b6588c3479c7ad5f3935c657",
+  "completed_at": "2026-07-19T10:08:43.290721+00:00",
+  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
   "deselected": 0,
-  "duration_seconds": 463.1,
+  "duration_seconds": 377.2,
   "exit_status": 0,
   "failed": 0,
-  "passed": 1205,
-  "payload_sha256": "54682315eb5f01224f5e1ad7ff5d3baba75bd87fdb31d5ede4c095bac16e0a32",
+  "manifest_sha256": "47cfc5c5ab3745161818c54f399f1eac144ec3431c4762d2386d4489824d53dd",
+  "passed": 1232,
+  "payload_sha256": "13674ca63bcf541d4e20b6fbfdd2fb25463bb6af33f1af2d08df724cc653dbf3",
   "platform": "macOS-15.1.1-arm64-arm-64bit-Mach-O",
   "python_version": "3.14.4",
+  "rogue_nodes": [],
+  "runner_sha256": "75b924e9f39821eaf4a9796ea81b24c8240ef4d228e781c95f627230586295eb",
   "skipped": 1,
-  "tree": "c8770e46f87f7b984d5cbf61d2097e9c7390db27"
+  "skipped_nodes": [
+    "eval/tests/test_phase0_guard_integrity.py::test_the_red_by_design_cases_are_strict_xfails"
+  ],
+  "stdout_tail": "",
+  "tree": "b5a987df36b940d475c66f5021cba6e593121c07",
+  "unexecuted_nodes": [],
+  "xfail_nodes": []
 }

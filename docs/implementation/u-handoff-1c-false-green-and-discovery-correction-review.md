@@ -130,7 +130,7 @@ Honesty notes, recorded rather than smoothed over:
 
 | | |
 |---|---|
-| **Canonical suite (authoring checkout, isolated config)** | SUITE_INSERTED_BY_FINALIZER |
+| **Canonical suite (authoring checkout, isolated config)** | 1232 passed · 0 failed · 1 skipped |
 | **Clean-clone gate** | **PASS** — executed BY the finalizer, result written by the gate process, bound to the content commit |
 | **Finalizer** | end-to-end: executed the suite, the gate, the control guards and all three AC gates itself; recorded only observed results |
 | **AC-SAFE-012 / AC-SAFE-013 / AC-SEC-001** | **GREEN** — executed explicitly by the finalizer and inside both full-suite runs |
@@ -139,10 +139,10 @@ Honesty notes, recorded rather than smoothed over:
 
 | | |
 |---|---|
-| **Content commit** | `CONTENT_COMMIT_INSERTED_BY_FINALIZER` |
-| **Content tree** | `CONTENT_TREE_INSERTED_BY_FINALIZER` |
+| **Content commit** | `d3c85f3974ef7624b6588c3479c7ad5f3935c657` |
+| **Content tree** | `b5a987df36b940d475c66f5021cba6e593121c07` |
 | **HEAD** | the single status-metadata commit on top (it cannot name itself; the two-commit convention holds) |
-| **Recorded suite** | SUITE_INSERTED_BY_FINALIZER — from the finalizer's own executed run |
+| **Recorded suite** | 1232 passed · 0 failed · 1 skipped — from the finalizer's own executed run |
 | **Working tree** | clean · **not pushed** |
 
 ## 32–34. Confirmations
