@@ -48,7 +48,7 @@ when a database is absent; the fixture is asserted byte-identical across double 
 
 ## 6. Clean-clone suite result
 
-SUITE_INSERTED_BY_FINALIZER — see §22; the clean-clone gate reproduced the committed result in a
+1205 passed · 0 failed · 1 skipped — see §22; the clean-clone gate reproduced the committed result in a
 fresh clone + fresh venv with only declared dependencies.
 
 ## 7. Status-result verification design
@@ -188,7 +188,7 @@ create/finally-delete handling).
 
 | | |
 |---|---|
-| **Authoring-checkout suite** | SUITE_INSERTED_BY_FINALIZER |
+| **Authoring-checkout suite** | 1205 passed · 0 failed · 1 skipped |
 | **Clean-clone gate** | **PASS** — fresh clone · fresh venv · declared deps only · env check · full suite · control guards · gates · clone tree clean (§22 of the gate output, recorded below) |
 | **AC-SAFE-012 / AC-SAFE-013 / AC-SEC-001** | **GREEN** in both the authoring checkout and the clean clone |
 | **Hermeticity spot-proof** | the six affected suites ran green with `data/active_workspace` renamed away |
@@ -197,10 +197,10 @@ create/finally-delete handling).
 
 | | |
 |---|---|
-| **Content commit** | `CONTENT_COMMIT_INSERTED_BY_FINALIZER` |
-| **Content tree** | `CONTENT_TREE_INSERTED_BY_FINALIZER` |
+| **Content commit** | `e563a4fc6153c3b44e775ebaa95b0fe01009df7f` |
+| **Content tree** | `c8770e46f87f7b984d5cbf61d2097e9c7390db27` |
 | **HEAD** | the single status-metadata commit on top (per the two-commit convention it cannot name itself here) |
-| **Recorded suite result** | SUITE_INSERTED_BY_FINALIZER — from the artifact written by the canonical runner on the clean content-commit checkout |
+| **Recorded suite result** | 1205 passed · 0 failed · 1 skipped — from the artifact written by the canonical runner on the clean content-commit checkout |
 | **Status-reality guard** | **GREEN** on the committed checkout |
 | **Working tree** | clean · **not pushed** |
 | **Production business behaviour** | **UNCHANGED** — `src/` untouched except nothing; changes are dependency metadata, bootstrap/control scripts, test fixtures/infrastructure, guards and documentation |

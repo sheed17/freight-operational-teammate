@@ -19,9 +19,9 @@ version of this block goes stale within one commit and nothing notices.
 ```yaml
 # status-block: maintained by scripts/update_current_status.py - do not edit by hand
 branch: recovery/u2-6bc-atomic-cutover
-content_commit: fde6c9531fa22761799f81e55d6022640697f85c
-content_tree: 1f046f3925fde9e57d8c7de470a4f9f30a4fc4a2
-suite_passed: 1179
+content_commit: e563a4fc6153c3b44e775ebaa95b0fe01009df7f
+content_tree: c8770e46f87f7b984d5cbf61d2097e9c7390db27
+suite_passed: 1205
 suite_failed: 0
 suite_skipped: 1
 ```

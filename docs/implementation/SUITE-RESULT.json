@@ -1,17 +1,16 @@
 {
-  "backfilled": "U-HANDOFF-1B format introduction: this artifact backfills the U-HANDOFF-1A final validation run (1179/0/1 on exactly tree 1f046f39..., recorded in u-handoff-1a-control-correction-review.md and the eedea34 metadata commit). Every artifact after this one is written only by run_canonical_suite.py. NOTE: the independent clean-clone rehearsal proved this figure was NOT clean-clone reproducible (46 workspace-dependent failures); the 1B cycle replaces it with a hermetic result.",
-  "collected": 1180,
+  "collected": 1206,
   "command": ".venv/bin/python -m pytest eval/ -q",
-  "commit": "fde6c9531fa22761799f81e55d6022640697f85c",
-  "completed_at": "2026-07-18T14:27:19-07:00",
+  "commit": "e563a4fc6153c3b44e775ebaa95b0fe01009df7f",
+  "completed_at": "2026-07-19T07:02:20.866681+00:00",
   "deselected": 0,
-  "duration_seconds": 379.7,
+  "duration_seconds": 463.1,
   "exit_status": 0,
   "failed": 0,
-  "passed": 1179,
-  "payload_sha256": "16ca25d4abd67d1a6cdf26fc1a46fe92e73aa2e78a2d68875b11719d19849c06",
-  "platform": "macOS (authoring checkout)",
+  "passed": 1205,
+  "payload_sha256": "54682315eb5f01224f5e1ad7ff5d3baba75bd87fdb31d5ede4c095bac16e0a32",
+  "platform": "macOS-15.1.1-arm64-arm-64bit-Mach-O",
   "python_version": "3.14.4",
   "skipped": 1,
-  "tree": "1f046f3925fde9e57d8c7de470a4f9f30a4fc4a2"
+  "tree": "c8770e46f87f7b984d5cbf61d2097e9c7390db27"
 }
