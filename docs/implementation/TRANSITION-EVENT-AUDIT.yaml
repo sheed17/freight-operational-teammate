@@ -1,0 +1,70 @@
+# TRANSITION-EVENT AUDIT
+#
+# THE "24 OF 134" CORRECTION (U-HANDOFF-1B, M-4). The repository repeatedly claimed "24 of 134
+# transitions cite no event". The independent rehearsal could not reproduce 24 under any
+# definition, and U-HANDOFF-1B established why: the figure came from a parse whose column
+# alignment broke on escaped pipes (`H\|S` in the Trig column shifts every later cell), and no
+# executable source computed it. 24 is hereby RETIRED as a count.
+#
+# The mechanically proven result (escape-aware split on `(?<!\\)\|`, per-table Event-column
+# detection from headers; recomputed and exact-membership-guarded by
+# eval/tests/test_bootstrap_hermeticity.py::test_transition_event_audit_matches_the_specs):
+# 134 transitions parse; 121 name a canonical event outright; 13 do not, in FOUR structurally
+# different classes listed below.
+#
+# STATUS: COUNT NEEDS ADJUDICATION (gate G2, before P5).
+# The specifications do NOT unambiguously define which classes violate AC-EVT-003 ("every
+# producer transition emits its required event"). The exact architecture decision required:
+#
+#     For AC-EVT-003, is a "producer transition" (a) every transition row, or (b) every row not
+#     documented as non-producing? Specifically: do BARE rows count as gaps (presumably yes);
+#     do DOCUMENTED_NON_PRODUCING rows satisfy the contract by documenting their silence; do
+#     ILLEGAL_UNNAMED refusal rows require IllegalTransitionAttempted to be named (two ILLEGAL
+#     rows DO name it, three do not - inconsistent either way); and do DELEGATING rows inherit
+#     the events of the rows they reference?
+#
+# Until G2 adjudicates, the finding is preserved as OPEN with these exact members. No canonical
+# document may cite a single number for it; guards enforce membership below and forbid the
+# retired "24" figure in control documents.
+
+meta:
+  total_transitions: 134
+  transitions_naming_an_event: 121
+  transitions_not_naming_an_event: 13
+  retired_figure: 24
+  retired_reason: column misalignment on escaped pipes; no executable source ever computed it
+  adjudication_gate: G2 (before P5)
+  status: COUNT_NEEDS_ADJUDICATION
+
+classes:
+
+  - name: BARE
+    meaning: the Event cell is a bare em-dash with no explanation - the undisputed gap candidates
+    members:
+      - 02-pipeline-instance:PL-7a
+      - 04-approval:AP-8
+      - 04-approval:AP-9
+      - 11-policy:PO-2
+      - 11-policy:PO-3
+
+  - name: DOCUMENTED_NON_PRODUCING
+    meaning: the cell explicitly documents that no (new) event is emitted, by design
+    members:
+      - 03-external-effect-grant:EF-3    # "(no new event - EffectAttempted already emitted)"
+      - 07-conflict:CF-7                 # "(no state change)" - party attaches to existing conflict
+      - 09-exception:EC-7                # "(no state change)"
+
+  - name: ILLEGAL_UNNAMED
+    meaning: >-
+      an ILLEGAL refusal row that names no event - while PL-15x and IB-5x, the other ILLEGAL
+      rows, DO name IllegalTransitionAttempted, so the spec is internally inconsistent here
+    members:
+      - 03-external-effect-grant:EF-5x
+      - 10-compensation:CM-5x
+      - 13-brake:BR-5
+
+  - name: DELEGATING
+    meaning: the row says "as those", inheriting the events of the rows it references
+    members:
+      - 01-work-item:WI-14               # events of WI-5/6/7/3/12 respectively
+      - 07-conflict:CF-6                 # events of CF-3/CF-4

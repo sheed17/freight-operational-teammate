@@ -26,14 +26,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from freight_recon.migrations.phase2_tenant_first import OwnerAssertion, migrate
 from freight_recon.tenant import FORBIDDEN_TENANTS, InvalidTenant, MissingTenant
 
-REAL = Path(__file__).resolve().parents[2] / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+from fixtures.legacy_workspace import LEGACY_RUNS, build_legacy_workspace
 
 
 def _legacy_copy() -> str:
     """A copy of the real pre-migration workspace. The original is never touched."""
     d = tempfile.mkdtemp()
     dst = Path(d) / "w.sqlite3"
-    shutil.copy(REAL, dst)
+    build_legacy_workspace(dst)
     return str(dst)
 
 
@@ -91,7 +91,7 @@ def test_8_9_10_an_invalid_assertion_costs_zero_rows_zero_ledger_and_zero_quaran
     """
     db = _legacy_copy()
     before = _count(db, "workflow_runs")
-    assert before == 18, "the fixture is not the real legacy workspace"
+    assert before == LEGACY_RUNS, "the deterministic legacy fixture lost its canonical population"
 
     with pytest.raises(InvalidTenant):
         migrate(db, assertion=_assertion("default"), dry_run=False)

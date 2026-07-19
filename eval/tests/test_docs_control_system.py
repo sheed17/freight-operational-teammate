@@ -167,7 +167,7 @@ def test_10_r07_is_recorded_open_and_never_contained():
     [
         (r"\b6\b.{0,60}production-reachable live-write|six.{0,40}live-write", "6 live-write paths"),
         (r"\b31\b.{0,60}adapter-import|\b31\b.{0,60}adapter import", "31 adapter-import edges"),
-        (r"\b24\b.{0,80}(transitions|event)", "24 event-less transitions"),
+        (r"(COUNT NEEDS ADJUDICATION|name no event outright)", "the transition/event completeness finding"),
         (r'tenant\s*=\s*.default.', "the knowledge-base default-tenant finding"),
     ],
     ids=["live_write", "adapter_imports", "event_less", "default_tenant"],

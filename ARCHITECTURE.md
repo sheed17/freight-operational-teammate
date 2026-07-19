@@ -98,8 +98,11 @@ event as permission. Each contract states explicitly what the event **proves** a
 **13 machines, 134 transitions.** Each transition names its guards, its writes, its event, the
 owner afterwards, and the test that validates it.
 
-*Open finding:* **24 of the 134 transitions cite no event.** Whether they are legitimately
-non-producing or a real gap in `AC-EVT-003` is a **G2 question that must be settled before P5.**
+*Open finding:* **13 of the 134 transitions name no event outright** — in four structurally
+different classes (bare, documented non-producing, unnamed-ILLEGAL, delegating; exact members in
+[`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)). **Which classes
+violate `AC-EVT-003` is a G2 question that must be settled before P5** — the specifications do not
+define the predicate, so the finding carries **COUNT NEEDS ADJUDICATION**, not a number.
 
 ## 12. Tenant model
 

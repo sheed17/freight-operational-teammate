@@ -1,3 +1,9 @@
+> # ⛔ SUPERSEDED — DO NOT FOLLOW
+> **Authority classification: SUPERSEDED** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **PRODUCT.md / docs/implementation/CURRENT.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Neyma — Owner-Operator Roadmap (the single source of truth)
 
 **This is the canonical "where are we" doc.** When you ask "where are we," the answer is here. It maps

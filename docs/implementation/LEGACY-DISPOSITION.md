@@ -82,7 +82,7 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 | **Deletion condition** | All 13 canonical machines live; no effect dispatch outside the Pipeline Instance |
 | **Evidence required before deletion** | `foundational-machine-acceptance.md` green; no dual-orchestration import edges |
 
-> **`action_callback.py` also carries a hardcoded knowledge-base `tenant="default"` at line 1639.**
+> **`action_callback.py` also carries a hardcoded knowledge-base `tenant="default"` in `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call).** The exact sites are discovered by guard — a line-number citation went stale within two commits, which is why none is used.
 > That finding closes at **P7**, not here.
 
 ## S4 — Legacy state management
@@ -296,7 +296,7 @@ Pre-reset fixture tooling. Retained for evidence and test-fixture regeneration; 
 Encode the pre-reset pilot model. Same deletion condition as S12: P11 shadow mode defines the pilot canonically.
 
 ### S15g — Migration and control-plane tooling — **KEEP**
-`scripts/migrate_phase2_tenant_first.py` (the canonical P2 migration CLI — forward-only, same standing as `migrations/`) · `scripts/update_current_status.py` (the status finalizer; the only writer of CURRENT.md's volatile block) · `scripts/report_legacy_commit_identities.py` (read-only Phase-1 evidence probe)
+`scripts/migrate_phase2_tenant_first.py` (the canonical P2 migration CLI — forward-only, same standing as `migrations/`) · `scripts/update_current_status.py` (the status finalizer; records only artifact-backed results) · `scripts/run_canonical_suite.py` (the only producer of `SUITE-RESULT.json`) · `scripts/suite_result.py` (the shared artifact validator — one definition for runner, finalizer and guard) · `scripts/check_env.py` (the fail-fast Python-floor check; runs before any install) · `scripts/clean_clone_gate.py` (the clean-clone reproducibility gate) · `scripts/report_legacy_commit_identities.py` (read-only Phase-1 evidence probe)
 KEEP is justified here exactly as in S13: canonical Phase 0–2 output or architecture-neutral control tooling with no external-effect capability.
 
 

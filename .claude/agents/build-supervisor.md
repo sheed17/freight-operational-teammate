@@ -1,10 +1,10 @@
 ---
 name: build-supervisor
 description: >
-  Reviews work-in-progress on the freight ops agentic engine for correctness, owner usefulness,
-  and adherence to the project's non-negotiable production rules. Use after implementing
-  or changing any component (extraction, matching, state machine, Slack, TMS agent, evals)
-  and before declaring a stage done. Read-only — it audits and reports, it does not edit.
+  Reviews work-in-progress on Neyma for correctness, owner usefulness, and adherence to the
+  non-negotiable rules in CLAUDE.md. Use after implementing or changing any component and before
+  declaring a work unit done (units and phases live in docs/implementation/CURRENT.md and the
+  implementation registry). Read-only — it audits and reports, it does not edit.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

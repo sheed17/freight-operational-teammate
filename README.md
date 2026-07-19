@@ -61,7 +61,7 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **R-07 — ungated live-write paths** | ### **OPEN — NOT CONTAINED** |
 | **6 production-reachable live-write paths** | OPEN — close at **P4** |
 | **31 direct adapter-import edges** | OPEN — close at **P4** |
-| **24 of 134 transitions cite no event** | OPEN — must be settled before **P5** |
+| **Transition/event completeness** — 13 of 134 transitions name no event outright (4 classes; the old "24" was never mechanically computed and is retired) | OPEN — **COUNT NEEDS ADJUDICATION** at G2, before **P5** ([audit](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) |
 | Hardcoded knowledge-base `tenant="default"` | OPEN — closes at **P7** |
 | No firsthand design-partner observation | OPEN |
 
@@ -113,8 +113,8 @@ Statuses are exactly `BLOCKED`, `READY`, `IN_PROGRESS`, `COMPLETE`. There is no 
 
 | Path | Contains |
 |---|---|
-| `src/freight_recon/` | The runtime (77 modules) — under controlled replacement |
-| `scripts/` | Operator entry points (52) — **several are effect-capable; see R-07** |
+| `src/freight_recon/` | The runtime — under controlled replacement |
+| `scripts/` | Operator entry points — **several are effect-capable; the exact adjudication is [`EFFECT-PATH-INVENTORY.yaml`](docs/implementation/EFFECT-PATH-INVENTORY.yaml) (R-07)** |
 | `eval/` | The test suite, guards and probes |
 | `docs/architecture/` | Engineering principles, semantic model, **ADR-001…ADR-011**, target spec |
 | `docs/specifications/` | Entities, state machines, events, adapters, workflows, acceptance |
@@ -125,9 +125,17 @@ Statuses are exactly `BLOCKED`, `READY`, `IN_PROGRESS`, `COMPLETE`. There is no 
 ## Setup
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+python3 scripts/check_env.py                       # fail-fast: requires the Python in pyproject.toml (>=3.11)
+python3 -m venv .venv
+.venv/bin/python scripts/check_env.py              # verify the venv's interpreter too, BEFORE installing
+.venv/bin/pip install -e ".[dev]"
 cp .env.example .env       # secrets live here; .env is gitignored and must never be committed
 ```
+
+If `check_env.py` fails, create the venv with a newer interpreter (e.g. `python3.12 -m venv .venv`).
+Do not let pip start resolving on a non-compliant Python — the resolver error arrives twenty
+minutes later and says nothing useful. A true clean-clone verification (fresh directory, fresh
+venv, full suite) is one command: `.venv/bin/python scripts/clean_clone_gate.py`.
 
 Neyma **never handles a customer's TMS credentials** — the human establishes the session and Neyma
 attaches to it (`human_established_session_only`).

@@ -105,9 +105,9 @@ def test_2_migrated_canonical_database_is_ready(tmp_path):
 
     from freight_recon.migrations.phase2_tenant_first import OwnerAssertion, migrate
 
-    real = Path(__file__).resolve().parents[2] / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+    from fixtures.legacy_workspace import build_legacy_workspace
     db = tmp_path / "migrated.db"
-    shutil.copy(real, db)
+    build_legacy_workspace(db)
     migrate(str(db), assertion=OwnerAssertion(
         actor_id="rasheed@neyma", tenant="acme-brokerage",
         scope="neyma_workflow.sqlite3 — all pre-migration legacy rows",
@@ -367,9 +367,9 @@ def test_fresh_and_migrated_schemas_are_structurally_equivalent(tmp_path):
     from freight_recon.migrations.phase2_tenant_first import OwnerAssertion, migrate
 
     fresh = _fresh(tmp_path / "fresh.db")
-    real = Path(__file__).resolve().parents[2] / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+    from fixtures.legacy_workspace import build_legacy_workspace
     mig_path = tmp_path / "migrated.db"
-    shutil.copy(real, mig_path)
+    build_legacy_workspace(mig_path)
     migrate(str(mig_path), assertion=OwnerAssertion(
         actor_id="rasheed@neyma", tenant="acme-brokerage", scope="all legacy rows",
         operational_basis="sole workspace onboarded for Acme in June 2026; verified against record",

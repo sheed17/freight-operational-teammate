@@ -75,11 +75,16 @@ def test_a_runbook_string_is_not_a_spawn():
     assert "_runbook" in source
 
 
-def test_the_unlisted_read_path_is_recorded():
-    """P0-F4: read_tms_browser_use.py is effect-capable by import and absent from EP-1..EP-13."""
+def test_the_formerly_unlisted_read_path_is_now_adjudicated_ep14():
+    """P0-F4, CLOSED by U-HANDOFF-1B. This test used to assert the path was UNLISTED/CLASSIFY -
+    it marked the open finding, and it correctly failed the moment the adjudication landed.
+    REPLACED (not deleted) with the post-adjudication truth: EP-14, read-by-convention,
+    MAKE_READ_ONLY at P4, still inside the R-07 containment scope. The exact adjudication lives
+    in docs/implementation/EFFECT-PATH-INVENTORY.yaml and is exact-set guarded there."""
     entry = next(
         e for e in manifest.load()["expected_legacy_paths"]["effect_capable_by_import"]
         if e["script"] == "scripts/read_tms_browser_use.py"
     )
-    assert entry["ep"] == "UNLISTED"
-    assert entry["cutover"] == "CLASSIFY"
+    assert entry["ep"] == "EP-14", "the P0-F4 adjudication was reverted without a decision"
+    assert "MAKE_READ_ONLY" in entry["cutover"], "EP-14 lost its read-only containment disposition"
+    assert "P0-F4 CLOSED" in entry.get("note", ""), "the closure record left the manifest"

@@ -423,9 +423,9 @@ def test_a_legacy_schema_fails_before_any_tenant_owned_sql(tmp_path):
 
     from freight_recon.schema import SchemaNotReady
 
-    legacy = ROOT / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+    from fixtures.legacy_workspace import build_legacy_workspace
     db = tmp_path / "legacy.sqlite3"
-    shutil.copy(legacy, db)
+    build_legacy_workspace(db)
     with pytest.raises(SchemaNotReady):
         # Construction may itself refuse, or the first tenant-owned call does. Either is fail-closed;
         # what must never happen is a query running against a schema that cannot honour tenancy.

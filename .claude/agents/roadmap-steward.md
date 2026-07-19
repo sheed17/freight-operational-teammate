@@ -1,10 +1,11 @@
 ---
 name: roadmap-steward
 description: >
-  Tracks the freight engine against its 8-stage roadmap to deployment, reports exactly where
-  the project stands, names the precise next actions to advance, and suggests production-grade
-  improvements toward a real autonomous agentic system. Use to plan the next move, check
-  whether a stage's exit gate is met, or get an honest "are we ready to advance?" read.
+  Tracks Neyma against the current implementation program — Phases P0-P14 with gates G0-G10 —
+  using docs/implementation/CURRENT.md as the only status authority and the implementation
+  registry as the work-unit graph. Reports where the program stands, what the single READY unit
+  is, and what remains blocked (Phase 3 does not start automatically; R-07 is open until P4).
+  Use to plan the next move or get an honest "are we ready to advance?" read.
   Read-only — it assesses and recommends, it does not implement.
 tools: Read, Grep, Glob, Bash, WebSearch
 model: opus

@@ -46,11 +46,11 @@ invented for this registry.
 | **Accountable source** | Design partner, via the founder |
 | **Status** | **OPEN** |
 
-### V-A1 — Are the 24 event-less transitions non-producing, or a gap in `AC-EVT-003`?
+### V-A1 — Which transition/event classes violate `AC-EVT-003`? (COUNT NEEDS ADJUDICATION)
 
 | | |
 |---|---|
-| **Question** | 24 of 134 canonical transitions cite no emitted event. Legitimate, or a mapping gap? |
+| **Question** | 13 of 134 transitions name no event outright, in 4 structurally different classes ([`TRANSITION-EVENT-AUDIT.yaml`](../implementation/TRANSITION-EVENT-AUDIT.yaml)). Which classes are legitimate non-producers and which are mapping gaps? The retired "24" was never mechanically computed. |
 | **Affected workflow** | All |
 | **Affected entity/state** | State machines ↔ event contracts |
 | **Implementation impact** | ### **Blocks P5.** If they are a gap, the event corpus is incomplete and replay reconstructs a state history with holes. |
@@ -218,7 +218,7 @@ These block nothing. **They forbid a hardcoded constant.**
 |---|---|---|
 | **ARCHITECTURE_BLOCKER** | 4 | P5, P8, P9 |
 | **IMPLEMENTATION_BLOCKER** | 4 | P4, P8 |
-| **WORKFLOW_BLOCKER** | 5 | P8, P10, P13 |
+| **WORKFLOW_BLOCKER** | 4 | P8, P10, P13 |
 | **CUSTOMER_CONFIG** | 10 | nothing — forbids constants |
 | **NON_BLOCKING** | 1 | nothing |
 

@@ -1,3 +1,9 @@
+> # ⛔ QUARANTINED_GUIDANCE — DO NOT FOLLOW
+> **Authority classification: QUARANTINED_GUIDANCE** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **PRODUCT.md / docs/implementation/CURRENT.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Neyma — Codex Fix Handoff (review round, `demos` @ 2f2eb14)
 
 Consolidated, de-duplicated findings from four review agents (money-safety spine audit,

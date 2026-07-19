@@ -27,6 +27,13 @@ meta:
     Two-commit convention: content commit first, then exactly one status-metadata commit that
     records it. A commit cannot contain its own hash, so baseline_commit names the content
     baseline and HEAD is either that commit or the single metadata commit on top of it.
+  graph_model: >-
+    U-HANDOFF-1B (M-1): `dependencies` is the AUTHORITATIVE graph field. `unlocked_by`, `blocks`
+    and `next_units_unlocked` are DERIVED views - unlocked_by mirrors dependencies exactly, and
+    blocks/next_units_unlocked both mirror the exact dependent set - and a full-graph consistency
+    guard fails the build on any divergence, missing node, cycle, or edge that would let a unit
+    bypass the P3/P4/P5 safety wall. The independent rehearsal found eight reverse-edge
+    inconsistencies in the hand-maintained fields; hand-maintenance is over.
   phase_numbering: >-
     P0-P14 with gates G0-G10, per implementation-roadmap.md. This is the repository's approved
     numbering. The 8-stage roadmap in docs/PRODUCT_ROADMAP.md is SUPERSEDED and must not be used.
@@ -109,7 +116,7 @@ units:
     status: COMPLETE
     dependencies: [P1]
     unlocked_by: [P1]
-    blocks: [P3]
+    blocks: [U-DOC-1, P3]
     canonical_references:
       - docs/specifications/acceptance/security-and-tenancy-acceptance.md
       - docs/implementation/data-migration-plan.md
@@ -137,7 +144,7 @@ units:
       - docs/implementation/u2-6bc-blocker-6-final-phase-2-review.md
       - "blocker reviews 2-5"
       - commit 7d72498
-    next_units_unlocked: [U-DOC-1]
+    next_units_unlocked: [U-DOC-1, P3]
 
   - unit_id: U-DOC-1
     name: Durable CLI-control documentation
@@ -230,9 +237,11 @@ units:
       The rehearsal must be run by an agent that did NOT author the control documents, and must
       produce a structured result against the 13-criterion executable checklist in
       docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml (all criteria currently PENDING). A failure
-      on any criterion is a documentation defect, not an agent defect. One non-independent
-      rehearsal has already run and returned NOT READY; its findings were corrected by
-      U-HANDOFF-1A and it does not satisfy this contract.
+      on any criterion is a documentation defect, not an agent defect. Two rehearsals have run
+      and returned NOT READY (one non-independent, corrected by U-HANDOFF-1A; one independent -
+      11/13 PASS - corrected by U-HANDOFF-1B, which also added the clean-clone gate the next
+      rehearsal must run). Neither satisfies this contract; the SECOND independent rehearsal
+      does or does not.
     concurrency_requirements: none
     mutation_requirements: >-
       required - the rehearsal must include at least one deliberately misleading stale document to
@@ -254,7 +263,7 @@ units:
       effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
     status: BLOCKED
     dependencies: [P2, U-HANDOFF-1]
-    unlocked_by: [U-HANDOFF-1]
+    unlocked_by: [P2, U-HANDOFF-1]
     blocks: [P4]
     canonical_references:
       - docs/architecture/decisions/ADR-004-effect-boundary.md
@@ -335,7 +344,7 @@ units:
       Implement the 98 event contracts with a transactional outbox and a dedup inbox, and prove
       replay is sandboxed and structurally inert.
     status: BLOCKED
-    dependencies: [P2]
+    dependencies: [P4]
     unlocked_by: [P4]
     blocks: [P6]
     canonical_references:

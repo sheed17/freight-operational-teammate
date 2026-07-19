@@ -1,3 +1,14 @@
+> ## ⛔ INDEX ONLY — NO INDEPENDENT STATUS AUTHORITY
+>
+> **Design decision (U-HANDOFF-1B, H-3):** this file is a **human-readable index** of the
+> implementation layer's documents. The machine-readable registry is
+> [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml); the status authority is
+> [`CURRENT.md`](CURRENT.md). **No status statement in this file may direct implementation** —
+> the independent rehearsal found this file simultaneously claiming Phase 2 COMPLETE and Phase 2
+> IN PROGRESS with instructions to begin U2.6B, which is exactly what an index with status
+> authority decays into. Row descriptions summarise what each HISTORICAL document says **as of its
+> own moment**; a guard fails the build if this file contradicts the canonical registry.
+
 # Implementation Planning Registry
 
 *The index of the implementation-planning layer, and now of the implementation itself.*
@@ -21,6 +32,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
+| [u-handoff-1b-clean-clone-correction-review.md](u-handoff-1b-clean-clone-correction-review.md) | ### **U-HANDOFF-1B — clean-clone reproducibility: hermetic fixtures (the 46-failure false green closed), fail-fast bootstrap, artifact-backed status, registry.md demoted to index, exact inventories (effect paths, transition/event classes, table partition), graph consistency. Next: the SECOND independent rehearsal.** |
 | [u-handoff-1a-control-correction-review.md](u-handoff-1a-control-correction-review.md) | ### **U-HANDOFF-1A — the rehearsal's findings corrected: status-reality guard (two-commit convention), tool-access policy, implemented-vs-specified registry, executable rehearsal checklist. Next: the INDEPENDENT rehearsal.** |
 | [durable-cli-control-documentation-review.md](durable-cli-control-documentation-review.md) | ### **DURABLE CLI CONTROL — the repository now replaces conversation memory: PRODUCT/ARCHITECTURE/CLAUDE, the authority map over 198 docs, one status authority, 17 work units, 14 legacy dispositions, 68 documentation guards, 34/34 mutations. Next: zero-context handoff rehearsal.** |
 | [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
@@ -91,6 +103,19 @@
 ## Risks: **R-01…R-20** · ### **the standing one is R-07** (the 6 live paths are reachable until P4, mitigated only by operator discipline).
 
 ## Status
+
+### **Status lives in [`CURRENT.md`](CURRENT.md) — nowhere else, including not here.**
+As of the U-HANDOFF-1B correction the canonical record is: **P0, P1, P2 COMPLETE · P3 BLOCKED ·
+R-07 OPEN — NOT CONTAINED · next approved work: the independent zero-context rehearsal
+(U-HANDOFF-1).** If that sentence and `CURRENT.md` ever disagree, `CURRENT.md` is right.
+
+<details><summary>Historical status table (pre-Blocker snapshot — WRONG about Phase 2; retained as evidence)</summary>
+
+The table below is the U2.6B-era snapshot. Its Phase-2 row ("IN PROGRESS — NOT READY … begin
+U2.6B") described a real intermediate moment and was superseded by the six U2.6BC blockers and the
+Blocker-6 closure. It is preserved because deleting it would erase the record that the
+intermediate state existed.
+
 | Layer | Status |
 |---|---|
 | Architecture (ADR-001…011 + A1–A4) | **FROZEN** |
@@ -101,3 +126,5 @@
 | ### **Canonical Corpus Errata Pass** | ### **COMPLETE — DEF-4/5/6 + P0-F1 corrected; ERRATA 5 made the Phase-0 tree green (it was RED). Corpus only; no code, schema, or behaviour touched.** |
 | ### **Phase 1 — Migration Safety Task #1** | ### **COMPLETE + CLOSED — the Commit Key identifies the EFFECT, not the decision. AC-SAFE-012/013 GREEN. The free-form `occurrence_key` escape hatch is REMOVED: identity comes from a canonical occurrence (Payment Application P9 · Compensation/Expectation P8) or the operation fails closed. FORWARD-ONLY.** |
 | ### **Phase 2 — Tenant-safe ledger** | ### **IN PROGRESS — NOT READY.** Migration + canonical `effect_grants` schema built and proven against live data (dry-run byte-identical; 120 ambiguous rows quarantined, none guessed; idempotent rerun). ### **INERT — nothing imports it, live schema unchanged.** ### **U2.6A DONE** (146/146 sites explicit, tenant-bound at construction, no default). Blocking: ### **U2.6B — scope all 22 store methods IN ONE PIECE** *(fully specified in `u26b-method-inventory.md`; zero implemented — a mixed store is worse than an unscoped one)*; then **U2.6C** — activate the migration ⇒ `AC-SEC-001`. See `phase-2-implementation-review.md`. |
+
+</details>

@@ -33,7 +33,7 @@ from freight_recon.migrations.phase2_tenant_first import (
 )
 from freight_recon.tenant import InvalidTenant, MissingTenant
 
-REAL = Path(__file__).resolve().parents[2] / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+from fixtures.legacy_workspace import LEGACY_RUNS, build_legacy_workspace
 
 VALID = dict(
     actor_id="rasheed@neyma",
@@ -47,7 +47,7 @@ VALID = dict(
 def _db() -> str:
     d = tempfile.mkdtemp()
     dst = Path(d) / "w.sqlite3"
-    shutil.copy(REAL, dst)
+    build_legacy_workspace(dst)
     return str(dst)
 
 
@@ -244,7 +244,7 @@ def test_25_a_bare_tenant_no_longer_authorises_assignment():
     db = _db()
     with pytest.raises(AssertionIncomplete, match="no longer authorises"):
         migrate(db, assert_tenant="acme-brokerage", dry_run=False)
-    assert _rows(db) == 18, "a bare tenant moved rows"
+    assert _rows(db) == LEGACY_RUNS, "a bare tenant moved rows"
 
 
 def test_26_the_cli_refuses_a_partial_assertion_and_accepts_a_complete_one():

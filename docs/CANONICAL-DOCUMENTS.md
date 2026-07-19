@@ -1,7 +1,7 @@
 # Canonical Document Authority Map
 
 > **Purpose: to make it impossible for a stale invoice-processing roadmap to outrank the current
-> product definition.** This repository contains 198 documents spanning two eras. Roughly a quarter
+> product definition.** This repository's documentation spans two eras. Roughly a quarter
 > of them describe an earlier, narrower product. They are kept as evidence — they record real work
 > and real lessons — but **they may not direct current implementation.**
 
@@ -116,20 +116,23 @@ its names.
 | [`implementation/LEGACY-DISPOSITION.md`](implementation/LEGACY-DISPOSITION.md) | One disposition per subsystem | **IMPLEMENTATION_CONTROL** |
 | [`implementation/implementation-roadmap.md`](implementation/implementation-roadmap.md) | Phases P0–P14, principles, ordering | **IMPLEMENTATION_CONTROL** |
 | [`implementation/phase-0-baseline-manifest.yaml`](implementation/phase-0-baseline-manifest.yaml) | Adjudicated current-state facts (machine-checked) | **CURRENT_STATUS** |
-| [`implementation/registry.md`](implementation/registry.md) | Index of the implementation layer | **IMPLEMENTATION_CONTROL** |
+| [`implementation/registry.md`](implementation/registry.md) | Human-readable INDEX of the implementation layer — ### **no independent status authority** (H-3); the YAML registry and `CURRENT.md` are authoritative | **EVIDENCE (index)** |
 | [`implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](implementation/AUTO-LOADED-GUIDANCE-REVIEW.md) | Disposition of every auto-loaded file | **IMPLEMENTATION_CONTROL** |
 | [`implementation/TOOL-ACCESS-POLICY.md`](implementation/TOOL-ACCESS-POLICY.md) | Broad tool access for formal sessions; research vs authority boundary | **IMPLEMENTATION_CONTROL** |
 | [`implementation/U-HANDOFF-1-ACCEPTANCE.yaml`](implementation/U-HANDOFF-1-ACCEPTANCE.yaml) | The executable rehearsal acceptance checklist | **ACCEPTANCE_ORACLE** |
 | [`implementation/IMPLEMENTATION-SURFACE.yaml`](implementation/IMPLEMENTATION-SURFACE.yaml) | Which architecture concepts are implemented vs specification-only | **CURRENT_STATUS** |
+| [`implementation/SUITE-RESULT.json`](implementation/SUITE-RESULT.json) | The machine-readable suite-result artifact backing the status record | **CURRENT_STATUS** |
+| [`implementation/TRANSITION-EVENT-AUDIT.yaml`](implementation/TRANSITION-EVENT-AUDIT.yaml) | The mechanically-proven transition/event classes; COUNT NEEDS ADJUDICATION at G2 | **CURRENT_STATUS** |
+| [`implementation/EFFECT-PATH-INVENTORY.yaml`](implementation/EFFECT-PATH-INVENTORY.yaml) | The exact live-write adjudication (the six, the exclusions, EP-14) | **CURRENT_STATUS** |
 | `implementation/release-gate-plan.md` · `pr-sequence.md` · `red-to-green-acceptance-plan.md` · `migration-plan.md` · `data-migration-plan.md` · `effect-entry-point-cutover-plan.md` · `implementation-risk-register.md` · `current-to-target-gap-matrix.md` | Planning detail | **IMPLEMENTATION_CONTROL** |
 | `implementation/current-state-inventory.md` | The mechanical recon at reset time | **HISTORICAL** |
-| **Phase and blocker reviews** — `phase-0-implementation-review.md` · `phase-1-*` · `phase-2-implementation-review.md` · `u2-6a-*` · `u2-6b-*` · `u2-6bc-*` (6 files) · `canonical-corpus-errata-review.md` · `implementation-planning-review.md` | Evidence of what was done and found | **HISTORICAL (evidence)** |
+| **FAMILY RULE — every review document**: any `docs/implementation/*.md` matching `*review*.md` (phase reviews `phase-*-review`, blocker reviews `u2-6*`, control-correction reviews `durable-cli-*`, `u-handoff-*review`, errata and planning reviews) | Evidence of what was done and found, true as of its own commit | **HISTORICAL (evidence)** — automatically, by family; a review needs no individual row here, and a guard verifies every implementation doc is either individually classified or covered by this rule |
 | `implementation/u26-construction-site-inventory.md` · `u26b-method-inventory.md` | Mechanical inventories | **HISTORICAL (evidence)** |
 
 > **Phase reviews are evidence, not status.** They were true when written. **Do not reconstruct
 > current status by reading them** — that is what `CURRENT.md` exists to prevent.
 
-## 7. ⛔ The pre-reset `docs/` root — 23 files
+## 7. ⛔ The pre-reset `docs/` root
 
 **Every file directly in `docs/` predates the architectural reset (2026-07-09 onward) and sits
 entirely outside the canonical chain.** They contain real operational knowledge and real proof of
@@ -144,6 +147,7 @@ live work, and they also contain the product definition this program exists to r
 | `INTERNAL_DOGFOOD_PILOT.md` | **QUARANTINED_GUIDANCE** | Scopes the product to *supervised carrier-payables document review* |
 | `CODEX_HANDOFF.md` · `CODEX_FIX_HANDOFF.md` | **QUARANTINED_GUIDANCE** | Defines the product as AP/AR document ops + TMS automation |
 | `TMS_ONBOARDING.md` | **HISTORICAL** | TMS-automation framing; names AscendTMS, since replaced by TruckingOffice |
+| `stages.txt` | ### **SUPERSEDED** by [`PHASE-OUTPUTS.md`](implementation/PHASE-OUTPUTS.md) | The original 8-stage prose roadmap. **Sat unclassified at the repository ROOT until U-HANDOFF-1B (H-4)** — moved here and bannered |
 | `OWNER_OPERATOR_ROADMAP.md` | ### **SUPERSEDED** | Claims to be *"the canonical 'where are we' doc"* — **dated 2026-07-06, before the reset.** A stale authority claim, now void. |
 | `OWNER_OPERATOR_READINESS.md` · `OWNER_DEMAND_CATALOG.md` | **HISTORICAL** | Owner-readiness ladder — a *third* phase vocabulary. Not current. |
 | `BUILD_SUPERVISION_PROTOCOL.md` | **HISTORICAL** | Superseded by §6 of `CLAUDE.md` |

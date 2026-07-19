@@ -1,27 +1,38 @@
-"""The status-reality guard: the canonical status record must match the checked-out repository.
+"""The status-reality guard: the canonical status record must match the checked-out repository
+AND be backed by an actual suite run.
 
-The zero-context rehearsal's HIGH finding: CURRENT.md — the single status authority, the first
-file the work-unit protocol tells an agent to read — recorded the previous commit, the previous
-tree and the previous suite count, the stale figure had been copied into four more files, and no
-guard had an opinion about any of it. The control system failed at its primary function and the
-failure was invisible.
+Two rehearsals shaped this file. The first (non-independent) found CURRENT.md stale by one commit
+with nothing noticing. The second (independent, clean-clone) found the deeper defect: the guard
+verified that recorded passed+failed+skipped equalled the COLLECTED test population - which proves
+how many tests exist, not that they passed. A clean clone produced 46 failures under a green
+record.
 
-These guards make that class of drift a build failure:
+The corrected design:
 
-  1. CURRENT.md's machine-maintained status-block must name the checked-out content baseline,
-     under the documented two-commit convention (a commit cannot contain its own hash, so the
-     record either names HEAD itself or names HEAD^ with the top commit touching ONLY the
-     declared status-metadata files).
-  2. The recorded suite population must match the live collected-test population - so a recorded
-     count survives only as long as the test suite it counted.
-  3. The registry's meta mirror must agree with CURRENT.md exactly.
-  4. No secondary control or auto-loaded file may carry its own volatile commit/tree/suite claim.
-  5. The stable status facts (P2 COMPLETE, P3 not started, the rehearsal gate as the current
-     program) must be present - a status file that is fresh but wrong is worse than stale.
+  - scripts/run_canonical_suite.py is the only producer of the result artifact
+    (docs/implementation/SUITE-RESULT.json), written from a REAL run on a CLEAN checkout;
+  - scripts/update_current_status.py records status ONLY from a valid artifact;
+  - this guard validates the whole chain: the two-commit relationship, the registry mirror, the
+    artifact's integrity (hash, exit status, zero failures, zero deselection, right commit, right
+    tree, canonical command), consistency between artifact and record, and - at rest - that the
+    artifact's population matches the live test population.
+
+Repository states the relationship check recognises (a commit cannot contain its own hash, so
+"recorded == HEAD" cannot be the only legal state):
+
+  FINALIZED  recorded == HEAD^ and the top commit touched only the declared status files.
+             The at-rest state. Artifact REQUIRED and fully validated.
+  PRODUCING  recorded == HEAD^^, HEAD^ is a pure status-metadata commit, HEAD is the next content
+             commit. This state exists exactly while run_canonical_suite.py produces the next
+             artifact on the fresh content commit; artifact checks apply once it exists.
+  BASELINE   recorded == HEAD (pre-convention history only).
+
+Anything else - including a metadata commit that smuggled in a substantive change - fails.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -34,7 +45,8 @@ CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
 REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from update_current_status import STATUS_METADATA_FILES  # noqa: E402  single source of the allowed set
+from suite_result import ARTIFACT_RELPATH, payload_hash, validation_errors  # noqa: E402
+from update_current_status import STATUS_METADATA_FILES  # noqa: E402
 
 
 def git(*args: str) -> str:
@@ -48,58 +60,93 @@ def status_block() -> dict:
     return yaml.safe_load(m.group(1))
 
 
-# ------------------------------------------------------------------ 1. commit + tree vs git
-
-def test_recorded_commit_and_tree_match_the_checked_out_repository():
-    """The two-commit convention, verified structurally.
-
-    PASS states:
-      (a) recorded == HEAD                    - the content baseline is checked out directly
-      (b) recorded == HEAD^ AND the diff HEAD^..HEAD touches ONLY the declared status files
-          - the finalized state: content commit + exactly one status-metadata commit
-    Everything else - including a metadata commit that smuggled in a substantive change - fails.
-    """
+def repo_state() -> str:
+    """FINALIZED | PRODUCING | BASELINE - or an assertion failure naming the drift."""
     blk = status_block()
-    recorded_commit = blk["content_commit"]
-    recorded_tree = blk["content_tree"]
+    recorded = blk["content_commit"]
     head = git("rev-parse", "HEAD")
+    # The recorded tree must be the recorded commit's tree in EVERY state - a wrong tree under a
+    # correct commit is a forgery, and the first mutation pass proved the old guard only checked
+    # the tree when the commit also mismatched.
+    assert blk["content_tree"] == git("rev-parse", f"{recorded}^{{tree}}"), (
+        "recorded content_tree is not the recorded commit's tree"
+    )
+    if recorded == head:
+        return "BASELINE"
+    if recorded == git("rev-parse", "HEAD^"):
+        changed = [f for f in git("diff", "--name-only", "HEAD^", "HEAD").split("\n") if f]
+        stray = [f for f in changed if f not in STATUS_METADATA_FILES]
+        assert not stray, (
+            f"the status-metadata commit changed non-status files: {stray} - a metadata commit "
+            "that carries substantive changes defeats the convention"
+        )
+        return "FINALIZED"
+    if recorded == git("rev-parse", "HEAD^^"):
+        changed = [f for f in git("diff", "--name-only", "HEAD^^", "HEAD^").split("\n") if f]
+        stray = [f for f in changed if f not in STATUS_METADATA_FILES]
+        assert not stray, (
+            "HEAD^ is not a pure status-metadata commit - this is not the producing state, "
+            "it is two unfinalized content commits, which the convention forbids"
+        )
+        return "PRODUCING"
+    raise AssertionError(
+        f"CURRENT.md records {recorded[:9]} but HEAD is {head[:9]} - the status authority is "
+        "stale beyond every legal state. Run the finalization cycle "
+        "(run_canonical_suite.py, then update_current_status.py, then the metadata commit)."
+    )
 
-    if recorded_commit == head:
-        assert recorded_tree == git("rev-parse", "HEAD^{tree}"), (
-            "recorded content_tree does not match the recorded commit's tree"
+
+def working_tree_clean() -> bool:
+    return not subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+
+# ------------------------------------------------------------------ 1. relationship
+
+def test_recorded_commit_and_tree_match_a_legal_repository_state():
+    state = repo_state()
+    assert state in {"FINALIZED", "PRODUCING", "BASELINE"}
+
+
+# ------------------------------------------------------------------ 2. the artifact backs the record
+
+def test_the_status_record_is_backed_by_a_real_suite_result():
+    """The record's counts must come from a validated artifact, not from anyone's memory.
+
+    At rest (FINALIZED), the artifact is REQUIRED - a status record with no run behind it is
+    exactly the false green the clean-clone rehearsal found. In the transient PRODUCING state the
+    next artifact may not exist yet; consistency is enforced the moment it does.
+    """
+    state = repo_state()
+    blk = status_block()
+    path = ROOT / ARTIFACT_RELPATH
+    if not path.exists():
+        assert state != "FINALIZED", (
+            "FINALIZED state with no suite-result artifact - the recorded status has no run "
+            "behind it"
         )
         return
-
-    parent = git("rev-parse", "HEAD^")
-    assert recorded_commit == parent, (
-        f"CURRENT.md records {recorded_commit[:9]} but HEAD is {head[:9]} and HEAD^ is "
-        f"{parent[:9]} - the status authority is stale. This is the rehearsal's H-1 defect; "
-        "run scripts/update_current_status.py after the content commit."
-    )
-    assert recorded_tree == git("rev-parse", "HEAD^^{tree}"), (
-        "recorded content_tree does not match the content baseline's tree"
-    )
-    changed = git("diff", "--name-only", "HEAD^", "HEAD").split("\n")
-    stray = [f for f in changed if f and f not in STATUS_METADATA_FILES]
-    assert not stray, (
-        f"the status-metadata commit changed non-status files: {stray} - a metadata commit that "
-        "carries substantive changes defeats the whole convention"
-    )
+    art = json.loads(path.read_text(encoding="utf-8"))
+    errs = validation_errors(art, expect_commit=blk["content_commit"], expect_tree=blk["content_tree"])
+    assert not errs, "the suite-result artifact cannot back the recorded status:\n  " + "\n  ".join(errs)
+    assert (art["passed"], art["failed"], art["skipped"]) == (
+        blk["suite_passed"], blk["suite_failed"], blk["suite_skipped"]
+    ), "CURRENT.md's recorded counts disagree with the artifact they claim to come from"
+    assert blk["suite_failed"] == 0, "the recorded status admits failing tests - not a green baseline"
 
 
-# ------------------------------------------------------------------ 2. suite counts vs reality
+def test_at_rest_the_artifact_population_matches_the_live_test_population():
+    """Adding or removing a test without re-finalizing must fail the build - at rest.
 
-def test_recorded_suite_population_matches_the_live_test_population():
-    """A recorded count is only evidence while the suite it counted still exists.
-
-    The guard cannot re-run the full suite inside the suite (recursion), so it verifies the
-    invariant that actually decays: recorded passed+failed+skipped must equal the number of tests
-    that exist right now. Adding or removing a single test without re-finalizing the status fails
-    the build - which is exactly how the 1073-vs-1141 drift would have been caught. The recorded
-    pass/fail split itself is proven by the final-validation run recorded in the review document.
+    Collection alone can never prove a green suite (the corrected lesson), but population drift
+    is still real drift: an artifact describing 1180 tests is stale evidence in a repository that
+    now contains 1200. Skipped while the tree is dirty or producing - development in progress is
+    exactly the window in which the next finalization will re-prove everything.
     """
-    blk = status_block()
-    recorded_total = blk["suite_passed"] + blk["suite_failed"] + blk["suite_skipped"]
+    state = repo_state()
+    if state != "FINALIZED" or not working_tree_clean():
+        return
+    art = json.loads((ROOT / ARTIFACT_RELPATH).read_text(encoding="utf-8"))
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "eval/", "--collect-only", "-q", "-p", "no:cacheprovider"],
         cwd=ROOT, capture_output=True, text=True,
@@ -108,11 +155,10 @@ def test_recorded_suite_population_matches_the_live_test_population():
     assert m, f"could not parse collected-test count:\n{r.stdout[-500:]}"
     collected = int(m.group(1))
     assert collected > 1000, f"only {collected} tests collected - the population itself is implausible"
-    assert recorded_total == collected, (
-        f"CURRENT.md records a suite of {recorded_total} tests but {collected} exist - "
-        "the status authority describes a different repository than the one checked out"
+    assert art["collected"] == collected, (
+        f"the artifact describes a suite of {art['collected']} tests but {collected} exist - "
+        "re-run the finalization cycle"
     )
-    assert blk["suite_failed"] == 0, "the recorded status admits failing tests - not a green baseline"
 
 
 # ------------------------------------------------------------------ 3. registry meta mirror
@@ -140,12 +186,7 @@ def _strip_historical(text: str) -> str:
 
 
 def test_no_secondary_file_carries_its_own_volatile_status_claim():
-    """Volatile commit/tree/suite figures live in CURRENT.md's block and nowhere else.
-
-    The rehearsal found the stale suite count copied into four more files. Stable architectural
-    counts (134 transitions, 98 events, 31 edges...) are not volatile and are deliberately not
-    matched here - only suite-result-shaped figures are.
-    """
+    """Volatile commit/tree/suite figures live in CURRENT.md's block and nowhere else."""
     files = [ROOT / n for n in ("README.md", "PRODUCT.md", "AGENTS.md", "CLAUDE.md", "ARCHITECTURE.md")]
     files += sorted(ROOT.glob(".claude/agents/*.md")) + sorted(ROOT.glob(".codex/agents/*.md"))
     assert len(files) >= 10, "the scan population collapsed - this guard would pass vacuously"
@@ -171,9 +212,59 @@ def test_the_status_record_still_states_the_canonical_facts():
         "the current work program is no longer the independent rehearsal/readiness gate"
     )
     assert re.search(r"INDEPENDENT", text), (
-        "the status must record that the owed rehearsal is the INDEPENDENT one - a non-independent "
-        "rehearsal already ran and cannot close the gate"
+        "the status must record that the owed rehearsal is the INDEPENDENT one"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
     p3 = next(u for u in units if u["unit_id"] == "P3")
     assert p3["status"] == "BLOCKED", f"P3 is {p3['status']} in the registry - must be BLOCKED"
+
+
+# ------------------------------------------------------------------ 6. the validator itself is load-bearing
+
+def _forged(base_overrides: dict) -> dict:
+    data = {
+        "command": ".venv/bin/python -m pytest eval/ -q",
+        "commit": "a" * 40, "tree": "b" * 40,
+        "python_version": "3.12.0", "platform": "test",
+        "passed": 100, "failed": 0, "skipped": 1, "collected": 101, "deselected": 0,
+        "duration_seconds": 1.0, "exit_status": 0, "completed_at": "2026-01-01T00:00:00+00:00",
+    }
+    data.update(base_overrides)
+    data["payload_sha256"] = payload_hash(data)
+    return data
+
+
+def test_the_validator_rejects_every_forgery_the_rehearsal_identified():
+    """Unit-proof of the shared validator - so weakening suite_result.py is caught HERE even
+    though no real artifact in the repository is red. Each forgery below is a case the old
+    collection-only design silently accepted."""
+    ok = _forged({})
+    assert validation_errors(ok, expect_commit="a" * 40, expect_tree="b" * 40) == []
+
+    red = _forged({"failed": 1, "passed": 99})
+    assert any("failed=1" in e for e in validation_errors(red, expect_commit="a" * 40, expect_tree="b" * 40)), (
+        "a suite with one failure was accepted as a green record"
+    )
+    crashed = _forged({"exit_status": 2})
+    assert any("exit_status" in e for e in validation_errors(crashed, expect_commit="a" * 40, expect_tree="b" * 40))
+    other_commit = _forged({})
+    assert any("commit" in e for e in validation_errors(other_commit, expect_commit="c" * 40, expect_tree="b" * 40)), (
+        "a result from another commit was accepted"
+    )
+    other_tree = _forged({})
+    assert any("tree" in e for e in validation_errors(other_tree, expect_commit="a" * 40, expect_tree="d" * 40)), (
+        "a result from another tree was accepted"
+    )
+    filtered = _forged({"deselected": 40})
+    assert any("deselected" in e for e in validation_errors(filtered, expect_commit="a" * 40, expect_tree="b" * 40)), (
+        "a filtered run was accepted as the canonical suite"
+    )
+    tampered = _forged({})
+    tampered["passed"] = 999  # edited after hashing
+    assert any("hash" in e for e in validation_errors(tampered, expect_commit="a" * 40, expect_tree="b" * 40)), (
+        "an edited artifact passed the integrity check"
+    )
+    missing = _forged({"collected": 150})
+    assert any("went missing" in e for e in validation_errors(missing, expect_commit="a" * 40, expect_tree="b" * 40)), (
+        "a run with vanished tests was accepted"
+    )

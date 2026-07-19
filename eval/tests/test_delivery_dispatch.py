@@ -206,7 +206,7 @@ def test_local_email_outbox_writes_one_artifact_per_recipient(tmp_path):
         store.close()
 
 
-def test_dispatch_cli_requires_secret_or_explicit_local_flag():
+def test_dispatch_cli_requires_secret_or_explicit_local_flag(tmp_path):
     blocked = subprocess.run(
         [
             str(ROOT / ".venv" / "bin" / "python"),
@@ -214,7 +214,7 @@ def test_dispatch_cli_requires_secret_or_explicit_local_flag():
             "--mode",
             "DRY_RUN",
             "--out",
-            str(ROOT / "data" / "active_workspace" / "test_should_not_write_dispatch.json"),
+            str(tmp_path / "test_should_not_write_dispatch.json"),
         ],
         cwd=ROOT,
         text=True,

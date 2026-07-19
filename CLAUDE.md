@@ -65,9 +65,9 @@ missing events, manages exceptions, and helps accountable humans close operation
 | **R-07** | ### **OPEN — NOT CONTAINED** |
 | Live-write paths | **6 production-reachable** paths remain (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) |
 | Adapter imports | **31 direct adapter-import edges** remain across 18 importer modules |
-| Event-less transitions | **24 of 134** transitions cite no event — a G2 question, unsettled |
-| Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py:1639`) |
-| **Durable handoff readiness** | ### **NOT complete.** A non-independent rehearsal ran and returned NOT READY; its findings are corrected, and ### **the INDEPENDENT rehearsal has not been run.** |
+| Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
+| Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
+| **Durable handoff readiness** | ### **NOT complete.** Two rehearsals have run (one non-independent, one independent), both returned NOT READY, and both finding sets are corrected — ### **the SECOND independent rehearsal has not been run and only it can close the gate.** |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -211,7 +211,10 @@ These are not style preferences. Each one is a defect this repository actually s
   (`human_established_session_only`).
 - Memory and logs must **never** store money values.
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+- Bootstrap: `python3 scripts/check_env.py` **before** creating the venv and again inside it
+  **before** `pip install -e ".[dev]"` — it enforces pyproject's `requires-python` fail-fast.
 - Run the suite with: `.venv/bin/python -m pytest eval/ -q`
+- Prove clean-clone reproducibility with: `.venv/bin/python scripts/clean_clone_gate.py`
 - **Tool access is intentionally broad so missing technical context is investigated rather than
   guessed. Tool access expands evidence retrieval, not canonical decision authority.** Search
   aggressively; infer cautiously; execute according to authority — the full policy, including the
@@ -244,7 +247,7 @@ agrees.
 | [`AGENTS.md`](AGENTS.md) | compatibility entry point; must defer to this file |
 | [`README.md`](README.md) | orientation only; not an authority on status or product |
 | `.claude/agents/*`, `.codex/agents/*` | task lenses. **Their embedded status blocks and the 8-stage roadmap are historical.** See [`docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md). |
-| `docs/` root (23 pre-reset files) | **HISTORICAL.** Evidence of what was built and learned. **Not authority.** |
+| `docs/` root pre-reset files (every one now carries an in-file supersession banner) | **HISTORICAL.** Evidence of what was built and learned. **Not authority.** |
 
 > **If any of them tells you the product is invoice processing, that the project is at "Stage 1" or
 > "Stage 5", or that you should preserve legacy architecture by default — it is stale.

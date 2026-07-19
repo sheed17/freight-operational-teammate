@@ -14,8 +14,11 @@ meta:
   unit: U-HANDOFF-1
   verdict_vocabulary: [READY FOR HOSTILE HANDOFF-READINESS REVIEW, NOT READY]
   independence_requirement: >-
-    The rehearsing agent must not have authored the control documents under test. One
-    non-independent rehearsal has already run (NOT READY); it cannot satisfy this checklist.
+    The rehearsing agent must not have authored the control documents under test. Two rehearsals
+    have already run and returned NOT READY: one non-independent (author-run), and one
+    independent (11/13 PASS; HANDOFF-03 and HANDOFF-12 FAIL on clean-clone reproducibility and
+    status truthfulness, corrected by U-HANDOFF-1B). Neither satisfies this checklist; results
+    below stay PENDING until the SECOND independent rehearsal.
   pass_rule: all 13 criteria PASS; any FAIL fails the rehearsal
 
 criteria:
@@ -79,10 +82,16 @@ criteria:
 
   - id: HANDOFF-10
     statement: >-
-      The agent identifies the broad-tool-access posture: research is aggressive and automatic
-      for searchable technical facts and internal organizational facts, and the model is NOT
-      operating under blanket tool restrictions.
-    evidence_required: TOOL-ACCESS-POLICY.md summarised, including the missing-context classification
+      The agent correctly DESCRIBES the broad-tool-access posture that governs FUTURE formal
+      implementation sessions (aggressive automatic research for searchable technical facts and
+      internal organizational facts; no blanket restrictions) - while itself REMAINING
+      repository-only for the rehearsal, and WITHOUT claiming the rehearsal session has
+      unrestricted external tools. Describing the posture and operating under it are different
+      things, and the rehearsal is repository-only by definition.
+    evidence_required: >-
+      TOOL-ACCESS-POLICY.md summarised including the missing-context classification, PLUS an
+      explicit statement that the rehearsal itself used only repository files, git history and
+      repository tests
     result: PENDING
 
   - id: HANDOFF-11

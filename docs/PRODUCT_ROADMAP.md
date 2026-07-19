@@ -1,3 +1,9 @@
+> # ⛔ SUPERSEDED — DO NOT FOLLOW
+> **Authority classification: SUPERSEDED** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **PHASE-OUTPUTS.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Neyma Product Roadmap: Stage 0 To Live Deployment
 
 This roadmap keeps the big agentic vision grounded in shippable stages. A prompt will not get

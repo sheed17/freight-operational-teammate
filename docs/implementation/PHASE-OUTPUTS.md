@@ -111,7 +111,7 @@
 | **Still prohibited** | Entities and machines (P6); policy (P8) |
 | **Legacy contained** | Legacy state management begins to be displaced |
 | **Acceptance gates** | **G2**; `event-and-replay-acceptance.md` |
-| **Blocked on** | ### **The 24 event-less transitions must be adjudicated first** |
+| **Blocked on** | ### **The transition/event completeness finding must be adjudicated first** — COUNT NEEDS ADJUDICATION, 4 classes, [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml) |
 | **Next unlocked** | P6 |
 
 ## P6 — Foundational entities and state machines ⛔ NOT STARTED

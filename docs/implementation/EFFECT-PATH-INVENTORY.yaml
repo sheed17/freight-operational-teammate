@@ -1,0 +1,151 @@
+# EFFECT-PATH INVENTORY
+#
+# THE EXACT LIVE-WRITE ADJUDICATION (U-HANDOFF-1B, M-4). The canonical claim was "six
+# production-reachable live-write paths" while the import probe returns TEN effect-capable
+# candidates and one script sat unlisted. This inventory adjudicates every candidate exactly once,
+# records WHY each is or is not in the six, and closes the unlisted case (read_tms_browser_use.py,
+# finding P0-F4) by assigning it EP-14.
+#
+# THE ADJUDICATED RESULT: the production-reachable live-write set REMAINS EXACTLY SIX
+# (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) - not forced, re-derived: the four excluded candidates
+# are excluded for reasons stated per-entry below, and every exclusion reason is the kind an
+# import probe cannot see (mock-guarded, read-by-convention). The R-07 CONTAINMENT SCOPE is
+# LARGER than the six: it also includes the two read-by-convention/actuator-capable-by-import
+# paths (EP-8, EP-14), whose import edges P4 must cut, and EP-2 (spawn-capable supervisor).
+#
+# Guarded by eval/tests/test_bootstrap_hermeticity.py: exact candidate membership against the
+# baseline manifest probe, exact six-set, exact exclusion set, every entry classified, nonzero
+# populations. R-07 remains OPEN - NOT CONTAINED regardless of the count.
+
+meta:
+  candidates_from_import_probe: 10
+  production_reachable_live_write: 6
+  adjudication: U-HANDOFF-1B closes P0-F4 (read_tms_browser_use.py -> EP-14)
+  containment_phase: P4
+  risk: R-07 OPEN - NOT CONTAINED
+
+paths:
+
+  - id: EP-1
+    path: scripts/run_action_callback_server.py
+    external_system: TruckingOffice (browser) + Slack
+    production_reachable: true
+    enablement: enabled - the live ops callback server
+    authority_bypass: full - no checkpoint, no witness, no grant
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: ADAPT (convert to pipeline client)
+
+  - id: EP-3
+    path: scripts/propose_ar_from_tms.py
+    external_system: TruckingOffice (browser)
+    production_reachable: true
+    enablement: enabled - the AR proposal path
+    authority_bypass: full
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: ADAPT (convert to pipeline client)
+
+  - id: EP-6
+    path: scripts/enter_truckingoffice_invoice.py
+    external_system: TruckingOffice (browser)
+    production_reachable: true
+    enablement: enabled - direct operator invocation
+    authority_bypass: full - bypasses every review surface
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+
+  - id: EP-7
+    path: scripts/enter_invoice_discovered.py
+    external_system: any discovered TMS (browser)
+    production_reachable: true
+    enablement: enabled - direct operator invocation
+    authority_bypass: full
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+
+  - id: EP-9
+    path: scripts/run_operate_request.py
+    external_system: any TMS via operator brain (browser)
+    production_reachable: true
+    enablement: enabled - direct operator invocation
+    authority_bypass: full
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+
+  - id: EP-10
+    path: scripts/run_operator_agent.py
+    external_system: any TMS via operator agent (browser)
+    production_reachable: true
+    enablement: enabled - direct operator invocation
+    authority_bypass: full
+    classification: PRODUCTION_LIVE_WRITE
+    containment_phase: P4
+    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+
+  - id: EP-8
+    path: scripts/orient_tms.py
+    external_system: any TMS (browser)
+    production_reachable: true   # reachable as a READ; carries an actuator import it does not use
+    enablement: enabled, read-only by convention
+    authority_bypass: none exercised; full if the convention is broken (one edit away)
+    classification: READ_BY_CONVENTION_ACTUATOR_CAPABLE
+    containment_phase: P4
+    disposition: MAKE_READ_ONLY (remove the cdp_actuator import)
+    excluded_from_the_six_because: >-
+      it initiates no write flow - "read-only by convention" - but the convention is not a
+      mechanism, so its import edge is IN the R-07 containment scope even though it is not a
+      live-write path today.
+
+  - id: EP-14
+    path: scripts/read_tms_browser_use.py
+    external_system: mock TMS via the Browser Use adapter (optional dependency)
+    production_reachable: false  # targets the mock TMS; requires the optional browser-agent extra
+    enablement: manual, mock-targeted, optional-dependency-gated
+    authority_bypass: none exercised; actuator-capable by import (browser_use_adapter -> tms_write)
+    classification: READ_BY_CONVENTION_ACTUATOR_CAPABLE
+    containment_phase: P4
+    disposition: MAKE_READ_ONLY (with S15b; import edge cut at P4)
+    excluded_from_the_six_because: >-
+      it reads the MOCK TMS and initiates no write flow; it was UNLISTED in the frozen EP-1..13
+      inventory (finding P0-F4) and is hereby adjudicated EP-14 rather than left unclassified.
+      Its transitive actuator import keeps it in the R-07 containment scope.
+
+  - id: EP-12
+    path: scripts/enter_tms_payable.py
+    external_system: mock TMS write server
+    production_reachable: false
+    enablement: test-only, mock-guarded
+    authority_bypass: n/a (mock)
+    classification: TEST_ONLY
+    containment_phase: P4
+    disposition: QUARANTINE
+    excluded_from_the_six_because: mock-guarded test fixture; no live system reachable
+
+  - id: EP-13
+    path: scripts/run_dogfood_pilot.py
+    external_system: mock TMS write server
+    production_reachable: false
+    enablement: test-only, mock-guarded
+    authority_bypass: n/a (mock)
+    classification: TEST_ONLY
+    containment_phase: P4
+    disposition: QUARANTINE
+    excluded_from_the_six_because: mock-guarded dogfood fixture; no live system reachable
+
+  # Spawn-capable, not import-capable - visible to the reference probe, not the import probe:
+  - id: EP-2
+    path: scripts/run_teammate.py
+    external_system: via the EP-1/EP-3 children it spawns
+    production_reachable: true
+    enablement: enabled - the supervisor
+    authority_bypass: inherits its children's
+    classification: SPAWNS_LIVE_WRITERS
+    containment_phase: P4
+    disposition: ADAPT (with its children)
+    excluded_from_the_six_because: >-
+      counted WITH EP-1/EP-3 per the frozen adjudication - it adds no independent write
+      capability, only supervision of paths already counted.

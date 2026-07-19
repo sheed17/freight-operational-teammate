@@ -1,3 +1,15 @@
+==========================================================================
+SUPERSEDED — DO NOT FOLLOW (classification: SUPERSEDED, see docs/CANONICAL-DOCUMENTS.md)
+
+This file is the original 8-stage roadmap for the pre-reset invoice workflow.
+That roadmap is SUPERSEDED. It must not direct implementation. The current
+program is Implementation Phases P0-P14 (docs/implementation/PHASE-OUTPUTS.md);
+status lives in docs/implementation/CURRENT.md; the operating guide is
+CLAUDE.md. Retained only as historical evidence of the pre-reset plan. It sat
+UNCLASSIFIED at the repository root until U-HANDOFF-1B (finding H-4) moved it
+here and classified it.
+==========================================================================
+
 NOTE: This file is the original 8-stage roadmap for Workflow 1: carrier invoice
 reconciliation. The broader Neyma product roadmap now lives in docs/PRODUCT_ROADMAP.md,
 with architecture context in docs/AGENTIC_ARCHITECTURE.md and product vision in

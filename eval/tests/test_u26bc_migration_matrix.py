@@ -42,7 +42,7 @@ from freight_recon.migrations.phase2_tenant_first import (
 )
 from freight_recon.schema import create_canonical_schema, schema_readiness_problems
 
-REAL_LEGACY = ROOT / "data" / "active_workspace" / "neyma_workflow.sqlite3"
+from fixtures.legacy_workspace import LEGACY_RUNS, build_legacy_workspace
 
 VALID = dict(
     actor_id="rasheed@neyma",
@@ -123,7 +123,7 @@ def _empty_legacy(tmp_path, name="empty-legacy.db", *, claims=True) -> str:
 
 def _populated_legacy(tmp_path, name="legacy.db") -> str:
     db = tmp_path / name
-    shutil.copy(REAL_LEGACY, db)
+    build_legacy_workspace(db)
     return str(db)
 
 

@@ -234,10 +234,14 @@ expected_legacy_paths:
       ep: EP-3
       cutover: CONVERT_TO_PIPELINE_CLIENT
     - script: scripts/read_tms_browser_use.py
-      ep: UNLISTED
-      cutover: CLASSIFY
+      ep: EP-14
+      cutover: MAKE_READ_ONLY (with S15b; import edge cut at P4)
       note: >-
-        Not present in the frozen EP-1..EP-13 inventory. Imports browser_use_adapter. Finding P0-F4.
+        Was UNLISTED in the frozen EP-1..EP-13 inventory (finding P0-F4). ADJUDICATED by
+        U-HANDOFF-1B as EP-14: reads the MOCK TMS behind an optional dependency, initiates no
+        write flow, actuator-capable by transitive import - read-by-convention class with EP-8,
+        NOT a production-reachable live-write path. Exact adjudication:
+        docs/implementation/EFFECT-PATH-INVENTORY.yaml. P0-F4 CLOSED.
     - script: scripts/run_action_callback_server.py
       ep: EP-1
       cutover: CONVERT_TO_PIPELINE_CLIENT

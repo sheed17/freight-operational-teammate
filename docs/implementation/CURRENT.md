@@ -64,9 +64,11 @@ suite_skipped: 1
 
 | Quantity | Count |
 |---|---|
-| Canonical tenant-owned tables | **7** |
-| Canonical tables total | **11** |
-| Tenant-exempt bookkeeping tables | **3** — `schema_migrations`, `migration_quarantine`, `owner_assertions` |
+| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 = 11)* | |
+| — Phase-2 **migrated** tenant-owned tables | **7** — `workflow_runs`, `audit_events`, `security_events`, `operation_action_claims`, `delivery_action_claims`, `effect_grants`, `operation_token_amounts` |
+| — **Already tenant-first before P2** (the eighth tenant-first table, migrated by nobody) | **1** — `autonomous_run_counters` |
+| — Tenant-**exempt** bookkeeping tables | **3** — `schema_migrations`, `migration_quarantine`, `owner_assertions` |
+| — Canonical tables **total** | **11** — exactly the union of the three sets above; "7 + 3" alone was the rehearsal's M-4 finding, hiding the eighth |
 | `WorkflowStore` methods, tenant-scoped + readiness-gated | **22 / 22** |
 | `WorkflowStore` construction sites, all with an explicit tenant | **154** *(plus 8 refusal probes, exempted structurally)* |
 | Guard files / guard tests | **25 / 367** |
@@ -82,8 +84,8 @@ suite_skipped: 1
 | **R-07** | Ungated live-write paths | ### **OPEN — NOT CONTAINED** | **P4** |
 | — | **6 production-reachable live-write paths** — EP-1, EP-3, EP-6, EP-7, EP-9, EP-10 | OPEN | P4 |
 | — | **31 direct adapter-import edges** across 18 importer modules | OPEN | P4 |
-| — | **24 of 134 transitions cite no event** — a G2 question, unsettled | OPEN | before **P5** |
-| — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py:1639` | OPEN | the phase that makes the KB tenant-safe |
+| — | **Transition/event completeness: 13 of 134 name no event outright** (5 bare · 3 documented non-producing · 3 unnamed-ILLEGAL · 2 delegating; exact members in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION**: the specs do not define which classes violate AC-EVT-003, and the retired "24" was never mechanically computed | OPEN | **G2, before P5** |
+| — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
 | — | Checkpoint Witness + seven-step checkpoint + claim CAS unimplemented | OPEN | **P3** |
 | — | Adapter containment unimplemented | OPEN | **P4** |
 | — | **No firsthand design-partner observation recorded by any agent** | OPEN | [`design-partner-observations.md`](../product/design-partner-observations.md) |
@@ -97,16 +99,23 @@ suite_skipped: 1
 
 ## Current documentation milestone
 
-**U-HANDOFF-1A — BOUNDED CONTROL-SYSTEM CORRECTION** — complete.
-Review: [`u-handoff-1a-control-correction-review.md`](u-handoff-1a-control-correction-review.md).
+**U-HANDOFF-1B — CLEAN-CLONE REPRODUCIBILITY AND AUTHORITY CORRECTION** — complete.
+Review: [`u-handoff-1b-clean-clone-correction-review.md`](u-handoff-1b-clean-clone-correction-review.md).
 
-### The rehearsal record so far
-A **non-independent** rehearsal (run by the agent that authored the control documents) executed the
-U-HANDOFF-1 procedure and returned **NOT READY** — one HIGH finding (this very file was stale by one
-commit, with the stale figure propagated into four more files and no guard watching), three MEDIUM,
-three LOW. Those findings are corrected and guarded as of this milestone.
-### **U-HANDOFF-1 itself remains OPEN: the INDEPENDENT zero-context rehearsal has not been run**,
-and a rehearsal by the author of the documents under test cannot close it.
+### The rehearsal record so far — two rehearsals, both NOT READY, both fully adjudicated
+1. A **non-independent** rehearsal (the control-document author) returned **NOT READY** — the
+   status authority was stale by one commit, unguarded. Corrected by **U-HANDOFF-1A**.
+2. The **first INDEPENDENT rehearsal** (fresh session, repository-only) returned **NOT READY** —
+   **11 of 13 criteria PASS; HANDOFF-03 and HANDOFF-12 FAIL.** Its decisive finding: the recorded
+   green was **not clean-clone reproducible** (46 tests read a gitignored developer-local
+   database; an undeclared dependency; an unenforced Python floor; a status guard that verified
+   test COUNTS, not test RESULTS) — plus a contradictory `registry.md`, an unclassified root
+   roadmap, eight graph inconsistencies, and figures ("24 of 134", `:1639`, "six") that no
+   executable source computed. All corrected and guarded by **U-HANDOFF-1B**; the suite is now
+   hermetic, the status record is artifact-backed, and the clean-clone gate
+   (`scripts/clean_clone_gate.py`) is the reproducibility oracle.
+### **U-HANDOFF-1 itself remains OPEN: a SECOND independent rehearsal against the corrected
+repository has not been run**, and only it can close the gate.
 
 ## ✅ The exact next approved work program
 
