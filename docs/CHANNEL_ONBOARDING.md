@@ -1,3 +1,8 @@
+> # ⛔ HISTORICAL — NOT CURRENT AUTHORITY
+> Pre-reset evidence (see [`CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)). It must not direct
+> implementation. Product: [`../PRODUCT.md`](../PRODUCT.md) · status:
+> [`implementation/CURRENT.md`](implementation/CURRENT.md) · guide: [`../CLAUDE.md`](../CLAUDE.md).
+
 # Customer Slack Onboarding Runbook
 
 Integrating a new customer's Slack review workspace is a **repeatable config-and-secrets runbook**,

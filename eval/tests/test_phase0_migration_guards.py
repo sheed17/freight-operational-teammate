@@ -204,6 +204,7 @@ def test_the_defective_derivation_is_deleted_not_deprecated():
     with pytest.raises(ImportError):
         from freight_recon.workflow import operation_commit_key  # noqa: F401
     source = (Path(__file__).resolve().parents[2] / "src" / "freight_recon" / "workflow.py").read_text()
+    assert "class WorkflowStore" in source, "population proof: workflow.py loaded and is the real module"
     assert "def operation_commit_key(" not in source
 
 

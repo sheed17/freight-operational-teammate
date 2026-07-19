@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # Phase-1 Implementation Review — Migration Safety Task #1
 
 > ### **CORRECTED — 2026-07-16.** This review presented `params['occurrence_key']` as the way to unblock the three fail-closed lanes. ### **That was wrong: a free-form caller string is the amount defect with a new field name.** The escape hatch has been REMOVED; occurrence identity now comes from a canonical business occurrence (Payment Application · Compensation · Expectation) or the operation fails closed. ### **Everything else in this review stands.** See `phase-1-occurrence-identity-review.md`.

@@ -17,8 +17,8 @@ it disagrees with the checked-out commit. The zero-context rehearsal proved a ha
 version of this block goes stale within one commit and nothing notices.
 
 ```yaml
-# status-block: maintained by scripts/update_current_status.py - do not edit by hand
-branch: recovery/u2-6bc-atomic-cutover
+# status-block: maintained by scripts/finalize_status.py - do not edit by hand
+recorded_authoring_branch: recovery/u2-6bc-atomic-cutover   # advisory; not verified across bundles/clones
 content_commit: e563a4fc6153c3b44e775ebaa95b0fe01009df7f
 content_tree: c8770e46f87f7b984d5cbf61d2097e9c7390db27
 suite_passed: 1205
@@ -99,8 +99,8 @@ suite_skipped: 1
 
 ## Current documentation milestone
 
-**U-HANDOFF-1B — CLEAN-CLONE REPRODUCIBILITY AND AUTHORITY CORRECTION** — complete.
-Review: [`u-handoff-1b-clean-clone-correction-review.md`](u-handoff-1b-clean-clone-correction-review.md).
+**U-HANDOFF-1C — FALSE-GREEN, DYNAMIC-DISCOVERY AND SAFETY-GRAPH CORRECTION** — complete.
+Review: [`u-handoff-1c-false-green-and-discovery-correction-review.md`](u-handoff-1c-false-green-and-discovery-correction-review.md).
 
 ### The rehearsal record so far — two rehearsals, both NOT READY, both fully adjudicated
 1. A **non-independent** rehearsal (the control-document author) returned **NOT READY** — the
@@ -110,16 +110,25 @@ Review: [`u-handoff-1b-clean-clone-correction-review.md`](u-handoff-1b-clean-clo
    green was **not clean-clone reproducible** (46 tests read a gitignored developer-local
    database; an undeclared dependency; an unenforced Python floor; a status guard that verified
    test COUNTS, not test RESULTS) — plus a contradictory `registry.md`, an unclassified root
-   roadmap, eight graph inconsistencies, and figures ("24 of 134", `:1639`, "six") that no
+   roadmap, eight graph inconsistencies, and figures (the since-retired "24 of 134", the since-drifted `:1639`, the unadjudicated "six") that no
    executable source computed. All corrected and guarded by **U-HANDOFF-1B**; the suite is now
    hermetic, the status record is artifact-backed, and the clean-clone gate
    (`scripts/clean_clone_gate.py`) is the reproducibility oracle.
-### **U-HANDOFF-1 itself remains OPEN: a SECOND independent rehearsal against the corrected
-repository has not been run**, and only it can close the gate.
+3. The **second independent rehearsal** PASSED **13/13** — comprehension is proven. The
+   subsequent **hostile formal handoff-readiness review** then attacked the CONTROLS and returned
+   **NOT READY**: fabricated artifacts were accepted, pytest configuration could silently remove
+   tests, skip detection covered a quarter of the suite, a live "24" contradiction survived in
+   the registry, P6+ could bypass the safety wall, and guard populations were hand-enumerated.
+   All corrected and mutation-proven (44/44) by **U-HANDOFF-1C**: status is now finalized only by
+   [`scripts/finalize_status.py`](../../scripts/finalize_status.py), which EXECUTES the suite,
+   the clean-clone gate and the acceptance gates itself.
+### **U-HANDOFF-1 itself remains OPEN: the SECOND HOSTILE handoff-readiness review against the
+corrected controls has not been run**, and only it can close the gate. The 13 checklist criteria
+remain PENDING — a passed rehearsal plus a failed hostile review is not a passed gate.
 
 ## ✅ The exact next approved work program
 
-### **ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW — run INDEPENDENTLY**
+### **ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW — next: the SECOND HOSTILE REVIEW, run independently**
 
 Unit `U-HANDOFF-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
 The executable acceptance checklist is

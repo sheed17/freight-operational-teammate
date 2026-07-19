@@ -1,3 +1,8 @@
+> # ⛔ HISTORICAL — NOT CURRENT AUTHORITY
+> Pre-reset evidence (see [`CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)). It must not direct
+> implementation. Product: [`../PRODUCT.md`](../PRODUCT.md) · status:
+> [`implementation/CURRENT.md`](implementation/CURRENT.md) · guide: [`../CLAUDE.md`](../CLAUDE.md).
+
 # Onboarding any TMS to the Neyma engine
 
 Neyma is a **TMS-agnostic engine**. We do not integrate "an AscendTMS adapter"; we run a generic

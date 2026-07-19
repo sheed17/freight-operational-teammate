@@ -1,3 +1,8 @@
+> # ⛔ HISTORICAL — NOT CURRENT AUTHORITY
+> Pre-reset evidence (see [`CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)). It must not direct
+> implementation. Product: [`../PRODUCT.md`](../PRODUCT.md) · status:
+> [`implementation/CURRENT.md`](implementation/CURRENT.md) · guide: [`../CLAUDE.md`](../CLAUDE.md).
+
 # Owner Demand Catalog — everything an owner would run by Neyma inside the TMS
 
 _The master dogfood script. Each line is something an owner would literally say in Slack — built or

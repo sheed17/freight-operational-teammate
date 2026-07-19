@@ -239,9 +239,11 @@ units:
       docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml (all criteria currently PENDING). A failure
       on any criterion is a documentation defect, not an agent defect. Two rehearsals have run
       and returned NOT READY (one non-independent, corrected by U-HANDOFF-1A; one independent -
-      11/13 PASS - corrected by U-HANDOFF-1B, which also added the clean-clone gate the next
-      rehearsal must run). Neither satisfies this contract; the SECOND independent rehearsal
-      does or does not.
+      11/13 - corrected by U-HANDOFF-1B). A SECOND independent rehearsal then PASSED 13/13, but
+      the subsequent HOSTILE handoff-readiness review returned NOT READY on the control system
+      itself (fabricated evidence, configuration injection, partial skip coverage) - corrected
+      and mutation-proven by U-HANDOFF-1C. The gate closes only when a fresh HOSTILE review
+      passes against the corrected controls; the 13 criteria stay PENDING until then.
     concurrency_requirements: none
     mutation_requirements: >-
       required - the rehearsal must include at least one deliberately misleading stale document to
@@ -282,7 +284,12 @@ units:
       System: commit-once becomes a database constraint at the effect boundary. Replay becomes
       structurally inert. User-visible: none yet - P4 still has to route effects through it.
     boundaries_affected: [src/freight_recon/workflow.py, new checkpoint module]
-    acceptance_contract: "the AC-SAFE cases named in platform-safety-acceptance.md; gate G4 qualifies at P8"
+    acceptance_contract: >-
+      docs/specifications/acceptance/platform-safety-acceptance.md - specifically THE 105-CASE
+      CHECKPOINT MERGE-GATING MATRIX (7 steps x 15 conditions) and its UNIVERSAL ORACLE (the
+      outcome of every case is always exactly one of the enumerated refusal/passage results),
+      plus the AC-SAFE checkpoint cases and the AC-CKPT-1-* .. AC-CKPT-7-* step families indexed in
+      docs/specifications/acceptance/registry.md. Gate G4 qualifies at P8, not here.
     concurrency_requirements: "required - the claim CAS is a concurrency primitive"
     mutation_requirements: required
     migration_requirements: "the grant ledger gains checkpoint binding"
@@ -363,8 +370,12 @@ units:
     legacy_dispositions_affected: [legacy_state_management]
     rollback_posture: "Ships dark."
     validation_blockers:
-      - "THE 24 EVENT-LESS TRANSITIONS MUST BE SETTLED FIRST (G2). Whether they are legitimately
-         non-producing or a real gap in AC-EVT-003's map is unresolved and blocks this unit."
+      - "THE TRANSITION/EVENT COMPLETENESS FINDING MUST BE ADJUDICATED FIRST (G2). The prior
+         '24 of 134' claim is RETIRED - never mechanically computed. The mechanically observed
+         set is 13 non-naming transitions in four structurally different classes
+         (docs/implementation/TRANSITION-EVENT-AUDIT.yaml); the canonical predicate for
+         AC-EVT-003 carries COUNT NEEDS ADJUDICATION, and no replacement completeness claim is
+         invented here."
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     next_units_unlocked: [P6]
 

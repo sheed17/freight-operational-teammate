@@ -1,3 +1,8 @@
+> # ⛔ HISTORICAL — NOT CURRENT AUTHORITY
+> Pre-reset evidence (see [`CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)). It must not direct
+> implementation. Product: [`../PRODUCT.md`](../PRODUCT.md) · status:
+> [`implementation/CURRENT.md`](implementation/CURRENT.md) · guide: [`../CLAUDE.md`](../CLAUDE.md).
+
 # Session Runtime Migration — off localhost, no human-tended browser
 
 _The design spec for evolving from "a Chrome I keep logged in on my laptop" to "a hydrated, ephemeral,

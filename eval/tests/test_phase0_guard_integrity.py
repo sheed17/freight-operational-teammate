@@ -91,6 +91,7 @@ def test_the_green_safety_oracles_carry_no_xfail_or_skip():
     tests_dir = Path(__file__).resolve().parent
     guards = tests_dir / "test_phase0_migration_guards.py"
     text = guards.read_text(encoding="utf-8")
+    assert len(MUST_BE_GREEN) >= 3, "population proof: the green-oracle set collapsed"
     for name, case in MUST_BE_GREEN.items():
         m = re.search(rf"\ndef {re.escape(name)}\(", text)
         assert m, f"{case}: the oracle {name} has vanished from the suite"

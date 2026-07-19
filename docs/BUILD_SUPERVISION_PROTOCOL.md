@@ -1,3 +1,8 @@
+> # ⛔ HISTORICAL — NOT CURRENT AUTHORITY
+> Pre-reset evidence (see [`CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)). It must not direct
+> implementation. Product: [`../PRODUCT.md`](../PRODUCT.md) · status:
+> [`implementation/CURRENT.md`](implementation/CURRENT.md) · guide: [`../CLAUDE.md`](../CLAUDE.md).
+
 # Build Supervision Protocol
 
 This protocol defines how Neyma should be built with four roles:

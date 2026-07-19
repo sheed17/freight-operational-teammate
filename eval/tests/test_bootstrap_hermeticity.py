@@ -505,14 +505,19 @@ def test_agent_frontmatter_describes_the_current_program_not_the_stages():
 # ============================================================ status-result truthfulness (unit level)
 
 def test_the_finalizer_refuses_count_arguments():
-    """The 1A finalizer accepted --passed on faith; the 1B finalizer must not even offer it."""
-    src = read(ROOT / "scripts" / "update_current_status.py")
+    """The 1A finalizer accepted --passed on faith; the 1B one read a pre-existing artifact,
+    which U-HANDOFF-1C proved forgeable. The canonical finalizer now EXECUTES everything and
+    offers no count flag; the superseded script is a refusing shim, not a second route."""
+    src = read(ROOT / "scripts" / "finalize_status.py")
     assert not re.search(r"add_argument\(\s*['\"]--passed", src), (
-        "the finalizer accepts hand-supplied counts again (its docstring may NAME the retired "
-        "flag as history; argparse may not OFFER it)"
+        "the finalizer accepts hand-supplied counts again"
     )
-    assert "load_artifact" in src and "validation_errors" in src, (
-        "the finalizer no longer validates the suite-result artifact"
+    assert "_step_run_suite" in src and "_step_run_gate" in src, (
+        "the finalizer no longer executes the suite and gate itself"
+    )
+    shim = read(ROOT / "scripts" / "update_current_status.py")
+    assert "REFUSED" in shim and "finalize_status.py" in shim, (
+        "the superseded finalizer no longer refuses - a weaker second route exists"
     )
 
 
@@ -533,9 +538,9 @@ def test_collection_totals_alone_cannot_satisfy_status_reality():
                and n.name == "test_the_status_record_is_backed_by_a_real_suite_result"), None)
     assert fn is not None, "the artifact-backing guard is gone from status-reality"
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-             and getattr(n.func, "id", getattr(n.func, "attr", "")) == "validation_errors"]
+             and getattr(n.func, "id", getattr(n.func, "attr", "")) == "artifact_consistency_errors"]
     assert calls, (
-        "status-reality's artifact-backing test no longer CALLS validation_errors - "
+        "status-reality's artifact-backing test no longer CALLS artifact_consistency_errors - "
         "collection-only verification is the exact false green the clean-clone rehearsal found"
     )
     assert "exit_status" in read(ROOT / "scripts" / "suite_result.py")

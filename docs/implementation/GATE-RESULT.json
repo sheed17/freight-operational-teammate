@@ -1,0 +1,43 @@
+{
+  "clean_clone_counts": {},
+  "commit": "21a2bf3c42a2e633c8d0e26fe2c75c019bdcf6cf",
+  "completed_at": "2026-07-19T10:00:11.495322+00:00",
+  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
+  "gate": "clean_clone_gate",
+  "node_manifest_sha256": "47cfc5c5ab3745161818c54f399f1eac144ec3431c4762d2386d4489824d53dd",
+  "passed": false,
+  "payload_sha256": "9ef246f2fc44959cab68273686b0d6cc7b5b7a164f1676f371585bf956648338",
+  "reason": "clean-clone population diverged from the node manifest by identity (missing=['eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty', 'eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers', 'eval/tests/test_ac_sec_001_registry.py::test_commit_key_excludes_the_amount_structurally', 'eval/tests/test_ac_sec_001_registry.py::test_commit_key_lookup_is_tenant_scoped', 'eval/tests/test_ac_sec_001_registry.py::test_composite_tenant_aware_foreign_keys_enforced'], extra=[])",
+  "runner_sha256": "75b924e9f39821eaf4a9796ea81b24c8240ef4d228e781c95f627230586295eb",
+  "steps": [
+    {
+      "exit_status": 0,
+      "step": "clone committed state"
+    },
+    {
+      "exit_status": 0,
+      "step": "python floor (host)"
+    },
+    {
+      "exit_status": 0,
+      "step": "fresh venv"
+    },
+    {
+      "exit_status": 0,
+      "step": "python floor (venv)"
+    },
+    {
+      "exit_status": 0,
+      "step": "install declared deps only"
+    },
+    {
+      "exit_status": 0,
+      "step": "complete canonical suite (clean clone)"
+    },
+    {
+      "exit_status": 1,
+      "step": "clean-clone population diverged from the node manifest by identity (missing=['eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty', 'eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers', 'eval/tests/test_ac_sec_001_registry.py::test_commit_key_excludes_the_amount_structurally', 'eval/tests/test_ac_sec_001_registry.py::test_commit_key_lookup_is_tenant_scoped', 'eval/tests/test_ac_sec_001_registry.py::test_composite_tenant_aware_foreign_keys_enforced'], extra=[])"
+    }
+  ],
+  "tree": "8c690d0490226c30c39b648d2cc0667cb7f1de71"
+}

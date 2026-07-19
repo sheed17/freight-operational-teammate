@@ -560,12 +560,19 @@ def test_every_evidence_class_is_defined_and_says_whether_it_may_authorise():
 
 # ============================================================ authority-map integrity
 
-SUPERSEDED_MUST_STAY_SUPERSEDED = [
-    "PRODUCT_ROADMAP.md", "NEYMA_VISION.md", "AGENTIC_ARCHITECTURE.md", "OWNER_OPERATOR_ROADMAP.md",
-]
+def _superseded_docs() -> list[str]:
+    """DISCOVERED from the authority map's own SUPERSEDED/QUARANTINED rows (H-6): a newly
+    superseded document enters this population without touching the guard."""
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "eval"))
+    from control import inventory as _inv
+    names = sorted({p.rsplit("/", 1)[-1]
+                    for p in _inv.classified(("SUPERSEDED", "QUARANTINED_GUIDANCE"))})
+    assert len(names) >= 4, f"superseded population collapsed: {names}"
+    return names
 
 
-@pytest.mark.parametrize("doc", SUPERSEDED_MUST_STAY_SUPERSEDED)
+@pytest.mark.parametrize("doc", _superseded_docs())
 def test_pre_reset_documents_cannot_regain_canonical_authority(doc: str):
     """Row-scoped, not file-scoped.
 

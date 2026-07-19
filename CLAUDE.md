@@ -67,7 +67,7 @@ missing events, manages exceptions, and helps accountable humans close operation
 | Adapter imports | **31 direct adapter-import edges** remain across 18 importer modules |
 | Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
-| **Durable handoff readiness** | ### **NOT complete.** Two rehearsals have run (one non-independent, one independent), both returned NOT READY, and both finding sets are corrected — ### **the SECOND independent rehearsal has not been run and only it can close the gate.** |
+| **Durable handoff readiness** | ### **NOT complete.** The second independent rehearsal PASSED 13/13, but the hostile handoff-readiness review returned NOT READY (fabricated evidence was accepted; configuration could hide tests). U-HANDOFF-1C corrected and mutation-proved all of it — ### **the SECOND HOSTILE review has not been run and only it can close the gate.** |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this

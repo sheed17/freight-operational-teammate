@@ -1,0 +1,45 @@
+# APPROVED-SKIP MANIFEST (U-HANDOFF-1C, H-3)
+#
+# Every skip is a test that did not run, and a test that did not run proves nothing. This manifest
+# is the EXACT, exhaustive record of every skip-capable construct the canonical suite is allowed
+# to contain, and of every skip outcome a canonical run is allowed to produce. Anything outside
+# it fails finalization; anything listed here that DISAPPEARS also fails until this manifest is
+# intentionally updated - silence must never change meaning in either direction.
+#
+# Enforced by eval/tests/test_false_green_defenses.py:
+#   - static_sites: exact-set against AST discovery over every tracked canonical test module
+#     (eval/control/inventory.skip_xfail_sites - the whole 106-module population, not a subset)
+#   - expected_canonical_run_skips: exact-set against the observed skips of every canonical run
+#     (recorded per-node in the suite-result artifact)
+
+static_sites:
+
+  - file: eval/tests/test_phase0_guard_integrity.py
+    construct: pytest.skip
+    node: eval/tests/test_phase0_guard_integrity.py::test_the_red_by_design_cases_are_strict_xfails
+    reason: >-
+      Conditional by design: the test exercises red-by-design acceptance cases and skips ITSELF
+      only when no red-by-design case remains (AC-SAFE-012/013 went green at Phase 1). The skip
+      message states the condition; the condition is expected to hold permanently from Phase 1
+      onward, so this skip IS expected in every canonical run.
+    owning_document: docs/implementation/phase-1-implementation-review.md
+    permanence: permanent (the condition became true at Phase 1 and is forward-only)
+    review_condition: if AC-SAFE-012/013 ever regress to red, the skip stops firing by itself
+
+  - file: eval/tests/test_status_reality.py
+    construct: pytest.skip
+    node: eval/tests/test_status_reality.py::test_at_rest_the_artifact_population_matches_the_live_test_population
+    reason: >-
+      M-4 correction: on a DIRTY authoring tree this check cannot measure the committed state, and
+      it previously returned early as PASSED - a self-disarm. It now raises an explicit SKIPPED
+      with the dirty-tree reason, which is machine-visible. It must NEVER skip in a canonical
+      finalization run: the finalizer refuses dirty trees before any test runs, so if this skip
+      appears in a canonical run's observed skips, finalization fails (it is deliberately absent
+      from expected_canonical_run_skips).
+    owning_document: docs/implementation/u-handoff-1c-false-green-and-discovery-correction-review.md
+    permanence: permanent as a construct; forbidden as a canonical-run outcome
+    review_condition: any appearance in a canonical run's skip set is a finalization failure
+
+expected_canonical_run_skips:
+  # The EXACT skip outcomes a canonical finalization run may produce. One - and exactly one.
+  - eval/tests/test_phase0_guard_integrity.py::test_the_red_by_design_cases_are_strict_xfails

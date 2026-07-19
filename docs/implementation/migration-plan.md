@@ -2,6 +2,13 @@
 
 ## PART 1 — ⛔ MIGRATION SAFETY TASK #1 *(Phase 1 — the FIRST implementation change)*
 
+> *(Citation note, U-HANDOFF-1C: every `file.py:line` reference in this Part is a
+> **reset-snapshot citation** — it locates the defect in the pre-Phase-1 code, which Phase 1
+> DELETED. The cited symbols no longer exist, and guards assert their absence
+> (`test_the_deleted_amount_keyed_derivation_never_returns`). These are historical coordinates of
+> removed code, not current authority.)*
+
+
 ### The defect *(confirmed at code + schema level, recon §4)*
 **(A)** `operation_router.py:335` `_commit_identity(...)` returns `approved_amount` in the identity; `workflow.py` `operation_commit_key(tenant, lane, load_ref, party, approved_amount)` **hashes it into the key**. ⇒ two proposals at £2,850 and £3,100 for load 4471 ⇒ **different keys ⇒ both commit ⇒ the customer is billed twice.**
 **(B)** `if not amount: return None` ⇒ **non-money effects get NO commit identity at all** (a POD can be filed twice).

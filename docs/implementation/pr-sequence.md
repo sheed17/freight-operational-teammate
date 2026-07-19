@@ -1,5 +1,10 @@
 # PR-Sized Implementation Units
 
+> *(Citation note, U-HANDOFF-1C: `file.py:line` references in this plan are **reset-snapshot citations** — coordinates in the pre-implementation code as of the frozen recon. Several cite
+> symbols Phase 1 DELETED (guard-asserted absent). They are historical coordinates, not current
+> authority; the current tree is the only authority on where code lives.)*
+
+
 > ### **NO CALENDAR ESTIMATES.** A unit is sized by **one reviewable idea**, not by hours. ### **Every unit leaves the repo deployable and coherent** (principle 12) and ### **names the acceptance case that proves it done — a unit whose completion oracle is "the code is written" is not a unit.**
 
 **Legend — Flag:** the capability flag gating the unit (`OFF` until its gate). **Rollback:** what disabling the flag reverts to. ### **A rollback NEVER restores a removed unsafe path** (principle 11).

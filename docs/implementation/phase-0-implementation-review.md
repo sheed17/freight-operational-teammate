@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # Phase-0 Implementation Review — Baseline & Migration Guards
 
 > ### **SUPERSEDED IN PART — 2026-07-16.** The defects this review REPORTED (DEF-4 141→134, DEF-5 92→98, DEF-6 6→7 tables, P0-F1 U0.3) have since been corrected by the **Canonical Corpus Errata Pass**. ### **The findings below are accurate as written and are preserved as the discovery record; the corrected canonical values now live in the amended corpus.** See `canonical-corpus-errata-review.md`.

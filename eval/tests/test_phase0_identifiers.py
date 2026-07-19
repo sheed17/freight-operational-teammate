@@ -12,9 +12,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from phase0 import planning_corpus
 
-# Reviews may NAME a defect. Naming a defect is not using it.
-REVIEW_DOCS = {"implementation-planning-review.md", "phase-0-implementation-review.md",
-               "canonical-corpus-errata-review.md"}
+# Reviews may NAME a defect. Naming a defect is not using it. DISCOVERED (H-6), not typed.
+def _review_docs() -> set[str]:
+    import sys as _s
+    _s.path.insert(0, str(Path(__file__).resolve().parents[2] / "eval"))
+    from control import inventory as _inv
+    names = {p.rsplit("/", 1)[-1] for p in _inv.implementation_review_documents()}
+    assert len(names) >= 3, "review population collapsed"
+    return names
+
+
+REVIEW_DOCS = _review_docs()
 
 
 def test_the_probes_evaluate_real_populations():

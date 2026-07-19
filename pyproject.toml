@@ -32,5 +32,8 @@ build-backend = "hatchling.build"
 packages = ["src/freight_recon"]
 
 [tool.pytest.ini_options]
+# Bare `pytest` must run the canonical population, never quietly collect zero tests
+# (it previously pointed at a nonexistent tests/ directory). Canonical executions use
+# eval/pytest-canonical.ini explicitly; this stanza only keeps ad-hoc `pytest` honest.
 pythonpath = ["src"]
-testpaths = ["tests"]
+testpaths = ["eval"]

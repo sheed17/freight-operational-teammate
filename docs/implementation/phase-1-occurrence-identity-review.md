@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # Phase-1 Closure Correction — Occurrence Identity
 
 > ### **The defect was mine, and I shipped it while writing up the fix for its twin.**

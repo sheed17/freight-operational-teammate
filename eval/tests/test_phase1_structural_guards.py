@@ -119,6 +119,7 @@ def test_every_consequential_lane_declares_an_occurrence_rule():
 def test_no_consequential_path_can_return_a_null_identity():
     """DEF-2 must not return: the producer raises, it does not hand back None."""
     text = ROUTER.read_text(encoding="utf-8")
+    assert "def _commit_reservation" in text, "population proof: the router source loaded"
     assert "if not amount:\n        return None" not in text
     assert "def _commit_identity(" not in text, "the nullable producer was restored"
     tree = ast.parse(text)

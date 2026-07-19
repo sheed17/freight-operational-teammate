@@ -117,7 +117,7 @@ its names.
 | [`implementation/implementation-roadmap.md`](implementation/implementation-roadmap.md) | Phases P0–P14, principles, ordering | **IMPLEMENTATION_CONTROL** |
 | [`implementation/phase-0-baseline-manifest.yaml`](implementation/phase-0-baseline-manifest.yaml) | Adjudicated current-state facts (machine-checked) | **CURRENT_STATUS** |
 | [`implementation/registry.md`](implementation/registry.md) | Human-readable INDEX of the implementation layer — ### **no independent status authority** (H-3); the YAML registry and `CURRENT.md` are authoritative | **EVIDENCE (index)** |
-| [`implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](implementation/AUTO-LOADED-GUIDANCE-REVIEW.md) | Disposition of every auto-loaded file | **IMPLEMENTATION_CONTROL** |
+| [`implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](implementation/AUTO-LOADED-GUIDANCE-REVIEW.md) | The auto-loaded guidance audit — a review of its moment; its live obligations are enforced by guards, not by the document | **HISTORICAL (evidence)** — demoted by U-HANDOFF-1C after its "Reality" row was found carrying a stale suite figure while claiming control authority |
 | [`implementation/TOOL-ACCESS-POLICY.md`](implementation/TOOL-ACCESS-POLICY.md) | Broad tool access for formal sessions; research vs authority boundary | **IMPLEMENTATION_CONTROL** |
 | [`implementation/U-HANDOFF-1-ACCEPTANCE.yaml`](implementation/U-HANDOFF-1-ACCEPTANCE.yaml) | The executable rehearsal acceptance checklist | **ACCEPTANCE_ORACLE** |
 | [`implementation/IMPLEMENTATION-SURFACE.yaml`](implementation/IMPLEMENTATION-SURFACE.yaml) | Which architecture concepts are implemented vs specification-only | **CURRENT_STATUS** |

@@ -77,9 +77,17 @@ def test_deprecated_vocabulary_never_spreads_to_a_new_file():
     it; it may NEVER reach a file that does not. That is what stops the surface growing while the
     renames wait their turn.
     """
-    baseline_owners = set(manifest.load()["expected_deprecated_terms"].get("owning_files", []))
-    if not baseline_owners:
-        pytest.skip("owning-file baseline not recorded")
+    # H-3 (U-HANDOFF-1C): this used to `.get(..., [])` and pytest.skip when the baseline was
+    # absent - converting missing fixture state into silence. The acceptance contract is that the
+    # adjudicated manifest RECORDS the owning-file baseline; its absence is manifest corruption
+    # and must fail, not skip.
+    terms = manifest.load()["expected_deprecated_terms"]
+    assert "owning_files" in terms, (
+        "the owning-file baseline left the adjudicated manifest - containment cannot be checked, "
+        "and that is a failure, not a skip"
+    )
+    baseline_owners = set(terms["owning_files"])
+    assert baseline_owners, "the owning-file baseline is empty - a vacuous containment check"
     # PRODUCTION only: containment is about the surface P8 must migrate. A new TEST naming the API it
     # tests entrenches nothing; a new PRODUCTION file adopting deprecated vocabulary does.
     found, ev = deprecated_probe.occurrences(include_tests=False)

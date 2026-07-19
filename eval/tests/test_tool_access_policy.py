@@ -103,10 +103,17 @@ def test_08_tool_possession_does_not_authorize_external_effects():
     assert re.search(
         r"Possession of a tool or credential is never authorization", text, re.I
     ), "the possession-is-not-authorization line is gone"
-    assert not re.search(
-        r"possession of a (tool|credential).{0,60}(is|counts as|constitutes) authorization(?!\s+to\s+execute\s+a\s+consequential\s+effect\b)",
-        text, re.I,
-    ) or "never authorization" in text
+    # U-HANDOFF-1C LOW fix: this assertion used to end `... or "never authorization" in text`,
+    # which made it unconditionally true whenever the positive statement existed - a vacuous
+    # check. The intended property is tested directly: no AFFIRMATIVE possession-authorizes
+    # claim may exist anywhere, independent of the negative statement's presence.
+    affirmative = [
+        m.group(0) for m in re.finditer(
+            r"possession of a (tool|credential)[^.\n]{0,60}\b(is|counts as|constitutes|grants)\b[^.\n]{0,30}authorization",
+            text, re.I)
+        if not re.search(r"\bnever\b|\bnot\b|\bno\b", m.group(0), re.I)
+    ]
+    assert not affirmative, f"the policy asserts possession authorizes: {affirmative}"
     assert not re.search(r"a (configured|working) (tool|credential|session) (authorises|authorizes)", text, re.I)
 
 

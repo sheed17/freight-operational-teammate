@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # U2.6BC Blocker 2 — Auditable Historical Tenant-Ownership Assertions
 
 > ### **CLOSED.** Historical ownership now requires a durable, auditable assertion naming **who** decided, **what** they authorised, and **on what basis** — recorded *before* the rows move.

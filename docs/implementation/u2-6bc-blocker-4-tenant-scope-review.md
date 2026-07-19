@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # U2.6BC Blocker 4 — Exact Tenant-Scope Qualification
 
 > ### **CLOSED.** Blocker 3 proved the **database enforces** tenant-first structure. This proves the **application uses it**: every affected method carries the bound tenant into the SQL, and a cross-tenant access returns nothing, changes nothing and discloses nothing.

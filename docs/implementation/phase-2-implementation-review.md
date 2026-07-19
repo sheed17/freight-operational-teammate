@@ -1,3 +1,11 @@
+> # ⛔ HISTORICAL REVIEW — NOT CURRENT AUTHORITY
+> **This document is evidence of a past moment, accurate as of its own commit and possibly stale
+> since.** It must not direct current implementation. Verdicts, statuses, counts and "READY"
+> declarations below describe the state THEN — several are known-superseded (including any
+> "24 of 134" transition figure, retired by U-HANDOFF-1B, and any suite count). Current status:
+> [`CURRENT.md`](CURRENT.md) · authority map: [`../CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md)
+> · operating guide: [`../../CLAUDE.md`](../../CLAUDE.md).
+
 # Phase-2 Implementation Review — Tenant-Safe Persistence & The Canonical Ledger
 
 > ### **SUPERSEDED IN PART — 2026-07-17.** Phase 2 has advanced since this review: **U2.6A** landed (`55c225f`), **U2.6B** returned NOT READY with the exact 22-method inventory (`edf6ef2`), and a substantial **U2.6BC** implementation is preserved at ### **`42a87e2` on `recovery/u2-6bc-atomic-cutover`** — 21/22 methods scoped, one central schema-readiness contract, canonical fresh-schema creation, and a fix for a real router/store cross-tenant defect. ### **It is NOT qualified: 16 failures, two of them merge-gating on stale fixtures.** ### **Phase 2 remains INCOMPLETE. The next unit is U2.6BC's qualification.** The findings below are preserved as the discovery record. See `u2-6bc-recovery-and-qualification-review.md`.

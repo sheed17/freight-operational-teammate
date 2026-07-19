@@ -23,19 +23,24 @@ from phase0.sources import ACCEPTANCE, IMPLEMENTATION, SPECIFICATIONS
 
 # Documents that are HISTORICAL EVIDENCE: they may keep the old totals, but only under a
 # supersession note. Everything else is normative and must carry the corrected values.
-HISTORICAL = {
-    "state-machine-specification-review.md",
-    "event-specification-review.md",
-    "acceptance-specification-review.md",
-    "phase-0-implementation-review.md",
-    "implementation-planning-review.md",
-    "canonical-corpus-errata-review.md",
-    "phase-0-baseline-manifest.yaml",
-}
-# Occurrences of "141"/"92" that are DIFFERENT METRICS and must never be rewritten.
-NONCANONICAL_METRIC = {
-    "target-spec-revision-report.md",   # "141 named validating tests" - a test count, not transitions
-}
+def _historical_exempt() -> set[str]:
+    """DISCOVERED (H-6): historical/review documents may carry the old numbers - they are
+    bannered evidence. Replaces two hand-typed filename sets that could never learn a new file."""
+    import sys as _s
+    _s.path.insert(0, str(Path(__file__).resolve().parents[2] / "eval"))
+    from control import inventory as _inv
+    names = {p.rsplit("/", 1)[-1] for p in _inv.historical_documents()}
+    names |= {p.rsplit("/", 1)[-1] for p in _inv.tracked_files()
+              if p.startswith("docs/specifications/") and p.endswith("-review.md")}
+    names.add("phase-0-baseline-manifest.yaml")  # the adjudicated record NAMES the defects
+    assert len(names) > 20, "historical exemption population collapsed"
+    return names
+
+
+HISTORICAL = _historical_exempt()
+# Occurrences of "141"/"92" that are DIFFERENT METRICS live in historical review docs, which the
+# discovered exemption above already covers.
+NONCANONICAL_METRIC: set = set()
 
 
 # ---------------------------------------------------------------------------- ERRATA 3: tenant set
@@ -182,6 +187,8 @@ def test_the_noncanonical_92_metric_was_not_corrupted_by_the_errata():
 
 def test_historical_records_keep_their_totals_under_a_supersession_note():
     """Do not falsify the review trail. Annotate it."""
+    # FIXED-SPECIFICATION: these three reviews are the exact documents the 2026-07-16 errata
+    # pass annotated - a deliberate historical record of one event, not a discovery population.
     for name in ("state-machine-specification-review.md", "event-specification-review.md",
                  "acceptance-specification-review.md"):
         text = (SPECIFICATIONS / name).read_text(encoding="utf-8")

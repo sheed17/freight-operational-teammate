@@ -50,6 +50,7 @@ def test_no_wildcard_allowance():
                Path(__file__).resolve().parents[2] / "docs" / "implementation"
                / "phase-0-baseline-manifest.yaml").read_text(encoding="utf-8")
     for section in ("edges:", "tables_not_tenant_first:", "effect_capable_by_import:"):
+        assert section in raw, f"population proof failed: {section} absent - the scan sees nothing"
         assert f"{section}\n    - '*'" not in raw
         assert f"{section}\n    - \"*\"" not in raw
     assert "\n    - '*'" not in raw and '\n    - "*"' not in raw

@@ -35,6 +35,7 @@ def test_production_hook_module_no_longer_exists():
 def test_production_callback_server_exposes_no_mock_flag():
     """The production entry point cannot SELECT a mock financial adapter from its CLI."""
     source = (ROOT / "scripts" / "run_action_callback_server.py").read_text()
+    assert "argparse" in source and len(source) > 1000, "population proof: the CLI source loaded"
     assert "--auto-enter-approved-mock-tms" not in source
     assert "--mock-tms-ledger" not in source
     assert "MockTmsWriteLedger" not in source
@@ -68,14 +69,18 @@ def test_production_runtime_cannot_construct_a_mock_financial_adapter():
     production safety spine, which the live TruckingOffice writer drops into with a REAL ledger (audit
     finding R-03). What must not exist is a *production* path that selects the MOCK adapter.
     """
+    # population proof: every scanned module must exist and be non-trivial, or the negative
+    # scan below would pass over nothing
     production_modules = [
         ROOT / "scripts" / "run_action_callback_server.py",
         ROOT / "scripts" / "run_teammate.py",
         ROOT / "src" / "freight_recon" / "action_callback.py",
         ROOT / "src" / "freight_recon" / "operation_router.py",
     ]
+    assert len(production_modules) >= 4
     for mod in production_modules:
         text = mod.read_text()
+        assert len(text) > 500, f"population proof: {mod.name} is implausibly small"
         assert "MockTmsWriteLedger" not in text, f"{mod.name} can construct a mock financial adapter"
 
 

@@ -26,6 +26,10 @@ REMOVE_AS_SUPERSEDED = "REMOVE_AS_SUPERSEDED"
 VALID = {RETAIN, UPDATE, REPLACE, REMOVE_AS_SUPERSEDED}
 
 # file -> (classification, why)
+# FIXED-SPECIFICATION: this dict is a CLASSIFICATION RECORD (like the authority map), not a
+# discovery population - guard_files() below DISCOVERS the population dynamically and the
+# two-way tests force this record to track it: an unclassified discovered file fails, and a
+# classified phantom fails.
 GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     # ---- Phase 0: the baseline. Still the only record of what was true before the reset. ----
     "test_phase0_acceptance_bijection.py": (RETAIN, "the acceptance-criterion bijection is phase-independent"),
@@ -61,22 +65,21 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_status_reality.py": (RETAIN, "the status-reality guard - CURRENT.md must match the checked-out commit, tree and live test population"),
     "test_tool_access_policy.py": (RETAIN, "the tool-access policy guards - breadth cannot be restricted, authority cannot be widened"),
     "test_bootstrap_hermeticity.py": (RETAIN, "clean-clone reproducibility: bootstrap fail-fast, hermetic fixtures, result-backed status, the M-4 exact inventories"),
+    "test_false_green_defenses.py": (RETAIN, "the U-HANDOFF-1C defenses: execution-not-attestation, exact node identity, whole-suite skip enforcement, transitive safety ancestry, the anti-enumeration meta-guard"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_")
-EXTRA_GUARDS = ("test_ac_sec_001_registry.py", "test_docs_control_system.py",
-                "test_status_reality.py", "test_tool_access_policy.py",
-                "test_bootstrap_hermeticity.py")
-
-
 def guard_files() -> list[str]:
-    """DISCOVERED, never listed. Three times in this program a guard enumerated the filenames it
-    knew about and silently stopped covering the files added after it was written."""
-    return sorted(
-        p.name
-        for p in TESTS.glob("test_*.py")
-        if p.name.startswith(GUARD_PREFIXES) or p.name in EXTRA_GUARDS
-    )
+    """DISCOVERED, never listed (H-6 closed the last hand-typed remnant, EXTRA_GUARDS): the
+    population is phase-prefixed modules UNION every control-guard module the central inventory
+    discovers by what it references. A new control guard enters automatically."""
+    import sys as _s
+    _s.path.insert(0, str(TESTS.parents[1]))
+    from control import inventory as _inv
+    names = {p.name for p in TESTS.glob("test_*.py") if p.name.startswith(GUARD_PREFIXES)}
+    names |= {f.rsplit("/", 1)[-1] for f in _inv.control_guard_modules()}
+    assert len(names) >= 20, "guard-file discovery collapsed"
+    return sorted(names)
 
 
 def test_every_guard_file_is_classified():
@@ -87,9 +90,10 @@ def test_every_guard_file_is_classified():
 
 
 def test_the_registry_names_no_file_that_does_not_exist():
-    """A registry entry for a deleted file is how a classification outlives its subject."""
-    found = set(guard_files())
-    phantom = [f for f in GUARD_REGISTRY if f not in found]
+    """A registry entry for a deleted file is how a classification outlives its subject.
+    Existence is checked on DISK - the registry may classify more files than the dynamic
+    discovery floor requires (classification beyond the floor is extra coverage, not a phantom)."""
+    phantom = [f for f in GUARD_REGISTRY if not (TESTS / f).exists()]
     assert not phantom, f"registry entries with no file: {phantom}"
 
 

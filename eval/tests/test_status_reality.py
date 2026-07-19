@@ -38,6 +38,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,8 +46,8 @@ CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
 REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from suite_result import ARTIFACT_RELPATH, payload_hash, validation_errors  # noqa: E402
-from update_current_status import STATUS_METADATA_FILES  # noqa: E402
+from suite_result import ARTIFACT_RELPATH, artifact_consistency_errors, payload_hash  # noqa: E402
+from finalize_status import STATUS_METADATA_FILES  # noqa: E402
 
 
 def git(*args: str) -> str:
@@ -118,6 +119,12 @@ def test_the_status_record_is_backed_by_a_real_suite_result():
     next artifact may not exist yet; consistency is enforced the moment it does.
     """
     state = repo_state()
+    if not working_tree_clean():
+        # M-4: same rule as the population check - a dirty authoring tree cannot be measured, and
+        # measuring-nothing must be SKIPPED (machine-visible), never PASSED. Absent from the
+        # approved canonical-run skips, so a canonical run (always clean) can never skip here.
+        pytest.skip("NOT-RUN: dirty working tree - committed-state consistency cannot be "
+                    "measured here; canonical finalization refuses dirty trees")
     blk = status_block()
     path = ROOT / ARTIFACT_RELPATH
     if not path.exists():
@@ -127,7 +134,18 @@ def test_the_status_record_is_backed_by_a_real_suite_result():
         )
         return
     art = json.loads(path.read_text(encoding="utf-8"))
-    errs = validation_errors(art, expect_commit=blk["content_commit"], expect_tree=blk["content_tree"])
+    if repo_state() == "PRODUCING":
+        # The in-flight finalization is producing this artifact's REPLACEMENT; the committed one
+        # describes the PREVIOUS baseline (and, across format migrations, the previous format).
+        # It was fully validated when that baseline finalized. Here the true, still-mandatory
+        # property is binding: it must describe the recorded baseline, not some other commit.
+        # Full validation re-engages at FINALIZED - which is the only at-rest state, the state
+        # clean clones see, and the state finalization must end in.
+        assert art.get("commit") == blk["content_commit"], (
+            "the committed artifact does not describe the recorded content baseline"
+        )
+        return
+    errs = artifact_consistency_errors(art, expect_commit=blk["content_commit"], expect_tree=blk["content_tree"])
     assert not errs, "the suite-result artifact cannot back the recorded status:\n  " + "\n  ".join(errs)
     assert (art["passed"], art["failed"], art["skipped"]) == (
         blk["suite_passed"], blk["suite_failed"], blk["suite_skipped"]
@@ -136,29 +154,48 @@ def test_the_status_record_is_backed_by_a_real_suite_result():
 
 
 def test_at_rest_the_artifact_population_matches_the_live_test_population():
-    """Adding or removing a test without re-finalizing must fail the build - at rest.
-
-    Collection alone can never prove a green suite (the corrected lesson), but population drift
-    is still real drift: an artifact describing 1180 tests is stale evidence in a repository that
-    now contains 1200. Skipped while the tree is dirty or producing - development in progress is
-    exactly the window in which the next finalization will re-prove everything.
+    """H-2 + M-4 (U-HANDOFF-1C): the live collected NODE IDENTITIES must equal the committed
+    TEST-NODE-MANIFEST exactly - missing nodes, extra nodes and same-count substitutions all
+    fail, in FINALIZED and PRODUCING states alike (the manifest travels with the content commit,
+    so it is current in both). At rest (FINALIZED) the artifact must additionally describe the
+    manifest's population. A count comparison is retained only as a derived readability check.
     """
     state = repo_state()
-    if state != "FINALIZED" or not working_tree_clean():
-        return
-    art = json.loads((ROOT / ARTIFACT_RELPATH).read_text(encoding="utf-8"))
+    if not working_tree_clean():
+        # M-4: this used to `return` here - a PASS that measured nothing. A dirty tree now
+        # produces an EXPLICIT machine-visible SKIPPED. It can never appear in a canonical
+        # finalization run: the finalizer refuses dirty trees before pytest starts, and this
+        # node is deliberately absent from APPROVED-SKIPS expected_canonical_run_skips, so if it
+        # ever shows up as a canonical-run skip, finalization fails.
+        pytest.skip("NOT-RUN: dirty working tree - the committed state cannot be measured here; "
+                    "canonical finalization refuses dirty trees and treats this skip as failure")
+    manifest = json.loads((ROOT / "docs" / "implementation" / "TEST-NODE-MANIFEST.json").read_text())
+    recorded_nodes = set(manifest["node_ids"])
+    assert len(recorded_nodes) > 1000, "the node manifest collapsed - implausible population"
     r = subprocess.run(
-        [sys.executable, "-m", "pytest", "eval/", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        [sys.executable, "-m", "pytest", "-c", str(ROOT / "pytest-canonical.ini"),
+         "--collect-only", "-q"],
         cwd=ROOT, capture_output=True, text=True,
+        env={**__import__("os").environ, "PYTEST_ADDOPTS": ""},
     )
-    m = re.search(r"(\d+) tests? collected", r.stdout)
-    assert m, f"could not parse collected-test count:\n{r.stdout[-500:]}"
-    collected = int(m.group(1))
-    assert collected > 1000, f"only {collected} tests collected - the population itself is implausible"
-    assert art["collected"] == collected, (
-        f"the artifact describes a suite of {art['collected']} tests but {collected} exist - "
-        "re-run the finalization cycle"
+    live_nodes = {l.strip() for l in r.stdout.split("\n") if re.match(r"^eval/.*::", l.strip())}
+    assert live_nodes, f"live collection produced zero nodes:\n{r.stdout[-500:]}"
+    missing = sorted(recorded_nodes - live_nodes)
+    extra = sorted(live_nodes - recorded_nodes)
+    assert not missing and not extra, (
+        f"the live test population diverged from the committed node manifest by IDENTITY "
+        f"(missing={missing[:5]}{'...' if len(missing) > 5 else ''}, "
+        f"extra={extra[:5]}{'...' if len(extra) > 5 else ''}) - run "
+        "scripts/regenerate_test_manifest.py intentionally and commit the reviewed diff"
     )
+    if state == "FINALIZED":
+        art = json.loads((ROOT / ARTIFACT_RELPATH).read_text(encoding="utf-8"))
+        assert art["collected"] == len(recorded_nodes), (
+            f"the artifact describes {art['collected']} tests but the manifest records "
+            f"{len(recorded_nodes)} - the recorded run predates the current population"
+        )
+
+
 
 
 # ------------------------------------------------------------------ 3. registry meta mirror
@@ -187,8 +224,10 @@ def _strip_historical(text: str) -> str:
 
 def test_no_secondary_file_carries_its_own_volatile_status_claim():
     """Volatile commit/tree/suite figures live in CURRENT.md's block and nowhere else."""
-    files = [ROOT / n for n in ("README.md", "PRODUCT.md", "AGENTS.md", "CLAUDE.md", "ARCHITECTURE.md")]
-    files += sorted(ROOT.glob(".claude/agents/*.md")) + sorted(ROOT.glob(".codex/agents/*.md"))
+    sys.path.insert(0, str(ROOT / "eval"))
+    from control import inventory as _inv
+    files = [ROOT / f for f in _inv.root_control_like_documents() if f.endswith(".md")]
+    files += [ROOT / f for f in _inv.agent_files() + _inv.compatibility_agent_files()]
     assert len(files) >= 10, "the scan population collapsed - this guard would pass vacuously"
     offenders = []
     for f in files:
@@ -223,11 +262,13 @@ def test_the_status_record_still_states_the_canonical_facts():
 
 def _forged(base_overrides: dict) -> dict:
     data = {
-        "command": ".venv/bin/python -m pytest eval/ -q",
+        "command": ".venv/bin/python -m pytest -c pytest-canonical.ini -v",
         "commit": "a" * 40, "tree": "b" * 40,
         "python_version": "3.12.0", "platform": "test",
         "passed": 100, "failed": 0, "skipped": 1, "collected": 101, "deselected": 0,
         "duration_seconds": 1.0, "exit_status": 0, "completed_at": "2026-01-01T00:00:00+00:00",
+        "config_sha256": "c" * 64, "runner_sha256": "d" * 64, "manifest_sha256": "e" * 64,
+        "skipped_nodes": ["eval/tests/test_x.py::test_skip_one"],
     }
     data.update(base_overrides)
     data["payload_sha256"] = payload_hash(data)
@@ -239,32 +280,32 @@ def test_the_validator_rejects_every_forgery_the_rehearsal_identified():
     though no real artifact in the repository is red. Each forgery below is a case the old
     collection-only design silently accepted."""
     ok = _forged({})
-    assert validation_errors(ok, expect_commit="a" * 40, expect_tree="b" * 40) == []
+    assert artifact_consistency_errors(ok, expect_commit="a" * 40, expect_tree="b" * 40) == []
 
     red = _forged({"failed": 1, "passed": 99})
-    assert any("failed=1" in e for e in validation_errors(red, expect_commit="a" * 40, expect_tree="b" * 40)), (
+    assert any("failed=1" in e for e in artifact_consistency_errors(red, expect_commit="a" * 40, expect_tree="b" * 40)), (
         "a suite with one failure was accepted as a green record"
     )
     crashed = _forged({"exit_status": 2})
-    assert any("exit_status" in e for e in validation_errors(crashed, expect_commit="a" * 40, expect_tree="b" * 40))
+    assert any("exit_status" in e for e in artifact_consistency_errors(crashed, expect_commit="a" * 40, expect_tree="b" * 40))
     other_commit = _forged({})
-    assert any("commit" in e for e in validation_errors(other_commit, expect_commit="c" * 40, expect_tree="b" * 40)), (
+    assert any("commit" in e for e in artifact_consistency_errors(other_commit, expect_commit="c" * 40, expect_tree="b" * 40)), (
         "a result from another commit was accepted"
     )
     other_tree = _forged({})
-    assert any("tree" in e for e in validation_errors(other_tree, expect_commit="a" * 40, expect_tree="d" * 40)), (
+    assert any("tree" in e for e in artifact_consistency_errors(other_tree, expect_commit="a" * 40, expect_tree="d" * 40)), (
         "a result from another tree was accepted"
     )
     filtered = _forged({"deselected": 40})
-    assert any("deselected" in e for e in validation_errors(filtered, expect_commit="a" * 40, expect_tree="b" * 40)), (
+    assert any("deselected" in e for e in artifact_consistency_errors(filtered, expect_commit="a" * 40, expect_tree="b" * 40)), (
         "a filtered run was accepted as the canonical suite"
     )
     tampered = _forged({})
     tampered["passed"] = 999  # edited after hashing
-    assert any("hash" in e for e in validation_errors(tampered, expect_commit="a" * 40, expect_tree="b" * 40)), (
+    assert any("hash" in e for e in artifact_consistency_errors(tampered, expect_commit="a" * 40, expect_tree="b" * 40)), (
         "an edited artifact passed the integrity check"
     )
     missing = _forged({"collected": 150})
-    assert any("went missing" in e for e in validation_errors(missing, expect_commit="a" * 40, expect_tree="b" * 40)), (
+    assert any("went missing" in e for e in artifact_consistency_errors(missing, expect_commit="a" * 40, expect_tree="b" * 40)), (
         "a run with vanished tests was accepted"
     )
