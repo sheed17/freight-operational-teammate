@@ -367,12 +367,15 @@ def test_the_implementation_graph_is_consistent_and_protects_the_safety_wall():
         visit(n)
     # the safety wall
     assert "U-HANDOFF-1" in by_id["P3"]["dependencies"], "P3 no longer requires the rehearsal gate"
+    assert "U-REBASELINE-1" in by_id["P3"]["dependencies"], (
+        "P3 no longer requires the founder rebaseline (U-HANDOFF-1D registration)"
+    )
     assert by_id["P4"]["dependencies"] == ["P3"], "P4 can begin without P3"
     assert by_id["P5"]["dependencies"] == ["P4"], (
         "P5 can begin without P4 - the rehearsal's exact bypass finding (P5 deps were [P2])"
     )
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["U-HANDOFF-1"], f"READY set drifted: {ready}"
+    assert ready == ["U-REBASELINE-1"], f"READY set drifted: {ready}"
 
 
 # ============================================================ H-3 / H-4: authority

@@ -1,0 +1,180 @@
+# U-REBASELINE-1 EXECUTABLE ACCEPTANCE CONTRACT
+#
+# U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE. Registered by U-HANDOFF-1D on
+# founder authority (the founder determined that several early product assumptions may
+# unnecessarily constrain Neyma's long-term product and production architecture; the rebaseline
+# re-evaluates them BEFORE P3 begins). It is a documentation, architecture, specification and
+# control unit ONLY - it must not implement runtime product behavior.
+#
+# results: every criterion carries result: PENDING until U-REBASELINE-1 actually executes. The
+# registering session (U-HANDOFF-1D) may not mark any criterion PASS - registration is not
+# execution, exactly as the handoff checklist could not be passed by the session that wrote it.
+# eval/tests/test_docs_control_system.py enforces: exactly these 24 criteria exist, every one has
+# a statement and required evidence, and none is pre-marked.
+
+meta:
+  unit: U-REBASELINE-1
+  registered_by: U-HANDOFF-1D
+  registered_on: "2026-07-20"
+  verdict_vocabulary: [READY FOR INDEPENDENT PRODUCT/PRODUCTION REBASELINE REVIEW, NOT READY]
+  authority: >-
+    Founder-authorized product decisions (CLAUDE.md section 4 authority classes). The rebaseline
+    may revise product direction because the FOUNDER directed it; customer-specific freight rules
+    remain NEEDS VALIDATION regardless (RB-18), and founder decisions and customer operational
+    rules remain distinct authority classes (RB-19).
+  scope_rule: >-
+    Documentation, architecture, specification and control only. No production runtime behavior
+    changes, no freight-workflow changes, no integrations added, R-07 stays OPEN - NOT CONTAINED,
+    P3 stays BLOCKED and unimplemented throughout.
+  pass_rule: all 24 criteria PASS with evidence; any FAIL fails the rebaseline
+
+criteria:
+
+  - id: RB-01
+    statement: Stable product identity is explicit.
+    evidence_required: the rebaselined product-identity statement and its canonical location
+    result: PENDING
+
+  - id: RB-02
+    statement: Initial ICP and broader company direction are distinguished.
+    evidence_required: the ICP definition separated from the long-term direction, with sources
+    result: PENDING
+
+  - id: RB-03
+    statement: >-
+      Neyma is not permanently prohibited from replacing individual TMS workflows or becoming
+      the primary operating interface.
+    evidence_required: >-
+      the revised authority text, plus removal or supersession of any absolute prohibition, with
+      the superseded claims disarmed in place
+    result: PENDING
+
+  - id: RB-04
+    statement: >-
+      Integrate-first adoption remains supported and immediate TMS replacement is not assumed.
+    evidence_required: the adoption-path statement showing both truths simultaneously
+    result: PENDING
+
+  - id: RB-05
+    statement: >-
+      Workflow-by-workflow authority and system-of-record migration are specified.
+    evidence_required: the migration model naming how authority moves one workflow at a time
+    result: PENDING
+
+  - id: RB-06
+    statement: >-
+      Secure OAuth, API key, service-account, bot-user, EDI, database and managed-browser access
+      models are architecturally permitted.
+    evidence_required: the integration/credential architecture enumerating each permitted model
+    result: PENDING
+
+  - id: RB-07
+    statement: Employee raw-password handling is minimized and governed.
+    evidence_required: the credential-governance rules and their control location
+    result: PENDING
+
+  - id: RB-08
+    statement: Access and authentication remain separate from action authority.
+    evidence_required: >-
+      the boundary restated in the rebaselined architecture, consistent with
+      TOOL-ACCESS-POLICY.md's tool-access-is-not-action-authority rule
+    result: PENDING
+
+  - id: RB-09
+    statement: >-
+      Email, SMS and communications are treated as core operational subsystems, evidence sources
+      and external effects.
+    evidence_required: the communications architecture with all three roles named
+    result: PENDING
+
+  - id: RB-10
+    statement: >-
+      The initial commercial workflow is stated as a hypothesis with measurable closure
+      conditions and required validation.
+    evidence_required: the hypothesis, its closure metrics, and its validation requirement
+    result: PENDING
+
+  - id: RB-11
+    statement: The eleven loops remain the domain map but are not simultaneous scope.
+    evidence_required: the loop map with explicit sequencing/scoping language
+    result: PENDING
+
+  - id: RB-12
+    statement: A credible production deployment architecture is defined.
+    evidence_required: the production architecture document
+    result: PENDING
+
+  - id: RB-13
+    statement: >-
+      PostgreSQL, object storage, workers, scheduling, queues/outbox, webhooks, secrets and
+      tenant isolation are addressed.
+    evidence_required: each subsystem addressed by name in the production architecture
+    result: PENDING
+
+  - id: RB-14
+    statement: >-
+      A thin web control plane, approvals, audit and integration health are addressed.
+    evidence_required: each surface addressed by name in the production architecture
+    result: PENDING
+
+  - id: RB-15
+    statement: >-
+      Observability, CI/CD, environments, migrations, backups, recovery, security and incident
+      handling are addressed.
+    evidence_required: each operational concern addressed by name
+    result: PENDING
+
+  - id: RB-16
+    statement: P3 remains the next safety implementation unit after rebaseline.
+    evidence_required: the registry graph showing P3 first after U-REBASELINE-1 completes
+    result: PENDING
+
+  - id: RB-17
+    statement: >-
+      The revised P3-P14 program produces a deployable product rather than only a local engine.
+    evidence_required: the revised program with deployability named per phase or gate
+    result: PENDING
+
+  - id: RB-18
+    statement: >-
+      Customer-specific freight rules remain NEEDS VALIDATION and are not invented.
+    evidence_required: OPEN-VALIDATION-ITEMS.md intact or extended; no invented rule anywhere
+    result: PENDING
+
+  - id: RB-19
+    statement: >-
+      Founder product decisions and customer operational rules remain distinct authority classes.
+    evidence_required: the authority-class distinction preserved in the rebaselined documents
+    result: PENDING
+
+  - id: RB-20
+    statement: No production runtime behavior is changed by the rebaseline.
+    evidence_required: the diff showing documentation/specification/control files only
+    result: PENDING
+
+  - id: RB-21
+    statement: >-
+      Current control-system truthfulness, finalization and clean-clone guarantees remain intact.
+    evidence_required: the canonical finalizer and clean-clone gate green on the final tree
+    result: PENDING
+
+  - id: RB-22
+    statement: Historical claims are disarmed where the rebaseline supersedes them.
+    evidence_required: in-place supersession banners on every newly superseded claim
+    result: PENDING
+
+  - id: RB-23
+    statement: >-
+      Guards and mutations prevent the rejected absolute product restrictions from returning as
+      current authority.
+    evidence_required: >-
+      the guards, plus mutation proofs showing a reintroduced absolute restriction fails the
+      build
+    result: PENDING
+
+  - id: RB-24
+    statement: >-
+      A fresh reviewer can determine exactly what Claude will build and what inputs it still
+      requires.
+    evidence_required: the independent rebaseline review reaching that determination
+    result: PENDING

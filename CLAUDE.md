@@ -67,7 +67,8 @@ missing events, manages exceptions, and helps accountable humans close operation
 | Adapter imports | **31 direct adapter-import edges** remain across 18 importer modules |
 | Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
-| **Durable handoff readiness** | ### **NOT complete.** The second independent rehearsal PASSED 13/13, but the hostile handoff-readiness review returned NOT READY (fabricated evidence was accepted; configuration could hide tests). U-HANDOFF-1C corrected and mutation-proved all of it — ### **the SECOND HOSTILE review has not been run and only it can close the gate.** |
+| **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
+| **Next approved unit** | **`U-REBASELINE-1` — product, integration and production rebaseline** (founder-authorized; documentation/architecture/specification/control ONLY; RB-01..RB-24 all PENDING). P3 stays BLOCKED behind it. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -234,10 +235,12 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ Do not invent design-partner observations.
 - ⛔ Do not promote the W6→W8 slice to validated.
 
-**The next approved program is the
-[ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW](docs/implementation/CURRENT.md).**
-Phase 3 becomes available only after that review passes and an independent repository inspection
-agrees.
+**The next approved program is
+[U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE](docs/implementation/CURRENT.md)**
+(founder-authorized; documentation, architecture, specification and control only — it implements
+no runtime behavior). Phase 3 becomes available only after the rebaseline completes, an
+independent product/production rebaseline review passes, and an independent repository
+inspection agrees.
 
 ## 12. Other instruction files
 

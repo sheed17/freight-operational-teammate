@@ -366,7 +366,7 @@ def test_the_complete_safety_wall_is_transitively_protected():
         assert f"P{i-1}" in g[f"P{i}"], (
             f"P{i} no longer directly depends on P{i-1} - the linear roadmap chain is broken"
         )
-    assert set(g["P3"]) >= {"P2", "U-HANDOFF-1"}, "P3 lost its gate dependencies"
+    assert set(g["P3"]) >= {"P2", "U-HANDOFF-1", "U-REBASELINE-1"}, "P3 lost its gate dependencies"
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
     by_id = {u["unit_id"]: u for u in units}
     for u in units:

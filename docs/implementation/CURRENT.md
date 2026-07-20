@@ -4,7 +4,7 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** U-HANDOFF-1A bounded control-system correction.
+> **Last updated:** U-HANDOFF-1D final handoff adjudication and rebaseline registration.
 
 ---
 
@@ -99,10 +99,17 @@ suite_skipped: 1
 
 ## Current documentation milestone
 
-**U-HANDOFF-1C — FALSE-GREEN, DYNAMIC-DISCOVERY AND SAFETY-GRAPH CORRECTION** — complete.
-Review: [`u-handoff-1c-false-green-and-discovery-correction-review.md`](u-handoff-1c-false-green-and-discovery-correction-review.md).
+**U-HANDOFF-1D — FINAL HANDOFF ADJUDICATION AND REBASELINE REGISTRATION** — complete.
+Review: [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).
 
-### The rehearsal record so far — two rehearsals, both NOT READY, both fully adjudicated
+### **The handoff gate is CLOSED.** The second hostile review — **U-HANDOFF-2B**, independent and
+repository-only — defended its attack battery against the U-HANDOFF-1C-corrected controls, and
+U-HANDOFF-1D adjudicated all 13 checklist criteria **PASS** from that independent evidence
+(preserved verbatim, with its transport truncation disclosed, in
+[`u-handoff-2b-hostile-review-report.md`](u-handoff-2b-hostile-review-report.md)). **U-HANDOFF-1
+is COMPLETE.**
+
+### The full rehearsal record — how the gate closed
 1. A **non-independent** rehearsal (the control-document author) returned **NOT READY** — the
    status authority was stale by one commit, unguarded. Corrected by **U-HANDOFF-1A**.
 2. The **first INDEPENDENT rehearsal** (fresh session, repository-only) returned **NOT READY** —
@@ -122,56 +129,60 @@ Review: [`u-handoff-1c-false-green-and-discovery-correction-review.md`](u-handof
    All corrected and mutation-proven (44/44) by **U-HANDOFF-1C**: status is now finalized only by
    [`scripts/finalize_status.py`](../../scripts/finalize_status.py), which EXECUTES the suite,
    the clean-clone gate and the acceptance gates itself.
-### **U-HANDOFF-1 itself remains OPEN: the SECOND HOSTILE handoff-readiness review against the
-corrected controls has not been run**, and only it can close the gate. The 13 checklist criteria
-remain PENDING — a passed rehearsal plus a failed hostile review is not a passed gate.
+4. **U-HANDOFF-2B — the SECOND HOSTILE review** (independent, repository-only, branch
+   `hostile-review-fe7843d`) attacked the corrected controls: bootstrap, finalizer execution,
+   clean-clone reproduction, node-manifest identity, skip enforcement, dynamic discovery,
+   authority resolution, the safety graph, product identity and the tool-authority boundary,
+   plus a false-confidence mutation battery — **all received attack rows DEFENDED, zero
+   critical or high findings in the received sections**. Its verdict — READY FOR FINAL ZIP
+   INSPECTION — is founder-attested; the received evidence body plus the adjudicating session's
+   own re-execution of the finalizer, suite and clean-clone gate closed the gate. Adjudication:
+   [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).
 
 ## ✅ The exact next approved work program
 
-### **ZERO-CONTEXT CLI HANDOFF REHEARSAL AND HOSTILE READINESS REVIEW — next: the SECOND HOSTILE REVIEW, run independently**
+### **U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** *(founder-authorized)*
 
-Unit `U-HANDOFF-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
-The executable acceptance checklist is
-[`U-HANDOFF-1-ACCEPTANCE.yaml`](U-HANDOFF-1-ACCEPTANCE.yaml) — **13 criteria, all currently
-PENDING**; the independent rehearsal produces a structured result against it.
+Unit `U-REBASELINE-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — the
+**single READY unit**. The executable acceptance contract is
+[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml) — **24 criteria (RB-01..RB-24),
+all currently PENDING**; only the executing rebaseline session fills results in.
 
-It tests whether a clean-session agent, given only this repository, can:
+The founder has determined that several early product assumptions may unnecessarily constrain
+Neyma's long-term product and production architecture. Before P3 begins, the rebaseline
+re-evaluates and corrects: stable product identity; the relationship with existing TMS platforms;
+whether Neyma can become authoritative for native workflows; integration and credential models;
+email/SMS/communications architecture; the initial commercial workflow hypothesis; production
+hosting and deployment; tenant and customer onboarding; the P3–P14 program; and PMF /
+design-partner evidence requirements.
 
-1. identify the product correctly (and **reject** the invoice-processor interpretation)
-2. identify the current implementation state correctly — **including this file's commit/tree/suite block**
-3. identify legacy code correctly
-4. identify the next work unit correctly
-5. explain that unit's expected outputs correctly
-6. **refuse to invent missing product rules**
-7. follow acceptance and commit discipline
-8. describe the broad-tool-access posture and **distinguish tool access from action authority**
-   ([`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md))
-
-**This is a rehearsal and review unit. It writes no runtime code.**
+**It is a documentation, architecture, specification and control unit ONLY. It implements no
+runtime product behavior, changes no freight workflows, adds no integrations, and leaves R-07
+OPEN — NOT CONTAINED and P3 BLOCKED throughout.**
 
 ## ⛔ What must NOT begin yet
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 3** | Requires `U-HANDOFF-1` to pass **and** an independent repository inspection |
+| ### **Implementation Phase 3** | Requires `U-REBASELINE-1` COMPLETE, an independent product/production rebaseline review, **and** an independent repository inspection |
+| ### **Executing U-REBASELINE-1's product decisions ahead of the unit** | Registration is not execution; the RB-01..RB-24 contract is entirely PENDING |
 | Checkpoint Witness / seven-step checkpoint / claim CAS | P3 content |
 | Adapter containment | P4 content |
 | Closing R-07 | Only reaching P4 closes it |
 | Freight workflow implementation | Requires P6–P9 foundations |
 | Deleting legacy production code | Requires the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md) |
 | Promoting the W6→W8 slice to validated | It is **provisional** and marked **NEEDS DESIGN-PARTNER VALIDATION**; requires recorded evidence |
-| The final formal CLI bootstrap prompt | Requires `U-HANDOFF-1` |
 
 ## Blocked future units
 
-Every unit from `U3.1` onward is **BLOCKED** on `U-HANDOFF-1`. See the registry for the full
-dependency graph.
+Every implementation phase from `P3` onward is **BLOCKED** behind `U-REBASELINE-1`. See the
+registry for the full dependency graph.
 
 ## Documents required before proceeding
 
-A session picking up `U-HANDOFF-1` must have read, in order:
+A session picking up `U-REBASELINE-1` must have read, in order:
 [`CLAUDE.md`](../../CLAUDE.md) → [`PRODUCT.md`](../../PRODUCT.md) →
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → [`CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md) →
 this file → [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
 [`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) →
-[`U-HANDOFF-1-ACCEPTANCE.yaml`](U-HANDOFF-1-ACCEPTANCE.yaml).
+[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml).

@@ -368,18 +368,37 @@ def test_23b_every_root_control_document_appears_in_the_authority_map():
 
 # ============================================================ 24. the next approved work
 
-def test_24_the_next_approved_work_is_handoff_readiness_not_phase_3():
+def test_24_the_next_approved_work_is_the_rebaseline_not_phase_3():
+    """U-HANDOFF-1D: the handoff gate is CLOSED (adjudicated from the independent U-HANDOFF-2B
+    evidence) and the single READY unit is the founder-authorized rebaseline. P3 stays BLOCKED
+    behind it."""
     ready = [u for u in registry_units() if u["status"] == "READY"]
     assert len(ready) == 1
     unit = ready[0]
-    assert unit["unit_id"] == "U-HANDOFF-1", f"the READY unit is {unit['unit_id']}, expected U-HANDOFF-1"
-    assert "rehearsal" in unit["name"].lower()
+    assert unit["unit_id"] == "U-REBASELINE-1", (
+        f"the READY unit is {unit['unit_id']}, expected U-REBASELINE-1"
+    )
+    assert "rebaseline" in unit["name"].lower()
     prohibited = " ".join(str(x) for x in unit["prohibited_scope"]).lower()
-    assert "phase 3" in prohibited, "U-HANDOFF-1 must prohibit Phase 3 implementation"
+    assert "phase 3" in prohibited, "U-REBASELINE-1 must prohibit Phase 3 implementation"
+    assert "runtime" in prohibited, "U-REBASELINE-1 must prohibit runtime product behavior"
+    handoff = next(u for u in registry_units() if u["unit_id"] == "U-HANDOFF-1")
+    assert handoff["status"] == "COMPLETE", (
+        f"U-HANDOFF-1 is {handoff['status']} - the rebaseline may only be READY after the "
+        "handoff gate closed"
+    )
+    evidence = " ".join(str(x) for x in handoff["completion_evidence"])
+    assert "u-handoff-2b-hostile-review-report.md" in evidence, (
+        "U-HANDOFF-1 COMPLETE without the preserved independent hostile-review evidence"
+    )
+    assert "u-handoff-1d-final-adjudication-review.md" in evidence, (
+        "U-HANDOFF-1 COMPLETE without the adjudication review"
+    )
     p3 = next(u for u in registry_units() if u["unit_id"] == "P3")
     assert p3["status"] == "BLOCKED", f"P3 is {p3['status']}, must be BLOCKED"
-    assert "U-HANDOFF-1" in p3["dependencies"], "P3 must depend on the handoff rehearsal"
-    assert re.search(r"ZERO-CONTEXT CLI HANDOFF REHEARSAL", read(CURRENT), re.I), \
+    assert "U-HANDOFF-1" in p3["dependencies"], "P3 must depend on the handoff gate"
+    assert "U-REBASELINE-1" in p3["dependencies"], "P3 must depend on the founder rebaseline"
+    assert re.search(r"U-REBASELINE-1", read(CURRENT)), \
         "CURRENT.md must name the next approved program"
 
 
@@ -694,7 +713,13 @@ def test_the_p3_concepts_are_specification_only_while_p3_is_blocked():
 CHECKLIST = IMPL / "U-HANDOFF-1-ACCEPTANCE.yaml"
 
 
-def test_the_handoff_checklist_is_exact_and_entirely_pending():
+def test_the_handoff_checklist_is_exact_and_fully_adjudicated():
+    """U-HANDOFF-1D replaced the all-PENDING guard: the gate is CLOSED, so the truthful state is
+    13/13 PASS - but ONLY with the independence machinery intact. Every PASS must name its
+    independent evidence, the adjudication block must bind the results to the preserved
+    U-HANDOFF-2B report, and that report must actually exist with its truncation disclosed. A
+    result drifting back to PENDING/FAIL, a criterion losing its evidence, or the evidence
+    report vanishing all fail the build."""
     data = yaml.safe_load(read(CHECKLIST))
     crits = data["criteria"]
     ids = [c["id"] for c in crits]
@@ -704,12 +729,68 @@ def test_the_handoff_checklist_is_exact_and_entirely_pending():
     for c in crits:
         assert c.get("statement", "").strip(), f"{c['id']}: empty statement"
         assert c.get("evidence_required", "").strip(), f"{c['id']}: no required evidence"
-        assert c["result"] == "PENDING", (
-            f"{c['id']} is {c['result']!r} - the checklist cannot be passed by the session that "
-            "wrote it; only the INDEPENDENT rehearsal fills results in"
+        assert c["result"] == "PASS", (
+            f"{c['id']} is {c['result']!r} - the gate was adjudicated CLOSED with 13/13 PASS; "
+            "a drifted result is either an unrecorded re-opening or a corruption, and both must "
+            "be surfaced, not silently tolerated"
+        )
+        evidence = c.get("evidence", "")
+        assert evidence.strip(), f"{c['id']}: PASS with no evidence recorded"
+        assert re.search(r"U-HANDOFF-2B|independent rehearsal", evidence, re.I), (
+            f"{c['id']}: PASS whose evidence names no independent source - a self-passed "
+            "criterion is exactly what this checklist exists to prevent"
         )
     assert "independence_requirement" in data["meta"]
     assert "READY FOR HOSTILE HANDOFF-READINESS REVIEW" in data["meta"]["verdict_vocabulary"]
+    adj = data["meta"].get("adjudication") or {}
+    assert adj.get("adjudicated_by") == "U-HANDOFF-1D", "no adjudication record"
+    report_rel = adj.get("evidence_report", "")
+    assert report_rel, "adjudication names no evidence report"
+    report_path = ROOT / report_rel
+    assert report_path.exists(), f"the adjudication's evidence report is missing: {report_rel}"
+    report = report_path.read_text(encoding="utf-8")
+    assert "HISTORICAL REVIEW" in report.split("\n", 1)[0] or "HISTORICAL REVIEW" in report[:400], (
+        "the preserved report must open with its historical-evidence banner"
+    )
+    assert re.search(r"truncat", report, re.I), (
+        "the preserved report must disclose its truncation - presenting the received portion as "
+        "the complete report would be fabricated completeness"
+    )
+    assert adj.get("evidence_caveat", "").strip(), (
+        "the adjudication must state its evidence caveat (received-portion + founder-attested "
+        "verdict + re-execution) rather than implying the full report was received"
+    )
+
+
+REBASELINE_CHECKLIST = IMPL / "U-REBASELINE-1-ACCEPTANCE.yaml"
+
+
+def test_the_rebaseline_checklist_is_exact_and_entirely_pending():
+    """U-HANDOFF-1D registered the founder rebaseline: exactly RB-01..RB-24, every one PENDING.
+    The registering session may not pass its own contract - the same rule the handoff checklist
+    enforced until independent evidence arrived."""
+    data = yaml.safe_load(read(REBASELINE_CHECKLIST))
+    crits = data["criteria"]
+    ids = [c["id"] for c in crits]
+    assert ids == [f"RB-{i:02d}" for i in range(1, 25)], (
+        f"rebaseline criteria drifted from the exact 24: {ids}"
+    )
+    for c in crits:
+        assert c.get("statement", "").strip(), f"{c['id']}: empty statement"
+        assert c.get("evidence_required", "").strip(), f"{c['id']}: no required evidence"
+        assert c["result"] == "PENDING", (
+            f"{c['id']} is {c['result']!r} - the contract cannot be passed by the session that "
+            "registered it; only the executing U-REBASELINE-1 session fills results in"
+        )
+    meta = data["meta"]
+    assert meta.get("registered_by") == "U-HANDOFF-1D"
+    assert "NOT READY" in meta["verdict_vocabulary"]
+    scope = meta.get("scope_rule", "")
+    assert re.search(r"No production runtime behavior", scope, re.I), (
+        "the rebaseline contract must state it changes no production runtime behavior"
+    )
+    assert re.search(r"R-07 stays OPEN", scope), "the contract must preserve R-07 OPEN"
+    assert re.search(r"P3 stays BLOCKED", scope), "the contract must keep P3 BLOCKED throughout"
 
 
 def test_the_checklist_covers_the_new_control_requirements():

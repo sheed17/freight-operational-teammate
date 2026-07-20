@@ -195,17 +195,16 @@ units:
       - docs/implementation/durable-cli-control-documentation-review.md
     next_units_unlocked: [U-HANDOFF-1]
 
-  # ============================================================ READY (exactly one)
   - unit_id: U-HANDOFF-1
     name: Zero-context CLI handoff rehearsal and hostile readiness review
     objective: >-
       Determine empirically whether a clean-session agent, given only this repository and no
       conversation history, works correctly. This is a rehearsal and a hostile review. It is the
       gate in front of Phase 3.
-    status: READY
+    status: COMPLETE
     dependencies: [U-DOC-1]
     unlocked_by: [U-DOC-1]
-    blocks: [P3]
+    blocks: [P3, U-REBASELINE-1]
     canonical_references:
       - CLAUDE.md
       - docs/implementation/CURRENT.md
@@ -236,14 +235,15 @@ units:
     acceptance_contract: >-
       The rehearsal must be run by an agent that did NOT author the control documents, and must
       produce a structured result against the 13-criterion executable checklist in
-      docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml (all criteria currently PENDING). A failure
-      on any criterion is a documentation defect, not an agent defect. Two rehearsals have run
-      and returned NOT READY (one non-independent, corrected by U-HANDOFF-1A; one independent -
-      11/13 - corrected by U-HANDOFF-1B). A SECOND independent rehearsal then PASSED 13/13, but
-      the subsequent HOSTILE handoff-readiness review returned NOT READY on the control system
-      itself (fabricated evidence, configuration injection, partial skip coverage) - corrected
-      and mutation-proven by U-HANDOFF-1C. The gate closes only when a fresh HOSTILE review
-      passes against the corrected controls; the 13 criteria stay PENDING until then.
+      docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml. A failure on any criterion is a
+      documentation defect, not an agent defect. Two rehearsals ran and returned NOT READY (one
+      non-independent, corrected by U-HANDOFF-1A; one independent - 11/13 - corrected by
+      U-HANDOFF-1B). A SECOND independent rehearsal then PASSED 13/13, but the subsequent
+      HOSTILE handoff-readiness review returned NOT READY on the control system itself
+      (fabricated evidence, configuration injection, partial skip coverage) - corrected and
+      mutation-proven by U-HANDOFF-1C. The SECOND hostile review - U-HANDOFF-2B, independent,
+      repository-only - then defended its attack battery against the corrected controls, and
+      U-HANDOFF-1D adjudicated all 13 criteria PASS from that independent evidence. CLOSED.
     concurrency_requirements: none
     mutation_requirements: >-
       required - the rehearsal must include at least one deliberately misleading stale document to
@@ -253,8 +253,70 @@ units:
     rollback_posture: "Documentation only."
     validation_blockers: []
     completion_evidence:
-      - docs/implementation/zero-context-handoff-rehearsal-review.md
-      - "an independent repository inspection agreeing that Phase 3 may begin"
+      - docs/implementation/u-handoff-2b-hostile-review-report.md
+      - docs/implementation/u-handoff-1d-final-adjudication-review.md
+      - "docs/implementation/U-HANDOFF-1-ACCEPTANCE.yaml - 13/13 PASS, adjudicated by U-HANDOFF-1D"
+    next_units_unlocked: [P3, U-REBASELINE-1]
+
+  # ============================================================ READY (exactly one)
+  - unit_id: U-REBASELINE-1
+    name: Product, integration and production rebaseline
+    objective: >-
+      Re-evaluate and correct, on founder authority and BEFORE P3 begins: Neyma's stable product
+      identity; its relationship with existing TMS platforms; whether it can become authoritative
+      for native workflows; integration and credential models; email, SMS and communications
+      architecture; the initial commercial workflow hypothesis; production hosting and
+      deployment; tenant and customer onboarding; the P3-P14 implementation program; and
+      product-market-fit and design-partner evidence requirements. A documentation, architecture,
+      specification and control unit ONLY.
+    status: READY
+    dependencies: [U-HANDOFF-1]
+    unlocked_by: [U-HANDOFF-1]
+    blocks: [P3]
+    canonical_references:
+      - PRODUCT.md
+      - ARCHITECTURE.md
+      - docs/CANONICAL-DOCUMENTS.md
+      - docs/implementation/TOOL-ACCESS-POLICY.md
+      - docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml
+    allowed_scope:
+      - product, architecture and specification documentation
+      - integration and credential model specification
+      - production deployment architecture specification
+      - the revised P3-P14 program
+      - control-system updates, guards and mutations required by the rebaseline
+      - in-place supersession of claims the rebaseline retires
+    prohibited_scope:
+      - implementing runtime product behavior
+      - Phase 3 implementation (checkpoint, witness, claim CAS)
+      - changing production runtime code
+      - changing freight workflows
+      - adding integrations
+      - closing R-07
+      - inventing customer-specific freight rules or design-partner observations
+      - pushing the branch
+    expected_production_outputs:
+      - the rebaselined product/architecture/specification corpus
+      - "docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml - RB-01..RB-24 adjudicated"
+      - guards and mutation proofs per RB-23
+    expected_capability: >-
+      No customer-visible capability. Internal: the repository's product and production direction
+      stops being constrained by rejected early assumptions, before P3 builds on them.
+    boundaries_affected: [documentation, specifications, control system]
+    acceptance_contract: docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml
+    concurrency_requirements: none
+    mutation_requirements: >-
+      required - RB-23: guards and mutations must prevent the rejected absolute product
+      restrictions from returning as current authority
+    migration_requirements: none
+    legacy_dispositions_affected: []
+    rollback_posture: "Documentation only. No runtime behaviour changes."
+    validation_blockers:
+      - "customer-specific freight rules remain NEEDS VALIDATION (RB-18) - the rebaseline may
+         not invent them"
+    completion_evidence:
+      - "the rebaseline review document (created by the executing session)"
+      - "an independent product/production rebaseline review"
     next_units_unlocked: [P3]
 
   # ============================================================ BLOCKED
@@ -264,8 +326,8 @@ units:
       Make the two-key rule real: a grant becomes necessary but not sufficient, and no external
       effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
     status: BLOCKED
-    dependencies: [P2, U-HANDOFF-1]
-    unlocked_by: [P2, U-HANDOFF-1]
+    dependencies: [P2, U-HANDOFF-1, U-REBASELINE-1]
+    unlocked_by: [P2, U-HANDOFF-1, U-REBASELINE-1]
     blocks: [P4]
     canonical_references:
       - docs/architecture/decisions/ADR-004-effect-boundary.md
@@ -296,7 +358,9 @@ units:
     legacy_dispositions_affected: [action_callback, operation_router, browser_write_path]
     rollback_posture: "Ships dark - capability flag OFF. Deploy and enable are separate decisions."
     validation_blockers:
-      - "U-HANDOFF-1 must pass"
+      - "U-HANDOFF-1 passed (adjudicated by U-HANDOFF-1D from the U-HANDOFF-2B evidence)"
+      - "U-REBASELINE-1 must be COMPLETE - the founder rebaseline precedes P3"
+      - "an independent product/production rebaseline review must pass"
       - "an independent repository inspection must agree Phase 3 may begin"
     completion_evidence: ["a phase-3 implementation review with final-tree digests"]
     next_units_unlocked: [P4]

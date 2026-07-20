@@ -38,7 +38,10 @@
 | [durable-cli-control-documentation-review.md](durable-cli-control-documentation-review.md) | ### **DURABLE CLI CONTROL — the repository now replaces conversation memory: PRODUCT/ARCHITECTURE/CLAUDE, the authority map over 198 docs, one status authority, 17 work units, 14 legacy dispositions, 68 documentation guards, 34/34 mutations. Next: zero-context handoff rehearsal.** |
 | [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
 | [TOOL-ACCESS-POLICY.md](TOOL-ACCESS-POLICY.md) | broad tool access for formal CLI sessions — research capability vs consequential authority |
-| [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist (all PENDING until the independent rehearsal) |
+| [u-handoff-1d-final-adjudication-review.md](u-handoff-1d-final-adjudication-review.md) | ### **U-HANDOFF-1D — the handoff gate CLOSED: the independent U-HANDOFF-2B hostile review adjudicated, 13/13 PASS; U-REBASELINE-1 registered as the single READY unit. Next: U-REBASELINE-1.** |
+| [u-handoff-2b-hostile-review-report.md](u-handoff-2b-hostile-review-report.md) | the preserved independent second hostile review (received portion, truncation disclosed) |
+| [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist — adjudicated 13/13 PASS by U-HANDOFF-1D |
+| [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..RB-24, all PENDING until the unit executes) |
 | [IMPLEMENTATION-SURFACE.yaml](IMPLEMENTATION-SURFACE.yaml) | implemented vs specification-only, machine-checked |
 | [IMPLEMENTATION-REGISTRY.yaml](IMPLEMENTATION-REGISTRY.yaml) | the work units, statuses and dependencies |
 | [PHASE-OUTPUTS.md](PHASE-OUTPUTS.md) | P0–P14: what each phase buys, and what stays prohibited |

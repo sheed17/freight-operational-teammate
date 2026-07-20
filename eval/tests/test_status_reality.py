@@ -247,11 +247,13 @@ def test_the_status_record_still_states_the_canonical_facts():
     text = CURRENT.read_text(encoding="utf-8")
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "P2 no longer recorded COMPLETE"
     assert re.search(r"\*\*P3\*\*.{0,80}NOT STARTED", text, re.S), "P3 no longer recorded NOT STARTED"
-    assert re.search(r"ZERO-CONTEXT CLI HANDOFF REHEARSAL", text), (
-        "the current work program is no longer the independent rehearsal/readiness gate"
+    assert re.search(r"U-REBASELINE-1", text), (
+        "the current work program is no longer the founder rebaseline - if the program moved on, "
+        "this guard must be REPLACED with the new truth, not deleted"
     )
-    assert re.search(r"INDEPENDENT", text), (
-        "the status must record that the owed rehearsal is the INDEPENDENT one"
+    assert re.search(r"handoff gate.{0,200}CLOSED", text, re.I | re.S), (
+        "the status must record that the handoff gate closed (U-HANDOFF-1D adjudication on the "
+        "independent U-HANDOFF-2B evidence) - losing that record un-explains why P3 is reachable"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
     p3 = next(u for u in units if u["unit_id"] == "P3")
