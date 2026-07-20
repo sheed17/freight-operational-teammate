@@ -197,7 +197,7 @@ same-line-plus-one window before the battery was accepted.
 
 ## 20. Full suite result
 
-SUITE_INSERTED_BY_FINALIZER (executed LAST, on the final tree, by
+1246 passed · 0 failed · 1 skipped (executed LAST, on the final tree, by
 [`scripts/finalize_status.py`](../../scripts/finalize_status.py)).
 
 ## 21. Clean-clone result
@@ -212,7 +212,7 @@ AC-SAFE-012/013 + AC-SEC-001 itself, and recorded only what it observed.
 
 ## 23. Content commit
 
-CONTENT_COMMIT_INSERTED_BY_FINALIZER (tree CONTENT_TREE_INSERTED_BY_FINALIZER).
+fbbeff978fe8fe52f5075050da3f9c36b4a68e7b (tree e48aa048dff8aa7b522e18e07d86612161d3b782).
 
 ## 24. Metadata commit
 

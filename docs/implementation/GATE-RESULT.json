@@ -1,17 +1,17 @@
 {
   "clean_clone_counts": {
-    "collected": 1234,
+    "collected": 1247,
     "failed": 0,
-    "passed": 1233,
+    "passed": 1246,
     "skipped": 1
   },
-  "commit": "0a25a001b522047858c95bed461046046fafe7a0",
-  "completed_at": "2026-07-20T09:32:29.542384+00:00",
+  "commit": "fbbeff978fe8fe52f5075050da3f9c36b4a68e7b",
+  "completed_at": "2026-07-20T22:13:43.594161+00:00",
   "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
   "gate": "clean_clone_gate",
-  "node_manifest_sha256": "162e27d8e04332f2b35f847d81789fc4df8baca59292748d40f1a4219a24960e",
+  "node_manifest_sha256": "24c64bd1a0d7d50b7bc0e353bda46e19f8f059fedcd678e9a00ed47e30affb40",
   "passed": true,
-  "payload_sha256": "8683d63669105553ba8c3181fb492056f4abfd4ed99e32799d3b7495b02c1355",
+  "payload_sha256": "9daf2f54817724e5a75fb66e3959174e01b0add971249e0e53b9aa3c0b8f88a6",
   "reason": "",
   "runner_sha256": "75b924e9f39821eaf4a9796ea81b24c8240ef4d228e781c95f627230586295eb",
   "steps": [
@@ -52,5 +52,5 @@
       "step": "clone tree still clean"
     }
   ],
-  "tree": "a736937997a1eb52d3c1842263786822fa6955b4"
+  "tree": "e48aa048dff8aa7b522e18e07d86612161d3b782"
 }
