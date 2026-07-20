@@ -80,6 +80,13 @@ Full protocol: [`CLAUDE.md`](CLAUDE.md) §6, stop conditions §7, definition of 
 Run validation **last, on the final tree**. See [`CLAUDE.md`](CLAUDE.md) §9 for the verification
 discipline — every rule there is a defect this repository actually shipped.
 
+**End every session by printing the `NEYMA BUILD STATUS` block** — the mandatory, evidence-based
+progress report defined in
+[`docs/implementation/PROGRESS-PROTOCOL.md`](docs/implementation/PROGRESS-PROTOCOL.md). Its
+percentages come from [`BUILD-STATUS.yaml`](docs/implementation/BUILD-STATUS.yaml), which the
+canonical finalizer derives from [`PROGRAM-WEIGHTS.yaml`](docs/implementation/PROGRAM-WEIGHTS.yaml)
+and refuses to let anyone inflate. Progress reporting is part of the control system, not optional.
+
 ## Agent definitions
 
 `.claude/agents/*` and `.codex/agents/*` are **task lenses**, not authorities. Each now carries a

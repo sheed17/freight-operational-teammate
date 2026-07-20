@@ -34,6 +34,11 @@ meta:
     Documentation, architecture, specification and control only. No production runtime behavior
     changes, no freight-workflow changes, no integrations added, R-07 stays OPEN - NOT CONTAINED,
     P3 stays BLOCKED and unimplemented throughout.
+  progress_protocol: >-
+    Phase completion and program progress are reported per
+    docs/implementation/PROGRESS-PROTOCOL.md; the weighted acceptance template and program weights
+    live in docs/implementation/PROGRAM-WEIGHTS.yaml, and the finalizer derives
+    docs/implementation/BUILD-STATUS.yaml and refuses inflated numbers.
   pass_rule: all 24 criteria PASS with evidence; any FAIL fails the rebaseline
 
 criteria:

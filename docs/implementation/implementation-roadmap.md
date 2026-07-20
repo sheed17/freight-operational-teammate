@@ -14,6 +14,13 @@
 > `LOCALLY_IMPLEMENTED`, never "production ready."** The registry
 > ([`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml)) carries the binding per-phase
 > detail; on any disagreement the registry wins.
+>
+> **Progress against this roadmap is reported per
+> [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md):** mechanically-derived percentages
+> ([`PROGRAM-WEIGHTS.yaml`](PROGRAM-WEIGHTS.yaml) → [`BUILD-STATUS.yaml`](BUILD-STATUS.yaml)), the
+> seven canonical readiness tiers, and a per-phase plain-language founder expectation. A phase
+> cannot reach 100% before its independent review and adjudication, and the finalizer refuses
+> inflated numbers.
 
 ## The 16 migration principles *(binding on every phase)*
 1 safety kernel before broad workflow · 2 one logical effect = one commit namespace · 3 legacy+canonical may never independently effect · 4 hard cutover preferred · 5 coexistence requires the SHARED ledger+key namespace · 6 no big-bang · 7 data migration resumable+idempotent · 8 history stays attributable · 9 replay stays side-effect free throughout · 10 flags narrow, never bypass · 11 rollback disables capability, never restores an unsafe path · 12 every phase leaves the repo deployable+coherent · 13 ### **no phase depends on future work for a CURRENT safety guarantee** · 14 migration scripts get no bypass · 15 test fixtures unreachable in production · 16 ### **current behavior is NOT preserved when it contradicts the frozen model.**

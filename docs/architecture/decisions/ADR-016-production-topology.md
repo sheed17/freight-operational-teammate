@@ -34,10 +34,16 @@ persistence layer keeps a single schema/migration discipline across both.
 
 ## 3. Readiness vocabulary
 
-Every capability is classified as exactly one of:
+> ⚠️ **Reconciled by U-REBASELINE-1:** the **canonical** readiness tiers are the seven in
+> [`PROGRESS-PROTOCOL.md §5`](../../implementation/PROGRESS-PROTOCOL.md) — SPECIFIED · LOCALLY
+> IMPLEMENTED · INTEGRATION TESTED · STAGING READY · SHADOW-PILOT READY · SUPERVISED-PRODUCTION
+> READY · GENERALLY PRODUCTION READY. The six-tier draft below is superseded; it maps 1:1 into the
+> canonical seven (INTEGRATION TESTED was inserted; `SPECIFICATION_ONLY`→SPECIFIED,
+> `PILOT_READY`→SHADOW-PILOT READY). IMPLEMENTATION-SURFACE may still record the underscore
+> spellings; `scripts/progress_status.py` aliases them to the canonical tiers.
 
-`SPECIFICATION_ONLY` → `LOCALLY_IMPLEMENTED` → `STAGING_READY` → `PILOT_READY` →
-`SUPERVISED_PRODUCTION_READY` → `GENERALLY_PRODUCTION_READY`
+Draft (superseded): `SPECIFICATION_ONLY` → `LOCALLY_IMPLEMENTED` → `STAGING_READY` → `PILOT_READY`
+→ `SUPERVISED_PRODUCTION_READY` → `GENERALLY_PRODUCTION_READY`.
 
 **"Code exists" means `LOCALLY_IMPLEMENTED`, nothing more.** Promotion between levels requires
 the evidence named in the phase acceptance contracts (deployed where, verified how, operated by

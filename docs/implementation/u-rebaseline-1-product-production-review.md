@@ -144,10 +144,33 @@ observability, security, completion evidence and readiness target.
 
 ## 14. Production-readiness definitions
 
-ADR-016 §3: `SPECIFICATION_ONLY → LOCALLY_IMPLEMENTED → STAGING_READY → PILOT_READY →
-SUPERVISED_PRODUCTION_READY → GENERALLY_PRODUCTION_READY`. **"Code exists" means
-`LOCALLY_IMPLEMENTED`, never production ready** — guarded. Each rebaselined phase carries a
-`readiness_target`.
+The **canonical** readiness tiers are the seven in
+[`PROGRESS-PROTOCOL.md §5`](PROGRESS-PROTOCOL.md): SPECIFIED · LOCALLY IMPLEMENTED · INTEGRATION
+TESTED · STAGING READY · SHADOW-PILOT READY · SUPERVISED-PRODUCTION READY · GENERALLY PRODUCTION
+READY. ADR-016 §3's six-tier draft is reconciled into these (INTEGRATION TESTED inserted;
+`PILOT_READY`→SHADOW-PILOT READY). **"Code exists" means `LOCALLY IMPLEMENTED`, never production
+ready** — guarded; a production-ready percentage cannot rise without STAGING-or-above evidence.
+
+## 14b. The founder progress protocol (addendum)
+
+The founder directed an **evidence-based progress system**, part of the control plane, that every
+future session must follow ([`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md)). It defines the
+`NEYMA BUILD STATUS` report, the percentage-integrity rules (only `PASS` criteria contribute;
+code-written is not completion; weights are frozen once a phase begins), the seven readiness tiers,
+and the session-end requirement. Percentages are **mechanically derived** by
+[`scripts/progress_status.py`](../../scripts/progress_status.py) from the approved weights in
+[`PROGRAM-WEIGHTS.yaml`](PROGRAM-WEIGHTS.yaml) (program weights Σ=100, acceptance template Σ=100,
+plus the CLI-switch/production/user-visible checklists) and the registry, then written into
+[`BUILD-STATUS.yaml`](BUILD-STATUS.yaml) by the canonical finalizer. The finalizer **refuses** to
+record a percentage outside 0–100, weights not totaling 100, an unsupported/stale increase, a
+phase at 100% before independent review + adjudication, a production-ready claim without evidence,
+a READY unit inconsistent with the registry, or a progress file bound to the wrong HEAD.
+
+**Current derived numbers (honest, foundational):** CLI switch readiness **30%** (two independent
+reviews outstanding), overall implementation program **0%**, current phase P3 **0%**, user-visible
+maturity **0%**, production readiness **0%**, tier **SPECIFIED**. Foundational and control work is
+strong; no post-P2 implementation phase has begun, so the customer-facing numbers are near zero by
+construction — exactly what the protocol requires to be stated plainly.
 
 ## 15. Canonical files changed
 
@@ -164,7 +187,8 @@ ADR-012 (identity/strategy), ADR-013 (workflow-authority migration), ADR-014 (cr
 identity), ADR-015 (communications), ADR-016 (production topology), ADR-017 (tenant/integration
 lifecycle + control plane), **ADR-018 (customer operational graph / TMS-agnostic domain model)**;
 DESIGN-PARTNER-EVIDENCE-PROGRAM.md; **docs/specifications/operational-system-map.md** (the
-per-tenant Operational System Map, 15 fields).
+per-tenant Operational System Map, 15 fields); **PROGRESS-PROTOCOL.md**, **PROGRAM-WEIGHTS.yaml**,
+**BUILD-STATUS.yaml** and **scripts/progress_status.py** (the founder progress system).
 
 ## 17. Historical claims disarmed
 
@@ -274,6 +298,15 @@ Yes. The rebaseline content is written, internally consistent, guarded and final
 PASS with produced-artifact evidence; **RB-24 (fresh-reviewer legibility) is deliberately left
 PENDING** for exactly that review. U-REBASELINE-1 is **not COMPLETE** — completion belongs to the
 independent review and the founder.
+
+**The independent review must additionally verify the progress protocol** (founder requirement):
+that [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) exists; that the program weights in
+[`PROGRAM-WEIGHTS.yaml`](PROGRAM-WEIGHTS.yaml) are reasonable; that the percentages are
+mechanically derived (not estimated); that the per-phase founder expectations are understandable
+to a non-specialist; that production readiness and user-visible maturity cannot be inflated; that
+a phase cannot reach 100% before its independent review and adjudication; that
+[`BUILD-STATUS.yaml`](BUILD-STATUS.yaml) stays consistent with the registry; and that future
+Claude sessions are required to print the `NEYMA BUILD STATUS` report.
 
 ---
 

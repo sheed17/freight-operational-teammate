@@ -44,6 +44,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from check_env import check as env_check  # noqa: E402
@@ -51,9 +53,11 @@ from suite_result import (  # noqa: E402
     ARTIFACT_RELPATH, GATE_RESULT_RELPATH, NODE_MANIFEST_RELPATH, payload_hash,
 )
 import run_canonical_suite as runner  # noqa: E402
+import progress_status as progress  # noqa: E402
 
 CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
 REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
+BUILD_STATUS = ROOT / "docs" / "implementation" / "BUILD-STATUS.yaml"
 REVIEWS = (
     ROOT / "docs" / "implementation" / "u-handoff-1a-control-correction-review.md",
     ROOT / "docs" / "implementation" / "u-handoff-1b-clean-clone-correction-review.md",
@@ -72,6 +76,7 @@ STATUS_METADATA_FILES = (
     "docs/implementation/u-handoff-1c-false-green-and-discovery-correction-review.md",
     "docs/implementation/u-handoff-1d-final-adjudication-review.md",
     "docs/implementation/u-rebaseline-1-product-production-review.md",
+    "docs/implementation/BUILD-STATUS.yaml",
 )
 
 # Dependency-injection seam FOR TESTS ONLY: the hostile test replaces these to prove that a
@@ -229,6 +234,36 @@ def _write_status(data: dict, head: str, tree: str):
             review.write_text(text, encoding="utf-8")
 
 
+def _step_progress(head: str, tree: str):
+    """Derive the founder progress snapshot mechanically, WRITE it into BUILD-STATUS.yaml, then
+    REFUSE if any integrity condition fails (PROGRESS-PROTOCOL.md sec 8). content_commit is the
+    content baseline `head` (two-commit convention), matching CURRENT.md's block."""
+    w = progress.load_weights()
+    werrs = progress.program_weight_errors(w)
+    if werrs:
+        raise _refuse("PROGRAM-WEIGHTS.yaml invalid:\n  " + "\n  ".join(werrs))
+    units = progress.registry_units()
+    derived = progress.derive(head, tree, head)
+    block = "\n".join(
+        ["# derived-block: maintained by scripts/finalize_status.py - do not edit by hand",
+         "derived:"] +
+        [f"  {k}: {derived[k]}" if derived[k] is not None else f"  {k}: null" for k in
+         ("content_commit", "content_tree", "active_phase", "single_ready_unit",
+          "cli_switch_readiness_percent", "overall_program_percent", "current_phase_percent",
+          "user_visible_maturity_percent", "production_readiness_percent", "readiness_tier")] +
+        ["# end-derived-block"]
+    )
+    text = BUILD_STATUS.read_text(encoding="utf-8")
+    new = re.sub(r"# derived-block:.*?# end-derived-block", block, text, count=1, flags=re.S)
+    if new == text and "# derived-block:" not in text:
+        raise _refuse("BUILD-STATUS.yaml has no derived-block markers")
+    BUILD_STATUS.write_text(new, encoding="utf-8")
+    bs = yaml.safe_load(BUILD_STATUS.read_text(encoding="utf-8"))["derived"]
+    berrs = progress.build_status_errors(bs, derived, units)
+    if berrs:
+        raise _refuse("BUILD-STATUS integrity failed:\n  " + "\n  ".join(berrs))
+
+
 def finalize() -> int:
     _step_dirty_tree()
     head = git("rev-parse", "HEAD")
@@ -249,6 +284,8 @@ def finalize() -> int:
     (ROOT / ARTIFACT_RELPATH).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
                                          encoding="utf-8")
     _write_status(data, head, tree)
+    _step_progress(head, tree)
+    print("  progress: BUILD-STATUS.yaml derived and validated")
     print(f"status finalized from EXECUTED results: {data['passed']}/{data['failed']}/{data['skipped']} "
           f"on {head[:9]} ({tree[:9]})")
     print("next: commit ONLY the status files as the single status-metadata commit:")

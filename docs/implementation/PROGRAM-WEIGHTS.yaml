@@ -1,0 +1,343 @@
+# PROGRAM WEIGHTS — the approved weighting model for mechanical progress
+#
+# CANONICAL / IMPLEMENTATION_CONTROL. Created by U-REBASELINE-1 (founder-authorized).
+# Consumed by scripts/progress_status.py to DERIVE the percentages in BUILD-STATUS.yaml.
+# Governed by eval/tests/test_progress_protocol.py and the canonical finalizer:
+#   - program_weights must total exactly 100
+#   - acceptance_template must total exactly 100
+#   - every checklist's weights must total exactly 100
+#   - a criterion/item contributes only when its status is a passing/done state
+#
+# Weights are FROZEN once a phase begins. A material change needs an explicit reason, evidence,
+# founder approval, and a committed revision (see PROGRESS-PROTOCOL.md §3).
+
+meta:
+  unit: U-REBASELINE-1
+  authority: founder-authorized program weighting
+  protocol: docs/implementation/PROGRESS-PROTOCOL.md
+
+# ------------------------------------------------------------------ program weights (Σ = 100)
+# The post-rebaseline implementation program. Weights reflect scope, safety importance, production
+# complexity, user value, integration complexity, validation and rollout - NOT equal shares.
+program_weights:
+  - phase: P3
+    title: Checkpoint Witness, seven-step atomic checkpoint, and claim CAS
+    program_weight: 12
+    dependency_status: BLOCKED_ON_REBASELINE
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "none - safety kernel"
+    production_output: "commit-once as a DB constraint at the effect boundary"
+    founder_expectation: >-
+      No usable interface yet. Progress shows as authorization, idempotency and concurrency
+      safety - a grant becomes necessary but not sufficient. Drift would look like a checkpoint
+      that can be bypassed, or a witness that can be forged.
+  - phase: P4
+    title: Adapter containment (closes R-07)
+    program_weight: 10
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "none"
+    production_output: "an external effect without a grant becomes structurally impossible; R-07 closes"
+    founder_expectation: >-
+      Still no interface. The proof is that ungated live-write paths are deleted and the CI import
+      gate is on. Drift would look like R-07 marked contained without the six paths actually gone.
+  - phase: P5
+    title: Events, outbox/inbox, replay isolation, and PostgreSQL production persistence
+    program_weight: 12
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "none"
+    production_output: "durable event execution on PostgreSQL; replay proven inert"
+    founder_expectation: >-
+      Foundations for production persistence appear (PostgreSQL, migrations, outbox). Nothing
+      customer-facing. Drift would look like replay able to re-emit an effect, or SQLite assumed
+      as the production database.
+  - phase: P6
+    title: Foundational entities and state machines
+    program_weight: 8
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "none yet"
+    production_output: "every unit of work has an accountable owner, structurally"
+    founder_expectation: >-
+      The system starts to model work items and ownership. Still no customer-facing surface.
+  - phase: P7
+    title: Provenance, Evidence, Observation, Claims, Identity Binding
+    program_weight: 7
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "escalations carry evidence, traceably"
+    production_output: "MODEL_INFERRED cannot authorize; OWNER_ASSERTED cannot be overwritten - enforced"
+    founder_expectation: >-
+      The system understands where facts came from and how much they can bear. Foundational.
+  - phase: P8
+    title: Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation
+    program_weight: 8
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "exceptions become a managed queue with owners"
+    production_output: "admission control per action class; a real brake"
+    founder_expectation: >-
+      The system can say no safely and manage exceptions. Still pre-workflow.
+  - phase: P9
+    title: Freight-domain projections, mappings, and communications ingestion
+    program_weight: 9
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "ingested email/SMS appear as evidence on work items"
+    production_output: "40 domain entities; TMS-schema-independent model; comms ingestion"
+    founder_expectation: >-
+      Freight concepts and inbound communications are modelled canonically. The first hints of
+      customer-relevant behavior, still not a complete workflow.
+  - phase: P10
+    title: Delivered Load Closure - shadow slice (first user value)
+    program_weight: 8
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "delivered loads carried to billing-ready with evidence and drafted follow-ups; no writes/sends"
+    production_output: "the wedge outcome end-to-end in shadow, instrumented"
+    founder_expectation: >-
+      FIRST real user value - a brokerage sees delivered loads carried toward billing, read-only.
+      Drift would look like a send or write escaping shadow mode, or the wedge declared validated
+      without design-partner evidence.
+  - phase: P11
+    title: Production foundation, onboarding, control plane, and shadow operation
+    program_weight: 10
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "a pilot tenant onboarded, supervised through a real web control plane"
+    production_output: "deployed staging/pilot, onboarding + Operational System Map, credential lifecycle, control plane"
+    founder_expectation: >-
+      The platform becomes real and deployable - onboarding, PostgreSQL, workers, credentials,
+      communications and control surfaces become visible. This is where production progress starts
+      being measured by deployment and operations, not local tests.
+  - phase: P12
+    title: Supervised external effects and communications
+    program_weight: 8
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "Neyma writes to approved systems and sends real communications, supervised"
+    production_output: "grant-backed witness-gated writes and sends in production, delivery verified"
+    founder_expectation: >-
+      Neyma performs real, supervised, reversible actions for a real customer. The
+      unknown-outcome rate becomes the most important operational number.
+  - phase: P13
+    title: Multi-loop expansion and workflow-authority migration
+    program_weight: 6
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "more of the back office carried; a customer may migrate a workflow's authority to Neyma"
+    production_output: "additional loops, atomic handoffs, the ADR-013 authority-migration model"
+    founder_expectation: >-
+      Neyma feels like an operational teammate across more of the business, and a customer can
+      deliberately hand a workflow's authority to it.
+  - phase: P14
+    title: Bounded autonomy
+    program_weight: 2
+    dependency_status: BLOCKED
+    implementation_status: SPECIFIED
+    readiness_tier: SPECIFIED
+    user_visible_output: "the back office runs itself for the classes that earned it - and only those"
+    production_output: "per-class, capped, time-boxed, revocable autonomy"
+    founder_expectation: >-
+      Specific, capped, revocable action classes proceed without per-action approval - never the
+      ones ADR-003 permanently reserves for a human.
+
+# ------------------------------------------------------------------ weighted acceptance template (Σ = 100)
+# The default weighted acceptance contract a phase's completion is computed from. A phase may
+# override with an approved, committed, sum-100 variant; criteria that are genuinely N/A for a
+# phase redistribute proportionally in that phase's committed variant (never silently).
+acceptance_template:
+  - criterion: accepted_scope_and_design
+    weight: 6
+  - criterion: required_tests
+    weight: 8
+  - criterion: core_implementation
+    weight: 20
+  - criterion: failure_handling
+    weight: 8
+  - criterion: concurrency_handling
+    weight: 8
+  - criterion: authorization_and_security
+    weight: 10
+  - criterion: migrations_and_persistence
+    weight: 6
+  - criterion: observability_and_operational_behavior
+    weight: 6
+  - criterion: mutation_or_hostile_cases
+    weight: 8
+  - criterion: full_test_suite
+    weight: 5
+  - criterion: canonical_finalizer
+    weight: 3
+  - criterion: clean_clone_execution
+    weight: 3
+  - criterion: independent_review
+    weight: 5
+  - criterion: final_adjudication
+    weight: 4
+
+# ------------------------------------------------------------------ CLI switch readiness (Σ = 100)
+# The gates to switching into formal P3 (CLI) implementation. status DONE contributes its weight;
+# PENDING/BLOCKED contributes 0.
+cli_switch_gates:
+  - gate: handoff_gate_closed
+    weight: 15
+    status: DONE
+    evidence: "U-HANDOFF-1 COMPLETE (adjudicated by U-HANDOFF-1D from the U-HANDOFF-2B evidence)"
+  - gate: rebaseline_content_written
+    weight: 15
+    status: DONE
+    evidence: "U-REBASELINE-1 executed; ADR-012..018; RB-01..23 PASS"
+  - gate: rebaseline_independent_review_passed
+    weight: 30
+    status: PENDING
+    evidence: "the independent product/production rebaseline review has not run"
+  - gate: independent_repository_inspection_agrees_p3_may_begin
+    weight: 25
+    status: PENDING
+    evidence: "not performed"
+  - gate: p3_weighted_acceptance_contract_instantiated
+    weight: 15
+    status: PENDING
+    evidence: "the acceptance template exists; P3's per-criterion weighted contract is not yet instantiated"
+
+# ------------------------------------------------------------------ production readiness (Σ = 100)
+# Each item's readiness_tier gates its contribution: an item contributes its weight only at
+# STAGING_READY or above (see progress_status.py). All items are SPECIFIED today.
+production_readiness_checklist:
+  - item: production_database_postgres
+    weight: 8
+    readiness_tier: SPECIFIED
+  - item: schema_migrations
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: object_storage
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: durable_workers_and_scheduling
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: queues_inbox_outbox
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: tenant_isolation
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: authentication_and_authorization
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: secret_management
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: integration_credential_lifecycle
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: email_and_sms_delivery
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: deployment_environments
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: ci_cd
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: monitoring_and_alerting
+    weight: 6
+    readiness_tier: SPECIFIED
+  - item: backup_and_restoration
+    weight: 4
+    readiness_tier: SPECIFIED
+  - item: disaster_recovery
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: incident_response
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: provider_outage_handling
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: security_testing
+    weight: 5
+    readiness_tier: SPECIFIED
+  - item: load_and_concurrency_testing
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: customer_support_tooling
+    weight: 2
+    readiness_tier: SPECIFIED
+  - item: onboarding_and_offboarding
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: data_retention_and_deletion
+    weight: 2
+    readiness_tier: SPECIFIED
+  - item: cost_and_model_controls
+    weight: 2
+    readiness_tier: SPECIFIED
+  - item: shadow_pilot_evidence
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: supervised_production_evidence
+    weight: 3
+    readiness_tier: SPECIFIED
+  - item: rollback_exercises
+    weight: 2
+    readiness_tier: SPECIFIED
+
+# ------------------------------------------------------------------ user-visible maturity (Σ = 100)
+# Each capability contributes its weight only at SHADOW_PILOT_READY or above. All not-done today.
+user_visible_checklist:
+  - capability: customer_onboarding
+    weight: 8
+    readiness_tier: SPECIFIED
+  - capability: operational_system_mapping
+    weight: 7
+    readiness_tier: SPECIFIED
+  - capability: load_ingestion
+    weight: 8
+    readiness_tier: SPECIFIED
+  - capability: work_item_visibility
+    weight: 8
+    readiness_tier: SPECIFIED
+  - capability: carrier_sourcing
+    weight: 6
+    readiness_tier: SPECIFIED
+  - capability: document_handling
+    weight: 8
+    readiness_tier: SPECIFIED
+  - capability: communications
+    weight: 8
+    readiness_tier: SPECIFIED
+  - capability: approvals
+    weight: 7
+    readiness_tier: SPECIFIED
+  - capability: exception_management
+    weight: 7
+    readiness_tier: SPECIFIED
+  - capability: tms_or_spreadsheet_synchronization
+    weight: 7
+    readiness_tier: SPECIFIED
+  - capability: accounting_preparation
+    weight: 6
+    readiness_tier: SPECIFIED
+  - capability: operator_control_surfaces
+    weight: 7
+    readiness_tier: SPECIFIED
+  - capability: owner_reporting
+    weight: 5
+    readiness_tier: SPECIFIED
+  - capability: complete_end_to_end_workflows
+    weight: 8
+    readiness_tier: SPECIFIED

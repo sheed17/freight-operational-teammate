@@ -114,6 +114,9 @@ its names.
 | Path | Purpose | Authority |
 |---|---|---|
 | [`implementation/CURRENT.md`](implementation/CURRENT.md) | ### **THE single short-form status authority** | **CURRENT_STATUS** |
+| [`implementation/PROGRESS-PROTOCOL.md`](implementation/PROGRESS-PROTOCOL.md) | The founder build-status protocol: report format, evidence-based %, readiness tiers, session-end rule (U-REBASELINE-1) | **IMPLEMENTATION_CONTROL** |
+| [`implementation/PROGRAM-WEIGHTS.yaml`](implementation/PROGRAM-WEIGHTS.yaml) | Approved phase program weights + weighted acceptance template + readiness checklists | **IMPLEMENTATION_CONTROL** |
+| [`implementation/BUILD-STATUS.yaml`](implementation/BUILD-STATUS.yaml) | The finalizer-derived progress snapshot (percentages, tier, blockers) — defers to CURRENT.md for commit/tree/suite | **CURRENT_STATUS** |
 | [`implementation/IMPLEMENTATION-REGISTRY.yaml`](implementation/IMPLEMENTATION-REGISTRY.yaml) | Work units, status, dependencies, acceptance | **IMPLEMENTATION_CONTROL** |
 | [`implementation/PHASE-OUTPUTS.md`](implementation/PHASE-OUTPUTS.md) | What each phase produces and unlocks | **IMPLEMENTATION_CONTROL** |
 | [`implementation/LEGACY-DISPOSITION.md`](implementation/LEGACY-DISPOSITION.md) | One disposition per subsystem | **IMPLEMENTATION_CONTROL** |

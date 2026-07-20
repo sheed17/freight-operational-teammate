@@ -226,6 +226,12 @@ These are not style preferences. Each one is a defect this repository actually s
   **before** `pip install -e ".[dev]"` — it enforces pyproject's `requires-python` fail-fast.
 - Run the suite with: `.venv/bin/python -m pytest eval/ -q`
 - Prove clean-clone reproducibility with: `.venv/bin/python scripts/clean_clone_gate.py`
+- **Progress reporting is mandatory, not conversational.** Every session ends by running the
+  finalizer (which derives [`docs/implementation/BUILD-STATUS.yaml`](docs/implementation/BUILD-STATUS.yaml)
+  from evidence and refuses inflated numbers) and **printing the full `NEYMA BUILD STATUS` block**,
+  then stopping at the next approved control boundary. Percentages are mechanically derived from
+  [`PROGRAM-WEIGHTS.yaml`](docs/implementation/PROGRAM-WEIGHTS.yaml), never estimated. The protocol
+  is [`docs/implementation/PROGRESS-PROTOCOL.md`](docs/implementation/PROGRESS-PROTOCOL.md).
 - **Tool access is intentionally broad so missing technical context is investigated rather than
   guessed. Tool access expands evidence retrieval, not canonical decision authority.** Search
   aggressively; infer cautiously; execute according to authority — the full policy, including the

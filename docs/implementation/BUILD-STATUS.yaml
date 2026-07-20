@@ -1,0 +1,50 @@
+# BUILD STATUS — the finalizer-derived founder progress snapshot
+#
+# CANONICAL / CURRENT_STATUS. The `derived:` block below is MACHINE-MAINTAINED by
+# scripts/finalize_status.py from scripts/progress_status.py - never edit it by hand; the finalizer
+# refuses to record a hand-inflated number. The `snapshot:` block is the authored narrative for the
+# NEYMA BUILD STATUS report (PROGRESS-PROTOCOL.md sec 2). This file does NOT compete with CURRENT.md:
+# content_commit/content_tree follow the two-commit convention and must equal CURRENT.md's block.
+
+# derived-block: maintained by scripts/finalize_status.py - do not edit by hand
+derived:
+  content_commit: CONTENT_COMMIT_INSERTED_BY_FINALIZER
+  content_tree: CONTENT_TREE_INSERTED_BY_FINALIZER
+  active_phase: P3
+  single_ready_unit: U-REBASELINE-1
+  cli_switch_readiness_percent: 30.0
+  overall_program_percent: 0.0
+  current_phase_percent: 0.0
+  user_visible_maturity_percent: 0.0
+  production_readiness_percent: 0.0
+  readiness_tier: SPECIFIED
+# end-derived-block
+
+snapshot:
+  active_work_unit: "U-REBASELINE-1 — Product, integration and production rebaseline (executed; awaiting independent review)"
+  next_approved_unit: "the INDEPENDENT product/production rebaseline review (fresh session/checkout), then P3 after founder advance"
+  completed_criteria:
+    - "U-HANDOFF-1 COMPLETE (handoff gate closed by U-HANDOFF-1D)"
+    - "U-REBASELINE-1 content: ADR-012..018, Delivered Load Closure wedge, revised P3-P14, RB-01..23 PASS"
+    - "the progress protocol, program weights and this build-status system"
+  pending_criteria:
+    - "RB-24 (fresh-reviewer legibility) - only the independent review can pass it"
+    - "the independent product/production rebaseline review"
+    - "the independent repository inspection agreeing P3 may begin"
+    - "every implementation phase P3-P14 (all SPECIFIED, 0% implemented)"
+  blockers:
+    - "P3 is BLOCKED behind U-REBASELINE-1 COMPLETE + the independent rebaseline review + repo inspection"
+    - "R-07 OPEN - NOT CONTAINED (closes at P4)"
+    - "customer-specific freight rules remain NEEDS VALIDATION until design-partner evidence is recorded"
+  last_verified_test_evidence: "see CURRENT.md status block (finalizer-executed suite) and SUITE-RESULT.json"
+  finalizer_result: "see GATE-RESULT.json + CURRENT.md - executed by scripts/finalize_status.py"
+  clean_clone_result: "CLEAN-CLONE GATE: PASS (GATE-RESULT.json)"
+  independent_review_status: "NOT STARTED - the post-rebaseline independent review is the next approved step"
+  verdict: ON TRACK
+  expected_founder_experience: >-
+    Foundational and control work is strong: the safety architecture, the product/production
+    rebaseline and now an evidence-based progress system are in place. But there is NO complete
+    customer-facing workflow yet - user-visible maturity and production readiness are near zero on
+    purpose, because no implementation phase past P2 has begun. This is expected at this point and
+    is not evidence the direction has failed. The next real user value arrives at P10 (Delivered
+    Load Closure in shadow); real production progress is measured from P11 onward.

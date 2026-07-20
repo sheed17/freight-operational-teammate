@@ -37,6 +37,13 @@ meta:
   phase_numbering: >-
     P0-P14 with gates G0-G10, per implementation-roadmap.md. This is the repository's approved
     numbering. The 8-stage roadmap in docs/PRODUCT_ROADMAP.md is SUPERSEDED and must not be used.
+  progress_protocol: >-
+    Progress is reported per docs/implementation/PROGRESS-PROTOCOL.md. Each phase's completion is
+    computed from its weighted acceptance contract (the acceptance_template in PROGRAM-WEIGHTS.yaml,
+    or a phase's committed acceptance_criteria override); overall program completion is the
+    program_weight-weighted sum in PROGRAM-WEIGHTS.yaml. The finalizer derives BUILD-STATUS.yaml
+    and refuses inflated numbers. Every session prints the NEYMA BUILD STATUS block and stops at
+    the next approved control boundary.
 
 units:
 
