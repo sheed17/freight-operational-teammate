@@ -64,3 +64,7 @@ per-workflow, owner-asserted, and auditable.
 - A customer who wants eventual TMS replacement is a **valid customer** with a longer migration
   path, not a disqualified one.
 - P13 (multi-loop expansion) carries the implementation obligation for the migration model.
+- The migration model is the top of the eight-level maturity ladder in
+  [`ADR-018 §5`](ADR-018-customer-operational-graph.md); "target authoritative system" (field 2)
+  and "current system of record" (field 1) are drawn from each tenant's **Operational System
+  Map**, in which the TMS is one node among many, not the assumed center.

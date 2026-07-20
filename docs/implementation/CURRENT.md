@@ -109,11 +109,13 @@ platform and system of action for small and medium freight and logistics compani
 Neyma may become authoritative for individual workflows through the customer-authorized migration
 model (ADR-013); it may securely possess customer-authorized credentials while minimizing raw
 password handling (ADR-014); communications are a core subsystem (ADR-015); production runs on
-PostgreSQL/workers/object-storage with a thin web control plane (ADR-016/017); the wedge is
-**Delivered Load Closure** (a `HYPOTHESIS`). **RB-01..RB-23 PASS; RB-24 (fresh-reviewer
-legibility) stays PENDING for the independent review; U-REBASELINE-1 is NOT COMPLETE.** No
-production runtime code changed; R-07 stays OPEN — NOT CONTAINED; P3 stays BLOCKED and
-unimplemented.
+PostgreSQL/workers/object-storage with a thin web control plane (ADR-016/017); **the TMS is one
+node in the customer's operational graph, not the center — the canonical domain model is
+TMS-schema-independent, each tenant has an Operational System Map, and a write into one node is
+never workflow completion (ADR-018)**; the wedge is **Delivered Load Closure** (a `HYPOTHESIS`).
+**RB-01..RB-23 PASS; RB-24 (fresh-reviewer legibility) stays PENDING for the independent review;
+U-REBASELINE-1 is NOT COMPLETE.** No production runtime code changed; R-07 stays OPEN — NOT
+CONTAINED; P3 stays BLOCKED and unimplemented.
 
 ### Handoff-gate history (U-HANDOFF-1, closed by U-HANDOFF-1D)
 Adjudication: [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).

@@ -65,6 +65,14 @@ REJECTED_ABSOLUTES = [
     ("access equals action authority",
      re.compile(r"(?:access\s+(?:=|equals|creates?|grants?)\s+(?:action\s+)?authority|"
                 r"authentication\s+creates?\s+action\s+authority)", re.I)),
+    # ADR-018: the TMS-as-product-center architecture claim (NOT the industry-pattern OBSERVATION
+    # that brokerages treat the TMS as central - that is a true fact about customers, labelled
+    # CONFIRMED INDUSTRY PATTERN in freight-discovery). This targets a product-architecture
+    # assertion: the product/architecture/domain model centered on or shaped by the TMS.
+    ("the TMS is the center of the product / the domain model depends on a TMS schema",
+     re.compile(r"TMS\s+(?:is|as)\s+the\s+(?:universal\s+)?center\s+of\s+the\s+(?:product|architecture)"
+                r"|(?:domain\s+model|architecture|workflow\s+engine)\s+(?:depends?\s+on|is\s+shaped\s+by|"
+                r"requires)\s+(?:a\s+)?(?:specific\s+)?TMS\s+schema", re.I)),
 ]
 
 
@@ -124,6 +132,7 @@ def test_the_six_rebaseline_adrs_exist_and_are_final():
         "ADR-015": "communications-subsystem",
         "ADR-016": "production-topology",
         "ADR-017": "tenant-and-integration-lifecycle",
+        "ADR-018": "customer-operational-graph",
     }
     adr_dir = ROOT / "docs/architecture/decisions"
     for adr, slug in expected.items():
@@ -245,6 +254,53 @@ def test_every_rebaselined_phase_has_a_rebaseline_contract():
                           "hostile_cases", "rollout_posture", "observability_requirements",
                           "security_requirements", "readiness_target"):
                 assert rc.get(field), f"{u['unit_id']}.rebaseline_contract missing {field}"
+
+
+def test_the_customer_operational_graph_decision_is_durable():
+    """ADR-018: the TMS is one node, not the center; the domain model is TMS-schema-independent;
+    each tenant has an Operational System Map; a write is not workflow completion; the eight-level
+    maturity ladder; onboarding never requires replacing existing tooling."""
+    raw = read("docs/architecture/decisions/ADR-018-customer-operational-graph.md")
+    head = raw[:400]
+    assert "FINAL" in head and "U-REBASELINE-1" in head, "ADR-018 not marked FINAL by U-REBASELINE-1"
+    # normalize markdown noise (blockquote markers, bold, collapsed whitespace) so wording survives
+    adr = re.sub(r"[>*`]", " ", raw)
+    adr = re.sub(r"\s+", " ", adr)
+    assert re.search(r"one\s+(?:possible\s+)?node\s+in\s+the\s+customer's\s+operational\s+graph,\s+not\s+"
+                     r"(?:as\s+)?the\s+(?:universal\s+)?center", adr, re.I), (
+        "ADR-018 must state the TMS is one node, not the center"
+    )
+    assert re.search(r"(?:domain\s+model|workflow\s+engine)\s+.{0,60}must\s+not\s+depend\s+on\s+"
+                     r"(?:any\s+)?(?:specific\s+)?TMS\s+schema", adr, re.I), (
+        "ADR-018 must state the domain model does not depend on a specific TMS schema"
+    )
+    assert re.search(r"never\s+proof\s+that\s+the\s+business\s+workflow\s+is\s+complete|"
+                     r"write\s+into\s+one\s+.{0,40}is\s+never\s+proof", adr, re.I), (
+        "ADR-018 must state a write is not workflow completion"
+    )
+    # the eight-level maturity ladder, in order
+    for level in ("Observe", "Normalize", "Coordinate", "Execute", "Own",
+                  "primary interface", "authoritative", "Replace"):
+        assert level in adr, f"ADR-018 maturity ladder missing level: {level}"
+
+
+def test_the_operational_system_map_spec_is_complete():
+    """The per-tenant Operational System Map spec must exist and enumerate its fifteen fields."""
+    spec = read("docs/specifications/operational-system-map.md")
+    fields = [
+        "operational capability", "current system or channel", "entities stored there",
+        "fields controlled there", "source-of-truth precedence", "read mechanism",
+        "write mechanism", "synchronization frequency", "expected latency",
+        "authentication method", "reconciliation behavior", "outage behavior",
+        "manual fallback", "migration status", "target authority status",
+    ]
+    missing = [f for f in fields if f.lower() not in spec.lower()]
+    assert not missing, f"Operational System Map spec missing fields: {missing}"
+    assert re.search(r"onboarding\s+.{0,60}(?:discovery|source-of-truth\s+mapping|deliverable)",
+                     spec, re.I | re.S), "spec must make the map an onboarding deliverable"
+    assert re.search(r"does?\s+not\s+require\s+the\s+customer\s+to\s+replace", spec, re.I), (
+        "spec must state Neyma does not require replacing existing tooling before value"
+    )
 
 
 def test_no_src_runtime_file_was_touched_by_the_rebaseline():

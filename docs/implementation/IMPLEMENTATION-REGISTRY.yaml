@@ -590,7 +590,7 @@ units:
     canonical_references: [docs/specifications/domain-entities/registry.md]
     allowed_scope: [domain entities, external entity mapping, field authority]
     prohibited_scope: [the vertical slice itself (P10)]
-    expected_production_outputs: ["40 domain entities", external entity mapping, "communications ingestion: correlation, commitments-as-claims, expected-response Expectations (ADR-015)"]
+    expected_production_outputs: ["40 domain entities", external entity mapping, "communications ingestion: correlation, commitments-as-claims, expected-response Expectations (ADR-015)", "the domain model authored TMS-schema-independent; External Entity Mapping binds any node's ids (ADR-018)"]
     expected_capability: "System: freight concepts are modelled canonically rather than ad hoc."
     boundaries_affected: [domain layer]
     acceptance_contract: "domain-model-acceptance.md; gate G1"
@@ -676,7 +676,7 @@ units:
     canonical_references: [docs/implementation/release-gate-plan.md]
     allowed_scope: [live reads, shadow comparison, evidence capture]
     prohibited_scope: [any external write by Neyma]
-    expected_production_outputs: ["deployed staging + pilot environments (ADR-016)", "tenant + integration onboarding with credential lifecycle (ADR-014/017)", "the thin web control plane (ADR-017)", shadow-mode runtime, shadow-vs-human diff instrumentation]
+    expected_production_outputs: ["deployed staging + pilot environments (ADR-016)", "tenant + integration onboarding with credential lifecycle (ADR-014/017)", "the per-tenant Operational System Map from onboarding discovery (ADR-018)", "the thin web control plane (ADR-017)", shadow-mode runtime, shadow-vs-human diff instrumentation]
     expected_capability: >-
       USER-VISIBLE: Neyma proposes; a human executes; the diff rate is measured - in a deployed
       environment a pilot tenant can be onboarded to, supervised through a real control plane.

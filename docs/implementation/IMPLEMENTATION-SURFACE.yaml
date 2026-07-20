@@ -223,3 +223,13 @@ concepts:
     note: >-
       ADR-013 (U-REBASELINE-1) - the thirteen-field customer-authorized migration model; no
       migration capability exists and none is offered before P13.
+
+  - name: Customer Operational System Map (TMS-agnostic operational graph)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/operational-system-map.md
+    absent_symbols: [operational_system_map, operational_graph_node]
+    owning_unit: P11
+    note: >-
+      ADR-018 (U-REBASELINE-1) - the TMS is one node, not the center; the per-tenant Operational
+      System Map is an onboarding deliverable at P11 and the domain model is authored
+      TMS-schema-independent at P9. Nothing built yet.

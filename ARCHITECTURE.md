@@ -311,6 +311,14 @@ every item is `SPECIFICATION_ONLY` until a phase delivers it** (ADR-016 §3 read
 - **Workflow-authority migration** ([`ADR-013`](docs/architecture/decisions/ADR-013-workflow-authority-migration.md)):
   the thirteen-field, customer-authorized model by which authority for any workflow may move —
   including to Neyma.
+- **Customer operational graph** ([`ADR-018`](docs/architecture/decisions/ADR-018-customer-operational-graph.md)):
+  the TMS is one node, not the center; the canonical domain model and workflow engine are
+  **independent of any specific TMS schema**; each tenant has an **Operational System Map**
+  ([`spec`](docs/specifications/operational-system-map.md)) recording which node controls which
+  fields and how each is read/written/reconciled; the same workflow runs whatever the source
+  system; a write into one node is never workflow completion; and an eight-level maturity ladder
+  (observe → … → replace) lets a customer advance at their own pace. Fragmented tooling never
+  lowers auditability, ownership, tenant safety, authorization or closure requirements.
 
 ## 30. Canonical detailed specifications
 

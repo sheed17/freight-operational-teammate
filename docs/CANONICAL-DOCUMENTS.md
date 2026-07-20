@@ -40,7 +40,7 @@ docs/architecture/engineering-principles.md                    the constitution
   └─ docs/product/{freight-discovery, operating-model}.md      domain truth
       └─ PRODUCT.md                                            ← the root product authority
           └─ docs/architecture/semantic-model.md               the language
-              └─ docs/architecture/decisions/ADR-001…017       binding decisions
+              └─ docs/architecture/decisions/ADR-001…018       binding decisions
                   └─ docs/architecture/target-system-specification.md
                       └─ docs/specifications/{entities, state-machines, events,
                                               domain-entities, adapters, workflows}/
@@ -82,7 +82,7 @@ disagree on *product identity*, **`PRODUCT.md` wins.**
 | [`architecture/engineering-principles.md`](architecture/engineering-principles.md) | The constitution | **CANONICAL** |
 | [`architecture/semantic-model.md`](architecture/semantic-model.md) | Canonical language | **CANONICAL** |
 | [`architecture/decisions/ADR-001…ADR-011`](architecture/decisions/) | The 11 core binding decisions | **CANONICAL** |
-| [`architecture/decisions/ADR-012…ADR-017`](architecture/decisions/) | The 6 U-REBASELINE-1 decisions: identity/strategy, workflow-authority migration, credential/machine-identity, communications, production topology, tenant & integration lifecycle | **CANONICAL** |
+| [`architecture/decisions/ADR-012…ADR-018`](architecture/decisions/) | The 7 U-REBASELINE-1 decisions: identity/strategy, workflow-authority migration, credential/machine-identity, communications, production topology, tenant & integration lifecycle, and the customer operational graph / TMS-agnostic domain model | **CANONICAL** |
 | [`architecture/target-system-specification.md`](architecture/target-system-specification.md) | Target architecture, Rev 2 | **CANONICAL** |
 | [`architecture/stream-b-architectural-lessons.md`](architecture/stream-b-architectural-lessons.md) | Lessons L-A…L-D, self-marked **BINDING** | **CANONICAL** |
 | [`architecture/live-effect-entrypoint-inventory.md`](architecture/live-effect-entrypoint-inventory.md) | Entry points reaching the live TMS | **CURRENT_STATUS** |
@@ -106,6 +106,7 @@ its names.
 | [`specifications/adapters/`](specifications/adapters/) | 14 | `registry.md` | 18 adapter boundary contracts |
 | [`specifications/workflows/`](specifications/workflows/) | 12 | `registry.md` | **the eleven loops W1–W11** |
 | [`specifications/acceptance/`](specifications/acceptance/) | 24 | `registry.md` | **ACCEPTANCE_ORACLE** — the contracts + `release-gates.md` + `traceability.md` |
+| [`specifications/operational-system-map.md`](specifications/operational-system-map.md) | 1 | — | **CANONICAL** — the per-tenant operational graph / system map (ADR-018, U-REBASELINE-1) |
 | `specifications/*-review.md` | 9 | — | **HISTORICAL** — the hostile review of each layer |
 
 ## 6. Implementation control layer

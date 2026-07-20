@@ -14,6 +14,12 @@ with its evidence (pilot success criteria, supervision results). **Offboarding i
 capability, not an afterthought**: data export, credential destruction (ADR-014 §3), retention
 and deletion execution, and a verifiable end state.
 
+**Onboarding includes operational-workflow discovery and source-of-truth mapping.** Its deliverable
+is the per-tenant **Operational System Map** ([`ADR-018 §2`](ADR-018-customer-operational-graph.md),
+[`spec`](../../specifications/operational-system-map.md)) — the customer's real workflow modelled
+independently of the TMS or other software they happen to use. Neyma never requires the customer to
+replace Google Sheets, email or their TMS before delivering value.
+
 **Integration lifecycle** per tenant per external system: proposed → authorized (customer
 authorization recorded) → connected → healthy/degraded (continuously measured) → suspended →
 revoked. Connection health is observable; a degraded integration raises operational work, not

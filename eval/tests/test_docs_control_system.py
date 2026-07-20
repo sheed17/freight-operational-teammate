@@ -638,6 +638,7 @@ REQUIRED_CONCEPTS = {
     "Production deployment topology (PostgreSQL, workers, object storage, secrets)",
     "Web control plane and tenant/integration lifecycle",
     "Workflow-authority migration model",
+    "Customer Operational System Map (TMS-agnostic operational graph)",
 }
 SURFACE_STATUSES = {"IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "SPECIFICATION_ONLY",
                     "LEGACY_IMPLEMENTATION", "BLOCKED"}

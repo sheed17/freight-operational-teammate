@@ -124,7 +124,21 @@ hypothesis (§15) and customer evidence.
 system for others, the carrier for others, and the customer contract for others. Neyma does not
 seize authority it has not been given — **authority over any truth domain moves to Neyma only
 through the customer-authorized, recorded migration model of ADR-013**, never by default and
-never by drift. Neyma maintains a **canonical operational state** that
+never by drift.
+
+**And the TMS is one node in the customer's operational graph, not the center of the product**
+([`ADR-018`](docs/architecture/decisions/ADR-018-customer-operational-graph.md)). For some
+customers there is a real TMS; for others the functional equivalent is distributed across Google
+Sheets, inboxes, portals, SMS, phones and paper. **The canonical domain model and workflow engine
+do not depend on any specific TMS schema.** Neyma models the company's real workflow independently
+of the software used to perform it, maintains a per-tenant **Operational System Map** (which node
+controls which fields, how it is read/written/reconciled, where authority is headed), and runs the
+**same workflow whether load state originates from a Sheet, a TMS, an email thread, a portal,
+Neyma itself, or a combination.** A successful write into one node is **never** proof the workflow
+is complete — completion is the real operational outcome (§11 principle 1). The product supports a
+customer moving from *observe → normalize → coordinate → execute → own → primary interface →
+authoritative → replace* at their own deliberate pace, and **never requires replacing Sheets,
+email or a TMS before delivering value.** Neyma maintains a **canonical operational state** that
 records *what is believed, from what evidence, with what provenance, and how confidently* — and it
 is explicit about which external system is authoritative for each field.
 

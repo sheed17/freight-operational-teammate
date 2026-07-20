@@ -42,6 +42,7 @@
 | [u-rebaseline-1-product-production-review.md](u-rebaseline-1-product-production-review.md) | ### **U-REBASELINE-1 — the founder product/integration/production rebaseline: ADR-012..017, Delivered Load Closure wedge (HYPOTHESIS), revised P3–P14, PostgreSQL production topology, communications as a core subsystem. RB-01..23 PASS, RB-24 pending the independent review.** |
 | [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..23 PASS, RB-24 PENDING) |
 | [../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | the wedge's required design-partner evidence, accountable sources, fail-closed |
+| [../specifications/operational-system-map.md](../specifications/operational-system-map.md) | the per-tenant operational graph / system map (ADR-018): TMS is one node, not the center; TMS-schema-independent domain model |
 | [u-handoff-2b-hostile-review-report.md](u-handoff-2b-hostile-review-report.md) | the preserved independent second hostile review (received portion, truncation disclosed) |
 | [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist — adjudicated 13/13 PASS by U-HANDOFF-1D |
 | [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..RB-24, all PENDING until the unit executes) |

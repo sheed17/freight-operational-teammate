@@ -23,7 +23,10 @@ service accounts · scoped bot users · EDI credentials · approved database con
 mailbox grants · accounting-system grants · SMS/communications-provider credentials ·
 tenant-specific browser identities · managed encrypted browser sessions · human-established
 browser sessions · desktop or VDI automation where required · webhooks · supported file-transfer
-mechanisms · other customer-approved adapters.
+mechanisms · CSV import/export · spreadsheet connectors · document ingestion · human-provided
+evidence · manual supervised actions · other customer-approved adapters. These are the
+**normalized integration boundaries** through which every node in a customer's operational graph
+connects (ADR-018 §3) — the boundary is uniform even when the systems behind it are not.
 
 ## 2. Preferred integration order
 

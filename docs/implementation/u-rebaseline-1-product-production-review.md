@@ -33,7 +33,8 @@ becomes a system of record"; "anyone wanting TMS replacement is the wrong custom
 must establish every session"; "Neyma must remain permanently outside native freight workflows";
 and the implicit "the first wedge is the permanent identity", "SQLite is the production database",
 "email/SMS are optional", "Slack is the only control interface", "code exists = production ready",
-"access = action authority". Each is now guarded against reintroduction
+"access = action authority", and (ADR-018) "the TMS is the center of the product / the domain
+model is shaped by a TMS schema". Each is now guarded against reintroduction
 ([`test_rebaseline_invariants.py`](../../eval/tests/test_rebaseline_invariants.py)).
 
 ## 4. Final stable product identity
@@ -61,6 +62,20 @@ TMS replacement; the TMS may remain the system of record; Neyma **may** become a
 individual workflows, the primary interface, and eventually the primary platform — **workflow by
 workflow, under a recorded, customer-authorized, reversible migration** (the thirteen-field model,
 ADR-013 §2). Implementation obligation: P13.
+
+**Addendum — the customer operational graph (ADR-018).** The TMS is one node in the customer's
+operational graph, **not the center of the product**. For some customers there is a real TMS; for
+others the functional equivalent is distributed across Sheets, inboxes, portals, SMS, phones and
+paper. The canonical domain model and workflow engine are **TMS-schema-independent**; each tenant
+has a per-tenant **Operational System Map** (15 fields: which node controls which capability, how
+it is read/written/reconciled, its authority and migration status —
+[`spec`](../specifications/operational-system-map.md)); the **same workflow runs regardless of the
+source system**; **a write into one node is never workflow completion** (completion is the real
+outcome); and an **eight-level maturity ladder** (observe → normalize → coordinate → execute → own
+→ primary interface → authoritative → replace) lets a customer advance at their own pace. Neyma
+never requires replacing existing tooling before delivering value, and fragmentation never lowers
+auditability, ownership, tenant safety, authorization or closure. Implementation: domain model
+TMS-agnostic at P9; the Operational System Map from onboarding discovery at P11.
 
 ## 7. Credential and integration model
 
@@ -147,7 +162,9 @@ U-REBASELINE-1-ACCEPTANCE.yaml}.
 
 ADR-012 (identity/strategy), ADR-013 (workflow-authority migration), ADR-014 (credential/machine
 identity), ADR-015 (communications), ADR-016 (production topology), ADR-017 (tenant/integration
-lifecycle + control plane); DESIGN-PARTNER-EVIDENCE-PROGRAM.md.
+lifecycle + control plane), **ADR-018 (customer operational graph / TMS-agnostic domain model)**;
+DESIGN-PARTNER-EVIDENCE-PROGRAM.md; **docs/specifications/operational-system-map.md** (the
+per-tenant Operational System Map, 15 fields).
 
 ## 17. Historical claims disarmed
 
@@ -172,7 +189,15 @@ the READY/checklist guards, REQUIRED_CONCEPTS, GUARD_REGISTRY.
 
 Registration and invariant mutations were proven with the safe in-memory harness (mutate → confirm
 the mutant genuinely misbehaves → confirm the guard fails non-zero → restore byte-identically,
-bytecode purged; git never used to undo). Battery results: **12/12 CAUGHT.**
+bytecode purged; git never used to undo). Battery results: **12/12 (core rebaseline) + 6/6
+(ADR-018 operational graph) = 18/18 CAUGHT.**
+
+The ADR-018 battery: M-1 ADR-018 loses "one node, not the center"; M-2 the domain model made
+TMS-schema-dependent; M-3 write treated as workflow completion; M-4 a maturity-ladder level
+dropped; M-5 the Operational System Map spec drops a required field; M-6 "the TMS is the universal
+center of the product" reintroduced as a live PRODUCT.md claim (caught by the rejected-absolute
+scan, which is scoped to the product-architecture assertion and does **not** fire on the true
+industry-pattern observation in freight-discovery).
 
 | # | Mutation | Guard that caught it |
 |---|---|---|
