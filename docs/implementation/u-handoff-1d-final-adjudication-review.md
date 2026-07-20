@@ -136,13 +136,13 @@ Final-tree validation ran LAST, via the approved finalizer
 (`scripts/finalize_status.py` — it executes the complete canonical suite, the clean-clone gate,
 the control guards and AC-SAFE-012/013 + AC-SEC-001 itself; nothing here is attested):
 
-- **Suite (executed):** SUITE_INSERTED_BY_FINALIZER
+- **Suite (executed):** 1233 passed · 0 failed · 1 skipped
 - **Clean-clone gate:** PASS — recorded in `GATE-RESULT.json`, bound to the content commit below
 
 ## 11. Final commits and tree
 
-- **Content commit:** CONTENT_COMMIT_INSERTED_BY_FINALIZER
-- **Content tree:** CONTENT_TREE_INSERTED_BY_FINALIZER
+- **Content commit:** 0a25a001b522047858c95bed461046046fafe7a0
+- **Content tree:** a736937997a1eb52d3c1842263786822fa6955b4
 - Followed by exactly one status-metadata commit (two-commit convention; a commit cannot contain
   its own hash — the `repo_state` guard verifies the relationship and that the metadata commit
   touched only the status files).

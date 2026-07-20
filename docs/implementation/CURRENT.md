@@ -19,9 +19,9 @@ version of this block goes stale within one commit and nothing notices.
 ```yaml
 # status-block: maintained by scripts/finalize_status.py - do not edit by hand
 recorded_authoring_branch: recovery/u2-6bc-atomic-cutover   # advisory; not verified across bundles/clones
-content_commit: d3c85f3974ef7624b6588c3479c7ad5f3935c657
-content_tree: b5a987df36b940d475c66f5021cba6e593121c07
-suite_passed: 1232
+content_commit: 0a25a001b522047858c95bed461046046fafe7a0
+content_tree: a736937997a1eb52d3c1842263786822fa6955b4
+suite_passed: 1233
 suite_failed: 0
 suite_skipped: 1
 ```
