@@ -27,8 +27,16 @@
 **Scope.** The 11 operational loops of the Operating Model (L1–L11), quote through cash, across the TMS, email, documents, portals, and accounting.
 
 **Non-goals (v1).**
-- Neyma is **not** a TMS. **External systems remain authoritative for their domains** (ADR-001).
-- Neyma **never** holds TMS credentials where the integration is browser-actuated. `human_established_session_only` — **the human logs in; Neyma attaches.**
+- Neyma is **not** a TMS **in v1**. **External systems remain authoritative for their domains**
+  (ADR-001) — ⚠️ *amended by ADR-013 (U-REBASELINE-1): authority may later migrate to Neyma
+  workflow-by-workflow under a recorded customer decision; this non-goal describes v1, not a
+  permanent ceiling.*
+- ⚠️ *Amended by ADR-014 (U-REBASELINE-1):* the v1 browser integration uses
+  `human_established_session_only` — **the human logs in; Neyma attaches** — as its session
+  policy. This is a supported fallback and per-tenant choice, **not** a permanent "Neyma may
+  never hold customer-authorized credentials" rule; ADR-014 governs the full permitted access
+  models (OAuth, service accounts, API keys, managed browser identities) and their security
+  requirements.
 - Neyma does **not** price freight. **The sell rate is a human decision** (Operating Model §6).
 - Neyma is **not** a distributed system in v1. **Modular monolith** (P36, ADR-004 §2.5).
 

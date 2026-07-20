@@ -4,7 +4,8 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** U-HANDOFF-1D final handoff adjudication and rebaseline registration.
+> **Last updated:** U-REBASELINE-1 product, integration and production rebaseline (executed;
+> awaiting independent review).
 
 ---
 
@@ -99,8 +100,23 @@ suite_skipped: 1
 
 ## Current documentation milestone
 
-**U-HANDOFF-1D — FINAL HANDOFF ADJUDICATION AND REBASELINE REGISTRATION** — complete.
-Review: [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).
+**U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** — executed (founder-authorized),
+awaiting the independent product/production rebaseline review.
+Review: [`u-rebaseline-1-product-production-review.md`](u-rebaseline-1-product-production-review.md).
+
+### **The founder rebaseline is written.** The stable identity is now *"the AI-native operating
+platform and system of action for small and medium freight and logistics companies"* (ADR-012);
+Neyma may become authoritative for individual workflows through the customer-authorized migration
+model (ADR-013); it may securely possess customer-authorized credentials while minimizing raw
+password handling (ADR-014); communications are a core subsystem (ADR-015); production runs on
+PostgreSQL/workers/object-storage with a thin web control plane (ADR-016/017); the wedge is
+**Delivered Load Closure** (a `HYPOTHESIS`). **RB-01..RB-23 PASS; RB-24 (fresh-reviewer
+legibility) stays PENDING for the independent review; U-REBASELINE-1 is NOT COMPLETE.** No
+production runtime code changed; R-07 stays OPEN — NOT CONTAINED; P3 stays BLOCKED and
+unimplemented.
+
+### Handoff-gate history (U-HANDOFF-1, closed by U-HANDOFF-1D)
+Adjudication: [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).
 
 ### **The handoff gate is CLOSED.** The second hostile review — **U-HANDOFF-2B**, independent and
 repository-only — defended its attack battery against the U-HANDOFF-1C-corrected controls, and
@@ -141,24 +157,29 @@ is COMPLETE.**
 
 ## ✅ The exact next approved work program
 
-### **U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** *(founder-authorized)*
+### **U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** *(founder-authorized — executed, awaiting independent review)*
 
 Unit `U-REBASELINE-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — the
 **single READY unit**. The executable acceptance contract is
-[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml) — **24 criteria (RB-01..RB-24),
-all currently PENDING**; only the executing rebaseline session fills results in.
+[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml) — **RB-01..RB-23 PASS with
+produced-artifact evidence; RB-24 PENDING** (only the independent review can certify fresh-reviewer
+legibility). The rebaseline **content is written**; the unit stays READY (not COMPLETE) until the
+independent product/production rebaseline review passes and the founder advances the program.
 
-The founder has determined that several early product assumptions may unnecessarily constrain
-Neyma's long-term product and production architecture. Before P3 begins, the rebaseline
-re-evaluates and corrects: stable product identity; the relationship with existing TMS platforms;
-whether Neyma can become authoritative for native workflows; integration and credential models;
-email/SMS/communications architecture; the initial commercial workflow hypothesis; production
-hosting and deployment; tenant and customer onboarding; the P3–P14 program; and PMF /
-design-partner evidence requirements.
+The rebaseline re-evaluated and corrected: stable product identity (ADR-012); the TMS
+relationship and workflow-authority migration (ADR-013); credential and machine-identity models
+(ADR-014); communications as a core subsystem (ADR-015); production hosting and deployment
+(ADR-016); tenant and integration lifecycle plus the web control plane (ADR-017); the initial
+commercial workflow hypothesis (Delivered Load Closure — PRODUCT.md §15); the revised P3–P14
+program; and the design-partner evidence requirements
+([`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md)).
 
-**It is a documentation, architecture, specification and control unit ONLY. It implements no
-runtime product behavior, changes no freight workflows, adds no integrations, and leaves R-07
+**It was a documentation, architecture, specification and control unit ONLY. It implemented no
+runtime product behavior, changed no freight workflows, added no integrations, and left R-07
 OPEN — NOT CONTAINED and P3 BLOCKED throughout.**
+
+**Next: an INDEPENDENT product/production rebaseline review** (fresh session, fresh checkout).
+Only after it passes does the founder advance the program toward P3.
 
 ## ⛔ What must NOT begin yet
 

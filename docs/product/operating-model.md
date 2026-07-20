@@ -56,7 +56,7 @@ A **small-to-medium US truckload freight brokerage** (or a brokerage-leaning 3PL
 | **Enterprise brokerages** with in-house engineering, EDI teams, and API budgets | They can integrate; they don't need an operator. Their constraint is scale, not systems chaos. |
 | **Shippers** | Different business, different loops, different pain. |
 | **Asset-heavy carriers** whose primary problem is fleet, drivers, maintenance, and compliance | That is a fleet-operations problem, not a brokerage back-office problem. |
-| **Anyone who wants a TMS replacement** | We will never be the system of record for their loads. That is a permanent product boundary (§7). |
+| **Anyone who wants an *immediate* TMS rip-and-replace on day one** | Initial adoption is integrate-first; authority migrates workflow by workflow under the customer's deliberate, recorded decision — never as a day-one replacement. ⚠️ **SUPERSEDED IN PART (U-REBASELINE-1, ADR-013):** the original row called TMS-replacement demand permanently out of scope; that absolute is retired. A customer who wants *eventual* replacement is a valid customer with a longer migration path. |
 | **Anyone who wants full autonomy immediately** | Neyma will disappoint them by design. Money and outbound communication are gated. (P12, P14) |
 | **Warehousing / WMS / yard / customs / international** | A different business entirely. |
 
@@ -297,7 +297,13 @@ Five verbs, applied consistently. **They are ordered by increasing consequence, 
 | **Legal and insurance judgment** | The humans and their counsel |
 | **Accountability** | **A named human. Always.** |
 
-> **Neyma is never the system of record for the customer's business.** That is permanent, and it is the reason they can adopt it without fear. (§2.4)
+> ⚠️ **SUPERSEDED (U-REBASELINE-1, ADR-013):** this block originally read "Neyma is never the
+> system of record for the customer's business — that is permanent." The durable form of the
+> underlying truth is: **Neyma never seizes authority it has not been given.** The customer can
+> adopt without fear because authority moves only through their own deliberate, recorded,
+> reversible migration decision (ADR-013 §2) — initially the TMS remains the system of record,
+> and Neyma **may** later become authoritative for individual workflows where the customer
+> migrates that authority.
 
 ### 7.3 What Neyma may **recommend** (always, freely)
 A rate benchmark · a vetted carrier candidate · a proposed resolution to an exception · the wording of any message · what to do next, and what it would cost to keep ignoring something.
@@ -311,7 +317,10 @@ Only actions that are **bounded** (a known operation), **evidenced** (justified 
 
 These are **structural**. They are not policies to be tuned; they are **what Neyma is**. A change here is not a roadmap decision — **it is a different product.**
 
-1. **Neyma is never the customer's system of record.** (§7.2)
+1. **Neyma never seizes authority it has not been given.** ⚠️ *(Rewritten by U-REBASELINE-1 /
+   ADR-013 — originally "Neyma is never the customer's system of record", which is retired as a
+   permanent absolute. Authority over a workflow moves to Neyma only through the customer's
+   recorded ADR-013 migration; the permanence lives in the consent requirement, not in a ceiling.)*
 2. **Accountability always rests with a named human.** Neyma is never the accountable party for a business decision. (§7.2)
 3. **Neyma never exercises commercial judgment** — the sell rate, whom to trust, the words when it matters. (§6.2)
 4. **Every action is attributable, explainable, and verifiable — and the *capability* to gate, audit, and reverse exists permanently in the architecture**, regardless of which gates are currently switched on. (P5, P7)

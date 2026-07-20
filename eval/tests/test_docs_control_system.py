@@ -97,7 +97,9 @@ NOT_A = [
 
 def test_6_product_identity_rejects_the_invoice_processor_interpretation():
     text = read(PRODUCT)
-    assert "operational execution layer" in text
+    # U-REBASELINE-1 / ADR-012: the canonical identity sentence, verbatim
+    assert ("AI-native operating platform and system of action for small and medium freight"
+            in text), "PRODUCT.md lost the ADR-012 canonical identity statement"
     missing = [phrase for phrase in NOT_A if phrase.lower() not in text.lower()]
     assert not missing, f"PRODUCT.md does not explicitly reject: {missing}"
 
@@ -113,8 +115,9 @@ def test_6b_claude_md_also_rejects_it_because_agents_read_it_first():
     section = re.search(r"## 2\. Project identity(.+?)\n## 3\.", text, re.S)
     assert section, "CLAUDE.md has no Project identity section"
     body = section.group(1)
-    assert "operational execution layer for small and medium freight brokerages" in body, \
-        "CLAUDE.md section 2 no longer carries the canonical product definition"
+    assert ("AI-native operating platform and system of action for small and medium freight"
+            in body), \
+        "CLAUDE.md section 2 no longer carries the ADR-012 canonical product definition"
     assert re.search(r"Neyma is NOT an invoice processor", body, re.I), \
         "CLAUDE.md section 2 must explicitly reject the invoice-processor reading"
     assert not re.search(r"Neyma (processes|handles|reconciles) (carrier )?invoices", body, re.I), \
@@ -629,7 +632,12 @@ REQUIRED_CONCEPTS = {
     "Provenance classes", "Policy (typed, compile-or-refuse)", "Brake (admission control)",
     "Canonical events (98 contracts)", "Outbox / inbox", "Replay isolation",
     "Reconciliation (canonical)", "The eleven operational loops",
-    "First vertical slice (W6 -> W8)",
+    # U-REBASELINE-1: the wedge slice renamed, plus the five rebaseline surface concepts
+    'Delivered Load Closure shadow slice (formerly "first vertical slice W6 -> W8")',
+    "Communications subsystem (ingestion + governed sends)",
+    "Production deployment topology (PostgreSQL, workers, object storage, secrets)",
+    "Web control plane and tenant/integration lifecycle",
+    "Workflow-authority migration model",
 }
 SURFACE_STATUSES = {"IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "SPECIFICATION_ONLY",
                     "LEGACY_IMPLEMENTATION", "BLOCKED"}
@@ -765,10 +773,12 @@ def test_the_handoff_checklist_is_exact_and_fully_adjudicated():
 REBASELINE_CHECKLIST = IMPL / "U-REBASELINE-1-ACCEPTANCE.yaml"
 
 
-def test_the_rebaseline_checklist_is_exact_and_entirely_pending():
-    """U-HANDOFF-1D registered the founder rebaseline: exactly RB-01..RB-24, every one PENDING.
-    The registering session may not pass its own contract - the same rule the handoff checklist
-    enforced until independent evidence arrived."""
+def test_the_rebaseline_checklist_is_exact_and_executed_but_not_complete():
+    """U-REBASELINE-1 executed: exactly RB-01..RB-24; RB-01..23 PASS each naming its produced
+    artifact; RB-24 stays PENDING because only the INDEPENDENT rebaseline review can certify
+    fresh-reviewer legibility - the executing session may not pass it, and the unit may not be
+    COMPLETE before that review. (Replaced, not deleted, from the all-PENDING registration
+    guard - CLAUDE.md section 5 rule 20.)"""
     data = yaml.safe_load(read(REBASELINE_CHECKLIST))
     crits = data["criteria"]
     ids = [c["id"] for c in crits]
@@ -778,12 +788,25 @@ def test_the_rebaseline_checklist_is_exact_and_entirely_pending():
     for c in crits:
         assert c.get("statement", "").strip(), f"{c['id']}: empty statement"
         assert c.get("evidence_required", "").strip(), f"{c['id']}: no required evidence"
-        assert c["result"] == "PENDING", (
-            f"{c['id']} is {c['result']!r} - the contract cannot be passed by the session that "
-            "registered it; only the executing U-REBASELINE-1 session fills results in"
-        )
+        if c["id"] == "RB-24":
+            assert c["result"] == "PENDING", (
+                "RB-24 may only be passed by the INDEPENDENT rebaseline review, never by the "
+                "executing session - a self-certified fresh-reviewer determination is worthless"
+            )
+        else:
+            assert c["result"] == "PASS", (
+                f"{c['id']} is {c['result']!r} - the executed contract records PASS with "
+                "evidence; a drift back is an unrecorded re-opening"
+            )
+            assert c.get("evidence", "").strip(), f"{c['id']}: PASS with no evidence recorded"
     meta = data["meta"]
     assert meta.get("registered_by") == "U-HANDOFF-1D"
+    assert meta.get("execution_review", "").endswith(
+        "u-rebaseline-1-product-production-review.md"
+    ), "the executed contract must name its review document"
+    assert re.search(r"NOT COMPLETE", meta.get("completion_rule", "")), (
+        "the contract must state the unit is not complete until the independent review passes"
+    )
     assert "NOT READY" in meta["verdict_vocabulary"]
     scope = meta.get("scope_rule", "")
     assert re.search(r"No production runtime behavior", scope, re.I), (
@@ -791,6 +814,12 @@ def test_the_rebaseline_checklist_is_exact_and_entirely_pending():
     )
     assert re.search(r"R-07 stays OPEN", scope), "the contract must preserve R-07 OPEN"
     assert re.search(r"P3 stays BLOCKED", scope), "the contract must keep P3 BLOCKED throughout"
+    units = registry_units()
+    reb = next(u for u in units if u["unit_id"] == "U-REBASELINE-1")
+    assert reb["status"] != "COMPLETE", (
+        "U-REBASELINE-1 may not be COMPLETE while RB-24 is PENDING - completion belongs to the "
+        "independent review and the founder, not the executing session"
+    )
 
 
 def test_the_checklist_covers_the_new_control_requirements():

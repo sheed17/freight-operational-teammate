@@ -59,6 +59,7 @@ REVIEWS = (
     ROOT / "docs" / "implementation" / "u-handoff-1b-clean-clone-correction-review.md",
     ROOT / "docs" / "implementation" / "u-handoff-1c-false-green-and-discovery-correction-review.md",
     ROOT / "docs" / "implementation" / "u-handoff-1d-final-adjudication-review.md",
+    ROOT / "docs" / "implementation" / "u-rebaseline-1-product-production-review.md",
 )
 
 STATUS_METADATA_FILES = (
@@ -70,6 +71,7 @@ STATUS_METADATA_FILES = (
     "docs/implementation/u-handoff-1b-clean-clone-correction-review.md",
     "docs/implementation/u-handoff-1c-false-green-and-discovery-correction-review.md",
     "docs/implementation/u-handoff-1d-final-adjudication-review.md",
+    "docs/implementation/u-rebaseline-1-product-production-review.md",
 )
 
 # Dependency-injection seam FOR TESTS ONLY: the hostile test replaces these to prove that a

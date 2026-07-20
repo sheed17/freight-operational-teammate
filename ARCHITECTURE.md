@@ -234,8 +234,13 @@ the result, and triggers automatic demotion.
 Tenant isolation is enforced at the database (composite tenant-first keys, tenant-aware foreign keys
 with column order checked, FK enforcement verified on the live connection). Cross-tenant access
 returns **nothing** and discloses nothing — absent and cross-tenant are indistinguishable.
-Neyma never holds a customer's TMS credentials: **the human establishes the session and Neyma
-attaches** (`human_established_session_only`).
+Credentials follow [`ADR-014`](docs/architecture/decisions/ADR-014-credential-and-machine-identity.md):
+Neyma minimizes handling of employees' raw personal credentials and prefers dedicated, scoped
+machine identities; it may securely possess customer-authorized authentication material under
+full governance (tenant isolation, least privilege, encryption, audit, revocation, rotation,
+destruction at offboarding). `human_established_session_only` remains a supported per-tenant
+session policy, not a universal rule. **Authentication never creates action authority** —
+credentials resolve only inside the adapter boundary on a claimed grant.
 
 ## 26. Migration posture
 
@@ -280,13 +285,40 @@ What is still missing, and what it means concretely:
 - The only current mitigation is the operator's one-writer-at-a-time discipline.
   ### **That is discipline, not a mechanism, and it may never be recorded as containment.**
 
+## 29b. Production, communications and control plane *(rebaselined — specification only)*
+
+Three architectural commitments were made durable by U-REBASELINE-1. **None is implemented yet;
+every item is `SPECIFICATION_ONLY` until a phase delivers it** (ADR-016 §3 readiness vocabulary —
+"code exists" means `LOCALLY_IMPLEMENTED`, nothing more):
+
+- **Production topology** ([`ADR-016`](docs/architecture/decisions/ADR-016-production-topology.md)):
+  a modular monolith on managed infrastructure — **PostgreSQL as the production transactional
+  store** (SQLite stays for local development and deterministic tests only), transactional
+  outbox/durable inbox, durable timers, background + communications + isolated browser workers,
+  S3-compatible content-addressed evidence storage, managed secrets, environment separation
+  (dev/staging/production), backups and point-in-time recovery, observability, rate limits,
+  dead-letter/quarantine handling, incident response, cost controls.
+- **Communications subsystem** ([`ADR-015`](docs/architecture/decisions/ADR-015-communications-subsystem.md)):
+  email/SMS/voice-evidence/portals/EDI as evidence sources, operational surfaces AND governed
+  external effects — a message is an effect bound to a Work Item, recipient identity, tenant,
+  purpose, authority, evidence, content digest, delivery state, expected response, verification
+  and escalation policy. **Email and SMS are required production capabilities for the first
+  commercial workflow.**
+- **Tenant/integration lifecycle and the web control plane**
+  ([`ADR-017`](docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md)): governed
+  tenant onboarding→offboarding, per-integration authorization/health/revocation, and a thin web
+  control plane for supervision and governance — never a dashboard-first product.
+- **Workflow-authority migration** ([`ADR-013`](docs/architecture/decisions/ADR-013-workflow-authority-migration.md)):
+  the thirteen-field, customer-authorized model by which authority for any workflow may move —
+  including to Neyma.
+
 ## 30. Canonical detailed specifications
 
 | Layer | Path |
 |---|---|
 | Constitution | [`docs/architecture/engineering-principles.md`](docs/architecture/engineering-principles.md) |
 | Canonical language | [`docs/architecture/semantic-model.md`](docs/architecture/semantic-model.md) |
-| **Binding decisions** | [`docs/architecture/decisions/`](docs/architecture/decisions/) — ADR-001 … ADR-011 |
+| **Binding decisions** | [`docs/architecture/decisions/`](docs/architecture/decisions/) — ADR-001 … ADR-017 |
 | Target architecture | [`docs/architecture/target-system-specification.md`](docs/architecture/target-system-specification.md) |
 | Binding lessons | [`docs/architecture/stream-b-architectural-lessons.md`](docs/architecture/stream-b-architectural-lessons.md) |
 | Platform primitives | [`docs/specifications/entities/`](docs/specifications/entities/) |

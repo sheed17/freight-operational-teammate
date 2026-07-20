@@ -12,27 +12,39 @@ invoice-processing tool, and then builds the next feature for the wrong product.
 
 ## 1. Product definition
 
-**Neyma is an operational execution layer for small and medium freight brokerages.**
+**Neyma is the AI-native operating platform and system of action for small and medium freight
+and logistics companies.** *(Canonical identity — [`ADR-012`](docs/architecture/decisions/ADR-012-product-identity-and-strategy.md).)*
 
-It observes fragmented freight work across the systems a brokerage actually runs on — email, PDFs
-and freight documents, TMS platforms, carrier and customer portals, SMS and calls, spreadsheets,
-accounting systems, load boards, and human approval channels — and it:
+It connects to the systems the company already uses — email, PDFs and freight documents, TMS
+platforms, carrier and customer portals, SMS and calls, spreadsheets, accounting systems, load
+boards, and human approval channels — maintains coherent operational state across them, owns
+open operational obligations, coordinates authorized execution, and **remains responsible until
+the relevant business outcome is closed.**
 
-- maintains **canonical operational state** across those fragments,
-- **coordinates bounded actions** against external systems,
-- **identifies missing events** (the thing that should have happened and did not),
-- **manages exceptions**, and
-- **helps accountable humans close operational loops.**
+Neyma coordinates:
 
-The unit of value is a **closed loop**, not a processed document.
+- **operational state** and **responsibilities**,
+- **missing information and missing events** (the thing that should have happened and did not),
+- **documents and evidence**, and **communications**,
+- **exceptions and conflicts**, and **approvals**,
+- **authorized external effects** and their **verification**,
+- **accountable human ownership**, and
+- **final business-loop closure.**
+
+The unit of value is a **correctly closed operational loop**, not a processed document.
 
 ## 2. Target customer
 
-A **small-to-medium US truckload freight brokerage** (or brokerage-leaning 3PL) that has a TMS and
-uses it, runs the business out of a shared inbox, keeps spreadsheets for everything the TMS cannot
-hold, has little or no EDI, and has **no in-house engineering, no data team and no integration
-budget**. Margin is thin and per-load, so one unaudited carrier invoice or one two-week-late
-customer invoice is a visible hit rather than a rounding error.
+**Initial ICP:** a **small-to-medium US truckload freight brokerage** (or brokerage-leaning 3PL)
+that has a TMS and uses it, runs the business out of a shared inbox, keeps spreadsheets for
+everything the TMS cannot hold, has little or no EDI, and has **no in-house engineering, no data
+team and no integration budget**. Margin is thin and per-load, so one unaudited carrier invoice
+or one two-week-late customer invoice is a visible hit rather than a rounding error.
+
+**Broader company direction** *(distinct from the initial ICP — ADR-012 §3)*: small and medium
+freight and logistics operators — additional brokerage modes and adjacent logistics businesses
+**where evidence supports expansion**. The initial ICP is not the permanent limit of the company,
+and the broader direction never justifies broadening the initial implementation scope by itself.
 
 `HYPOTHESIS` / `NEEDS VALIDATION` — the specific headcount, load volume and system mix of our design
 partner. See [`docs/product/operating-model.md`](docs/product/operating-model.md) §2 and
@@ -69,8 +81,19 @@ brokerage's existing systems and surfaces in the channels people already use, br
 is unsure, it says so and routes to a named human. When it acts, it records what it did, under whose
 authority, and how it verified the result.
 
-**The brokerage never rips out its TMS**, and Neyma never holds the human's TMS credentials —
-the human establishes the session and Neyma attaches to it.
+**Initial adoption does not require TMS replacement** — Neyma integrates with the systems the
+customer already uses, and the TMS may initially remain the system of record. That is the entry
+point, not a ceiling: Neyma **may become authoritative for individual workflows, the primary
+operating interface, and eventually the primary operating platform** where customer choice,
+product evidence and migration readiness support it — workflow by workflow, through the recorded
+authority-migration model in
+[`ADR-013`](docs/architecture/decisions/ADR-013-workflow-authority-migration.md).
+
+On credentials: Neyma **minimizes handling of employees' raw personal credentials and prefers
+dedicated, scoped machine identities** (OAuth, service accounts, API keys, managed browser
+identities — [`ADR-014`](docs/architecture/decisions/ADR-014-credential-and-machine-identity.md)).
+Human-established session attachment remains a supported fallback and a valid per-tenant choice,
+not a universal requirement. **Authentication never creates action authority.**
 
 ## 6. The eleven canonical operational loops
 
@@ -91,11 +114,17 @@ the human establishes the session and Neyma attaches to it.
 **Exactly eleven.** A twelfth loop is a product decision, not an implementation detail: it requires
 an explicit product change here and in [`docs/specifications/workflows/registry.md`](docs/specifications/workflows/registry.md).
 
+**The eleven loops are the canonical operating-domain map — not an instruction to build every
+loop simultaneously.** Implementation sequencing is strategy (ADR-012 §2), driven by the wedge
+hypothesis (§15) and customer evidence.
+
 ## 7. Distributed source-of-truth model
 
-**No single system holds the truth, and Neyma does not attempt to become the system of record.**
-The TMS is authoritative for some fields, the accounting system for others, the carrier for others,
-and the customer contract for others. Neyma maintains a **canonical operational state** that
+**No single system holds the truth.** The TMS is authoritative for some fields, the accounting
+system for others, the carrier for others, and the customer contract for others. Neyma does not
+seize authority it has not been given — **authority over any truth domain moves to Neyma only
+through the customer-authorized, recorded migration model of ADR-013**, never by default and
+never by drift. Neyma maintains a **canonical operational state** that
 records *what is believed, from what evidence, with what provenance, and how confidently* — and it
 is explicit about which external system is authoritative for each field.
 
@@ -134,7 +163,8 @@ financial and carrier-assignment actions always do. **The model never chooses an
 4. **The human is accountable, and the system makes that possible** — not a rubber stamp.
 5. **Never guess a consequential value.** Especially money.
 6. **Act once.** An external effect has an identity; a retry is not a second effect.
-7. **Meet the brokerage where it is.** No migration, no rip-and-replace, no EDI prerequisite.
+7. **Meet the brokerage where it is.** No forced migration, no assumed rip-and-replace, no EDI
+   prerequisite — and no ceiling on where a customer may deliberately take it (ADR-013).
 8. **Say what is unknown.** An unvalidated freight rule is marked, not assumed.
 9. **Earn autonomy.** Per class, capped, revocable, never global.
 10. **The repository is the memory.** If it is not written down here, it is not decided.
@@ -151,8 +181,12 @@ Neyma is **not**:
 - a browser automation wrapper
 - an AP reconciliation tool
 - an invoice product with additional features
+- a temporary browser bot, or a thin automation wrapper around a TMS
+- **a product whose first implementation wedge permanently limits its identity**
 
-> **Each of these describes something the repository currently contains.** The current runtime does
+**Ceilings are rejected alongside the misreadings** (ADR-012 §4). Each of the following is retired as a permanent product rule (it may describe a customer's *initial* posture; none is the product's limit): ~~"the brokerage never rips out its TMS"~~ · ~~"Neyma never becomes a system of record"~~ · ~~"anyone wanting TMS replacement is the wrong customer"~~ · ~~"the human must establish every session"~~ · ~~"Neyma must remain permanently outside native freight workflows."~~ **No competitor defines Neyma's canonical identity.**
+
+> **Each of the misreadings above describes something the repository currently contains.** The current runtime does
 > carrier-invoice work, does document extraction, does drive a browser, and does speak Slack.
 > **Those are the first implemented surfaces of the product, not the product.** An agent that infers
 > the product from the code will build the wrong thing — which is precisely why this section exists.
@@ -185,16 +219,38 @@ this file deliberately does not copy them, because a copied figure is a stale fi
 
 **No freight loop is implemented end-to-end to the canonical architecture.**
 
-## 15. Provisional first vertical slice
+## 15. Initial commercial workflow hypothesis — DELIVERED LOAD CLOSURE
 
-**W6 Documentation → atomic operational handoff → W8 Billing.**
+### `HYPOTHESIS — NEEDS DESIGN-PARTNER VALIDATION`
 
-### `NEEDS DESIGN-PARTNER VALIDATION`
+The founder-selected wedge is **Delivered Load Closure** — one operational *outcome*, not one
+loop. It supersedes the earlier, narrower "W6 Documentation → W8 Billing" slice description.
+Delivered Load Closure may use parts of **W5 Tracking, W6 Documentation, W7 Exceptions,
+W8 Billing and W10 Customer Communications**: it owns a delivered or near-delivered load until
+the required obligations are closed, potentially including —
 
-This is the *provisional* first slice, chosen on architectural reasoning about which loop is most
-self-contained and most obviously valuable. **It is not validated product truth.** It may not be
-promoted to a validated commitment without design-partner evidence recorded in
-[`docs/product/design-partner-observations.md`](docs/product/design-partner-observations.md).
+detecting delivery or expected delivery · identifying required documents · receiving,
+classifying and binding documents · requesting missing PODs, BOLs, invoices and receipts ·
+following up through email or SMS · detecting conflicting or unsupported evidence · reconciling
+charges against approved commercial records · routing actual decisions to accountable humans ·
+resolving or tracking exceptions · determining billing readiness · preparing customer billing ·
+preparing carrier-payable data where authorized · updating approved downstream systems ·
+verifying the external updates · recording communications and commitments · keeping the Work
+Item open until its closure conditions are met.
+
+**This is not invoice processing** — it is loop ownership of one outcome, and it is a
+**hypothesis**: it may not be promoted to validated product truth without design-partner
+evidence recorded per
+[`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md). The
+founder may later revise the wedge on customer evidence **without changing Neyma's stable
+operating-platform identity** (ADR-012 §2).
+
+**Measurable wedge outcomes** (instrumented, not asserted): delivered-to-invoiced time ·
+percentage of delivered loads awaiting documents · document follow-up time · exception age ·
+human touches per closed load · incorrect or unsupported charges found · duplicate
+communications prevented · billing readiness accuracy · external write error rate ·
+unknown-outcome rate · customer/operator correction rate · gross labor hours saved ·
+willingness to pay and expansion intent.
 
 ## 16. Design-partner validation boundary
 
@@ -217,6 +273,8 @@ foundational architecture work.
 | [`docs/specifications/workflows/`](docs/specifications/workflows/) | **CANONICAL** — the eleven loop specifications + registry |
 | [`docs/product/OPEN-VALIDATION-ITEMS.md`](docs/product/OPEN-VALIDATION-ITEMS.md) | **CANONICAL** — unresolved product/workflow rules and their safe interim behaviour |
 | [`docs/product/design-partner-observations.md`](docs/product/design-partner-observations.md) | **EVIDENCE** — what is actually known, by source class |
+| [`docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | **CANONICAL** — the evidence the wedge requires, its accountable sources and fail-closed behaviour |
+| [`docs/architecture/decisions/ADR-012`](docs/architecture/decisions/ADR-012-product-identity-and-strategy.md)–[`017`](docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md) | **CANONICAL** — the rebaseline decisions: identity/strategy, authority migration, credentials, communications, production topology, tenant & integration lifecycle |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **CANONICAL** — the architecture entry point |
 | [`docs/CANONICAL-DOCUMENTS.md`](docs/CANONICAL-DOCUMENTS.md) | **CANONICAL** — which documents may authorise decisions |
 
@@ -225,8 +283,8 @@ foundational architecture work.
 Tracked with IDs, blocking status and safe interim behaviour in
 [`docs/product/OPEN-VALIDATION-ITEMS.md`](docs/product/OPEN-VALIDATION-ITEMS.md). The largest are:
 the design partner's actual volumes and roles; which approvals are required versus advisory; the
-real exception taxonomy; customer-specific billing and settlement rules; and whether W6→W8 is in
-fact the right first slice.
+real exception taxonomy; customer-specific billing and settlement rules; and whether Delivered
+Load Closure is in fact the right wedge.
 
 ## 19. Existing code has no presumption of survival
 

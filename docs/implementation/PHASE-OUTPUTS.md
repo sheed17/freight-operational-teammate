@@ -1,6 +1,13 @@
 # Phase Output Map
 
 > **What each phase actually buys, and what stays forbidden afterwards.**
+>
+> ### **REBASELINED by U-REBASELINE-1 (ADR-012..017):** the P0–P14 identifiers and safety
+> sequencing are preserved; outputs were revised so the program produces a **deployable
+> product** — PostgreSQL persistence (P5), communications ingestion (P9) and supervised sends
+> (P12), the **Delivered Load Closure** shadow slice (P10, superseding the W6→W8 description),
+> production deployment + onboarding + the web control plane (P11), and workflow-authority
+> migration (P13). Readiness vocabulary: ADR-016 §3 — "code exists" = `LOCALLY_IMPLEMENTED` only.
 > A phase is not "some work in an area". It is a specific change in what the system can do and what
 > it can no longer do wrong.
 
@@ -59,7 +66,7 @@
 | **Acceptance gates** | **AC-SEC-001 GREEN** at the Phase-2 surfaces (7 deferred by phase) |
 | **Next unlocked** | U-DOC-1 → U-HANDOFF-1 |
 
-## U-DOC-1 / U-HANDOFF-1 — Durable control and rehearsal ⬅ **CURRENT**
+## U-DOC-1 / U-HANDOFF-1 — Durable control and rehearsal ✅ COMPLETE *(gate closed by U-HANDOFF-1D; the current unit is **U-REBASELINE-1** — see [`CURRENT.md`](CURRENT.md))*
 
 | | |
 |---|---|
@@ -100,12 +107,12 @@
 > ### **R-07 may not be marked CONTAINED before this phase completes.** Not by a plan, not by a
 > policy, not by operator discipline. A guard fails the build if anyone writes `CONTAINED` early.
 
-## P5 — Canonical events, outbox/inbox, replay isolation ⛔ NOT STARTED
+## P5 — Canonical events, outbox/inbox, replay isolation + production persistence ⛔ NOT STARTED
 
 | | |
 |---|---|
 | **Purpose** | Make history a first-class, replayable, inert fact stream |
-| **System capability after** | State rebuildable from history; a `GC-1` rebuild digest compared against the pinned one |
+| **System capability after** | State rebuildable from history; a `GC-1` rebuild digest compared against the pinned one; ### **PostgreSQL as the production transactional store with schema migrations, durable timers and scheduler (ADR-016 — SQLite stays dev/test-only)** |
 | **User-visible capability** | None |
 | **Safety guarantees after** | ### **Replay cannot mint authority, mint witnesses or grants, or call adapters.** Events are facts, never commands |
 | **Still prohibited** | Entities and machines (P6); policy (P8) |
@@ -153,12 +160,12 @@
 | **Acceptance gates** | ### **G4 QUALIFIES HERE — not at P4** |
 | **Next unlocked** | P9 |
 
-## P9 — Freight-domain projections and mappings ⛔ NOT STARTED
+## P9 — Freight-domain projections, mappings and communications ingestion ⛔ NOT STARTED
 
 | | |
 |---|---|
 | **Purpose** | The 40 domain entities and External Entity Mapping with field-level authority |
-| **System capability after** | Freight concepts modelled canonically; per-field authoritative sources |
+| **System capability after** | Freight concepts modelled canonically; per-field authoritative sources; ### **inbound email/SMS ingested as evidence (ADR-015) — correlated to tenants/loads/Work Items, commitments extracted with provenance, expected responses as Expectations** |
 | **User-visible capability** | None yet |
 | **Safety guarantees after** | A disagreement with an external system is an observation to reconcile, never a silent overwrite |
 | **Still prohibited** | The vertical slice (P10) |
@@ -166,48 +173,48 @@
 | **Acceptance gates** | **G1**; `domain-model-acceptance.md` |
 | **Next unlocked** | P10 |
 
-## P10 — First vertical slice: W6 → W8 ⛔ NOT STARTED
+## P10 — Delivered Load Closure: shadow slice ⛔ NOT STARTED
 
 | | |
 |---|---|
-| **Purpose** | Document intake → packet → eligibility → prepared invoice |
+| **Purpose** | The wedge outcome (PRODUCT.md §15, spanning parts of W5/W6/W7/W8/W10): delivery detection → required documents → reconciliation → billing readiness, with communications **drafted, never sent** |
 | **System capability after** | One complete canonical loop chain end-to-end |
-| **User-visible capability** | ### **FIRST REAL USER VALUE.** A brokerage sees a prepared invoice assembled from real documents with evidence attached |
-| **Safety guarantees after** | ### **NO WRITES.** Read-only by construction |
+| **User-visible capability** | ### **FIRST REAL USER VALUE.** A brokerage sees delivered loads carried to billing-ready with documents, evidence and drafted follow-ups attached |
+| **Safety guarantees after** | ### **NO WRITES, NO SENDS.** Read-only by construction |
 | **Still prohibited** | Any external write |
-| **Blocked on** | ### **V-W1 — whether W6→W8 is actually the right slice is UNVALIDATED** |
+| **Blocked on** | ### **V-W1 — whether Delivered Load Closure is the right wedge is UNVALIDATED** ([`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md)) |
 | **Acceptance gates** | **G5** |
 | **Next unlocked** | P11 |
 
-## P11 — Shadow mode and human-executed operation ⛔ NOT STARTED
+## P11 — Production foundation, onboarding, control plane + shadow operation ⛔ NOT STARTED
 
 | | |
 |---|---|
-| **Purpose** | Live reads, zero effects; then the human executes and Neyma captures evidence |
-| **System capability after** | Shadow-vs-human diff rate measured |
+| **Purpose** | ### **Deployed staging/pilot environments (ADR-016), tenant + integration onboarding and the thin web control plane (ADR-017)**; live reads, zero effects; the human executes and Neyma captures evidence |
+| **System capability after** | Shadow-vs-human diff rate measured — in a deployed environment, with onboarding, credential lifecycle (ADR-014) and connection health real |
 | **User-visible capability** | Neyma proposes; the human executes; the human sees whether it would have been right |
 | **Safety guarantees after** | Zero effects by construction |
 | **Still prohibited** | Any write by Neyma |
 | **Acceptance gates** | **G6 → G7** |
 | **Next unlocked** | P12 |
 
-## P12 — Supervised external effects ⛔ NOT STARTED
+## P12 — Supervised external effects and communications ⛔ NOT STARTED
 
 | | |
 |---|---|
-| **Purpose** | The first live gated write through the full kernel |
+| **Purpose** | The first live gated writes AND ### **outbound email/SMS sends (ADR-015)** through the full kernel, in production under supervision |
 | **System capability after** | Grant-backed, witness-gated, verified-by-readback external effects |
-| **User-visible capability** | ### **Neyma writes to the TMS** — once, verifiably, under a human's authority |
+| **User-visible capability** | ### **Neyma writes to approved systems and sends real communications** — verifiably, under a human's authority, with delivery states verified |
 | **Safety guarantees after** | The `UNKNOWN_OUTCOME` rate is instrumented; ### **a rising rate is automatic demotion**; wrong actions target **ZERO**, and any occurrence demotes |
 | **Still prohibited** | Unattended operation; multi-loop expansion |
 | **Acceptance gates** | **G8**; ### **G4 re-run LIVE** |
 | **Next unlocked** | P13 |
 
-## P13 — Multi-loop expansion ⛔ NOT STARTED
+## P13 — Multi-loop expansion and workflow-authority migration ⛔ NOT STARTED
 
 | | |
 |---|---|
-| **Purpose** | Additional loops plus the 10 atomic cross-loop handoffs |
+| **Purpose** | Additional loops plus the 10 atomic cross-loop handoffs; ### **the ADR-013 authority-migration model implemented — a customer may deliberately migrate a workflow's authority to Neyma, with all 13 recorded fields** |
 | **System capability after** | More of the back office carried |
 | **User-visible capability** | ### **The product starts to feel like an operational teammate rather than one workflow** |
 | **Safety guarantees after** | Per-loop capability flags; handoffs are atomic |

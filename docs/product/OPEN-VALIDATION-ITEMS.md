@@ -134,17 +134,21 @@ invented for this registry.
 
 ## ⛔ WORKFLOW BLOCKERS
 
-### V-W1 — Is W6 Documentation → W8 Billing actually the right first slice?
+### V-W1 — Is Delivered Load Closure actually the right wedge?
+
+*(Rebaselined by U-REBASELINE-1: the founder-selected wedge is now **Delivered Load Closure** —
+PRODUCT.md §15 — superseding the narrower "W6 Documentation → W8 Billing" framing this item
+originally carried. The validation question is unchanged in kind and remains OPEN.)*
 
 | | |
 |---|---|
-| **Question** | Is the Documentation→Billing chain the partner's real acute pain, or ours? |
-| **Affected workflow** | W6, W8 |
-| **Affected entity/state** | The cross-loop handoff |
-| **Implementation impact** | ### **Determines what P10 builds.** The corpus marks this a `HYPOTHESIS`, explicitly *"not yet a decision"*. |
+| **Question** | Is owning delivered loads to billing-ready closure the partner's real acute pain, or ours? |
+| **Affected workflow** | W5, W6, W7, W8, W10 (the parts Delivered Load Closure spans) |
+| **Affected entity/state** | The wedge Work Item and its closure conditions |
+| **Implementation impact** | ### **Determines what P10 builds.** PRODUCT.md §15 marks this a `HYPOTHESIS`, explicitly not a decision. The founder may revise the wedge on customer evidence without changing the platform identity (ADR-012 §2). |
 | **Blocking status** | **WORKFLOW_BLOCKER** — blocks **P10** |
-| **Safe interim behaviour** | ### **The slice stays marked `NEEDS DESIGN-PARTNER VALIDATION` and may not be promoted to validated product truth.** Foundational phases P3–P9 proceed regardless — they are loop-independent. |
-| **Evidence needed** | The partner's ranked pain, with volumes |
+| **Safe interim behaviour** | ### **The wedge stays marked `NEEDS DESIGN-PARTNER VALIDATION` and may not be promoted to validated product truth.** Foundational phases P3–P8 proceed regardless — they are loop-independent. |
+| **Evidence needed** | The evidence set in [`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](DESIGN-PARTNER-EVIDENCE-PROGRAM.md), E-08/E-16/E-17/E-19 first |
 | **Accountable source** | Design partner |
 | **Status** | **OPEN** |
 

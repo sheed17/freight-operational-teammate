@@ -177,12 +177,49 @@ concepts:
     owning_unit: P10
     note: legacy code touches W6/W8-shaped work; no loop is implemented to canonical architecture
 
-  - name: First vertical slice (W6 -> W8)
+  - name: Delivered Load Closure shadow slice (formerly "first vertical slice W6 -> W8")
     status: BLOCKED
-    specification: docs/specifications/workflows/W6-documentation.md
-    absent_symbols: [vertical_slice_w6_w8]
+    specification: PRODUCT.md
+    absent_symbols: [vertical_slice_w6_w8, delivered_load_closure]
     owning_unit: P10
     note: >-
-      NEEDS DESIGN-PARTNER VALIDATION (V-W1) and blocked behind P9 - recorded as BLOCKED rather
-      than merely unimplemented because a validation gate, not just sequencing, stands in front
-      of it
+      Rebaselined by U-REBASELINE-1: the wedge is Delivered Load Closure (PRODUCT.md section 15,
+      HYPOTHESIS). NEEDS DESIGN-PARTNER VALIDATION (V-W1) and blocked behind P9 - recorded as
+      BLOCKED rather than merely unimplemented because a validation gate, not just sequencing,
+      stands in front of it
+
+  - name: Communications subsystem (ingestion + governed sends)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-015-communications-subsystem.md
+    absent_symbols: [communications_ingestion, outbound_message_effect, delivery_state_verifier]
+    owning_unit: P9
+    note: >-
+      ADR-015 (U-REBASELINE-1) - email/SMS as evidence, surface and governed external effect;
+      ingestion lands at P9, supervised sends at P12. Legacy email triage code exists under a
+      disposition; the canonical subsystem is unbuilt.
+
+  - name: Production deployment topology (PostgreSQL, workers, object storage, secrets)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-016-production-topology.md
+    absent_symbols: [postgres_store, transactional_outbox_pg, production_scheduler]
+    owning_unit: P5
+    note: >-
+      ADR-016 (U-REBASELINE-1) - PostgreSQL production persistence lands at P5; deployment,
+      environments and operations at P11. SQLite remains dev/test-only. Every item is
+      SPECIFICATION_ONLY; nothing production-shaped exists.
+
+  - name: Web control plane and tenant/integration lifecycle
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md
+    absent_symbols: [control_plane_app, tenant_onboarding, integration_health]
+    owning_unit: P11
+    note: ADR-017 (U-REBASELINE-1) - the thin control plane and onboarding land at P11
+
+  - name: Workflow-authority migration model
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-013-workflow-authority-migration.md
+    absent_symbols: [authority_migration_record, authority_cutover]
+    owning_unit: P13
+    note: >-
+      ADR-013 (U-REBASELINE-1) - the thirteen-field customer-authorized migration model; no
+      migration capability exists and none is offered before P13.

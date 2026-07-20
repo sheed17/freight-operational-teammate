@@ -41,7 +41,7 @@
 | 10 | Authority by field | ### **FIELD-LEVEL per the Authority Matrix (§below); never whole-record.** |
 | 14–17 | Observations/Evidence/Claims | inbound produces **Observations + Evidence**; interpretation ⇒ **`MODEL_EXTRACTED`/`MODEL_INFERRED` Claims**; ### **an adapter NEVER produces `OWNER_ASSERTED` and NEVER strengthens provenance.** |
 | 18 | External Entity Mappings | reads/writes bind via **External Entity Mapping (#38)**; an external id is trusted only within `(tenant, external_system)`. |
-| 19–23 | Auth / credentials / session / least-privilege | ### **credentials resolve ONLY inside the adapter on a claimed grant; agents/tooling never hold them; `human_established_session_only` where browser-actuated (Neyma never holds TMS creds).** |
+| 19–23 | Auth / credentials / session / least-privilege | ### **credentials resolve ONLY inside the adapter on a claimed grant; agents/tooling never hold them.** ⚠️ *Amended by ADR-014 (U-REBASELINE-1):* `human_established_session_only` is the v1 browser session policy and remains a supported per-tenant fallback — **not** a permanent no-credentials absolute. ADR-014 governs the permitted access models (OAuth, service accounts, API keys, EDI, managed browser identities) and their mandatory security requirements. **Authentication never creates action authority.** |
 | 28–31 | retry / timeout / circuit / backpressure | ### **retry is CLASSIFIED (TRANSIENT bounded-backoff vs PERMANENT raise-once, L-D); a timeout NEVER means failure (GR-5).** |
 | 32 | Idempotency | reads: source-natural key; writes: the **Commit Key** + the grant CAS (single-use). |
 | 33–34 | ordering / dedup | inbound dedup on the **source-natural key** (a duplicate webhook/poll ⇒ `ObservationConfirmed`, not a new fact). |

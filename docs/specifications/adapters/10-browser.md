@@ -5,8 +5,8 @@
 **Purpose.** Drive a real browser (CDP) to read and act on systems that expose no API, translating pages into **Observations + Evidence** and clicks/types/uploads into **`CONSEQUENTIAL_EFFECT`s through the Action Pipeline**. **Not.** ### **NOT a decision-maker; NOT a credential holder; NOT reachable except with a valid grant+witness.** **Direction.** bidirectional.
 
 ## Session & isolation
-- ### **`human_established_session_only` — a human logs into the external system; Neyma ATTACHES to that session (CDP). Neyma never holds nor types the external credentials.**
-- **Credential-vault posture:** ### **none for external systems** (there is no vault of TMS passwords); only Neyma's own service creds live in `.env` (gitignored).
+- ### **v1 session policy: `human_established_session_only` — a human logs into the external system; Neyma ATTACHES to that session (CDP) and neither holds nor types the external credentials.** ⚠️ *Amended by ADR-014 (U-REBASELINE-1): this is a supported fallback and per-tenant choice, not a permanent universal rule — managed, customer-authorized browser identities and encrypted managed sessions are architecturally permitted under ADR-014's governance (nothing implemented yet).*
+- **Credential-vault posture (v1):** ### **none for external systems** (there is no vault of TMS passwords); only Neyma's own service creds live in `.env` (gitignored). *Production credential custody, when a phase implements it, follows ADR-014 §3 + ADR-016 managed secrets.*
 - **Tenant isolation:** ### **one browser profile per tenant session; a profile is never shared across tenants; a page returning another tenant's data ⇒ `CrossTenantAccessAttempted` (H30) ⇒ GLOBAL brake.**
 - **Concurrency:** ### **a `browser.busy` lock serializes writes on one session (a write holds it); a read during a write busy-falls-back to the cache ONLY for informational/decision-support reads — never for a `CONSEQUENTIAL_FRESHNESS_READ`.**
 

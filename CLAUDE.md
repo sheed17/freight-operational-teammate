@@ -16,7 +16,8 @@ This repository contains a working runtime that does carrier-invoice reconciliat
 extraction, Slack review and browser-driven TMS writes. **If you infer the product from that code,
 you will build the wrong product.**
 
-Neyma is an **operational execution layer for small and medium freight brokerages** across
+Neyma is the **AI-native operating platform and system of action for small and medium freight
+and logistics companies** (ADR-012), operating across
 **eleven** operational loops. The invoice work is the first implemented surface, not the product.
 **See [`PRODUCT.md`](PRODUCT.md) §12 for the explicit list of things Neyma is not.**
 
@@ -46,9 +47,15 @@ Read in this order. Do not skip 1–5.
 
 ## 2. Project identity
 
-**Neyma is an operational execution layer for small and medium freight brokerages.** It maintains
-canonical operational state across fragmented systems, coordinates bounded actions, identifies
-missing events, manages exceptions, and helps accountable humans close operational loops.
+**Neyma is the AI-native operating platform and system of action for small and medium freight
+and logistics companies** ([`ADR-012`](docs/architecture/decisions/ADR-012-product-identity-and-strategy.md)).
+It connects to the systems the company already uses, maintains coherent operational state across
+them, owns open operational obligations, coordinates authorized execution, and remains
+responsible until the relevant business outcome is closed. The initial ICP is small and medium
+US freight brokerages; the wedge hypothesis is **Delivered Load Closure** (PRODUCT.md §15 —
+`NEEDS VALIDATION`). Neyma may become authoritative for individual workflows only through the
+customer-authorized migration model of ADR-013 — integrate-first, migration-capable, no
+artificial ceilings and no assumed rip-and-replace.
 
 > ### **Neyma is NOT an invoice processor, an AP reconciliation tool, a document-extraction service,
 > a TMS chatbot, a Slack interface over old workflows, or a browser-automation wrapper.**
@@ -208,8 +215,11 @@ These are not style preferences. Each one is a defect this repository actually s
 
 - Secrets live in `.env` (gitignored). **Never commit them.**
 - **Never push without an explicit go-ahead.**
-- Neyma never handles a customer's TMS credentials — the human logs in and Neyma attaches
-  (`human_established_session_only`).
+- Credentials: Neyma **minimizes handling of employees' raw personal credentials and prefers
+  dedicated, scoped machine identities** (ADR-014). It may securely possess customer-authorized
+  authentication material under ADR-014's governance; `human_established_session_only` remains a
+  supported per-tenant fallback, not a universal rule. **Authentication never creates action
+  authority.** No credential implementation exists yet — it lands with P4/P11, never earlier.
 - Memory and logs must **never** store money values.
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 - Bootstrap: `python3 scripts/check_env.py` **before** creating the venv and again inside it

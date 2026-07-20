@@ -23,7 +23,8 @@
 
 ## Product identity, in one line
 
-**Neyma is an operational execution layer for small and medium freight brokerages**, spanning
+**Neyma is the AI-native operating platform and system of action for small and medium freight
+and logistics companies** (ADR-012; initial ICP: US freight brokerages), spanning
 eleven canonical operational loops (W1–W11).
 
 > ### **It is NOT an invoice processor, an AP reconciliation tool, a document-extraction service,

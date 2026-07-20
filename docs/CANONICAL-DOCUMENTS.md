@@ -40,7 +40,7 @@ docs/architecture/engineering-principles.md                    the constitution
   └─ docs/product/{freight-discovery, operating-model}.md      domain truth
       └─ PRODUCT.md                                            ← the root product authority
           └─ docs/architecture/semantic-model.md               the language
-              └─ docs/architecture/decisions/ADR-001…011       binding decisions
+              └─ docs/architecture/decisions/ADR-001…017       binding decisions
                   └─ docs/architecture/target-system-specification.md
                       └─ docs/specifications/{entities, state-machines, events,
                                               domain-entities, adapters, workflows}/
@@ -73,6 +73,7 @@ disagree on *product identity*, **`PRODUCT.md` wins.**
 | [`product/freight-discovery.md`](product/freight-discovery.md) | Domain research, every claim labelled | **CANONICAL (evidence)** | Claims inherit their epistemic labels |
 | [`product/OPEN-VALIDATION-ITEMS.md`](product/OPEN-VALIDATION-ITEMS.md) | Unresolved rules + safe interim behaviour | **CANONICAL** | **Consult before implementing any freight rule** |
 | [`product/design-partner-observations.md`](product/design-partner-observations.md) | What is actually known, by source class | **EVIDENCE** | May not be upgraded to fact by an agent |
+| [`product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | The evidence the wedge requires, accountable sources, fail-closed behavior (U-REBASELINE-1) | **CANONICAL** | Specifies required evidence; is not itself evidence, and never a READY coding unit |
 
 ## 4. Architecture layer
 
@@ -80,7 +81,8 @@ disagree on *product identity*, **`PRODUCT.md` wins.**
 |---|---|---|
 | [`architecture/engineering-principles.md`](architecture/engineering-principles.md) | The constitution | **CANONICAL** |
 | [`architecture/semantic-model.md`](architecture/semantic-model.md) | Canonical language | **CANONICAL** |
-| [`architecture/decisions/ADR-001…ADR-011`](architecture/decisions/) | The 11 binding decisions | **CANONICAL** |
+| [`architecture/decisions/ADR-001…ADR-011`](architecture/decisions/) | The 11 core binding decisions | **CANONICAL** |
+| [`architecture/decisions/ADR-012…ADR-017`](architecture/decisions/) | The 6 U-REBASELINE-1 decisions: identity/strategy, workflow-authority migration, credential/machine-identity, communications, production topology, tenant & integration lifecycle | **CANONICAL** |
 | [`architecture/target-system-specification.md`](architecture/target-system-specification.md) | Target architecture, Rev 2 | **CANONICAL** |
 | [`architecture/stream-b-architectural-lessons.md`](architecture/stream-b-architectural-lessons.md) | Lessons L-A…L-D, self-marked **BINDING** | **CANONICAL** |
 | [`architecture/live-effect-entrypoint-inventory.md`](architecture/live-effect-entrypoint-inventory.md) | Entry points reaching the live TMS | **CURRENT_STATUS** |
@@ -120,7 +122,7 @@ its names.
 | [`implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](implementation/AUTO-LOADED-GUIDANCE-REVIEW.md) | The auto-loaded guidance audit — a review of its moment; its live obligations are enforced by guards, not by the document | **HISTORICAL (evidence)** — demoted by U-HANDOFF-1C after its "Reality" row was found carrying a stale suite figure while claiming control authority |
 | [`implementation/TOOL-ACCESS-POLICY.md`](implementation/TOOL-ACCESS-POLICY.md) | Broad tool access for formal sessions; research vs authority boundary | **IMPLEMENTATION_CONTROL** |
 | [`implementation/U-HANDOFF-1-ACCEPTANCE.yaml`](implementation/U-HANDOFF-1-ACCEPTANCE.yaml) | The executable rehearsal acceptance checklist — **adjudicated 13/13 PASS by U-HANDOFF-1D** from the preserved independent U-HANDOFF-2B evidence | **ACCEPTANCE_ORACLE** |
-| [`implementation/U-REBASELINE-1-ACCEPTANCE.yaml`](implementation/U-REBASELINE-1-ACCEPTANCE.yaml) | The executable rebaseline acceptance contract — RB-01..RB-24, all PENDING until U-REBASELINE-1 executes | **ACCEPTANCE_ORACLE** |
+| [`implementation/U-REBASELINE-1-ACCEPTANCE.yaml`](implementation/U-REBASELINE-1-ACCEPTANCE.yaml) | The executable rebaseline acceptance contract — RB-01..RB-23 PASS, RB-24 PENDING for the independent review | **ACCEPTANCE_ORACLE** |
 | [`implementation/IMPLEMENTATION-SURFACE.yaml`](implementation/IMPLEMENTATION-SURFACE.yaml) | Which architecture concepts are implemented vs specification-only | **CURRENT_STATUS** |
 | [`implementation/SUITE-RESULT.json`](implementation/SUITE-RESULT.json) | The machine-readable suite-result artifact backing the status record | **CURRENT_STATUS** |
 | [`implementation/TRANSITION-EVENT-AUDIT.yaml`](implementation/TRANSITION-EVENT-AUDIT.yaml) | The mechanically-proven transition/event classes; COUNT NEEDS ADJUDICATION at G2 | **CURRENT_STATUS** |

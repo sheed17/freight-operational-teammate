@@ -1,6 +1,7 @@
 # Neyma
 
-**An operational execution layer for small and medium freight brokerages.**
+**The AI-native operating platform and system of action for small and medium freight and
+logistics companies.** (Initial ICP: small and medium US freight brokerages — ADR-012.)
 
 Neyma observes fragmented freight work across the systems a brokerage actually runs on — email,
 PDFs and freight documents, TMS platforms, carrier and customer portals, SMS and calls,
@@ -137,8 +138,11 @@ Do not let pip start resolving on a non-compliant Python — the resolver error 
 minutes later and says nothing useful. A true clean-clone verification (fresh directory, fresh
 venv, full suite) is one command: `.venv/bin/python scripts/clean_clone_gate.py`.
 
-Neyma **never handles a customer's TMS credentials** — the human establishes the session and Neyma
-attaches to it (`human_established_session_only`).
+Neyma **minimizes handling of employees' raw personal credentials and prefers dedicated, scoped
+machine identities** ([`ADR-014`](docs/architecture/decisions/ADR-014-credential-and-machine-identity.md)).
+It may securely possess customer-authorized authentication material under ADR-014's governance;
+human-established session attachment (`human_established_session_only`) remains a supported
+per-tenant fallback. **Authentication never creates action authority.**
 
 ---
 

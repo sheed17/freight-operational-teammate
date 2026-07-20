@@ -2,6 +2,19 @@
 
 *Derived from the gap matrix + the frozen safety dependencies. ### **No calendar estimates.** Ordering is by dependency, not convenience.*
 
+> ### **REBASELINED by U-REBASELINE-1 (founder-authorized, 2026-07-20).** The P0–P14 identifier
+> set and the safety sequencing are preserved; the phase OUTPUTS are revised so the final program
+> produces a **deployable product, not only a local engine**: PostgreSQL-backed production
+> persistence (P5), communications ingestion (P9) and supervised sends (P12), the **Delivered
+> Load Closure** shadow slice replacing the narrower W6→W8 description (P10), production
+> deployment + tenant/integration onboarding + the web control plane (P11), and
+> workflow-authority migration (P13). Decisions: ADR-012..017. Readiness vocabulary (ADR-016 §3):
+> `SPECIFICATION_ONLY → LOCALLY_IMPLEMENTED → STAGING_READY → PILOT_READY →
+> SUPERVISED_PRODUCTION_READY → GENERALLY_PRODUCTION_READY` — **"code exists" means
+> `LOCALLY_IMPLEMENTED`, never "production ready."** The registry
+> ([`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml)) carries the binding per-phase
+> detail; on any disagreement the registry wins.
+
 ## The 16 migration principles *(binding on every phase)*
 1 safety kernel before broad workflow · 2 one logical effect = one commit namespace · 3 legacy+canonical may never independently effect · 4 hard cutover preferred · 5 coexistence requires the SHARED ledger+key namespace · 6 no big-bang · 7 data migration resumable+idempotent · 8 history stays attributable · 9 replay stays side-effect free throughout · 10 flags narrow, never bypass · 11 rollback disables capability, never restores an unsafe path · 12 every phase leaves the repo deployable+coherent · 13 ### **no phase depends on future work for a CURRENT safety guarantee** · 14 migration scripts get no bypass · 15 test fixtures unreachable in production · 16 ### **current behavior is NOT preserved when it contradicts the frozen model.**
 
@@ -12,15 +25,15 @@
 | **2** | Tenant-safe Effect Ledger foundation | `tenant_id` first in all 9 surfaces; the one ledger, 8 states, 2 partial indexes | ### **P1 green** | → G4 |
 | **3** | Checkpoint Witness + claim CAS | the 7-step atomic checkpoint; unconstructable `CheckpointPassed`; grant mint+claim; brake admission | P2 | → G4 |
 | **4** | Adapter containment | the 13 import sites converted/removed; CI import gate ON; orphan detection; verification taxonomy | ### **P3** *(a gate with nothing behind it is theatre)* | → G4 |
-| **5** | Outbox/inbox + replay isolation | transactional outbox, dedup inbox, ### **98 event contracts**, `GC-1` digest, sandboxed replay | P2 | **G2** |
+| **5** | Outbox/inbox + replay isolation + production persistence | transactional outbox, dedup inbox, ### **98 event contracts**, `GC-1` digest, sandboxed replay; ### **PostgreSQL as the production transactional store (ADR-016; SQLite stays dev/test-only)**, durable timers/scheduler | P4 | **G2** |
 | **6** | Foundational entities + machines | Work Item (ownership!), Pipeline Instance, the 13 machines, ### **134 transitions** | P5 | **G1** + → G4 *(`AC-SAFE-028`)* |
 | **7** | Provenance, Evidence, Observation, Claims, Identity Binding | the 6 provenance classes, R-P1/2/3, content-addressed Evidence, the deterministic linker + Conflict | P6 | G1 + → G4 *(`AC-SAFE-015/016`)* |
 | ### **8** | Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation | typed policy, compile-or-refuse rules, the real brake, M7–M10 | P7 | ### **G4 QUALIFIES HERE** *(not at P4 — see the gate plan's correction)* |
-| **9** | Freight-domain projections + mappings | the 40 entities, External Entity Mapping, field-level authority | P8 | G1 |
-| **10** | ### **First vertical slice (W6→W8)** | document intake→packet→eligibility→prepared invoice; **no writes** | P9 | **G5** |
-| **11** | Shadow + human-executed | live reads, zero effects; then human executes, Neyma captures evidence | P10 | **G6→G7** |
-| **12** | Supervised effects | the first live gated write through the full kernel | ### **P11 + G4 re-run LIVE** | **G8** |
-| **13** | Multi-loop expansion | additional loops + atomic handoffs | P12 | **G9** |
+| **9** | Freight-domain projections + communications ingestion | the 40 entities, External Entity Mapping, field-level authority; ### **inbound email/SMS as evidence (ADR-015): correlation to loads/Work Items, commitments, expected-response Expectations** | P8 | G1 |
+| **10** | ### **Delivered Load Closure — shadow slice** | the wedge outcome (PRODUCT.md §15, spanning parts of W5/W6/W7/W8/W10): delivery detection→documents→reconciliation→billing readiness, comms **drafted never sent**; **no writes, no sends** | P9 | **G5** |
+| **11** | Production foundation + shadow operation | ### **deployed staging/pilot environments (ADR-016), tenant + integration onboarding, the thin web control plane (ADR-017)**; live reads, zero effects; the human executes, Neyma captures evidence | P10 | **G6→G7** |
+| **12** | Supervised effects + supervised communications | the first live gated writes AND ### **outbound email/SMS sends (ADR-015)** through the full kernel, in production under supervision | ### **P11 + G4 re-run LIVE** | **G8** |
+| **13** | Multi-loop expansion + authority migration | additional loops + atomic handoffs; ### **the ADR-013 workflow-authority migration model implemented** | P12 | **G9** |
 | **14** | Bounded autonomy | per-class, capped, time-boxed, revocable | ### **P13 + the graduation dossier** | **G10** |
 
 ## Justified ordering deviations from the brief's sequence

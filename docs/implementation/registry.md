@@ -39,6 +39,9 @@
 | [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
 | [TOOL-ACCESS-POLICY.md](TOOL-ACCESS-POLICY.md) | broad tool access for formal CLI sessions — research capability vs consequential authority |
 | [u-handoff-1d-final-adjudication-review.md](u-handoff-1d-final-adjudication-review.md) | ### **U-HANDOFF-1D — the handoff gate CLOSED: the independent U-HANDOFF-2B hostile review adjudicated, 13/13 PASS; U-REBASELINE-1 registered as the single READY unit. Next: U-REBASELINE-1.** |
+| [u-rebaseline-1-product-production-review.md](u-rebaseline-1-product-production-review.md) | ### **U-REBASELINE-1 — the founder product/integration/production rebaseline: ADR-012..017, Delivered Load Closure wedge (HYPOTHESIS), revised P3–P14, PostgreSQL production topology, communications as a core subsystem. RB-01..23 PASS, RB-24 pending the independent review.** |
+| [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..23 PASS, RB-24 PENDING) |
+| [../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | the wedge's required design-partner evidence, accountable sources, fail-closed |
 | [u-handoff-2b-hostile-review-report.md](u-handoff-2b-hostile-review-report.md) | the preserved independent second hostile review (received portion, truncation disclosed) |
 | [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist — adjudicated 13/13 PASS by U-HANDOFF-1D |
 | [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..RB-24, all PENDING until the unit executes) |
