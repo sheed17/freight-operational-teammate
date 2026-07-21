@@ -11,8 +11,8 @@ derived:
   content_commit: 98e531fdcc525ba47d780f48232eb0f9891314c6
   content_tree: 4b30b6c03bc138addc0afb94997fcca62bb8621c
   active_phase: P3
-  single_ready_unit: U-REBASELINE-1
-  cli_switch_readiness_percent: 30.0
+  single_ready_unit: P3
+  cli_switch_readiness_percent: 100.0
   overall_program_percent: 0.0
   current_phase_percent: 0.0
   user_visible_maturity_percent: 0.0

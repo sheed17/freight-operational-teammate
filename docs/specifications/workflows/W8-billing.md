@@ -1,6 +1,6 @@
 # Workflow W8 — L8 Billing *(customer AR + cash application)*
 
-*Registry defaults apply. ### The FIRST-LOOP destination (L6→L8). The loop closes at CASH.*
+*Registry defaults apply.* ⚠️ **SUPERSEDED FRAMING (U-REBASELINE-1A):** originally the FIRST-LOOP destination of an `L6→L8` slice. The wedge is now **Delivered Load Closure** (PRODUCT.md §15 — a `HYPOTHESIS`) spanning parts of W5/W6/W7/W8/W10; W8 is a **contributor**, not the slice. ### **The loop still closes at CASH.**
 
 **2.** W8. **3.** From a complete Document Packet → **the customer PAID**, reconciled. **4.** ### **money in the door — not an invoice in an outbox.** **5.** own the receivable from eligibility to collection or authorized disposition. **6.** ### **NOT "an invoice was entered/sent" — generation/transmission does NOT close AR (P24, CD-10); the loop closes at PAID.** **10.** the billing/AR owner. **13.** Customer Invoice, Customer Invoice Line, Customer, Document Packet, Accessorial Charge, Payment Application, Financial Reconciliation Result. **14.** `BILL_AND_COLLECT`.
 

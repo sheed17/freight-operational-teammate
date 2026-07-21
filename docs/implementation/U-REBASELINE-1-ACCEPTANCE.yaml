@@ -6,12 +6,12 @@
 # re-evaluates them BEFORE P3 begins). It is a documentation, architecture, specification and
 # control unit ONLY - it must not implement runtime product behavior.
 #
-# results: EXECUTED by the U-REBASELINE-1 session on 2026-07-20. RB-01..RB-23 carry PASS with
-# the produced artifact named as evidence; RB-24 stays PENDING because only the INDEPENDENT
-# product/production rebaseline review can determine it - the executing session cannot certify
-# its own legibility to a fresh reviewer. The unit is NOT COMPLETE until that review passes.
+# results: ADJUDICATED COMPLETE. RB-01..RB-23 were executed by the U-REBASELINE-1 session with the
+# produced artifact named as evidence; RB-24 was awarded by U-REBASELINE-1A from the INDEPENDENT
+# U-REBASELINE-REVIEW-1 (preserved at u-rebaseline-review-1-independent-report.md) after every
+# accepted blocking finding was resolved. The executing session never self-certified RB-24.
 # eval/tests/test_docs_control_system.py enforces: exactly these 24 criteria exist, every PASS
-# names its produced artifact, and RB-24 cannot be passed by the executing session.
+# names its evidence, and RB-24's evidence must cite the INDEPENDENT report.
 
 meta:
   unit: U-REBASELINE-1
@@ -21,9 +21,11 @@ meta:
   executed_on: "2026-07-20"
   execution_review: docs/implementation/u-rebaseline-1-product-production-review.md
   completion_rule: >-
-    NOT COMPLETE in this session. Completion requires the independent product/production
-    rebaseline review (RB-24) and the founder's subsequent instruction - the executing session
-    records evidence, it does not close its own unit.
+    CLOSED. U-REBASELINE-1 is COMPLETE, adjudicated by U-REBASELINE-1A on 2026-07-20 from the
+    INDEPENDENT U-REBASELINE-REVIEW-1 with all accepted blocking findings resolved first.
+  adjudicated_by: U-REBASELINE-1A
+  independent_review: docs/implementation/u-rebaseline-review-1-independent-report.md
+  adjudication_review: docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
   verdict_vocabulary: [READY FOR INDEPENDENT PRODUCT/PRODUCTION REBASELINE REVIEW, NOT READY]
   authority: >-
     Founder-authorized product decisions (CLAUDE.md section 4 authority classes). The rebaseline
@@ -148,7 +150,11 @@ criteria:
     evidence_required: each subsystem addressed by name in the production architecture
     result: PASS
     evidence: >-
-      ADR-016 section 2 Persistence/Identity rows - each subsystem addressed by name
+      ADR-016 section 2 Persistence row (PostgreSQL, migrations, transactional outbox + durable
+      inbox, durable timers/scheduler), Evidence row (S3-compatible object storage) and Identity &
+      access row (managed secrets, tenant auth/roles/authorization); queues are the outbox/inbox in
+      that same row, and PROGRAM-WEIGHTS.yaml production_readiness_checklist tracks
+      queues_inbox_outbox as a discrete item. (Citation corrected by U-REBASELINE-1A, finding F-08.)
 
   - id: RB-14
     statement: >-
@@ -165,7 +171,12 @@ criteria:
     evidence_required: each operational concern addressed by name
     result: PASS
     evidence: >-
-      ADR-016 section 2 Operations/Environments/Resilience/Lifecycle rows
+      ADR-016 section 2 CI/CD & release row (added by U-REBASELINE-1A - CI/CD, release promotion,
+      rollback exercises), plus its Operations/Environments/Resilience/Lifecycle rows; per-phase
+      rollback semantics in implementation-roadmap.md; PROGRAM-WEIGHTS.yaml
+      production_readiness_checklist items ci_cd / rollback_exercises / monitoring_and_alerting /
+      backup_and_restoration / disaster_recovery / incident_response. (Citation corrected by
+      U-REBASELINE-1A, finding F-08 - the original cited ADR-016 for CI/CD, which it did not name.)
 
   - id: RB-16
     statement: P3 remains the next safety implementation unit after rebaseline.
@@ -236,7 +247,18 @@ criteria:
       A fresh reviewer can determine exactly what Claude will build and what inputs it still
       requires.
     evidence_required: the independent rebaseline review reaching that determination
-    result: PENDING
-    note: >-
-      Deliberately left PENDING by the executing session - only the independent
-      product/production rebaseline review can pass this criterion.
+    result: PASS
+    evidence: >-
+      The INDEPENDENT U-REBASELINE-REVIEW-1 (fresh testing-account clone at fb5fcd93 / tree
+      6bbef434, preserved verbatim at docs/implementation/u-rebaseline-review-1-independent-report.md)
+      determined exactly this: five PASS verdicts (product, surface/conversational, freight
+      coverage, production specification, safety/control, implementation handoff), zero CRITICAL
+      findings, and an explicit statement that the repository "gives a fresh implementation agent
+      one coherent, honest, guard-defended definition" with "the reading order works, the status
+      authority is unambiguous". Its four HIGH and the accepted MEDIUM findings - the
+      fresh-reviewer-legibility defects it said must be resolved before RB-24 is declared PASS
+      (F-01, F-02, F-04, F-08) and the guard-integrity set (F-03, F-05, F-06, F-07) - were ALL
+      RESOLVED by U-REBASELINE-1A before this criterion was set; see
+      docs/implementation/u-rebaseline-1a-founder-adjudication-review.md for the per-finding
+      adjudication. Awarded by the ADJUDICATING session from INDEPENDENT evidence, never
+      self-certified.

@@ -1,6 +1,6 @@
 # Workflow W2 — L2 Procurement *(sourcing + tender + assignment + rate confirmation)*
 
-*Registry defaults apply.*
+*Registry defaults apply.* ⚠️ **GATE-CLASS DELEGATION (U-REBASELINE-1A, closing review finding F-09):** every consequential step in this loop whose gate/approval class is not stated in-spec **inherits the registry default** — the full Action Pipeline (policy → approval → brake → grant → checkpoint → verification). The *specific* approval class and threshold are `NEEDS VALIDATION` (customer-specific) and are bound at implementation time in the owning phase; **no step is ungated by omission**.
 
 **2.** W2. **3.** From an uncovered Load → a **confirmed Carrier Assignment** at a committed buy rate with a signed Rate Con. **4.** ### **the load is covered by a carrier we trust at a rate we chose — not a board posting.** **5.** own coverage until a valid Assignment OR unserviceable/escalated. **6.** ### **NOT "a carrier responded" — a search result/response is a CANDIDATE/Offer, never an Assignment.** **10.** the coverage broker. **12.** Carrier, Carrier Contact, Factoring Company (remittance), Driver. **13.** Carrier, Carrier Offer, Tender, Carrier Assignment, Rate Confirmation, Carrier Movement, Qualification Decision. **14.** `COVER_LOAD`.
 

@@ -8,10 +8,12 @@
 > persistence (P5), communications ingestion (P9) and supervised sends (P12), the **Delivered
 > Load Closure** shadow slice replacing the narrower W6→W8 description (P10), production
 > deployment + tenant/integration onboarding + the web control plane (P11), and
-> workflow-authority migration (P13). Decisions: ADR-012..017. Readiness vocabulary (ADR-016 §3):
-> `SPECIFICATION_ONLY → LOCALLY_IMPLEMENTED → STAGING_READY → PILOT_READY →
-> SUPERVISED_PRODUCTION_READY → GENERALLY_PRODUCTION_READY` — **"code exists" means
-> `LOCALLY_IMPLEMENTED`, never "production ready."** The registry
+> workflow-authority migration (P13). Decisions: ADR-012..019. **Readiness vocabulary — the
+> canonical seven tiers ([`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §5):** SPECIFIED →
+> LOCALLY IMPLEMENTED → INTEGRATION TESTED → STAGING READY → SHADOW-PILOT READY →
+> SUPERVISED-PRODUCTION READY → GENERALLY PRODUCTION READY — **"code exists" means
+> `LOCALLY IMPLEMENTED`, never "production ready."** (ADR-016 §3's six-tier draft is
+> reconciled into these; U-REBASELINE-1A closed review finding F-14.) The registry
 > ([`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml)) carries the binding per-phase
 > detail; on any disagreement the registry wins.
 >

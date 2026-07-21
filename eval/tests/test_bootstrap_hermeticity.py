@@ -375,7 +375,7 @@ def test_the_implementation_graph_is_consistent_and_protects_the_safety_wall():
         "P5 can begin without P4 - the rehearsal's exact bypass finding (P5 deps were [P2])"
     )
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["U-REBASELINE-1"], f"READY set drifted: {ready}"
+    assert ready == ["P3"], f"READY set drifted: {ready}"  # U-REBASELINE-1A: both gates closed
 
 
 # ============================================================ H-3 / H-4: authority

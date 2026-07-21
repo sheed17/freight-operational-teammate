@@ -247,17 +247,31 @@ def test_the_status_record_still_states_the_canonical_facts():
     text = CURRENT.read_text(encoding="utf-8")
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "P2 no longer recorded COMPLETE"
     assert re.search(r"\*\*P3\*\*.{0,80}NOT STARTED", text, re.S), "P3 no longer recorded NOT STARTED"
-    assert re.search(r"U-REBASELINE-1", text), (
-        "the current work program is no longer the founder rebaseline - if the program moved on, "
-        "this guard must be REPLACED with the new truth, not deleted"
+    assert re.search(r"the next approved unit is `P3`", text, re.I), (
+        "the current work program is no longer P3 - if the program moved on, this guard must be "
+        "REPLACED with the new truth, not deleted (U-REBASELINE-1A closed both gates)"
     )
-    assert re.search(r"handoff gate.{0,200}CLOSED", text, re.I | re.S), (
-        "the status must record that the handoff gate closed (U-HANDOFF-1D adjudication on the "
-        "independent U-HANDOFF-2B evidence) - losing that record un-explains why P3 is reachable"
+    assert re.search(r"BOTH GATES ARE CLOSED", text, re.I), (
+        "the status must record that both gates closed (U-HANDOFF-1D on the independent "
+        "U-HANDOFF-2B evidence; U-REBASELINE-1A on the independent U-REBASELINE-REVIEW-1) - "
+        "losing that record un-explains why P3 is READY"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
-    p3 = next(u for u in units if u["unit_id"] == "P3")
-    assert p3["status"] == "BLOCKED", f"P3 is {p3['status']} in the registry - must be BLOCKED"
+    by = {u["unit_id"]: u for u in units}
+    # U-REBASELINE-1A: P3 is now READY (both gates closed on independent evidence). READY is NOT
+    # implemented - the absence guards prove no P3 symbol exists in src/, and CURRENT.md must keep
+    # saying so. Replaced, not deleted, from the P3-must-be-BLOCKED assertion.
+    assert by["P3"]["status"] == "READY", f"P3 is {by['P3']['status']} - expected READY"
+    assert not by["P3"].get("validation_blockers"), (
+        "P3 is READY while validation blockers remain recorded"
+    )
+    for later in ("P4", "P5", "P14"):
+        assert by[later]["status"] == "BLOCKED", (
+            f"{later} is {by[later]['status']} - every phase after P3 must stay BLOCKED"
+        )
+    assert re.search(r"P3 is READY .{0,40}NOT IMPLEMENTED", text, re.I | re.S), (
+        "CURRENT.md must state that P3 being READY does not mean P3 was implemented"
+    )
 
 
 # ------------------------------------------------------------------ 6. the validator itself is load-bearing

@@ -27,6 +27,7 @@ persistence layer keeps a single schema/migration discipline across both.
 | **Persistence** | PostgreSQL (transactional, tenant-first keys) · schema migrations · transactional outbox and durable inbox · durable timers and scheduler |
 | **Evidence** | S3-compatible object storage · content-addressed evidence · malware and attachment handling |
 | **Identity & access** | managed secrets · tenant authentication · user identity and roles · tenant authorization · approval and policy administration |
+| **CI/CD & release** | continuous integration and delivery pipelines · automated build/test/deploy gates · release promotion between environments · **rollback exercises practised, not assumed** (per-phase rollback semantics live in [`implementation-roadmap.md`](../../implementation/implementation-roadmap.md)) |
 | **Operations** | integration connection health · human-review and exception interfaces · logs, traces, metrics and alerts · feature flags · model routing, budgets and fallbacks · rate limits and backpressure · dead-letter and quarantine handling · idempotency and unknown-outcome resolution |
 | **Environments** | environment separation · development, staging and production · customer sandbox and pilot posture |
 | **Resilience** | backups · point-in-time database recovery · object-store recovery · disaster recovery · incident response |

@@ -276,7 +276,7 @@ units:
       deployment; tenant and customer onboarding; the P3-P14 implementation program; and
       product-market-fit and design-partner evidence requirements. A documentation, architecture,
       specification and control unit ONLY.
-    status: READY
+    status: COMPLETE
     dependencies: [U-HANDOFF-1]
     unlocked_by: [U-HANDOFF-1]
     blocks: [P3]
@@ -322,8 +322,11 @@ units:
       - "customer-specific freight rules remain NEEDS VALIDATION (RB-18) - the rebaseline may
          not invent them"
     completion_evidence:
-      - "the rebaseline review document (created by the executing session)"
-      - "an independent product/production rebaseline review"
+      - docs/implementation/u-rebaseline-1-product-production-review.md
+      - docs/implementation/u-rebaseline-review-1-independent-report.md
+      - docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
+      - "docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml - RB-01..RB-24 all PASS, RB-24
+         adjudicated by U-REBASELINE-1A from the INDEPENDENT review"
     next_units_unlocked: [P3]
 
   # ============================================================ BLOCKED
@@ -332,7 +335,7 @@ units:
     objective: >-
       Make the two-key rule real: a grant becomes necessary but not sufficient, and no external
       effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
-    status: BLOCKED
+    status: READY
     dependencies: [P2, U-HANDOFF-1, U-REBASELINE-1]
     unlocked_by: [P2, U-HANDOFF-1, U-REBASELINE-1]
     blocks: [P4]
@@ -364,11 +367,14 @@ units:
     migration_requirements: "the grant ledger gains checkpoint binding"
     legacy_dispositions_affected: [action_callback, operation_router, browser_write_path]
     rollback_posture: "Ships dark - capability flag OFF. Deploy and enable are separate decisions."
-    validation_blockers:
-      - "U-HANDOFF-1 passed (adjudicated by U-HANDOFF-1D from the U-HANDOFF-2B evidence)"
-      - "U-REBASELINE-1 must be COMPLETE - the founder rebaseline precedes P3"
-      - "an independent product/production rebaseline review must pass"
-      - "an independent repository inspection must agree Phase 3 may begin"
+    validation_blockers: []
+    gates_satisfied:
+      - "U-HANDOFF-1 COMPLETE (adjudicated by U-HANDOFF-1D from the U-HANDOFF-2B evidence)"
+      - "U-REBASELINE-1 COMPLETE (adjudicated by U-REBASELINE-1A from the INDEPENDENT
+         U-REBASELINE-REVIEW-1: zero CRITICAL, all accepted blocking findings resolved)"
+      - "the independent product/production rebaseline review PASSED (five PASS verdicts)"
+      - "the independent repository inspection agreed P3 may begin (same review: P3 symbols
+         provably absent from src/, guard integrity audited, R-07 honestly OPEN)"
     completion_evidence: ["a phase-3 implementation review with final-tree digests"]
     rebaseline_contract:
       user_visible_capability: none - kernel work; a customer notices nothing yet
@@ -379,6 +385,52 @@ units:
       observability_requirements: [every checkpoint step outcome, every refusal with the refusing step named, brake state, claim CAS contention]
       security_requirements: [witness unconstructable outside the checkpoint, grants tenant-scoped, no flag disables the checkpoint]
       readiness_target: LOCALLY_IMPLEMENTED
+    # Weighted acceptance contract instantiated by U-REBASELINE-1A from the PROGRAM-WEIGHTS
+    # acceptance_template (sum = 100). Every criterion PENDING: P3 is READY, not started.
+    # Only PASS contributes to phase completion (PROGRESS-PROTOCOL.md sec 3).
+    acceptance_criteria:
+      - criterion: accepted_scope_and_design
+        weight: 6
+        result: PENDING
+      - criterion: required_tests
+        weight: 8
+        result: PENDING
+      - criterion: core_implementation
+        weight: 20
+        result: PENDING
+      - criterion: failure_handling
+        weight: 8
+        result: PENDING
+      - criterion: concurrency_handling
+        weight: 8
+        result: PENDING
+      - criterion: authorization_and_security
+        weight: 10
+        result: PENDING
+      - criterion: migrations_and_persistence
+        weight: 6
+        result: PENDING
+      - criterion: observability_and_operational_behavior
+        weight: 6
+        result: PENDING
+      - criterion: mutation_or_hostile_cases
+        weight: 8
+        result: PENDING
+      - criterion: full_test_suite
+        weight: 5
+        result: PENDING
+      - criterion: canonical_finalizer
+        weight: 3
+        result: PENDING
+      - criterion: clean_clone_execution
+        weight: 3
+        result: PENDING
+      - criterion: independent_review
+        weight: 5
+        result: PENDING
+      - criterion: final_adjudication
+        weight: 4
+        result: PENDING
     next_units_unlocked: [P4]
 
   - unit_id: P4

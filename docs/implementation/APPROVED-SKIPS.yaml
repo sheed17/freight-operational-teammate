@@ -26,6 +26,19 @@ static_sites:
     permanence: permanent (the condition became true at Phase 1 and is forward-only)
     review_condition: if AC-SAFE-012/013 ever regress to red, the skip stops firing by itself
 
+  - file: eval/tests/test_rebaseline_invariants.py
+    construct: pytest.skip
+    node: eval/tests/test_rebaseline_invariants.py::test_no_src_runtime_file_was_touched_by_the_rebaseline
+    reason: >-
+      U-REBASELINE-1A, closing independent-review finding F-07: this guard previously RETURNED
+      silently when git was unavailable - a vacuous pass inside the module whose own doctrine
+      forbids them. It now raises an explicit NOT-RUN skip naming the failed git command, which is
+      machine-visible. It must NEVER skip in a canonical run (git is always available there), so it
+      is deliberately absent from expected_canonical_run_skips.
+    owning_document: docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
+    permanence: permanent (the loud-skip path is the correction; it fires only on a broken toolchain)
+    review_condition: if this skip ever appears in a canonical run, the toolchain is broken - investigate, do not approve
+
   - file: eval/tests/test_status_reality.py
     construct: pytest.skip
     node: eval/tests/test_status_reality.py::test_at_rest_the_artifact_population_matches_the_live_test_population

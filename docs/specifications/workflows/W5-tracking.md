@@ -1,6 +1,6 @@
 # Workflow W5 — L5 Tracking *(in-transit execution)*
 
-*Registry defaults apply.*
+*Registry defaults apply.* ⚠️ **GATE-CLASS DELEGATION (U-REBASELINE-1A, closing review finding F-09):** every consequential step in this loop whose gate/approval class is not stated in-spec **inherits the registry default** — the full Action Pipeline (policy → approval → brake → grant → checkpoint → verification). The *specific* approval class and threshold are `NEEDS VALIDATION` (customer-specific) and are bound at implementation time in the owning phase; **no step is ungated by omission**.
 
 **2.** W5. **3.** From pickup → the customer knows the true status, delays caught early, delivery reached. **4.** ### **the customer hears the truth early, especially when it's bad — not silence.** **5.** own status currency and delay detection through delivery. **6.** ### **NOT "a tracking status field" — a status is a CLAIM, not proof (CD-15).** **10.** the tracking/ops owner. **13.** Carrier Movement, Stop, Appointment, Tracking Event. **14.** `TRACK_LOAD`.
 

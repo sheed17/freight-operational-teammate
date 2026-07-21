@@ -134,6 +134,7 @@ its names.
 | [`implementation/EFFECT-PATH-INVENTORY.yaml`](implementation/EFFECT-PATH-INVENTORY.yaml) | The exact live-write adjudication (the six, the exclusions, EP-14) | **CURRENT_STATUS** |
 | `implementation/release-gate-plan.md` · `pr-sequence.md` · `red-to-green-acceptance-plan.md` · `migration-plan.md` · `data-migration-plan.md` · `effect-entry-point-cutover-plan.md` · `implementation-risk-register.md` · `current-to-target-gap-matrix.md` | Planning detail | **IMPLEMENTATION_CONTROL** |
 | `implementation/current-state-inventory.md` | The mechanical recon at reset time | **HISTORICAL** |
+| [`implementation/u-rebaseline-review-1-independent-report.md`](implementation/u-rebaseline-review-1-independent-report.md) | The preserved INDEPENDENT product/production rebaseline review — the evidence RB-24 required | **HISTORICAL (evidence)** |
 | **FAMILY RULE — every review document**: any `docs/implementation/*.md` matching `*review*.md` (phase reviews `phase-*-review`, blocker reviews `u2-6*`, control-correction reviews `durable-cli-*`, `u-handoff-*review`, errata and planning reviews) | Evidence of what was done and found, true as of its own commit | **HISTORICAL (evidence)** — automatically, by family; a review needs no individual row here, and a guard verifies every implementation doc is either individually classified or covered by this rule |
 | `implementation/u26-construction-site-inventory.md` · `u26b-method-inventory.md` | Mechanical inventories | **HISTORICAL (evidence)** |
 

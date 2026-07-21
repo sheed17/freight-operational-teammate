@@ -224,6 +224,17 @@ concepts:
       ADR-013 (U-REBASELINE-1) - the thirteen-field customer-authorized migration model; no
       migration capability exists and none is offered before P13.
 
+  - name: Conversational layer channel stores (one conversation, no per-channel memory)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-019-conversational-operations-layer.md
+    absent_symbols: [slack_conversation_store, teams_conversation_store, voice_conversation_store, channel_conversation_memory]
+    owning_unit: P11
+    note: >-
+      ADR-019 section 7 forward tripwire (U-REBASELINE-1A, closing review finding F-15): channel
+      divergence becomes REAL the moment a second conversational channel lands with its own store.
+      These absent_symbols fail the build if any per-channel conversation store appears before the
+      single cross-channel conversation exists at P11.
+
   - name: Customer Operational System Map (TMS-agnostic operational graph)
     status: SPECIFICATION_ONLY
     specification: docs/specifications/operational-system-map.md

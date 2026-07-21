@@ -114,7 +114,7 @@ conflict, an unknown outcome or a completed piece of work needs attention. But *
 never a second source of truth and never independent authority**: a conversational instruction
 that would cause a consequential effect passes through the same authorization, policy, evidence,
 approval, idempotency, effect-grant and verification controls as any other action, and Neyma never
-claims something is done without verification. **This is not a chatbot-only product.**
+claims something is done without verification. **This is not a chatbot-only product.** Neyma is **headless-first and channel-independent**: the operating engine is the product, every surface is a rendering of it, and no surface owns state, memory, authority or effect execution.
 
 ## 6. The eleven canonical operational loops
 

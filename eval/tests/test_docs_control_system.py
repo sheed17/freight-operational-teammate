@@ -371,38 +371,42 @@ def test_23b_every_root_control_document_appears_in_the_authority_map():
 
 # ============================================================ 24. the next approved work
 
-def test_24_the_next_approved_work_is_the_rebaseline_not_phase_3():
-    """U-HANDOFF-1D: the handoff gate is CLOSED (adjudicated from the independent U-HANDOFF-2B
-    evidence) and the single READY unit is the founder-authorized rebaseline. P3 stays BLOCKED
-    behind it."""
+def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
+    """U-REBASELINE-1A: both gates are CLOSED (handoff, adjudicated from U-HANDOFF-2B; rebaseline,
+    adjudicated from the INDEPENDENT U-REBASELINE-REVIEW-1) and the single READY unit is now P3
+    itself. Replaced - not deleted - from the rebaseline-is-READY guard (CLAUDE.md section 5
+    rule 20). P3 being READY is NOT permission to have implemented it: the absence guards still
+    prove no P3 symbol exists in src/."""
     ready = [u for u in registry_units() if u["status"] == "READY"]
-    assert len(ready) == 1
-    unit = ready[0]
-    assert unit["unit_id"] == "U-REBASELINE-1", (
-        f"the READY unit is {unit['unit_id']}, expected U-REBASELINE-1"
+    assert len(ready) == 1, f"exactly one unit may be READY, found {[u['unit_id'] for u in ready]}"
+    p3 = ready[0]
+    assert p3["unit_id"] == "P3", f"the READY unit is {p3['unit_id']}, expected P3"
+    # every gate ancestor must be COMPLETE - P3 may not be READY on an open gate
+    by_id = {u["unit_id"]: u for u in registry_units()}
+    for dep in p3["dependencies"]:
+        assert by_id[dep]["status"] == "COMPLETE", (
+            f"P3 is READY while dependency {dep} is {by_id[dep]['status']}"
+        )
+    for gate in ("U-HANDOFF-1", "U-REBASELINE-1"):
+        assert gate in p3["dependencies"], f"P3 lost its {gate} gate dependency"
+        evidence = " ".join(str(x) for x in by_id[gate]["completion_evidence"])
+        assert "independent" in evidence.lower() or "u-handoff-2b" in evidence.lower(), (
+            f"{gate} is COMPLETE without independent-review evidence recorded"
+        )
+    # the rebaseline's completion must cite the preserved INDEPENDENT report
+    reb = " ".join(str(x) for x in by_id["U-REBASELINE-1"]["completion_evidence"])
+    assert "u-rebaseline-review-1-independent-report.md" in reb, (
+        "U-REBASELINE-1 COMPLETE without the preserved independent review report"
     )
-    assert "rebaseline" in unit["name"].lower()
-    prohibited = " ".join(str(x) for x in unit["prohibited_scope"]).lower()
-    assert "phase 3" in prohibited, "U-REBASELINE-1 must prohibit Phase 3 implementation"
-    assert "runtime" in prohibited, "U-REBASELINE-1 must prohibit runtime product behavior"
-    handoff = next(u for u in registry_units() if u["unit_id"] == "U-HANDOFF-1")
-    assert handoff["status"] == "COMPLETE", (
-        f"U-HANDOFF-1 is {handoff['status']} - the rebaseline may only be READY after the "
-        "handoff gate closed"
-    )
-    evidence = " ".join(str(x) for x in handoff["completion_evidence"])
-    assert "u-handoff-2b-hostile-review-report.md" in evidence, (
-        "U-HANDOFF-1 COMPLETE without the preserved independent hostile-review evidence"
-    )
-    assert "u-handoff-1d-final-adjudication-review.md" in evidence, (
-        "U-HANDOFF-1 COMPLETE without the adjudication review"
-    )
-    p3 = next(u for u in registry_units() if u["unit_id"] == "P3")
-    assert p3["status"] == "BLOCKED", f"P3 is {p3['status']}, must be BLOCKED"
-    assert "U-HANDOFF-1" in p3["dependencies"], "P3 must depend on the handoff gate"
-    assert "U-REBASELINE-1" in p3["dependencies"], "P3 must depend on the founder rebaseline"
-    assert re.search(r"U-REBASELINE-1", read(CURRENT)), \
-        "CURRENT.md must name the next approved program"
+    # P3 carries a weighted acceptance contract, entirely PENDING (READY is not started)
+    crits = p3.get("acceptance_criteria")
+    assert crits, "the READY P3 has no weighted acceptance contract"
+    assert sum(int(c["weight"]) for c in crits) == 100, "P3 acceptance weights must total 100"
+    started = [c["criterion"] for c in crits if str(c["result"]).upper() != "PENDING"]
+    assert not started, f"P3 is READY but criteria are already marked: {started}"
+    prohibited = " ".join(str(x) for x in p3["prohibited_scope"]).lower()
+    assert "adapter containment" in prohibited, "P3 must still prohibit P4 containment work"
+    assert re.search(r"P3", read(CURRENT)), "CURRENT.md must name the next approved program"
 
 
 def test_24b_the_current_status_file_does_not_direct_an_agent_into_phase_3():
@@ -639,6 +643,7 @@ REQUIRED_CONCEPTS = {
     "Web control plane and tenant/integration lifecycle",
     "Workflow-authority migration model",
     "Customer Operational System Map (TMS-agnostic operational graph)",
+    "Conversational layer channel stores (one conversation, no per-channel memory)",
 }
 SURFACE_STATUSES = {"IMPLEMENTED", "PARTIALLY_IMPLEMENTED", "SPECIFICATION_ONLY",
                     "LEGACY_IMPLEMENTATION", "BLOCKED"}
@@ -774,12 +779,11 @@ def test_the_handoff_checklist_is_exact_and_fully_adjudicated():
 REBASELINE_CHECKLIST = IMPL / "U-REBASELINE-1-ACCEPTANCE.yaml"
 
 
-def test_the_rebaseline_checklist_is_exact_and_executed_but_not_complete():
-    """U-REBASELINE-1 executed: exactly RB-01..RB-24; RB-01..23 PASS each naming its produced
-    artifact; RB-24 stays PENDING because only the INDEPENDENT rebaseline review can certify
-    fresh-reviewer legibility - the executing session may not pass it, and the unit may not be
-    COMPLETE before that review. (Replaced, not deleted, from the all-PENDING registration
-    guard - CLAUDE.md section 5 rule 20.)"""
+def test_the_rebaseline_checklist_is_exact_and_fully_adjudicated():
+    """U-REBASELINE-1A: all 24 criteria PASS. RB-24 may ONLY be awarded from the INDEPENDENT review
+    - its evidence must cite the preserved independent report, and that report must exist. Replaced
+    (not deleted) from the RB-24-must-be-PENDING guard, which was correct until the independent
+    evidence arrived."""
     data = yaml.safe_load(read(REBASELINE_CHECKLIST))
     crits = data["criteria"]
     ids = [c["id"] for c in crits]
@@ -789,41 +793,32 @@ def test_the_rebaseline_checklist_is_exact_and_executed_but_not_complete():
     for c in crits:
         assert c.get("statement", "").strip(), f"{c['id']}: empty statement"
         assert c.get("evidence_required", "").strip(), f"{c['id']}: no required evidence"
-        if c["id"] == "RB-24":
-            assert c["result"] == "PENDING", (
-                "RB-24 may only be passed by the INDEPENDENT rebaseline review, never by the "
-                "executing session - a self-certified fresh-reviewer determination is worthless"
-            )
-        else:
-            assert c["result"] == "PASS", (
-                f"{c['id']} is {c['result']!r} - the executed contract records PASS with "
-                "evidence; a drift back is an unrecorded re-opening"
-            )
-            assert c.get("evidence", "").strip(), f"{c['id']}: PASS with no evidence recorded"
+        assert c["result"] == "PASS", (
+            f"{c['id']} is {c['result']!r} - the adjudicated contract records PASS with evidence"
+        )
+        assert c.get("evidence", "").strip(), f"{c['id']}: PASS with no evidence recorded"
+    rb24 = next(c for c in crits if c["id"] == "RB-24")
+    assert "u-rebaseline-review-1-independent-report.md" in rb24["evidence"], (
+        "RB-24 must be awarded from the INDEPENDENT review report - a self-certified "
+        "fresh-reviewer determination is worthless"
+    )
+    report = ROOT / "docs/implementation/u-rebaseline-review-1-independent-report.md"
+    assert report.exists(), "the independent review report RB-24 cites is missing"
     meta = data["meta"]
-    assert meta.get("registered_by") == "U-HANDOFF-1D"
-    assert meta.get("execution_review", "").endswith(
-        "u-rebaseline-1-product-production-review.md"
-    ), "the executed contract must name its review document"
-    assert re.search(r"NOT COMPLETE", meta.get("completion_rule", "")), (
-        "the contract must state the unit is not complete until the independent review passes"
-    )
-    assert "NOT READY" in meta["verdict_vocabulary"]
-    scope = meta.get("scope_rule", "")
-    assert re.search(r"No production runtime behavior", scope, re.I), (
-        "the rebaseline contract must state it changes no production runtime behavior"
-    )
-    assert re.search(r"R-07 stays OPEN", scope), "the contract must preserve R-07 OPEN"
-    assert re.search(r"P3 stays BLOCKED", scope), "the contract must keep P3 BLOCKED throughout"
+    assert meta.get("adjudicated_by") == "U-REBASELINE-1A", "no adjudication record"
+    assert meta.get("independent_review", "").endswith("u-rebaseline-review-1-independent-report.md")
     units = registry_units()
     reb = next(u for u in units if u["unit_id"] == "U-REBASELINE-1")
-    assert reb["status"] != "COMPLETE", (
-        "U-REBASELINE-1 may not be COMPLETE while RB-24 is PENDING - completion belongs to the "
-        "independent review and the founder, not the executing session"
+    assert reb["status"] == "COMPLETE", (
+        f"U-REBASELINE-1 is {reb['status']} while all 24 criteria PASS - status and contract disagree"
     )
 
 
 def test_the_checklist_covers_the_new_control_requirements():
+    """Restored by U-REBASELINE-1A: this HANDOFF-checklist guard was swallowed by an adjacent
+    guard replacement. It guards a different contract (the handoff checklist's coverage), was never
+    superseded, and deleting it was an error - CLAUDE.md section 5 rule 20 permits replacement, not
+    silent removal."""
     text = read(CHECKLIST)
     assert re.search(r"broad-tool-access|broad tool access", text, re.I), "no tool-access criterion"
     assert re.search(r"distinguishes tool access from action authority", text, re.I)

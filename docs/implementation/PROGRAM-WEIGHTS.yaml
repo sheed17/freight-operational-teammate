@@ -23,7 +23,7 @@ program_weights:
   - phase: P3
     title: Checkpoint Witness, seven-step atomic checkpoint, and claim CAS
     program_weight: 12
-    dependency_status: BLOCKED_ON_REBASELINE
+    dependency_status: READY - all gates satisfied (U-REBASELINE-1A)
     implementation_status: SPECIFIED
     readiness_tier: SPECIFIED
     user_visible_output: "none - safety kernel"
@@ -202,16 +202,16 @@ cli_switch_gates:
     evidence: "U-REBASELINE-1 executed; ADR-012..018; RB-01..23 PASS"
   - gate: rebaseline_independent_review_passed
     weight: 30
-    status: PENDING
-    evidence: "the independent product/production rebaseline review has not run"
+    status: DONE
+    evidence: "INDEPENDENT U-REBASELINE-REVIEW-1 PASSED (five PASS verdicts, zero CRITICAL); preserved at docs/implementation/u-rebaseline-review-1-independent-report.md; all accepted blocking findings resolved by U-REBASELINE-1A"
   - gate: independent_repository_inspection_agrees_p3_may_begin
     weight: 25
-    status: PENDING
-    evidence: "not performed"
+    status: DONE
+    evidence: "same independent review performed the repository inspection: P3 symbols provably absent from src/ (79 files swept), guard categories audited, R-07 honestly OPEN, exactly-one-READY verified - and concluded 'nothing found here blocks P3's content'"
   - gate: p3_weighted_acceptance_contract_instantiated
     weight: 15
-    status: PENDING
-    evidence: "the acceptance template exists; P3's per-criterion weighted contract is not yet instantiated"
+    status: DONE
+    evidence: "P3.acceptance_criteria instantiated from the acceptance_template by U-REBASELINE-1A: 14 criteria, weights sum 100, every result PENDING (P3 is READY, not started)"
 
 # ------------------------------------------------------------------ production readiness (Σ = 100)
 # Each item's readiness_tier gates its contribution: an item contributes its weight only at

@@ -4,8 +4,7 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** U-REBASELINE-1 product, integration and production rebaseline (executed;
-> awaiting independent review).
+> **Last updated:** U-REBASELINE-1A founder rebaseline adjudication (both gates closed; P3 is READY).
 
 ---
 
@@ -100,22 +99,22 @@ suite_skipped: 1
 
 ## Current documentation milestone
 
-**U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** — executed (founder-authorized),
-awaiting the independent product/production rebaseline review.
-Review: [`u-rebaseline-1-product-production-review.md`](u-rebaseline-1-product-production-review.md).
+**U-REBASELINE-1A — FOUNDER REBASELINE ADJUDICATION** — complete. Review:
+[`u-rebaseline-1a-founder-adjudication-review.md`](u-rebaseline-1a-founder-adjudication-review.md).
 
-### **The founder rebaseline is written.** The stable identity is now *"the AI-native operating
-platform and system of action for small and medium freight and logistics companies"* (ADR-012);
-Neyma may become authoritative for individual workflows through the customer-authorized migration
-model (ADR-013); it may securely possess customer-authorized credentials while minimizing raw
-password handling (ADR-014); communications are a core subsystem (ADR-015); production runs on
-PostgreSQL/workers/object-storage with a thin web control plane (ADR-016/017); **the TMS is one
-node in the customer's operational graph, not the center — the canonical domain model is
-TMS-schema-independent, each tenant has an Operational System Map, and a write into one node is
-never workflow completion (ADR-018)**; the wedge is **Delivered Load Closure** (a `HYPOTHESIS`).
-**RB-01..RB-23 PASS; RB-24 (fresh-reviewer legibility) stays PENDING for the independent review;
-U-REBASELINE-1 is NOT COMPLETE.** No production runtime code changed; R-07 stays OPEN — NOT
-CONTAINED; P3 stays BLOCKED and unimplemented.
+### **BOTH GATES ARE CLOSED. The next approved unit is `P3`.**
+The **INDEPENDENT** U-REBASELINE-REVIEW-1 (fresh testing-account clone at `fb5fcd93`, preserved at
+[`u-rebaseline-review-1-independent-report.md`](u-rebaseline-review-1-independent-report.md))
+returned **five PASS verdicts and zero CRITICAL findings**. Its four HIGH findings (stale L6→W8
+residue, the CK/MF step-contract shortfall and its false-green self-review row, coverage-guard
+porosity, the broken V-reference namespace) and the accepted MEDIUM set were **all resolved by
+U-REBASELINE-1A before RB-24 was awarded**. **U-REBASELINE-1 is COMPLETE (RB-01..RB-24 all PASS);
+`P3` is the one and only READY unit**, with a weighted 14-criterion acceptance contract instantiated
+and entirely PENDING.
+
+### **P3 is READY — and still NOT IMPLEMENTED.** No checkpoint, witness or claim-CAS symbol exists
+in `src/`; **R-07 stays OPEN — NOT CONTAINED** (it closes at P4, nowhere earlier); every phase from
+P4 onward stays BLOCKED; every customer-specific validation blocker stands.
 
 ### Handoff-gate history (U-HANDOFF-1, closed by U-HANDOFF-1D)
 Adjudication: [`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md).

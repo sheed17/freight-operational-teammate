@@ -29,6 +29,16 @@ Ownership = **exactly one accountable human owner, always** (I1). Automation may
 ## STEP-CONTRACT FORMAT *(per consequential step)*
 `Step ID · name · owning machine · trigger · business state · required observations/evidence/bindings/field-authority/freshness/provenance/entity-versions · policy · gate · approval · brake · adapter op · pipeline transition · domain transition · event in/out · durable writes · txn boundary · idempotency identity · Commit Key (if consequential) · Material-Facts (if consequential) · verification mode · expected result · failure · unknown-outcome · human action · next legal steps · test.` ### **No step relies on an implicit transition. No step says "update the TMS" without naming the canonical adapter op, target resource, external mapping, Action Class, checkpoint inputs, Commit Key, Material Facts, and verification mode.**
 
+> ⚠️ **CK/MF DEFAULT-INHERITANCE RULE (U-REBASELINE-1A, closing review finding F-02).** The loop
+> specs state a full Commit-Key tuple and Material-Facts set for a MINORITY of consequential steps
+> (W1-6, W8-4, W9-5). **Every other consequential step INHERITS the registry default write-path:**
+> the Commit Key is derived canonically (`ck_v1|tenant|action_class|target_system|
+> target_resource_id|target_operation|occurrence_key` — ADR-009/P1, amount-free) and the Material
+> Facts are the approved values for that action class, **both bound at implementation time in the
+> owning phase (P6–P9), not pre-stated here.** An inherited step is NOT an under-specified step —
+> but it is also **not** a step whose CK/MF has been individually adjudicated. Any spec that needs
+> a NON-default identity or fact set must state it explicitly, and silence means the default.
+
 ## LOOP-CLOSURE CONTRACT *(every loop)*
 Closure REQUIRES **all** of: the obligation was **satisfied or explicitly dispositioned** · all required effects reached a valid operational outcome · open Conflicts are **blocking or referenced by an authorized decision** · required Expectations discharged/cancelled/dispositioned · required documents/evidence present · required reconciliation complete · **any `UNKNOWN_OUTCOME` has an accountable owner + permitted terminal handling** · **no mandatory downstream obligation silently abandoned** · the closure event is **immutable** · reopening creates a **new phase or linked Work Item**.
 
@@ -72,4 +82,15 @@ default owner = the loop's role owner · reassignment = `OwnershipTransferred` (
 - ### **Safety:** `UNKNOWN_OUTCOME` rate, compensation rate, drift-void rate, duplicate-effect-prevention count, autonomous-vs-human-approval ratio, correction rate — **near-zero targets; a rise is a signal.**
 
 ## NEEDS VALIDATION *(all fail-closed; none blocks)*
-The **first-loop hypothesis (L6→L8, Documentation→Billing)** is `NEEDS VALIDATION` against the design partner's actual pain (Operating Model §, Discovery §13); autonomy graduation thresholds (V11); per-customer billing/document rules (V4/V5); the L8 canonical closure disposition set; after-hours ownership model; degraded-mode adoption sequence.
+
+> ⚠️ **VALIDATION-REFERENCE NAMESPACE (U-REBASELINE-1A, closing review finding F-04).**
+> **The canonical validation registry is [`OPEN-VALIDATION-ITEMS.md`](../../product/OPEN-VALIDATION-ITEMS.md),
+> whose items are ALWAYS written `V-01`…`V-21` (two digits, hyphenated).** Bare numerals appearing
+> inside the loop specs (`V1`, `V4`, `V5`, `V10`, `V11`, and W8's `V-3`) are **workflow-local
+> open-question markers with their own historical numbering — they do NOT correspond to the
+> canonical `V-0x` items and must never be resolved against them** (e.g. spec `V5` = per-customer
+> document/billing rules, whereas canonical `V-05` = the partner's TMS/API; W8's `V-3` is an
+> adapter invariant, not validation item `V-03`). To resolve any open freight rule, go to the
+> canonical registry by SUBJECT, not by number. Re-keying the workflow-local markers is recorded
+> debt (the numbering is historical and re-keying risks silently re-pointing semantics).
+⚠️ **SUPERSEDED FRAMING (U-REBASELINE-1A):** the wedge is now **Delivered Load Closure** (PRODUCT.md §15), one outcome spanning parts of W5/W6/W7/W8/W10 — not a two-loop slice. The **superseded first-loop hypothesis (L6→L8, Documentation→Billing)** was `NEEDS VALIDATION` against the design partner's actual pain (Operating Model §, Discovery §13); autonomy graduation thresholds (V11); per-customer billing/document rules (V4/V5); the L8 canonical closure disposition set; after-hours ownership model; degraded-mode adoption sequence.

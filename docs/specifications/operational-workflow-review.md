@@ -64,7 +64,7 @@
 | Every open obligation has one accountable owner | ✅ registry ownership + I1; owner-departure ⇒ Exception (H30). |
 | Every consequential effect → adapter op + Action Class | ✅ `RAISE_INVOICE`/`RECORD_PAYABLE`/`FILE_DOCUMENT`/`SEND_OUTBOUND`/`BOOK_CARRIER`/`SEND_TENDER`/`REQUEST_APPOINTMENT`/… |
 | Every effect uses checkpoint + witness + grant | ✅ registry write-path; no direct adapter call. |
-| Every consequential step defines Commit Key + Material Facts | ✅ CK amount-free (ADR-009); MF = approved facts. |
+| Every consequential step defines Commit Key + Material Facts | ⚠️ **CORRECTED (U-REBASELINE-1A, finding F-02):** this row overclaimed. Only W1-6/W8-4/W9-5 state MF and only W8-4 states a full CK tuple **in-spec**; every other consequential step **inherits the registry default write-path** (CK amount-free per ADR-009; MF = the approved facts for the action class), bound at implementation time in P6–P9. See the CK/MF default-inheritance rule in `workflows/registry.md`. |
 | Every transition → a formal event | ✅ no workflow event invented (registry). |
 | Deterministic entry + closure | ✅ registry closure contract per loop. |
 | False-closure signals rejected | ✅ registry + point 54 each (created≠accepted, sent≠paid, delivered≠POD, entered≠paid, …). |

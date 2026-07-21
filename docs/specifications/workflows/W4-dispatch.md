@@ -1,6 +1,6 @@
 # Workflow W4 — L4 Dispatch *(pickup & dispatch readiness + appointment booking)*
 
-*Registry defaults apply.*
+*Registry defaults apply.* ⚠️ **GATE-CLASS DELEGATION (U-REBASELINE-1A, closing review finding F-09):** every consequential step in this loop whose gate/approval class is not stated in-spec **inherits the registry default** — the full Action Pipeline (policy → approval → brake → grant → checkpoint → verification). The *specific* approval class and threshold are `NEEDS VALIDATION` (customer-specific) and are bound at implementation time in the owning phase; **no step is ungated by omission**.
 
 **2.** W4. **3.** From an active Assignment → the load **operationally ready to move** (driver, equipment, appointment, refs, docs, carrier-confirmed). **4.** ### **the truck shows up prepared — not a dispatch email fired into the void.** **5.** own readiness until verified ready OR a readiness failure is escalated. **6.** ### **NOT "a dispatch message was sent" — sending ≠ readiness; the loop names the EVIDENCE of readiness.** **10.** the dispatch owner. **13.** Carrier Assignment, Driver, Equipment, Stop, Appointment, Facility, Document Requirement. **14.** `DISPATCH_READY`.
 

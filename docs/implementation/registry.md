@@ -39,6 +39,8 @@
 | [CURRENT.md](CURRENT.md) | ### **THE single short-form status authority — read this, not the phase reviews** |
 | [TOOL-ACCESS-POLICY.md](TOOL-ACCESS-POLICY.md) | broad tool access for formal CLI sessions — research capability vs consequential authority |
 | [u-handoff-1d-final-adjudication-review.md](u-handoff-1d-final-adjudication-review.md) | ### **U-HANDOFF-1D — the handoff gate CLOSED: the independent U-HANDOFF-2B hostile review adjudicated, 13/13 PASS; U-REBASELINE-1 registered as the single READY unit. Next: U-REBASELINE-1.** |
+| [u-rebaseline-1a-founder-adjudication-review.md](u-rebaseline-1a-founder-adjudication-review.md) | ### **U-REBASELINE-1A — BOTH GATES CLOSED: the independent review adjudicated (15/16 findings resolved, F-10 debt), RB-24 PASS, U-REBASELINE-1 COMPLETE, P3 the sole READY unit with its weighted contract. Next: P3.** |
+| [u-rebaseline-review-1-independent-report.md](u-rebaseline-review-1-independent-report.md) | the preserved INDEPENDENT product/production review (fresh clone at fb5fcd93; five PASS verdicts, zero CRITICAL) |
 | [u-rebaseline-1-product-production-review.md](u-rebaseline-1-product-production-review.md) | ### **U-REBASELINE-1 — the founder product/integration/production rebaseline: ADR-012..017, Delivered Load Closure wedge (HYPOTHESIS), revised P3–P14, PostgreSQL production topology, communications as a core subsystem. RB-01..23 PASS, RB-24 pending the independent review.** |
 | [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..23 PASS, RB-24 PENDING) |
 | [../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | the wedge's required design-partner evidence, accountable sources, fail-closed |

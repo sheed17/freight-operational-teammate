@@ -15,6 +15,7 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,9 +38,13 @@ def require_population(items, what: str):
 # A rejected absolute is dangerous only when asserted as CURRENT product authority. Each pattern
 # is written to match the ABSOLUTE form (never/only/must/permanent), not a discussion of it. The
 # disarm markers let a current-authority document QUOTE a rejected claim in order to retire it.
+# F-06 (independent review): a BARE ADR citation is no longer a disarm marker - "Per ADR-013,
+# Slack is the only control interface" would have self-disarmed. A disarm marker must now carry
+# RETIREMENT VOCABULARY (reject/retired/superseded/amended/no-longer/not-a-permanent), or be an
+# explicit negation of the absolute itself.
 DISARM = re.compile(
-    r"reject|retir|supersed|no longer|not a permanent|rebaselin|amended by|"
-    r"⚠️|not\s+an?\s+absolute|ADR-01[2-9]|never\s+a\s+second\s+source|never\s+independent\s+authority",
+    r"reject|retir|supersed|no longer|not a permanent|rebaselin|amended by|corrected|"
+    r"⚠️|not\s+an?\s+absolute|never\s+a\s+second\s+source|never\s+independent\s+authority",
     re.I,
 )
 
@@ -196,13 +201,16 @@ def test_the_evidence_program_exists_and_fails_closed():
     )
 
 
-def test_exactly_one_ready_unit_and_it_is_the_rebaseline():
+def test_exactly_one_ready_unit_and_it_is_p3():
+    """U-REBASELINE-1A: the rebaseline gate closed on INDEPENDENT evidence, so the single READY
+    unit is now P3. Replaced, not deleted, from the rebaseline-is-READY assertion."""
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["U-REBASELINE-1"], f"exactly one READY unit expected (U-REBASELINE-1); got {ready}"
-    p3 = next(u for u in units if u["unit_id"] == "P3")
-    assert p3["status"] == "BLOCKED", "P3 must remain BLOCKED during the rebaseline"
-    assert "U-REBASELINE-1" in p3["dependencies"], "P3 must depend on the rebaseline"
+    assert ready == ["P3"], f"READY set drifted: {ready}"
+    by = {u["unit_id"]: u for u in units}
+    assert by["U-REBASELINE-1"]["status"] == "COMPLETE"
+    # R-07 must still be open, and P3 must still be unimplemented
+    assert "status: OPEN - NOT CONTAINED" in read("docs/implementation/phase-0-baseline-manifest.yaml")
 
 
 def test_r07_remains_open_not_contained():
@@ -343,6 +351,18 @@ _REQUIRED_CLASSIFICATIONS = {
     "REQUIRES_DESIGN_PARTNER_VALIDATION", "REQUIRES_MODE_SPECIFIC_VALIDATION",
     "FUTURE_EXPANSION", "EXPLICITLY_OUT_OF_SCOPE",
 }
+# FIXED-SPECIFICATION: the exact use-case id set. Membership, not a count floor (F-03b). Adding or
+# retiring a use case is a deliberate product act that must update this set in the same commit.
+_REQUIRED_UC_IDS = {f"UC-{i:02d}" for i in range(1, 34)}
+_CANONICAL_TIERS = {
+    "SPECIFIED", "LOCALLY IMPLEMENTED", "INTEGRATION TESTED", "STAGING READY",
+    "SHADOW-PILOT READY", "SUPERVISED-PRODUCTION READY", "GENERALLY PRODUCTION READY",
+}
+# FIXED-SPECIFICATION: closed vocabulary for design-partner validation status (F-05).
+_VALIDATION_STATUSES = {
+    "NEEDS_VALIDATION", "NEEDS_MODE_SPECIFIC_VALIDATION", "N/A_PLATFORM", "OUT_OF_SCOPE",
+    "VALIDATED_BY_DESIGN_PARTNER",
+}
 _REQUIRED_TOPICS = {
     "customer lifecycle": r"customer lifecycle", "quoting": r"quoting", "intake": r"intake",
     "carrier sourcing": r"carrier sourcing|procurement", "compliance": r"compliance|vetting",
@@ -359,18 +379,31 @@ _REQUIRED_TOPICS = {
 
 
 def test_operational_use_case_coverage_matrix_is_complete():
+    """Rewritten by U-REBASELINE-1A closing independent-review findings F-03/F-05/F-12: topics are
+    matched against PARSED RECORDS (never the raw blob, which let deleted records survive on other
+    records' incidental words), the population is pinned by EXACT ID MEMBERSHIP (never a count
+    floor, which let same-count substitution pass - the exact defect CLAUDE.md section 8 forbids),
+    and the validation-status vocabulary is enum-guarded so a silent 'validated' flip cannot pass."""
     data = yaml.safe_load(read(_COVERAGE))
     classes = set(data["meta"]["classifications"])
     assert classes == _REQUIRED_CLASSIFICATIONS, (
         f"coverage classifications drifted from the exact six: {classes ^ _REQUIRED_CLASSIFICATIONS}"
     )
-    ucs = data["use_cases"]
-    assert len(ucs) >= 30, f"coverage matrix collapsed to {len(ucs)} use cases"
+    ucs = require_population(data["use_cases"], "coverage use cases")
+
+    # EXACT ID MEMBERSHIP (F-03b) - a same-count substitution now fails
+    ids = [u["id"] for u in ucs]
+    assert len(ids) == len(set(ids)), f"duplicate use-case ids: {sorted({i for i in ids if ids.count(i) > 1})}"
+    assert set(ids) == _REQUIRED_UC_IDS, (
+        "coverage matrix id-set drifted (membership, not count): "
+        f"missing={sorted(_REQUIRED_UC_IDS - set(ids))} unexpected={sorted(set(ids) - _REQUIRED_UC_IDS)}"
+    )
+
     required_fields = [
-        "user_role", "operational_loop", "workflow_and_business_outcome", "systems_channels",
-        "source_of_truth", "authority_requirement", "evidence_requirement", "exception_classes",
-        "closure_condition", "owner_value_metric", "design_partner_validation_status",
-        "implementation_phase", "readiness_tier",
+        "id", "use_case", "user_role", "operational_loop", "workflow_and_business_outcome",
+        "systems_channels", "source_of_truth", "authority_requirement", "evidence_requirement",
+        "exception_classes", "closure_condition", "owner_value_metric",
+        "design_partner_validation_status", "implementation_phase", "readiness_tier",
     ]
     for u in ucs:
         missing = [f for f in required_fields if not u.get(f)]
@@ -378,22 +411,41 @@ def test_operational_use_case_coverage_matrix_is_complete():
         assert u["classification"] in _REQUIRED_CLASSIFICATIONS, (
             f"{u['id']}: classification {u['classification']!r} is not one of the six"
         )
-        assert u["readiness_tier"] in {t.replace(" ", "_").replace("-", "_").upper() for t in []} | {
-            "SPECIFIED", "LOCALLY IMPLEMENTED", "INTEGRATION TESTED", "STAGING READY",
-            "SHADOW-PILOT READY", "SUPERVISED-PRODUCTION READY", "GENERALLY PRODUCTION READY",
-        }, f"{u['id']}: non-canonical readiness_tier {u['readiness_tier']!r}"
+        assert u["readiness_tier"] in _CANONICAL_TIERS, (
+            f"{u['id']}: non-canonical readiness_tier {u['readiness_tier']!r}"
+        )
+        # F-05: the validation-status vocabulary is a closed enum
+        assert u["design_partner_validation_status"] in _VALIDATION_STATUSES, (
+            f"{u['id']}: design_partner_validation_status "
+            f"{u['design_partner_validation_status']!r} is not one of {sorted(_VALIDATION_STATUSES)}"
+        )
+
     # EVERY classification appears at least once - a category may not silently vanish
     present = {u["classification"] for u in ucs}
     assert present == _REQUIRED_CLASSIFICATIONS, (
         f"coverage matrix lost categories: {_REQUIRED_CLASSIFICATIONS - present}"
     )
-    # the founder's minimum topic set is all covered
-    blob = read(_COVERAGE)
+
+    # F-03a: topics matched against PARSED RECORDS, not the file blob
+    per_record = [" ".join(str(u.get(f, "")) for f in ("use_case", "operational_loop",
+                                                       "workflow_and_business_outcome"))
+                  for u in ucs]
     missing_topics = [name for name, pat in _REQUIRED_TOPICS.items()
-                      if not re.search(pat, blob, re.I)]
+                      if not any(re.search(pat, rec, re.I) for rec in per_record)]
     assert not missing_topics, f"coverage matrix missing required topics: {missing_topics}"
+
+    # F-05: nothing may claim design-partner validation while zero firsthand observations exist
+    observations = read("docs/product/design-partner-observations.md")
+    if not re.search(r"^\s*FIRSTHAND OBSERVATION RECORDED", observations, re.M):
+        claimed = [u["id"] for u in ucs
+                   if str(u["design_partner_validation_status"]).upper().startswith("VALIDATED")]
+        assert not claimed, (
+            "coverage matrix claims design-partner validation while "
+            f"design-partner-observations.md records none: {claimed}"
+        )
+
     # honesty: no claim that every mode is validated
-    assert not re.search(r"all (transportation )?modes (are )?validated", blob, re.I), (
+    assert not re.search(r"all (transportation )?modes (are )?validated", read(_COVERAGE), re.I), (
         "coverage matrix must not claim every mode is validated"
     )
 
@@ -440,15 +492,20 @@ def test_the_conversational_operations_layer_is_durable():
 
 
 def test_no_src_runtime_file_was_touched_by_the_rebaseline():
-    """The rebaseline diff (vs the U-HANDOFF-1D content baseline) must not touch src/."""
+    """The rebaseline diff (vs the recorded content baseline) must not touch src/.
+
+    F-07 (independent review): this guard used to `return` silently when git failed - a vacuous
+    pass inside the very module whose doctrine forbids them - and diffed against a hardcoded
+    commit. It now SKIPS LOUDLY (machine-visible, like the dirty-tree skips) and reads the baseline
+    from the registry."""
     import subprocess
-    base = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))
-    # the baseline_commit recorded is the previous content commit; compare the working tree to it
-    prev = "0a25a001b522047858c95bed461046046fafe7a0"  # U-HANDOFF-1D content commit
-    r = subprocess.run(["git", "diff", "--name-only", prev], cwd=ROOT,
+    reg = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))
+    base = reg["meta"]["baseline_commit"]
+    assert re.fullmatch(r"[0-9a-f]{40}", str(base)), f"registry baseline_commit malformed: {base!r}"
+    r = subprocess.run(["git", "diff", "--name-only", base], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode != 0:
-        return  # git unavailable; other guards cover posture
+        pytest.skip(f"NOT-RUN: git diff against baseline {base[:9]} failed: {r.stderr.strip()[:200]}")
     changed = [f for f in r.stdout.split("\n") if f.strip()]
     src_changed = [f for f in changed if f.startswith("src/")]
     assert not src_changed, f"the rebaseline changed production runtime code: {src_changed}"

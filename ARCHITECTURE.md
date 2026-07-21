@@ -285,6 +285,23 @@ What is still missing, and what it means concretely:
 - The only current mitigation is the operator's one-writer-at-a-time discipline.
   ### **That is discipline, not a mechanism, and it may never be recorded as containment.**
 
+## 28b. The eleven canonical operational loops
+
+**The domain map** (PRODUCT.md §6 is definitive; specs in [`docs/specifications/workflows/`](docs/specifications/workflows/)):
+
+| ID | Loop | ID | Loop |
+|---|---|---|---|
+| **W1** | Quote | **W7** | Exceptions |
+| **W2** | Procurement | **W8** | Billing |
+| **W3** | Compliance | **W9** | Settlement |
+| **W4** | Dispatch | **W10** | Customer Communications |
+| **W5** | Tracking | **W11** | Claims |
+| **W6** | Documentation | | |
+
+**Exactly eleven.** A twelfth is a product decision, not an implementation detail. The map is
+**not** an instruction to build every loop simultaneously — the wedge is **Delivered Load Closure**
+(PRODUCT.md §15, a `HYPOTHESIS`), spanning parts of W5/W6/W7/W8/W10.
+
 ## 29b. Production, communications and control plane *(rebaselined — specification only)*
 
 Three architectural commitments were made durable by U-REBASELINE-1. **None is implemented yet;
