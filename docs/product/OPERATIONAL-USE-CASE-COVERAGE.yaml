@@ -558,6 +558,23 @@ use_cases:
     readiness_tier: SPECIFIED
     classification: FUTURE_EXPANSION
 
+  - id: UC-33
+    use_case: Conversational operations (ask/why/approve/take-over, cross-channel)
+    user_role: owner / operator (role-aware)
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "the user works with Neyma in natural language - asks what/why/what's open, issues requests, corrects, approves or rejects bounded actions, takes over - one identity across channels"
+    systems_channels: [Neyma web, Slack, Teams, email, mobile, voice]
+    source_of_truth: "the canonical operational state - conversation is NEVER a second source of truth (ADR-019)"
+    authority_requirement: "conversation may propose intent/draft Work Items/actions but NEVER creates consequential authority; an instruction causing an effect goes through the full kernel (ADR-003/004)"
+    evidence_requirement: "responses distinguish known/inferred/completed/verified/failed/unknown/waiting/next/human-must-act; no completion claim without verification evidence"
+    exception_classes: [ambiguous request, unauthorized instruction, channel divergence, unverifiable completion claim]
+    closure_condition: "the user's request is resolved through the canonical spine, or routed to a human with evidence"
+    owner_value_metric: "owner time saved; proactive catches; 'feels like an attentive teammate'"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
   - id: UC-32
     use_case: Asset-fleet management / WMS / yard / customs / international
     user_role: n/a

@@ -104,6 +104,18 @@ identities — [`ADR-014`](docs/architecture/decisions/ADR-014-credential-and-ma
 Human-established session attachment remains a supported fallback and a valid per-tenant choice,
 not a universal requirement. **Authentication never creates action authority.**
 
+Neyma is experienced as a **persistent, role-aware conversational operational teammate that keeps
+working between conversations**
+([`ADR-019`](docs/architecture/decisions/ADR-019-conversational-operations-layer.md)) — reachable
+through web, Slack, Teams, email, mobile and voice, **all resolving to the same conversation, Work
+Item and history**, with one coherent identity. It answers *what/why/what's-open*, takes
+natural-language requests, and communicates **proactively** when a decision, a late obligation, a
+conflict, an unknown outcome or a completed piece of work needs attention. But **conversation is
+never a second source of truth and never independent authority**: a conversational instruction
+that would cause a consequential effect passes through the same authorization, policy, evidence,
+approval, idempotency, effect-grant and verification controls as any other action, and Neyma never
+claims something is done without verification. **This is not a chatbot-only product.**
+
 ## 6. The eleven canonical operational loops
 
 | ID | Loop | Spec |
@@ -206,6 +218,7 @@ Neyma is **not**:
 - an invoice product with additional features
 - a temporary browser bot, or a thin automation wrapper around a TMS
 - **a product whose first implementation wedge permanently limits its identity**
+- **a chatbot-only product** — the conversational layer is a surface over the operating engine, never the product itself (ADR-019)
 
 **Ceilings are rejected alongside the misreadings** (ADR-012 §4). Each of the following is retired as a permanent product rule (it may describe a customer's *initial* posture; none is the product's limit): ~~"the brokerage never rips out its TMS"~~ · ~~"Neyma never becomes a system of record"~~ · ~~"anyone wanting TMS replacement is the wrong customer"~~ · ~~"the human must establish every session"~~ · ~~"Neyma must remain permanently outside native freight workflows."~~ **No competitor defines Neyma's canonical identity.**
 

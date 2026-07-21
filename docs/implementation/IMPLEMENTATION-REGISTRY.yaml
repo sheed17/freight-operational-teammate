@@ -698,7 +698,7 @@ units:
     completion_evidence: ["the G6 and G7 gate records"]
     rebaseline_contract:
       user_visible_capability: a pilot tenant can be onboarded, supervised and governed through a real control plane
-      platform_capability: deployed staging/pilot environments, tenant + integration onboarding, credential lifecycle, thin web control plane, shadow operation
+      platform_capability: deployed staging/pilot environments, tenant + integration onboarding, credential lifecycle, thin web control plane with a conversational workspace (ADR-019, one identity across channels), shadow operation
       evidence_requirements: [G6/G7 records, a real onboarding performed, control-plane review of live shadow work, backup/restore drill]
       hostile_cases: [cross-tenant control-plane access, a credential in a log, onboarding without recorded customer authorization, control-plane action bypassing the kernel, brake unreachable when the web tier is down]
       rollout_posture: staging first, then pilot posture; zero effects throughout

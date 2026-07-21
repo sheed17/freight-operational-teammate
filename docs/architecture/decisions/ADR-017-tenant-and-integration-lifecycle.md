@@ -35,7 +35,9 @@ It supports: open Work Items · exception queues · approval packets · operatio
 effect history · unknown outcomes · tenant configuration · users and roles · integration
 onboarding · connection health · credential lifecycle · policy configuration · approval limits ·
 brake status · audit search · metrics and operational value · pilot administration · support
-diagnostics · customer onboarding and offboarding.
+diagnostics · customer onboarding and offboarding · **a conversational workspace**
+([`ADR-019`](ADR-019-conversational-operations-layer.md)) alongside the structured queues,
+evidence packets, configuration and history.
 
 **The product is not dashboard-first.** The control plane governs; the work continues to meet
 people in the channels they already use. A teammate you have to keep visiting hasn't done its

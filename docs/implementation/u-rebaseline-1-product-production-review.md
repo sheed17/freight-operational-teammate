@@ -48,6 +48,29 @@ model is shaped by a TMS schema". Each is now guarded against reintroduction
 Stable identity vs mutable strategy is made explicit (ADR-012 §2): the wedge, ICP, integration
 mix and loop sequencing are strategy the founder may revise on evidence without changing identity.
 
+## 4a. Persistent conversational operations layer (ADR-019 addendum)
+
+Founder-directed: Neyma provides a **persistent, role-aware conversational operations layer** — an
+attentive operational teammate that keeps working between conversations, over the same canonical
+spine (tenant/user/role, Work Items, state, evidence, obligations, policies, approvals, effect
+controls, verification, audit). **Not a chatbot-only product; not a separate orchestration
+system.** Durable rules ([`ADR-019`](../architecture/decisions/ADR-019-conversational-operations-layer.md)):
+conversation is **never a second source of truth** and **never independent authority**; a
+conversational instruction that would cause a consequential effect passes through the same
+auth/policy/evidence/approval/idempotency/grant/verification pipeline as any other action (voice
+included — not a separate effect path); every response distinguishes
+known/inferred/completed/verified/failed/unknown/waiting/next/human-must-act; Neyma is proactive,
+never pretends to be human, and never claims completion without verification evidence; **one
+coherent identity** across web/Slack/Teams/email/mobile/voice, all resolving to the same
+conversation/Work Item/history (no channel-specific memory divergence, no disconnected personas).
+The seven prevention criteria (ADR-019 §8) are guarded. **Jack & Jill AI** is recorded as a
+**non-binding interaction-design reference only** — and honestly: it is a conversational
+*recruiting* product (not freight) with *two* personas, so its split is a contrast to Neyma's one
+identity, and per ADR-012 no competitor defines Neyma's identity. Lands at P9 (intent as proposed),
+P11 (the conversational workspace) and P12 (instructions through the kernel); nothing implemented
+now. Coverage matrix gains UC-33. Guarded by `test_the_conversational_operations_layer_is_durable`
+(+ mutations).
+
 ## 4b. Founder product-authority corrections (U-REBASELINE-1A addendum)
 
 Two founder-directed gaps closed before the adjudication:

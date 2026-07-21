@@ -311,6 +311,14 @@ every item is `SPECIFICATION_ONLY` until a phase delivers it** (ADR-016 §3 read
 - **Workflow-authority migration** ([`ADR-013`](docs/architecture/decisions/ADR-013-workflow-authority-migration.md)):
   the thirteen-field, customer-authorized model by which authority for any workflow may move —
   including to Neyma.
+- **Persistent conversational operations layer** ([`ADR-019`](docs/architecture/decisions/ADR-019-conversational-operations-layer.md)):
+  a role-aware conversational teammate over the canonical spine — one identity across web, Slack,
+  Teams, email, mobile and voice, all resolving to the same conversation/Work Item/history;
+  proactive, evidence-grounded, transparent about uncertainty. **Conversation is never a second
+  source of truth and never independent authority** — a conversational instruction that would cause
+  a consequential effect goes through the same auth/policy/evidence/approval/idempotency/grant/
+  verification pipeline as any other action; voice rides that same pipeline, not a separate effect
+  path; Neyma never claims completion without verification and never pretends to be human.
 - **Customer operational graph** ([`ADR-018`](docs/architecture/decisions/ADR-018-customer-operational-graph.md)):
   the TMS is one node, not the center; the canonical domain model and workflow engine are
   **independent of any specific TMS schema**; each tenant has an **Operational System Map**

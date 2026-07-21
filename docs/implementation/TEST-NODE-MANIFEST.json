@@ -1,8 +1,8 @@
 {
  "config": "pytest-canonical.ini",
  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
- "manifest_sha256": "c5f36a0bc09d85ebaaf16ccaffd8913048f5ee6f37dd29308e10c9d913536950",
- "node_count": 1268,
+ "manifest_sha256": "ec99af0018646dce40a76102eb69b57971b670163cbd8f1ce8b628c052aeffbd",
+ "node_count": 1269,
  "node_ids": [
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty",
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers",
@@ -921,6 +921,7 @@
   "eval/tests/test_rebaseline_invariants.py::test_r07_remains_open_not_contained",
   "eval/tests/test_rebaseline_invariants.py::test_sqlite_is_not_the_production_multi_tenant_database",
   "eval/tests/test_rebaseline_invariants.py::test_the_canonical_identity_is_present_and_exact",
+  "eval/tests/test_rebaseline_invariants.py::test_the_conversational_operations_layer_is_durable",
   "eval/tests/test_rebaseline_invariants.py::test_the_customer_operational_graph_decision_is_durable",
   "eval/tests/test_rebaseline_invariants.py::test_the_evidence_program_exists_and_fails_closed",
   "eval/tests/test_rebaseline_invariants.py::test_the_operational_system_map_spec_is_complete",

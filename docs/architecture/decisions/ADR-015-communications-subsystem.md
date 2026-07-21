@@ -54,6 +54,9 @@ Rules that follow directly from the existing safety spine:
 
 ## 4. Consequences
 
+- The **conversational operations layer** (ADR-019) rides on this subsystem: it uses these
+  channels as its rendering surfaces, and its consequential instructions are governed messages/
+  effects exactly as here — conversation adds a natural-language surface, never a new effect path.
 - P9 gains communications **ingestion** (correlation, evidence, expectations); P12 gains
   **supervised outbound** sends; the production architecture (ADR-016) gains communications
   workers and provider credentials (governed by ADR-014).

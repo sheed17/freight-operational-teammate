@@ -39,7 +39,7 @@ def require_population(items, what: str):
 # disarm markers let a current-authority document QUOTE a rejected claim in order to retire it.
 DISARM = re.compile(
     r"reject|retir|supersed|no longer|not a permanent|rebaselin|amended by|"
-    r"⚠️|not\s+an?\s+absolute|ADR-01[2-7]",
+    r"⚠️|not\s+an?\s+absolute|ADR-01[2-9]|never\s+a\s+second\s+source|never\s+independent\s+authority",
     re.I,
 )
 
@@ -73,6 +73,13 @@ REJECTED_ABSOLUTES = [
      re.compile(r"TMS\s+(?:is|as)\s+the\s+(?:universal\s+)?center\s+of\s+the\s+(?:product|architecture)"
                 r"|(?:domain\s+model|architecture|workflow\s+engine)\s+(?:depends?\s+on|is\s+shaped\s+by|"
                 r"requires)\s+(?:a\s+)?(?:specific\s+)?TMS\s+schema", re.I)),
+    # ADR-019: conversation must never be canonical truth or independent authority, and the product
+    # is not chatbot-only. These target the AFFIRMED-as-current form; ADR-019's own negations carry
+    # DISARM markers ("never a second source", "never independent authority").
+    ("conversation is a source of truth / conversation creates authority / chatbot-only product",
+     re.compile(r"conversation\s+is\s+(?:a|the)\s+(?:second\s+)?source\s+of\s+truth"
+                r"|conversation\s+(?:may\s+)?(?:independently\s+)?creates?\s+(?:consequential\s+)?authority"
+                r"|Neyma\s+is\s+a\s+chatbot-only\s+product\b", re.I)),
 ]
 
 
@@ -133,6 +140,7 @@ def test_the_six_rebaseline_adrs_exist_and_are_final():
         "ADR-016": "production-topology",
         "ADR-017": "tenant-and-integration-lifecycle",
         "ADR-018": "customer-operational-graph",
+        "ADR-019": "conversational-operations-layer",
     }
     adr_dir = ROOT / "docs/architecture/decisions"
     for adr, slug in expected.items():
@@ -388,6 +396,47 @@ def test_operational_use_case_coverage_matrix_is_complete():
     assert not re.search(r"all (transportation )?modes (are )?validated", blob, re.I), (
         "coverage matrix must not claim every mode is validated"
     )
+
+
+def test_the_conversational_operations_layer_is_durable():
+    """ADR-019: a persistent conversational layer that is never a second source of truth, never
+    independent authority, routes consequential instructions through the full kernel, keeps one
+    identity across channels, never claims completion without verification, and records the seven
+    prevention criteria and the non-binding external reference honestly."""
+    raw = read("docs/architecture/decisions/ADR-019-conversational-operations-layer.md")
+    assert "FINAL" in raw[:400] and "U-REBASELINE-1" in raw[:400], "ADR-019 not FINAL by U-REBASELINE-1"
+    adr = re.sub(r"\s+", " ", re.sub(r"[>*`]", " ", raw))
+    required = [
+        r"never\s+a\s+second\s+source\s+of\s+truth",
+        r"may\s+not\s+independently\s+create\s+consequential\s+authority",
+        r"same\s+auth\w*[\s,].{0,120}verification\s+controls|same\s+.{0,80}effect-grant.{0,40}verification",
+        r"must\s+not\s+pretend\s+to\s+be\s+human",
+        r"never\s+claim.{0,60}completed\s+unless.{0,60}verification\s+evidence",
+        r"one\s+coherent\s+Neyma\s+identity",
+        r"all\s+channels\s+resolve\s+to\s+the\s+same\s+conversation",
+        r"voice\s+is\s+architecturally\s+supported\s+through\s+the\s+same",
+    ]
+    missing = [p for p in required if not re.search(p, adr, re.I)]
+    assert not missing, f"ADR-019 missing durable conversational invariants: {missing}"
+    # the seven prevention criteria all named
+    for prevention in ("chatbot-only", "canonical state", "independent authority",
+                       "unverified", "channel-specific memory", "disconnected personas",
+                       "request-only"):
+        assert re.search(re.escape(prevention), adr, re.I), (
+            f"ADR-019 acceptance criteria missing prevention: {prevention}"
+        )
+    # the external reference is present AND honestly framed (non-binding; not freight; contrast)
+    assert re.search(r"Jack\s*&?\s*Jill", adr, re.I), "ADR-019 must record the named interaction reference"
+    assert re.search(r"non-binding", adr, re.I), "the interaction reference must be marked non-binding"
+    assert re.search(r"not\s+a\s+freight\s+product", adr, re.I), (
+        "ADR-019 must record honestly that the reference is not a freight product"
+    )
+    assert re.search(r"no\s+competitor\s+defines\s+Neyma's\s+canonical\s+identity", adr, re.I), (
+        "ADR-019 must preserve ADR-012's no-competitor-defines-identity rule"
+    )
+    # PRODUCT.md must reject the chatbot-only reading in its NOT list
+    prod = read("PRODUCT.md")
+    assert re.search(r"chatbot-only product", prod, re.I), "PRODUCT.md must address the chatbot-only reading"
 
 
 def test_no_src_runtime_file_was_touched_by_the_rebaseline():
