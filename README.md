@@ -49,7 +49,7 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **Implementation Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Implementation Phase 3** | ⛔ **NOT STARTED** |
 | **Suite** | green — ### **exact counts live ONLY in [`CURRENT.md`](docs/implementation/CURRENT.md)'s machine-maintained status block** |
-| **Next approved work** | **`U-REBASELINE-1` — product, integration and production rebaseline** (the handoff gate closed via the adjudicated independent `U-HANDOFF-2B` review) |
+| **Next approved work** | **`P3` — Checkpoint Witness, seven-step atomic checkpoint, claim CAS** — the sole `READY` unit. Both gates closed on independent evidence (`U-HANDOFF-1` and `U-REBASELINE-1` are COMPLETE). **P3 is READY and not implemented.** |
 
 **Phases are `P0`–`P14` with gates `G0`–`G10`.** Older documents refer to an 8-stage roadmap
 ("Stage 1"…"Stage 8") — **that roadmap is superseded.** See

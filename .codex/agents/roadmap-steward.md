@@ -92,7 +92,7 @@ As of this repo snapshot:
 
 ## ⛔ Next Actions To Advance Stage 1 — SUPERSEDED
 
-### **The next approved unit is `U-HANDOFF-1`**, per `docs/implementation/CURRENT.md`. The steps below target a gate passed long ago.
+### **The next approved unit is whatever [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) names — never this file.** The steps below target a gate passed long ago. *(U-REBASELINE-1B: this disarming line previously named a specific unit and went stale the moment that unit completed; a pointer cannot rot.)*
 
 <details><summary>Historical</summary>
 

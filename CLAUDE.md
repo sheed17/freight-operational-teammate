@@ -75,7 +75,8 @@ artificial ceilings and no assumed rip-and-replace.
 | Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
-| **Next approved unit** | **`U-REBASELINE-1` — product, integration and production rebaseline** (founder-authorized; documentation/architecture/specification/control ONLY; RB-01..RB-24 all PENDING). P3 stays BLOCKED behind it. |
+| **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
+| **Next approved unit** | ### **`P3` — Checkpoint Witness, seven-step atomic checkpoint, claim CAS. THE ONE AND ONLY READY UNIT.** Its weighted 14-criterion `acceptance_criteria` (sum 100) is on the P3 unit in the registry, **every criterion PENDING**. ### **P3 is READY and NOT IMPLEMENTED** — no checkpoint/witness/claim-CAS symbol exists in `src/`. P4–P14 stay BLOCKED; **reaching P3 does not close R-07** (P4 does). |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -252,11 +253,11 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ Do not promote the W6→W8 slice to validated.
 
 **The next approved program is
-[U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE](docs/implementation/CURRENT.md)**
-(founder-authorized; documentation, architecture, specification and control only — it implements
-no runtime behavior). Phase 3 becomes available only after the rebaseline completes, an
-independent product/production rebaseline review passes, and an independent repository
-inspection agrees.
+[P3 — CHECKPOINT WITNESS, SEVEN-STEP ATOMIC CHECKPOINT AND CLAIM CAS](docs/implementation/CURRENT.md)** —
+the one and only `READY` unit. Both gates are closed on independent evidence. Its weighted
+14-criterion acceptance contract lives on the P3 unit in the registry and is entirely `PENDING`.
+**P3 being READY is permission to begin, not evidence of beginning** — and it does not close R-07;
+only completing P4 does.
 
 ## 12. Other instruction files
 

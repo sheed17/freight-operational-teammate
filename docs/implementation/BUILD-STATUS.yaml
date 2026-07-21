@@ -21,30 +21,33 @@ derived:
 # end-derived-block
 
 snapshot:
-  active_work_unit: "U-REBASELINE-1 — Product, integration and production rebaseline (executed; awaiting independent review)"
-  next_approved_unit: "the INDEPENDENT product/production rebaseline review (fresh session/checkout), then P3 after founder advance"
+  active_work_unit: "P3 — Checkpoint Witness, seven-step atomic checkpoint, and claim CAS (READY; NOT started)"
+  next_approved_unit: "P3 — the one and only READY unit; its weighted 14-criterion acceptance contract is instantiated and entirely PENDING"
   completed_criteria:
-    - "U-HANDOFF-1 COMPLETE (handoff gate closed by U-HANDOFF-1D)"
-    - "U-REBASELINE-1 content: ADR-012..018, Delivered Load Closure wedge, revised P3-P14, RB-01..23 PASS"
+    - "U-HANDOFF-1 COMPLETE (handoff gate closed by U-HANDOFF-1D from the independent U-HANDOFF-2B review)"
+    - "U-REBASELINE-1 COMPLETE - RB-01..RB-24 ALL PASS, RB-24 awarded by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1"
+    - "the independent product/production rebaseline review: COMPLETE, delivered, preserved and adjudicated (15/16 findings resolved; F-10 recorded debt)"
     - "the progress protocol, program weights and this build-status system"
+    - "P3's weighted acceptance contract instantiated (14 criteria, weights sum 100, all PENDING)"
   pending_criteria:
-    - "RB-24 (fresh-reviewer legibility) - only the independent review can pass it"
-    - "the independent product/production rebaseline review"
-    - "the independent repository inspection agreeing P3 may begin"
-    - "every implementation phase P3-P14 (all SPECIFIED, 0% implemented)"
-  blockers:
-    - "P3 is BLOCKED behind U-REBASELINE-1 COMPLETE + the independent rebaseline review + repo inspection"
-    - "R-07 OPEN - NOT CONTAINED (closes at P4)"
-    - "customer-specific freight rules remain NEEDS VALIDATION until design-partner evidence is recorded"
+    - "P3's 14 weighted acceptance criteria: ALL PENDING - P3 is READY, not started"
+    - "every implementation phase P4-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P3)"
+  blockers_to_p3: []
+  open_program_risks:
+    - "R-07 OPEN - NOT CONTAINED. It closes at P4 and nowhere earlier; reaching or completing P3 does NOT close it."
+    - "customer-specific freight rules remain NEEDS VALIDATION (OPEN-VALIDATION-ITEMS.md); Delivered Load Closure is a HYPOTHESIS with zero recorded firsthand design-partner observations"
+    - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5"
+    - "recorded debt: independent-review finding F-10 (trace-id namespaces / unpublished 61-point index) - auditability noise, blocks nothing"
   last_verified_test_evidence: "see CURRENT.md status block (finalizer-executed suite) and SUITE-RESULT.json"
   finalizer_result: "see GATE-RESULT.json + CURRENT.md - executed by scripts/finalize_status.py"
   clean_clone_result: "CLEAN-CLONE GATE: PASS (GATE-RESULT.json)"
-  independent_review_status: "NOT STARTED - the post-rebaseline independent review is the next approved step"
+  independent_review_status: "COMPLETE - U-REBASELINE-REVIEW-1 delivered, preserved verbatim at docs/implementation/u-rebaseline-review-1-independent-report.md, and adjudicated by U-REBASELINE-1A (five PASS verdicts, zero CRITICAL)"
   verdict: ON TRACK
   expected_founder_experience: >-
-    Foundational and control work is strong: the safety architecture, the product/production
-    rebaseline and now an evidence-based progress system are in place. But there is NO complete
-    customer-facing workflow yet - user-visible maturity and production readiness are near zero on
-    purpose, because no implementation phase past P2 has begun. This is expected at this point and
-    is not evidence the direction has failed. The next real user value arrives at P10 (Delivered
-    Load Closure in shadow); real production progress is measured from P11 onward.
+    Both gates are closed and P3 - the safety kernel - is the single approved next unit, but it has
+    NOT been started: no checkpoint, witness or claim-CAS code exists. The customer-facing numbers
+    are still zero on purpose. CLI switch readiness is 100% because every gate to BEGINNING P3 is
+    satisfied - that is readiness to build, not built. Expect no usable interface during P3-P5:
+    progress there shows as authorization, idempotency, concurrency safety and durable execution.
+    The first real user value arrives at P10 (Delivered Load Closure in shadow), and production
+    progress becomes measurable from P11.

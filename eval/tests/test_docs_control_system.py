@@ -409,10 +409,26 @@ def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
     assert re.search(r"P3", read(CURRENT)), "CURRENT.md must name the next approved program"
 
 
-def test_24b_the_current_status_file_does_not_direct_an_agent_into_phase_3():
+def test_24b_the_current_status_file_forbids_the_phase_after_the_ready_one():
+    """REPLACED by U-REBASELINE-1B (not deleted - CLAUDE.md section 5 rule 20). This guard used to
+    require CURRENT.md to forbid beginning Phase 3. P3 is now the APPROVED READY unit, so that
+    prohibition is exactly what must NOT be there any more; the guard would have pinned an obsolete
+    instruction. The durable invariant is: CURRENT.md forbids the phase AFTER the READY one, and
+    states that the READY phase is not thereby implemented."""
     text = read(CURRENT)
-    assert re.search(r"(must NOT begin|Not yet).{0,400}Phase 3", text, re.I | re.S), \
-        "CURRENT.md must explicitly forbid beginning Phase 3"
+    ready = [u["unit_id"] for u in registry_units() if u["status"] == "READY"]
+    assert len(ready) == 1
+    m = re.fullmatch(r"P(\d+)", ready[0])
+    if not m:
+        # a non-phase unit is READY: the old rule applies unchanged - P3 must still be forbidden
+        assert re.search(r"(must NOT begin|Not yet).{0,400}Phase 3", text, re.I | re.S), \
+            "CURRENT.md must explicitly forbid beginning Phase 3"
+        return
+    nxt = f"Phase {int(m.group(1)) + 1}"
+    assert re.search(rf"(must NOT begin|Not yet).{{0,600}}{re.escape(nxt)}", text, re.I | re.S), \
+        f"CURRENT.md must explicitly forbid beginning {nxt} (the phase after the READY {ready[0]})"
+    assert re.search(rf"{re.escape(ready[0])} is READY .{{0,40}}NOT IMPLEMENTED", text, re.I | re.S), \
+        f"CURRENT.md must state that {ready[0]} being READY does not mean it was implemented"
 
 
 # ============================================================ 25. no placeholders presented as fact

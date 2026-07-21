@@ -41,13 +41,12 @@
 | [u-handoff-1d-final-adjudication-review.md](u-handoff-1d-final-adjudication-review.md) | ### **U-HANDOFF-1D — the handoff gate CLOSED: the independent U-HANDOFF-2B hostile review adjudicated, 13/13 PASS; U-REBASELINE-1 registered as the single READY unit. Next: U-REBASELINE-1.** |
 | [u-rebaseline-1a-founder-adjudication-review.md](u-rebaseline-1a-founder-adjudication-review.md) | ### **U-REBASELINE-1A — BOTH GATES CLOSED: the independent review adjudicated (15/16 findings resolved, F-10 debt), RB-24 PASS, U-REBASELINE-1 COMPLETE, P3 the sole READY unit with its weighted contract. Next: P3.** |
 | [u-rebaseline-review-1-independent-report.md](u-rebaseline-review-1-independent-report.md) | the preserved INDEPENDENT product/production review (fresh clone at fb5fcd93; five PASS verdicts, zero CRITICAL) |
-| [u-rebaseline-1-product-production-review.md](u-rebaseline-1-product-production-review.md) | ### **U-REBASELINE-1 — the founder product/integration/production rebaseline: ADR-012..017, Delivered Load Closure wedge (HYPOTHESIS), revised P3–P14, PostgreSQL production topology, communications as a core subsystem. RB-01..23 PASS, RB-24 pending the independent review.** |
-| [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..23 PASS, RB-24 PENDING) |
+| [u-rebaseline-1-product-production-review.md](u-rebaseline-1-product-production-review.md) | ### **U-REBASELINE-1 — the founder product/integration/production rebaseline: ADR-012..017, Delivered Load Closure wedge (HYPOTHESIS), revised P3–P14, PostgreSQL production topology, communications as a core subsystem. RB-01..23 PASS at execution; RB-24 later awarded from the independent review (U-REBASELINE-1A).** |
 | [../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | the wedge's required design-partner evidence, accountable sources, fail-closed |
 | [../specifications/operational-system-map.md](../specifications/operational-system-map.md) | the per-tenant operational graph / system map (ADR-018): TMS is one node, not the center; TMS-schema-independent domain model |
 | [u-handoff-2b-hostile-review-report.md](u-handoff-2b-hostile-review-report.md) | the preserved independent second hostile review (received portion, truncation disclosed) |
 | [U-HANDOFF-1-ACCEPTANCE.yaml](U-HANDOFF-1-ACCEPTANCE.yaml) | the 13-criterion executable rehearsal checklist — adjudicated 13/13 PASS by U-HANDOFF-1D |
-| [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract (RB-01..RB-24, all PENDING until the unit executes) |
+| [U-REBASELINE-1-ACCEPTANCE.yaml](U-REBASELINE-1-ACCEPTANCE.yaml) | the 24-criterion rebaseline contract — **RB-01..RB-24 ALL PASS**; the unit is COMPLETE |
 | [IMPLEMENTATION-SURFACE.yaml](IMPLEMENTATION-SURFACE.yaml) | implemented vs specification-only, machine-checked |
 | [IMPLEMENTATION-REGISTRY.yaml](IMPLEMENTATION-REGISTRY.yaml) | the work units, statuses and dependencies |
 | [PHASE-OUTPUTS.md](PHASE-OUTPUTS.md) | P0–P14: what each phase buys, and what stays prohibited |

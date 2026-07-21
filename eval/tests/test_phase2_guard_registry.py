@@ -68,6 +68,7 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_false_green_defenses.py": (RETAIN, "the U-HANDOFF-1C defenses: execution-not-attestation, exact node identity, whole-suite skip enforcement, transitive safety ancestry, the anti-enumeration meta-guard"),
     "test_rebaseline_invariants.py": (RETAIN, "the U-REBASELINE-1 invariants: rejected product absolutes cannot return as current authority, the ADR-012..017 commitments survive, no src/ change, R-07 stays open"),
     "test_progress_protocol.py": (RETAIN, "the founder progress protocol: percentages are mechanically derived, BUILD-STATUS cannot be inflated, the finalizer-rejection battery, required references"),
+    "test_switch_consistency.py": (RETAIN, "switch consistency: live guidance surfaces (CLAUDE, CURRENT, BUILD-STATUS snapshot, authority map, index, agent files) must agree with the registry after a control transition - a completed unit may never remain the live next-work claim"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_")

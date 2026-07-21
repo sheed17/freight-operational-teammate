@@ -158,53 +158,69 @@ is COMPLETE.**
 
 ## ✅ The exact next approved work program
 
-### **U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE** *(founder-authorized — executed, awaiting independent review)*
+### **P3 — CHECKPOINT WITNESS, SEVEN-STEP ATOMIC CHECKPOINT, AND CLAIM CAS**
 
-Unit `U-REBASELINE-1` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — the
-**single READY unit**. The executable acceptance contract is
-[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml) — **RB-01..RB-23 PASS with
-produced-artifact evidence; RB-24 PENDING** (only the independent review can certify fresh-reviewer
-legibility). The rebaseline **content is written**; the unit stays READY (not COMPLETE) until the
-independent product/production rebaseline review passes and the founder advances the program.
+Unit `P3` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
+READY unit.** Both gates that stood in front of it are CLOSED on independent evidence:
+`U-HANDOFF-1` (adjudicated by U-HANDOFF-1D from U-HANDOFF-2B) and **`U-REBASELINE-1` COMPLETE —
+RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the **INDEPENDENT**
+U-REBASELINE-REVIEW-1 (preserved:
+[`u-rebaseline-review-1-independent-report.md`](u-rebaseline-review-1-independent-report.md);
+adjudication: [`u-rebaseline-1a-founder-adjudication-review.md`](u-rebaseline-1a-founder-adjudication-review.md)).
 
-The rebaseline re-evaluated and corrected: stable product identity (ADR-012); the TMS
-relationship and workflow-authority migration (ADR-013); credential and machine-identity models
-(ADR-014); communications as a core subsystem (ADR-015); production hosting and deployment
-(ADR-016); tenant and integration lifecycle plus the web control plane (ADR-017); the initial
-commercial workflow hypothesis (Delivered Load Closure — PRODUCT.md §15); the revised P3–P14
-program; and the design-partner evidence requirements
-([`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md)).
+**P3's acceptance contract is the weighted 14-criterion `acceptance_criteria` block on the P3 unit
+in the registry** — weights sum to exactly 100, **every criterion PENDING**. Phase completion is
+computed from it ([`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §3: only `PASS` contributes; code
+written is not completion).
 
-**It was a documentation, architecture, specification and control unit ONLY. It implemented no
-runtime product behavior, changed no freight workflows, added no integrations, and left R-07
-OPEN — NOT CONTAINED and P3 BLOCKED throughout.**
+P3 makes the two-key rule real: the seven checks in ONE atomic transaction, an unconstructable
+`CheckpointPassed` witness, grant mint + claim CAS, and brake admission read inside the checkpoint
+transaction. **A grant becomes necessary but not sufficient.**
 
-**Next: an INDEPENDENT product/production rebaseline review** (fresh session, fresh checkout).
-Only after it passes does the founder advance the program toward P3.
+> ### **P3 is READY — and NOT IMPLEMENTED.** READY is permission to begin, not evidence of
+> beginning. No checkpoint, witness or claim-CAS symbol exists in `src/`, pinned as
+> `absent_symbols` in [`IMPLEMENTATION-SURFACE.yaml`](IMPLEMENTATION-SURFACE.yaml) and enforced by
+> a live test-of-absence. **P3 ships dark** — capability flag OFF; deploy and enable are separate
+> decisions.
+
+**P3's prohibited scope stands unchanged:** adapter containment is P4, events are P5, freight
+workflows are P6–P9. **Reaching P3 does not close R-07.**
 
 ## ⛔ What must NOT begin yet
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 3** | Requires `U-REBASELINE-1` COMPLETE, an independent product/production rebaseline review, **and** an independent repository inspection |
-| ### **Executing U-REBASELINE-1's product decisions ahead of the unit** | Registration is not execution; the RB-01..RB-24 contract is entirely PENDING |
-| Checkpoint Witness / seven-step checkpoint / claim CAS | P3 content |
-| Adapter containment | P4 content |
-| Closing R-07 | Only reaching P4 closes it |
+| ### **Implementation Phase 4** (adapter containment) | Requires `P3` COMPLETE. This is the phase that closes R-07 — and a gate with nothing behind it is theatre |
+| Events / outbox / replay isolation | P5 content; also blocked on the G2 transition/event adjudication |
+| Closing R-07 | ### **Only completing P4 closes it.** Not P3, not a plan, not operator discipline |
 | Freight workflow implementation | Requires P6–P9 foundations |
 | Deleting legacy production code | Requires the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md) |
-| Promoting the W6→W8 slice to validated | It is **provisional** and marked **NEEDS DESIGN-PARTNER VALIDATION**; requires recorded evidence |
+| Promoting Delivered Load Closure to validated | It is a **`HYPOTHESIS`** — requires recorded design-partner evidence ([`DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](../product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md)) |
 
 ## Blocked future units
 
-Every implementation phase from `P3` onward is **BLOCKED** behind `U-REBASELINE-1`. See the
-registry for the full dependency graph.
+**Every implementation phase from `P4` onward is BLOCKED behind `P3`.** See the registry for the
+full dependency graph; the transitive safety wall (P3 an ancestor of every P≥4, P4 of every P≥5) is
+guarded.
+
+<details>
+<summary><b>⛔ HISTORICAL — PRE-ADJUDICATION PROGRAM (superseded 2026-07-20; NOT current instruction)</b></summary>
+
+**Everything in this block is superseded and must not be followed.** Before the U-REBASELINE-1A
+adjudication, this file named **U-REBASELINE-1** as the next approved work program, described its
+contract as **RB-01..RB-23 PASS with RB-24 PENDING**, said the unit was **awaiting an independent
+product/production rebaseline review**, and listed **P3 as BLOCKED** behind it. The independent
+review has since been run, delivered, preserved and adjudicated: **U-REBASELINE-1 is COMPLETE, all
+24 criteria PASS, and P3 is the sole READY unit.** Retained only so the transition is auditable.
+
+</details>
 
 ## Documents required before proceeding
 
-A session picking up `U-REBASELINE-1` must have read, in order:
+A session picking up `P3` must have read, in order:
 [`CLAUDE.md`](../../CLAUDE.md) → [`PRODUCT.md`](../../PRODUCT.md) →
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → [`CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md) →
 this file → [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
-[`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) →
-[`U-REBASELINE-1-ACCEPTANCE.yaml`](U-REBASELINE-1-ACCEPTANCE.yaml).
+[`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) → the **P3 `acceptance_criteria`** block in
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
+[`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md).
