@@ -303,6 +303,93 @@ def test_the_operational_system_map_spec_is_complete():
     )
 
 
+def test_product_icp_does_not_require_a_formal_tms():
+    """U-REBASELINE-1A: formal-TMS ownership is NOT an ICP qualification. PRODUCT.md's target-
+    customer section must not gate the initial customer on having a TMS, must list the non-TMS
+    system alternatives, and must preserve 'the TMS is one node, not the center'."""
+    text = read("PRODUCT.md")
+    sec = re.search(r"## 2\. Target customer(.+?)\n## 3\.", text, re.S)
+    assert sec, "PRODUCT.md has no Target customer section"
+    body = sec.group(1)
+    # must NOT require a TMS as a qualification
+    assert not re.search(r"that has a TMS and uses it", body, re.I), (
+        "PRODUCT.md still qualifies the ICP on owning a TMS"
+    )
+    assert re.search(r"formal-TMS ownership is NOT a qualification requirement", body, re.I), (
+        "PRODUCT.md must state formal-TMS ownership is not a qualification requirement"
+    )
+    # must offer the non-TMS system alternatives
+    for alt in ("Sheets", "shared inbox", "portals", "accounting"):
+        assert re.search(re.escape(alt), body, re.I), f"PRODUCT.md ICP does not mention {alt}"
+    # must preserve the operational-graph framing
+    assert re.search(r"one\s+(?:possible\s+)?node\s+in\s+the\s+customer's\s+operational\s+graph",
+                     body, re.I), "PRODUCT.md ICP must preserve 'the TMS is one node, not the center'"
+
+
+_COVERAGE = "docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml"
+# FIXED-SPECIFICATION: the founder's directive names EXACTLY these six coverage classifications and
+# this minimum set of operational topics the matrix must cover. This is a required-coverage
+# specification, not a discovered file population - losing a category or a topic is a real defect.
+_REQUIRED_CLASSIFICATIONS = {
+    "IN_INITIAL_COMMERCIAL_WORKFLOW", "PLANNED_PLATFORM_CAPABILITY",
+    "REQUIRES_DESIGN_PARTNER_VALIDATION", "REQUIRES_MODE_SPECIFIC_VALIDATION",
+    "FUTURE_EXPANSION", "EXPLICITLY_OUT_OF_SCOPE",
+}
+_REQUIRED_TOPICS = {
+    "customer lifecycle": r"customer lifecycle", "quoting": r"quoting", "intake": r"intake",
+    "carrier sourcing": r"carrier sourcing|procurement", "compliance": r"compliance|vetting",
+    "tendering": r"tender", "dispatch": r"dispatch", "appointments": r"appointment",
+    "tracking": r"tracking", "documents": r"document", "communications": r"communication",
+    "exceptions": r"exception", "after-hours": r"after-hours", "billing": r"billing",
+    "AR": r"accounts receivable|\bAR\b|cash collection", "settlement": r"settlement",
+    "factoring": r"factoring", "accessorials": r"accessorial", "claims": r"claim",
+    "falloffs": r"falloff", "re-powering": r"re-power", "shift handoffs": r"shift handoff|handoff",
+    "owner oversight": r"owner oversight|owner.*reporting", "tenant administration": r"tenant administration",
+    "integration administration": r"integration administration", "onboarding/offboarding": r"onboarding",
+    "outages": r"outage", "recovery": r"recovery|disaster", "neyma saas ops": r"saas operations|own SaaS",
+}
+
+
+def test_operational_use_case_coverage_matrix_is_complete():
+    data = yaml.safe_load(read(_COVERAGE))
+    classes = set(data["meta"]["classifications"])
+    assert classes == _REQUIRED_CLASSIFICATIONS, (
+        f"coverage classifications drifted from the exact six: {classes ^ _REQUIRED_CLASSIFICATIONS}"
+    )
+    ucs = data["use_cases"]
+    assert len(ucs) >= 30, f"coverage matrix collapsed to {len(ucs)} use cases"
+    required_fields = [
+        "user_role", "operational_loop", "workflow_and_business_outcome", "systems_channels",
+        "source_of_truth", "authority_requirement", "evidence_requirement", "exception_classes",
+        "closure_condition", "owner_value_metric", "design_partner_validation_status",
+        "implementation_phase", "readiness_tier",
+    ]
+    for u in ucs:
+        missing = [f for f in required_fields if not u.get(f)]
+        assert not missing, f"{u['id']}: coverage record missing fields {missing}"
+        assert u["classification"] in _REQUIRED_CLASSIFICATIONS, (
+            f"{u['id']}: classification {u['classification']!r} is not one of the six"
+        )
+        assert u["readiness_tier"] in {t.replace(" ", "_").replace("-", "_").upper() for t in []} | {
+            "SPECIFIED", "LOCALLY IMPLEMENTED", "INTEGRATION TESTED", "STAGING READY",
+            "SHADOW-PILOT READY", "SUPERVISED-PRODUCTION READY", "GENERALLY PRODUCTION READY",
+        }, f"{u['id']}: non-canonical readiness_tier {u['readiness_tier']!r}"
+    # EVERY classification appears at least once - a category may not silently vanish
+    present = {u["classification"] for u in ucs}
+    assert present == _REQUIRED_CLASSIFICATIONS, (
+        f"coverage matrix lost categories: {_REQUIRED_CLASSIFICATIONS - present}"
+    )
+    # the founder's minimum topic set is all covered
+    blob = read(_COVERAGE)
+    missing_topics = [name for name, pat in _REQUIRED_TOPICS.items()
+                      if not re.search(pat, blob, re.I)]
+    assert not missing_topics, f"coverage matrix missing required topics: {missing_topics}"
+    # honesty: no claim that every mode is validated
+    assert not re.search(r"all (transportation )?modes (are )?validated", blob, re.I), (
+        "coverage matrix must not claim every mode is validated"
+    )
+
+
 def test_no_src_runtime_file_was_touched_by_the_rebaseline():
     """The rebaseline diff (vs the U-HANDOFF-1D content baseline) must not touch src/."""
     import subprocess

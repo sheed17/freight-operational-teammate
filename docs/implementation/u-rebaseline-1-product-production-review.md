@@ -48,6 +48,28 @@ model is shaped by a TMS schema". Each is now guarded against reintroduction
 Stable identity vs mutable strategy is made explicit (ADR-012 §2): the wedge, ICP, integration
 mix and loop sequencing are strategy the founder may revise on evidence without changing identity.
 
+## 4b. Founder product-authority corrections (U-REBASELINE-1A addendum)
+
+Two founder-directed gaps closed before the adjudication:
+
+1. **ICP — no formal-TMS requirement.** PRODUCT.md §2 no longer qualifies the initial customer on
+   owning a TMS. The customer's system of record may be a formal TMS **or** Sheets/Excel, a shared
+   inbox, portals, accounting software, SMS/phone, documents, or a customer-specific combination; a
+   brokerage running entirely on Sheets and an inbox is fully qualified. "The TMS is one node, not
+   the center" (ADR-018) is preserved. Guarded by
+   `test_product_icp_does_not_require_a_formal_tms` (+ 2 mutations).
+2. **Operational use-case coverage matrix.** One canonical matrix,
+   [`OPERATIONAL-USE-CASE-COVERAGE.yaml`](../product/OPERATIONAL-USE-CASE-COVERAGE.yaml): 32 use
+   cases, each with all 13 fields (role, loop, workflow/outcome, systems, source of truth,
+   authority, evidence, exception classes, closure, owner-value metric, validation status, phase,
+   tier), each classified as exactly one of the six categories (IN_INITIAL_COMMERCIAL_WORKFLOW ×6,
+   PLANNED_PLATFORM_CAPABILITY ×8, REQUIRES_DESIGN_PARTNER_VALIDATION ×15,
+   REQUIRES_MODE_SPECIFIC_VALIDATION ×1, FUTURE_EXPANSION ×1, EXPLICITLY_OUT_OF_SCOPE ×1). Covers
+   the founder's full minimum topic list. **No freight rule is fabricated** (customer-specific
+   rules stay NEEDS VALIDATION) and **no mode is claimed validated**. Guarded by
+   `test_operational_use_case_coverage_matrix_is_complete` (categories can't vanish, topics can't
+   drop, fields can't blank) (+ 4 mutations). Battery total now 24/24.
+
 ## 5. Initial ICP and broader direction
 
 **Initial ICP:** small/medium US truckload freight brokerages — fragmented systems, shared inboxes,
@@ -188,7 +210,8 @@ identity), ADR-015 (communications), ADR-016 (production topology), ADR-017 (ten
 lifecycle + control plane), **ADR-018 (customer operational graph / TMS-agnostic domain model)**;
 DESIGN-PARTNER-EVIDENCE-PROGRAM.md; **docs/specifications/operational-system-map.md** (the
 per-tenant Operational System Map, 15 fields); **PROGRESS-PROTOCOL.md**, **PROGRAM-WEIGHTS.yaml**,
-**BUILD-STATUS.yaml** and **scripts/progress_status.py** (the founder progress system).
+**BUILD-STATUS.yaml** and **scripts/progress_status.py** (the founder progress system);
+**docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml** (the coverage matrix, U-REBASELINE-1A).
 
 ## 17. Historical claims disarmed
 

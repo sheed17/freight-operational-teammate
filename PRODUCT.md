@@ -36,10 +36,19 @@ The unit of value is a **correctly closed operational loop**, not a processed do
 ## 2. Target customer
 
 **Initial ICP:** a **small-to-medium US truckload freight brokerage** (or brokerage-leaning 3PL)
-that has a TMS and uses it, runs the business out of a shared inbox, keeps spreadsheets for
-everything the TMS cannot hold, has little or no EDI, and has **no in-house engineering, no data
-team and no integration budget**. Margin is thin and per-load, so one unaudited carrier invoice
-or one two-week-late customer invoice is a visible hit rather than a rounding error.
+that runs the business out of a shared inbox, has little or no EDI, and has **no in-house
+engineering, no data team and no integration budget**. Margin is thin and per-load, so one
+unaudited carrier invoice or one two-week-late customer invoice is a visible hit rather than a
+rounding error.
+
+**Formal-TMS ownership is NOT a qualification requirement.** The customer's operational system of
+record may be a formal TMS — or Google Sheets or Excel, a shared inbox, portals, accounting
+software, SMS and phone, loose documents, or a **customer-specific combination** of these. Neyma
+models the real workflow independently of whatever software performs it today
+([`ADR-018`](docs/architecture/decisions/ADR-018-customer-operational-graph.md)):
+**the TMS is one possible node in the customer's operational graph, not the center of the
+product.** A brokerage running entirely on Sheets and a shared inbox is a fully-qualified initial
+customer.
 
 **Broader company direction** *(distinct from the initial ICP — ADR-012 §3)*: small and medium
 freight and logistics operators — additional brokerage modes and adjacent logistics businesses
@@ -288,6 +297,7 @@ foundational architecture work.
 | [`docs/product/OPEN-VALIDATION-ITEMS.md`](docs/product/OPEN-VALIDATION-ITEMS.md) | **CANONICAL** — unresolved product/workflow rules and their safe interim behaviour |
 | [`docs/product/design-partner-observations.md`](docs/product/design-partner-observations.md) | **EVIDENCE** — what is actually known, by source class |
 | [`docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | **CANONICAL** — the evidence the wedge requires, its accountable sources and fail-closed behaviour |
+| [`docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml`](docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml) | **CANONICAL** — the one operational use-case coverage matrix: every major use case classified (in-wedge / planned platform / needs design-partner or mode-specific validation / future / out of scope), with role, loop, source of truth, authority, evidence, closure, phase and readiness tier |
 | [`docs/architecture/decisions/ADR-012`](docs/architecture/decisions/ADR-012-product-identity-and-strategy.md)–[`017`](docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md) | **CANONICAL** — the rebaseline decisions: identity/strategy, authority migration, credentials, communications, production topology, tenant & integration lifecycle |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **CANONICAL** — the architecture entry point |
 | [`docs/CANONICAL-DOCUMENTS.md`](docs/CANONICAL-DOCUMENTS.md) | **CANONICAL** — which documents may authorise decisions |

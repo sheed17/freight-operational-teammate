@@ -74,6 +74,7 @@ disagree on *product identity*, **`PRODUCT.md` wins.**
 | [`product/OPEN-VALIDATION-ITEMS.md`](product/OPEN-VALIDATION-ITEMS.md) | Unresolved rules + safe interim behaviour | **CANONICAL** | **Consult before implementing any freight rule** |
 | [`product/design-partner-observations.md`](product/design-partner-observations.md) | What is actually known, by source class | **EVIDENCE** | May not be upgraded to fact by an agent |
 | [`product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | The evidence the wedge requires, accountable sources, fail-closed behavior (U-REBASELINE-1) | **CANONICAL** | Specifies required evidence; is not itself evidence, and never a READY coding unit |
+| [`product/OPERATIONAL-USE-CASE-COVERAGE.yaml`](product/OPERATIONAL-USE-CASE-COVERAGE.yaml) | The one operational use-case coverage matrix — every major use case classified, with role/loop/authority/evidence/closure/phase/tier (U-REBASELINE-1A) | **CANONICAL** | Scope, not proof; freight rules stay NEEDS VALIDATION; no mode claimed validated |
 
 ## 4. Architecture layer
 

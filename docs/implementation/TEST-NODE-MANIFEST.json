@@ -1,8 +1,8 @@
 {
  "config": "pytest-canonical.ini",
  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
- "manifest_sha256": "5373876afb0e1ff18c6ee067d1a6db185e127228c41dcf4f2c5307900e060887",
- "node_count": 1266,
+ "manifest_sha256": "c5f36a0bc09d85ebaaf16ccaffd8913048f5ee6f37dd29308e10c9d913536950",
+ "node_count": 1268,
  "node_ids": [
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty",
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers",
@@ -915,6 +915,8 @@
   "eval/tests/test_rebaseline_invariants.py::test_exactly_one_ready_unit_and_it_is_the_rebaseline",
   "eval/tests/test_rebaseline_invariants.py::test_no_rejected_product_absolute_is_a_live_claim_in_current_authority",
   "eval/tests/test_rebaseline_invariants.py::test_no_src_runtime_file_was_touched_by_the_rebaseline",
+  "eval/tests/test_rebaseline_invariants.py::test_operational_use_case_coverage_matrix_is_complete",
+  "eval/tests/test_rebaseline_invariants.py::test_product_icp_does_not_require_a_formal_tms",
   "eval/tests/test_rebaseline_invariants.py::test_production_readiness_vocabulary_is_defined",
   "eval/tests/test_rebaseline_invariants.py::test_r07_remains_open_not_contained",
   "eval/tests/test_rebaseline_invariants.py::test_sqlite_is_not_the_production_multi_tenant_database",

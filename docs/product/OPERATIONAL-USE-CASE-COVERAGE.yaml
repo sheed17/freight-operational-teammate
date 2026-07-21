@@ -1,0 +1,576 @@
+# OPERATIONAL USE-CASE COVERAGE MATRIX
+#
+# CANONICAL product authority (U-REBASELINE-1, founder-authorized). The ONE canonical coverage
+# matrix: for every major operational use case it records role, loop, workflow/outcome, systems,
+# source of truth, authority, evidence, exception classes, closure condition, owner-value metric,
+# design-partner validation status, implementation phase, readiness tier, and a single
+# classification. Guarded by eval/tests/test_rebaseline_invariants.py.
+#
+# HONESTY RULES (do not violate):
+#   - No freight rule is fabricated. Where a rule is customer-specific it is NEEDS_VALIDATION.
+#   - No claim that every transportation mode is validated; mode-specific work is
+#     REQUIRES_MODE_SPECIFIC_VALIDATION.
+#   - readiness_tier uses the seven canonical tiers (PROGRESS-PROTOCOL.md sec 5); everything is
+#     SPECIFIED today because no post-P2 implementation phase has begun.
+
+meta:
+  unit: U-REBASELINE-1
+  authority: founder-authorized product coverage
+  decision_of_record: docs/architecture/decisions/ADR-018-customer-operational-graph.md
+  # A use case is EXACTLY one of these six classifications.
+  classifications:
+    - IN_INITIAL_COMMERCIAL_WORKFLOW      # part of the Delivered Load Closure wedge (a HYPOTHESIS)
+    - PLANNED_PLATFORM_CAPABILITY         # platform/ops, not freight-rule-validation-gated
+    - REQUIRES_DESIGN_PARTNER_VALIDATION  # freight workflow whose rules need the design partner
+    - REQUIRES_MODE_SPECIFIC_VALIDATION   # varies by mode (LTL, drayage, reefer, flatbed, ...)
+    - FUTURE_EXPANSION                    # beyond the initial ICP / program
+    - EXPLICITLY_OUT_OF_SCOPE             # a different product
+  wedge_note: >-
+    IN_INITIAL_COMMERCIAL_WORKFLOW marks the pieces of Delivered Load Closure (PRODUCT.md sec 15).
+    The wedge itself remains a HYPOTHESIS requiring design-partner validation
+    (docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md); classification here is scope, not proof.
+
+use_cases:
+  - id: UC-01
+    use_case: Customer lifecycle (prospect to active to churn)
+    user_role: owner / account manager
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "a customer relationship is established, served and retained; revenue continuity"
+    systems_channels: [CRM or spreadsheet, email, accounting]
+    source_of_truth: "the brokerage's own records (CRM/sheet)"
+    authority_requirement: "human for commercial commitments"
+    evidence_requirement: "recorded agreements and communications, with provenance"
+    exception_classes: [lapsed customer, disputed terms]
+    closure_condition: "relationship state is current and correct"
+    owner_value_metric: "retention; revenue per customer"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-02
+    use_case: Quoting (W1)
+    user_role: account manager / pricing
+    operational_loop: W1 Quote
+    workflow_and_business_outcome: "a priced quote is produced and sent; won freight at margin"
+    systems_channels: [email, load boards, rate tools, TMS or sheet]
+    source_of_truth: "the brokerage's pricing decision (human)"
+    authority_requirement: "the sell rate is a human decision (Operating Model sec 6) - Neyma never prices"
+    evidence_requirement: "rate basis and quote content, with provenance"
+    exception_classes: [stale rate, capacity unknown]
+    closure_condition: "quote sent and outcome recorded"
+    owner_value_metric: "quote turnaround; win rate"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-03
+    use_case: Order / load intake
+    user_role: operations
+    operational_loop: W1 -> W4
+    workflow_and_business_outcome: "a customer order becomes a load record; nothing dropped at intake"
+    systems_channels: [email, EDI/API, portal, spreadsheet, TMS]
+    source_of_truth: "the customer's tender (email/EDI/portal)"
+    authority_requirement: "read; human confirms ambiguous fields"
+    evidence_requirement: "the source tender bound as evidence"
+    exception_classes: [missing fields, duplicate order, conflicting revisions]
+    closure_condition: "a complete, owned load record exists"
+    owner_value_metric: "intake time; intake errors"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P9
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-04
+    use_case: Carrier sourcing / procurement (W2)
+    user_role: operations / carrier sales
+    operational_loop: W2 Procurement
+    workflow_and_business_outcome: "a suitable carrier is found and booked; covered load at margin"
+    systems_channels: [load boards, email, phone, SMS, TMS]
+    source_of_truth: "the carrier agreement (the booked rate con)"
+    authority_requirement: "human commits the carrier and rate"
+    evidence_requirement: "the rate confirmation and carrier identity, with provenance"
+    exception_classes: [no capacity, price drift, carrier fallout]
+    closure_condition: "a carrier is booked and confirmed"
+    owner_value_metric: "coverage time; margin per load"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-05
+    use_case: Carrier compliance & vetting (W3)
+    user_role: compliance / operations
+    operational_loop: W3 Compliance
+    workflow_and_business_outcome: "a carrier is vetted (authority, insurance, safety) before use; risk controlled"
+    systems_channels: [FMCSA, insurance/COI, monitoring services, TMS]
+    source_of_truth: "FMCSA and the insurer (external authorities)"
+    authority_requirement: "read; human decides marginal cases"
+    evidence_requirement: "authority + insurance evidence, freshness tracked"
+    exception_classes: [expired authority, lapsed insurance, safety flag]
+    closure_condition: "carrier is compliant for this load at booking time"
+    owner_value_metric: "compliance incidents avoided"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-06
+    use_case: Tendering to carrier
+    user_role: operations
+    operational_loop: W2 -> W4
+    workflow_and_business_outcome: "a load is tendered and accepted; a committed carrier"
+    systems_channels: [email, EDI/API, portal, TMS]
+    source_of_truth: "the tender acceptance"
+    authority_requirement: "human commits the tender"
+    evidence_requirement: "tender and acceptance recorded"
+    exception_classes: [tender rejected, no response, terms mismatch]
+    closure_condition: "accepted tender recorded"
+    owner_value_metric: "tender acceptance rate"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-07
+    use_case: Dispatch (W4)
+    user_role: operations / dispatch
+    operational_loop: W4 Dispatch
+    workflow_and_business_outcome: "the carrier is dispatched with instructions; movement begins correctly"
+    systems_channels: [phone, SMS, email, TMS]
+    source_of_truth: "the dispatch instruction issued"
+    authority_requirement: "human issues dispatch"
+    evidence_requirement: "dispatch details and confirmations"
+    exception_classes: [driver unreachable, wrong instructions]
+    closure_condition: "carrier dispatched and acknowledged"
+    owner_value_metric: "on-time dispatch"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-08
+    use_case: Appointment scheduling
+    user_role: operations
+    operational_loop: W4 / W5
+    workflow_and_business_outcome: "pickup/delivery appointments are set; avoid detention and refusals"
+    systems_channels: [facility portals, email, phone, TMS]
+    source_of_truth: "the facility (appointment portal)"
+    authority_requirement: "human confirms binding appointments"
+    evidence_requirement: "appointment confirmations"
+    exception_classes: [no slots, missed appointment, reschedule]
+    closure_condition: "confirmed appointments recorded"
+    owner_value_metric: "detention avoided; on-time %"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-09
+    use_case: Tracking & delivery detection (W5)
+    user_role: operations
+    operational_loop: W5 Tracking
+    workflow_and_business_outcome: "load status is tracked to delivery; delivery is detected as it happens"
+    systems_channels: [tracking providers, ELD, email, SMS, phone, portals, TMS]
+    source_of_truth: "the carrier/driver and tracking provider; the POD for the fact of delivery"
+    authority_requirement: "read; escalate exceptions to a human"
+    evidence_requirement: "status observations with provenance; delivery evidence"
+    exception_classes: [no updates, late, off-route, missed delivery]
+    closure_condition: "delivery established (or its absence made a first-class obligation)"
+    owner_value_metric: "delivered-load detection latency; silent-failure catches"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P10
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-10
+    use_case: Document handling (W6)
+    user_role: operations / billing
+    operational_loop: W6 Documentation
+    workflow_and_business_outcome: "PODs/BOLs/receipts/invoices are received, classified and bound to the load; the packet is complete"
+    systems_channels: [email, driver photo, portals, scans/paper, object storage]
+    source_of_truth: "the document itself (content-addressed evidence)"
+    authority_requirement: "read/file; human resolves unsupported or conflicting docs"
+    evidence_requirement: "content-addressed evidence with provenance"
+    exception_classes: [missing POD, illegible, wrong load, conflicting evidence]
+    closure_condition: "the required document set for the load is present and bound"
+    owner_value_metric: "document follow-up time; % delivered loads awaiting docs"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P10
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-11
+    use_case: Communications (email/SMS/phone) (W10)
+    user_role: operations / account manager
+    operational_loop: W10 Customer Communications (cross-cutting)
+    workflow_and_business_outcome: "the right message reaches the right party; commitments and follow-ups are tracked"
+    systems_channels: [Gmail/M365, SMS, phone/voice, Slack/Teams, portals]
+    source_of_truth: "the message and its delivery state"
+    authority_requirement: "human gate for bad-news and money communications (ADR-003/015); duplicates prevented by identity"
+    evidence_requirement: "message content digest, delivery state, expected response"
+    exception_classes: [bounce, no response, unknown delivery outcome, opt-out]
+    closure_condition: "the communication's purpose is met and verified"
+    owner_value_metric: "duplicate comms prevented; follow-up time"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P12
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-12
+    use_case: Exception management (W7)
+    user_role: operations
+    operational_loop: W7 Exceptions (cross-cutting)
+    workflow_and_business_outcome: "exceptions are detected, owned and resolved rather than discovered late"
+    systems_channels: [all channels; the control plane]
+    source_of_truth: "the operational state and its conflicts"
+    authority_requirement: "human owns and resolves; Neyma escalates with evidence"
+    evidence_requirement: "the triggering evidence and the resolution trail"
+    exception_classes: "NEEDS_VALIDATION - the real taxonomy is a design-partner input"
+    closure_condition: "the exception is resolved or explicitly tracked to an owner"
+    owner_value_metric: "exception age; repeat exceptions"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P10
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-13
+    use_case: After-hours / weekend operational work
+    user_role: on-call operations / owner
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "urgent work is handled outside business hours without dropping loads"
+    systems_channels: [SMS, phone, email, control plane]
+    source_of_truth: "the live operational state"
+    authority_requirement: "human for consequential action; quiet-hours honored"
+    evidence_requirement: "what happened and under whose authority"
+    exception_classes: [after-hours emergency, escalation with no responder]
+    closure_condition: "the after-hours obligation is handled or safely deferred with an owner"
+    owner_value_metric: "owner nights/weekends reclaimed"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-14
+    use_case: Billing / invoicing (W8)
+    user_role: billing
+    operational_loop: W8 Billing
+    workflow_and_business_outcome: "a correct customer invoice is prepared from complete, reconciled evidence; billing readiness"
+    systems_channels: [accounting system, customer portals, email, TMS]
+    source_of_truth: "the reconciled load record + approved commercial records"
+    authority_requirement: "deterministic validation of amounts; the model never chooses an amount"
+    evidence_requirement: "the document packet and charge basis"
+    exception_classes: [incomplete packet, unsupported charge, customer-specific format]
+    closure_condition: "an invoice is prepared and ready to send (send is P12, supervised)"
+    owner_value_metric: "delivered-to-invoiced time; billing readiness accuracy"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P10
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-15
+    use_case: Accounts receivable / cash collection
+    user_role: billing / owner
+    operational_loop: W8 (closure)
+    workflow_and_business_outcome: "the invoice is followed to cash collected; the billing loop closes at cash, not invoice-sent"
+    systems_channels: [accounting, bank, email, customer portals]
+    source_of_truth: "the bank (money) and the customer's remittance"
+    authority_requirement: "human for disputes and write-offs"
+    evidence_requirement: "invoice, remittance and payment evidence"
+    exception_classes: [short pay, dispute, aging past terms]
+    closure_condition: "cash collected and reconciled"
+    owner_value_metric: "DSO / AR aging"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: IN_INITIAL_COMMERCIAL_WORKFLOW
+
+  - id: UC-16
+    use_case: Carrier settlement (W9)
+    user_role: settlement / accounting
+    operational_loop: W9 Settlement
+    workflow_and_business_outcome: "the carrier is paid correctly and on the agreed terms; carrier trust and margin protected"
+    systems_channels: [accounting, factoring portals, email, TMS]
+    source_of_truth: "the rate con + carrier invoice + approved accessorials"
+    authority_requirement: "money leaving the business requires human approval, permanently (Operating Model sec 7.5)"
+    evidence_requirement: "rate con, carrier invoice, POD, authorized accessorials"
+    exception_classes: [amount mismatch, missing paperwork, unauthorized accessorial]
+    closure_condition: "carrier paid the correct amount, recorded"
+    owner_value_metric: "settlement accuracy; carrier disputes"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-17
+    use_case: Factoring & remittance
+    user_role: accounting / owner
+    operational_loop: W9 (adjacent)
+    workflow_and_business_outcome: "factored invoices and remittances are handled correctly; cash flow and reconciliation"
+    systems_channels: [factoring portals, bank, accounting, email]
+    source_of_truth: "the factor and the bank"
+    authority_requirement: "human for financial commitments"
+    evidence_requirement: "factoring agreements and remittance advices"
+    exception_classes: [remittance mismatch, chargeback]
+    closure_condition: "the factored item is reconciled"
+    owner_value_metric: "reconciliation accuracy"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-18
+    use_case: Accessorial authorization & handling
+    user_role: operations / billing
+    operational_loop: W7 / W8 / W9
+    workflow_and_business_outcome: "detention/lumper/TONU and other accessorials are correctly authorized and billed/paid"
+    systems_channels: [email, phone, SMS, TMS, accounting]
+    source_of_truth: "the authorizing party (customer/carrier) - often verbal"
+    authority_requirement: "ONLY a human may assert an undocumented authorization exists (ADR-003 F-05); a model-asserted authorization is never sufficient"
+    evidence_requirement: "who authorized, when, and where recorded"
+    exception_classes: [unauthorized charge, disputed accessorial, verbal-only claim]
+    closure_condition: "the accessorial is authorized-or-refused and settled"
+    owner_value_metric: "unauthorized charges caught; accessorial leakage"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-19
+    use_case: Claims (W11)
+    user_role: claims / operations
+    operational_loop: W11 Claims
+    workflow_and_business_outcome: "cargo/damage claims are managed to resolution; liability and relationships protected"
+    systems_channels: [email, insurer/claims systems, documents, TMS]
+    source_of_truth: "the claim record and the humans/counsel"
+    authority_requirement: "legal and insurance judgment is human"
+    evidence_requirement: "claim documentation with provenance"
+    exception_classes: [disputed liability, missing documentation, deadline risk]
+    closure_condition: "the claim reaches a recorded resolution"
+    owner_value_metric: "claim cycle time; leakage"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-20
+    use_case: Load falloff / cancellation
+    user_role: operations
+    operational_loop: W2 / W4
+    workflow_and_business_outcome: "a fallen-off or cancelled load is recovered or cleanly closed; margin and commitments protected"
+    systems_channels: [phone, email, load boards, TMS]
+    source_of_truth: "the live operational state"
+    authority_requirement: "human for recovery commitments"
+    evidence_requirement: "the falloff cause and recovery actions"
+    exception_classes: [carrier falloff, customer cancellation, double-booking]
+    closure_condition: "the load is re-covered or cleanly cancelled with obligations settled"
+    owner_value_metric: "falloff recovery rate"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-21
+    use_case: Re-powering (re-assign carrier mid-transit)
+    user_role: operations
+    operational_loop: W4 / W5
+    workflow_and_business_outcome: "a load is moved to a new carrier mid-transit without losing the delivery; service protected"
+    systems_channels: [phone, SMS, load boards, TMS]
+    source_of_truth: "the live movement state"
+    authority_requirement: "human commits the re-power and new rate"
+    evidence_requirement: "the re-power decision and new carrier evidence"
+    exception_classes: [in-transit failure, cargo transfer, cost overrun]
+    closure_condition: "delivery completed under the new carrier, recorded"
+    owner_value_metric: "service saves; re-power cost"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-22
+    use_case: Shift handoffs
+    user_role: operations
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "open obligations pass cleanly between shifts; nothing dropped at handoff"
+    systems_channels: [control plane, Slack/Teams, email]
+    source_of_truth: "the open Work Items and their owners"
+    authority_requirement: "ownership reassignment is a recorded human action"
+    evidence_requirement: "the handoff record and open-obligation list"
+    exception_classes: [dropped obligation, ambiguous ownership]
+    closure_condition: "every open obligation has an accountable owner across the boundary"
+    owner_value_metric: "handoff drops"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_DESIGN_PARTNER_VALIDATION
+
+  - id: UC-23
+    use_case: Owner oversight & reporting
+    user_role: owner
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "the owner can see operational state, value delivered and open risk; trust and control"
+    systems_channels: [web control plane, reports, email]
+    source_of_truth: "Neyma's canonical operational state (derived, sourced)"
+    authority_requirement: "read; the owner remains accountable"
+    evidence_requirement: "metrics traceable to underlying evidence"
+    exception_classes: [metric divergence, stale view]
+    closure_condition: "the owner can answer 'what is true and what is owed' without digging"
+    owner_value_metric: "owner time in the tools; 'the owner stops checking'"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-24
+    use_case: Tenant administration
+    user_role: owner / admin
+    operational_loop: platform
+    workflow_and_business_outcome: "users, roles, policies and approval limits are configured per brokerage; safe multi-tenant operation"
+    systems_channels: [web control plane]
+    source_of_truth: "the tenant configuration"
+    authority_requirement: "tenant admin is a privileged, audited human role"
+    evidence_requirement: "audited configuration changes"
+    exception_classes: [misconfiguration, privilege error]
+    closure_condition: "the tenant is correctly and safely configured"
+    owner_value_metric: "config errors; time to change"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-25
+    use_case: Integration administration & health
+    user_role: admin / support
+    operational_loop: platform
+    workflow_and_business_outcome: "integrations are connected, authorized, monitored and revoked; reliable operation"
+    systems_channels: [web control plane, the integration providers]
+    source_of_truth: "the integration connection state and health"
+    authority_requirement: "customer-authorized credentials under ADR-014 governance; access is not action authority"
+    evidence_requirement: "authorization records and health signals"
+    exception_classes: [degraded connection, revoked credential, provider outage]
+    closure_condition: "each integration is healthy or its degradation is raised as work"
+    owner_value_metric: "integration uptime; silent-staleness catches"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-26
+    use_case: Customer onboarding & offboarding
+    user_role: admin / owner
+    operational_loop: platform
+    workflow_and_business_outcome: "a tenant is onboarded (with operational-system mapping) and cleanly offboarded (with credential destruction)"
+    systems_channels: [web control plane, the customer's systems]
+    source_of_truth: "the onboarding discovery + Operational System Map (ADR-018)"
+    authority_requirement: "recorded customer authorization; offboarding destroys credentials (ADR-014)"
+    evidence_requirement: "the Operational System Map; offboarding completion evidence"
+    exception_classes: [incomplete mapping, failed credential destruction, data-export gap]
+    closure_condition: "onboarding produces a complete map; offboarding leaves a verified end state"
+    owner_value_metric: "time to value; clean-exit assurance"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-27
+    use_case: Provider / integration outage handling
+    user_role: support / ops
+    operational_loop: platform
+    workflow_and_business_outcome: "an external provider outage is handled without corrupting state or dropping obligations"
+    systems_channels: [monitoring, the integration providers, control plane]
+    source_of_truth: "the provider's real state on recovery (reconcile, never assume)"
+    authority_requirement: "no consequential effect on unknown outcomes; fail closed"
+    evidence_requirement: "outage window, queued work, reconciliation record"
+    exception_classes: [outage, partial degradation, UNKNOWN_OUTCOME during outage]
+    closure_condition: "state reconciled against the provider after recovery; no silent loss"
+    owner_value_metric: "outage-caused errors; UNKNOWN_OUTCOME resolution"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-28
+    use_case: Backup, recovery & disaster recovery
+    user_role: SRE / support
+    operational_loop: platform
+    workflow_and_business_outcome: "data is backed up and recoverable; the service survives failures"
+    systems_channels: [PostgreSQL, object storage, backup tooling]
+    source_of_truth: "the production stores and their backups"
+    authority_requirement: "privileged, audited operations; rollback exercises required"
+    evidence_requirement: "backup/restore drill records, RPO/RTO evidence"
+    exception_classes: [data loss, failed restore, recovery-time miss]
+    closure_condition: "point-in-time recovery and DR are demonstrated, not assumed"
+    owner_value_metric: "restore success; RPO/RTO met"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-29
+    use_case: Neyma's own SaaS operations (deploy, monitor, incident, cost)
+    user_role: Neyma engineering / SRE
+    operational_loop: platform
+    workflow_and_business_outcome: "Neyma runs reliably, observably and within cost; the platform can serve customers continuously"
+    systems_channels: [CI/CD, monitoring, alerting, secrets, cost controls]
+    source_of_truth: "the deployment and telemetry"
+    authority_requirement: "privileged, audited; the brake is armed in every environment"
+    evidence_requirement: "deploy records, telemetry, incident postmortems"
+    exception_classes: [incident, regression, cost overrun, security finding]
+    closure_condition: "the service meets its operational bar for its approved scope"
+    owner_value_metric: "uptime; incident rate; cost per tenant"
+    design_partner_validation_status: N/A_PLATFORM
+    implementation_phase: P11
+    readiness_tier: SPECIFIED
+    classification: PLANNED_PLATFORM_CAPABILITY
+
+  - id: UC-30
+    use_case: Mode-specific workflows (LTL, drayage, reefer, flatbed, intermodal, ...)
+    user_role: operations
+    operational_loop: varies
+    workflow_and_business_outcome: "mode-specific rules (equipment, accessorials, compliance, documents) are handled correctly"
+    systems_channels: [mode-specific portals/systems, TMS, email]
+    source_of_truth: "mode-specific authorities and the customer's rules"
+    authority_requirement: "human; rules vary by mode and are not assumed"
+    evidence_requirement: "mode-specific evidence, validated per mode"
+    exception_classes: "NEEDS_VALIDATION per mode"
+    closure_condition: "the mode's real closure condition, validated for that mode"
+    owner_value_metric: "per-mode accuracy"
+    design_partner_validation_status: NEEDS_MODE_SPECIFIC_VALIDATION
+    implementation_phase: P13
+    readiness_tier: SPECIFIED
+    classification: REQUIRES_MODE_SPECIFIC_VALIDATION
+
+  - id: UC-31
+    use_case: Adjacent logistics / additional brokerage modes (expansion)
+    user_role: owner
+    operational_loop: cross-cutting
+    workflow_and_business_outcome: "Neyma serves adjacent logistics operators where evidence supports expansion"
+    systems_channels: [varies]
+    source_of_truth: "the expansion segment's real systems"
+    authority_requirement: "a founder product decision plus evidence"
+    evidence_requirement: "segment validation evidence"
+    exception_classes: "not yet characterized"
+    closure_condition: "defined when the segment is entered"
+    owner_value_metric: "defined per segment"
+    design_partner_validation_status: NEEDS_VALIDATION
+    implementation_phase: post-P14
+    readiness_tier: SPECIFIED
+    classification: FUTURE_EXPANSION
+
+  - id: UC-32
+    use_case: Asset-fleet management / WMS / yard / customs / international
+    user_role: n/a
+    operational_loop: n/a
+    workflow_and_business_outcome: "fleet, warehouse, yard, customs and international operations - a different business"
+    systems_channels: [n/a]
+    source_of_truth: n/a
+    authority_requirement: n/a
+    evidence_requirement: n/a
+    exception_classes: n/a
+    closure_condition: n/a
+    owner_value_metric: n/a
+    design_partner_validation_status: OUT_OF_SCOPE
+    implementation_phase: none
+    readiness_tier: SPECIFIED
+    classification: EXPLICITLY_OUT_OF_SCOPE
