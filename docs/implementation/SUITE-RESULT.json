@@ -1,16 +1,16 @@
 {
-  "collected": 1268,
+  "collected": 1269,
   "command": ".venv/bin/python -m pytest -c pytest-canonical.ini -v",
-  "commit": "4ddb5b2d9b43e90c8f8b4a115fd3e2c0bf11bf4d",
-  "completed_at": "2026-07-21T01:30:26.410338+00:00",
+  "commit": "98e531fdcc525ba47d780f48232eb0f9891314c6",
+  "completed_at": "2026-07-21T01:59:55.981339+00:00",
   "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
   "deselected": 0,
-  "duration_seconds": 391.7,
+  "duration_seconds": 385.8,
   "exit_status": 0,
   "failed": 0,
-  "manifest_sha256": "c5f36a0bc09d85ebaaf16ccaffd8913048f5ee6f37dd29308e10c9d913536950",
-  "passed": 1267,
-  "payload_sha256": "bd72aadc4b9b4a944aea0b26d59f5ccb09a62a54ae3e01d672dff2ddabff846f",
+  "manifest_sha256": "ec99af0018646dce40a76102eb69b57971b670163cbd8f1ce8b628c052aeffbd",
+  "passed": 1268,
+  "payload_sha256": "0aeae5c70f17b14a97571fef820649e2ceb33ee1c625fa54058c9484bb462149",
   "platform": "macOS-15.1.1-arm64-arm-64bit-Mach-O",
   "python_version": "3.14.4",
   "rogue_nodes": [],
@@ -20,7 +20,7 @@
     "eval/tests/test_phase0_guard_integrity.py::test_the_red_by_design_cases_are_strict_xfails"
   ],
   "stdout_tail": "",
-  "tree": "fe1286f4d18f3885f8be328a70e8e7df818414f9",
+  "tree": "4b30b6c03bc138addc0afb94997fcca62bb8621c",
   "unexecuted_nodes": [],
   "xfail_nodes": []
 }
