@@ -101,6 +101,22 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 | **Deletion condition** | `workflow.py`'s responsibilities are held by Work Item + Pipeline Instance |
 | **Evidence required before deletion** | The 22 tenant-scoped methods have canonical equivalents; AC-SEC-001 stays green |
 
+## S4b — Phase-3 safety kernel *(canonical, not legacy — recorded here so coverage stays total)*
+
+**Modules:** `checkpoint.py` · `brake.py` · `fingerprint.py` · `migrations/phase3_checkpoint.py`
+
+| | |
+|---|---|
+| **Current responsibility** | The seven-step atomic checkpoint, the Checkpoint Witness, grant mint + claim CAS, brake admission, the fp_v1 material-facts fingerprint |
+| **Current execution authority** | ### **None on the outside world.** The kernel authorizes and records; no adapter routes through it until P4. It ships dark. |
+| **Current risk** | Unproven — canonical P3 output, but ### **P3 is NOT COMPLETE**: no independent session has reviewed the kernel and its acceptance criteria are all PENDING. The risk it exists to close (R-07) closes only when P4 routes the six live-write paths through it |
+| **Canonical destination** | This IS the canonical destination (ADR-004/005/009/010/011); P4 contains adapters behind it, P6 binds Pipeline Instances, P8 replaces the typed gate inputs with the policy runtime |
+| **Disposition** | ### **KEEP** — canonical, forward-only. The witness table is append-only and its immutability may never be relaxed. |
+| **Target phase** | Implemented at **P3** (adjudication outstanding); consumed by **P4+** |
+| **Compatibility requirement** | `CheckpointPassed` stays unconstructable; the claim CAS's WHERE-clause revalidation (state, expiry, brake, policy) may never lose a predicate |
+| **Deletion condition** | Not deletable — no permanent second effect-authority system may exist beside it |
+| **Evidence required before deletion** | n/a |
+
 ## S5 — Document processing and extraction
 
 **Modules:** `ingestion.py` · `extraction.py` · `extraction_bridge.py` · `document_identifier.py` · `packet_page.py` · `email_corpus.py`
@@ -296,7 +312,7 @@ Pre-reset fixture tooling. Retained for evidence and test-fixture regeneration; 
 Encode the pre-reset pilot model. Same deletion condition as S12: P11 shadow mode defines the pilot canonically.
 
 ### S15g — Migration and control-plane tooling — **KEEP**
-`scripts/migrate_phase2_tenant_first.py` (the canonical P2 migration CLI — forward-only, same standing as `migrations/`) · `scripts/finalize_status.py` (THE canonical end-to-end finalizer — executes the suite, the clean-clone gate and the acceptance gates itself; the only writer of status) · `scripts/update_current_status.py` (superseded shim — refuses to run, points at the canonical finalizer; kept so no second finalization route can quietly revive) · `scripts/regenerate_test_manifest.py` (the explicit, intentional node-manifest regeneration — never automatic) · `scripts/run_canonical_suite.py` (the only producer of `SUITE-RESULT.json`) · `scripts/suite_result.py` (the shared artifact validator — one definition for runner, finalizer and guard) · `scripts/check_env.py` (the fail-fast Python-floor check; runs before any install) · `scripts/clean_clone_gate.py` (the clean-clone reproducibility gate) · `scripts/progress_status.py` (the mechanical founder-progress derivation + finalizer-rejection validator for BUILD-STATUS.yaml, U-REBASELINE-1) · `scripts/report_legacy_commit_identities.py` (read-only Phase-1 evidence probe)
+`scripts/migrate_phase2_tenant_first.py` (the canonical P2 migration CLI — forward-only, same standing as `migrations/`) · `scripts/migrate_phase3_checkpoint.py` (the canonical P3 checkpoint-schema migration CLI — create-only, idempotent, refuses non-canonical inputs; same standing) · `scripts/finalize_status.py` (THE canonical end-to-end finalizer — executes the suite, the clean-clone gate and the acceptance gates itself; the only writer of status) · `scripts/update_current_status.py` (superseded shim — refuses to run, points at the canonical finalizer; kept so no second finalization route can quietly revive) · `scripts/regenerate_test_manifest.py` (the explicit, intentional node-manifest regeneration — never automatic) · `scripts/run_canonical_suite.py` (the only producer of `SUITE-RESULT.json`) · `scripts/suite_result.py` (the shared artifact validator — one definition for runner, finalizer and guard) · `scripts/check_env.py` (the fail-fast Python-floor check; runs before any install) · `scripts/clean_clone_gate.py` (the clean-clone reproducibility gate) · `scripts/mutate_phase3_guards.py` (the P3 mutation battery — **both** the guard battery M1–M8 and the kernel battery K1–K11 added by the P3 findings remediation, which mutates `checkpoint.py`, `workflow.py`, the P3 migration and the recorded rebaseline anchor; evidence infrastructure, never imported by runtime; holds originals **in memory**, purges `__pycache__` around every mutation and asserts byte-for-byte restoration, so it never uses `git checkout`/`restore`/`stash`/`clean`; supports programmatic mutators for changes a find/replace cannot express, such as the canonical step-6/7 swap; extend it rather than adding a second mutation route) · `scripts/progress_status.py` (the mechanical founder-progress derivation + finalizer-rejection validator for BUILD-STATUS.yaml, U-REBASELINE-1) · `scripts/report_legacy_commit_identities.py` (read-only Phase-1 evidence probe)
 KEEP is justified here exactly as in S13: canonical Phase 0–2 output or architecture-neutral control tooling with no external-effect capability.
 
 

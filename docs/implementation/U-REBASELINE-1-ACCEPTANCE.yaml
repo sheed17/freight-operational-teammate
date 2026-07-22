@@ -43,6 +43,96 @@ meta:
     docs/implementation/BUILD-STATUS.yaml and refuses inflated numbers.
   pass_rule: all 24 criteria PASS with evidence; any FAIL fails the rebaseline
 
+  # ------------------------------------------------------------------------------------
+  # THE IMMUTABLE REBASELINE CHANGE WINDOW (U-REBASELINE-1 remediation, P3 finding F-A).
+  #
+  # RB-23's src/-untouched invariant is a statement about a CLOSED, HISTORICAL unit: the
+  # rebaseline was documentation/architecture/specification/control ONLY, so none of ITS OWN
+  # commits may have touched production runtime code. The guard that enforced it diffed the
+  # WORKING TREE against `IMPLEMENTATION-REGISTRY.yaml meta.baseline_commit` - a field the
+  # finalizer REWRITES to the newest content commit. That anchor moves; the rebaseline does
+  # not. Every later unit's legitimate src/ change therefore accumulated into the rebaseline's
+  # population and was reported as a rebaseline violation. P3 was the first unit to touch src/
+  # after the rebaseline, so P3 is where the mis-anchoring became visible - it was never a P3
+  # defect. The guard is REPLACED, not relaxed (CLAUDE.md sec 5 rule 20): the invariant is
+  # unchanged, only its anchor is corrected to the two commits that actually bound the unit.
+  #
+  # THESE TWO COMMITS AND THIS PATH SET ARE IMMUTABLE. They describe finished history. The
+  # finalizer must never write here; nothing but a rewrite of published history can change them,
+  # and the guard treats any divergence as exactly that.
+  rebaseline_change_window:
+    base_commit: 43a0c4a69c68a2991efa00148a5868fbf427603b   # 43a0c4a - the U-HANDOFF-1D status-metadata commit, immediately BEFORE
+                                                       #           the first rebaseline content commit fbbeff9
+    head_commit: b3306148e2ad4efad76135e48b7b04572be9be15   # b330614 - the U-REBASELINE-1B status-metadata commit, the LAST
+                                                       #           commit of the rebaseline family
+    forbidden_path_prefix: src/
+    # EXPLICIT AND PROVEN POPULATION (membership, never a count - a same-count substitution must
+    # fail, CLAUDE.md sec 8). This is `git diff --name-only <base_commit> <head_commit>`, verbatim.
+    changed_paths:
+      - .codex/agents/roadmap-steward.md
+      - AGENTS.md
+      - ARCHITECTURE.md
+      - CLAUDE.md
+      - PRODUCT.md
+      - README.md
+      - docs/CANONICAL-DOCUMENTS.md
+      - docs/architecture/decisions/ADR-012-product-identity-and-strategy.md
+      - docs/architecture/decisions/ADR-013-workflow-authority-migration.md
+      - docs/architecture/decisions/ADR-014-credential-and-machine-identity.md
+      - docs/architecture/decisions/ADR-015-communications-subsystem.md
+      - docs/architecture/decisions/ADR-016-production-topology.md
+      - docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md
+      - docs/architecture/decisions/ADR-018-customer-operational-graph.md
+      - docs/architecture/decisions/ADR-019-conversational-operations-layer.md
+      - docs/architecture/target-system-specification.md
+      - docs/implementation/APPROVED-SKIPS.yaml
+      - docs/implementation/BUILD-STATUS.yaml
+      - docs/implementation/CURRENT.md
+      - docs/implementation/GATE-RESULT.json
+      - docs/implementation/IMPLEMENTATION-REGISTRY.yaml
+      - docs/implementation/IMPLEMENTATION-SURFACE.yaml
+      - docs/implementation/LEGACY-DISPOSITION.md
+      - docs/implementation/PHASE-OUTPUTS.md
+      - docs/implementation/PROGRAM-WEIGHTS.yaml
+      - docs/implementation/PROGRESS-PROTOCOL.md
+      - docs/implementation/SUITE-RESULT.json
+      - docs/implementation/TEST-NODE-MANIFEST.json
+      - docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml
+      - docs/implementation/implementation-roadmap.md
+      - docs/implementation/registry.md
+      - docs/implementation/u-rebaseline-1-product-production-review.md
+      - docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
+      - docs/implementation/u-rebaseline-review-1-independent-report.md
+      - docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md
+      - docs/product/OPEN-VALIDATION-ITEMS.md
+      - docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml
+      - docs/product/operating-model.md
+      - docs/specifications/adapters/02-tms.md
+      - docs/specifications/adapters/10-browser.md
+      - docs/specifications/adapters/registry.md
+      - docs/specifications/operational-system-map.md
+      - docs/specifications/operational-workflow-review.md
+      - docs/specifications/workflows/W10-customer-comms.md
+      - docs/specifications/workflows/W11-claims.md
+      - docs/specifications/workflows/W2-procurement.md
+      - docs/specifications/workflows/W3-compliance.md
+      - docs/specifications/workflows/W4-dispatch.md
+      - docs/specifications/workflows/W5-tracking.md
+      - docs/specifications/workflows/W6-documentation.md
+      - docs/specifications/workflows/W7-exceptions.md
+      - docs/specifications/workflows/W8-billing.md
+      - docs/specifications/workflows/W9-settlement.md
+      - docs/specifications/workflows/registry.md
+      - eval/tests/test_bootstrap_hermeticity.py
+      - eval/tests/test_docs_control_system.py
+      - eval/tests/test_phase2_guard_registry.py
+      - eval/tests/test_progress_protocol.py
+      - eval/tests/test_rebaseline_invariants.py
+      - eval/tests/test_status_reality.py
+      - eval/tests/test_switch_consistency.py
+      - scripts/finalize_status.py
+      - scripts/progress_status.py
+
 criteria:
 
   - id: RB-01

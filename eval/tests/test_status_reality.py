@@ -246,7 +246,15 @@ def test_no_secondary_file_carries_its_own_volatile_status_claim():
 def test_the_status_record_still_states_the_canonical_facts():
     text = CURRENT.read_text(encoding="utf-8")
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "P2 no longer recorded COMPLETE"
-    assert re.search(r"\*\*P3\*\*.{0,80}NOT STARTED", text, re.S), "P3 no longer recorded NOT STARTED"
+    # REPLACED, not deleted (this guard's own instruction, two asserts below). P3 has started, so
+    # "NOT STARTED" became false. The fact that must stay recorded is the one that is still load-
+    # bearing and still easy to lose: P3 is NOT COMPLETE. Its kernel is implemented, but
+    # independent_review and final_adjudication are PENDING and cannot be supplied by the session
+    # that wrote the code, so the phase table must not quietly promote it.
+    assert re.search(r"\*\*P3\*\*.{0,120}NOT COMPLETE", text, re.S), (
+        "P3 is no longer recorded NOT COMPLETE - it may only be recorded COMPLETE once the "
+        "registry says so on independent evidence"
+    )
     assert re.search(r"the next approved unit is `P3`", text, re.I), (
         "the current work program is no longer P3 - if the program moved on, this guard must be "
         "REPLACED with the new truth, not deleted (U-REBASELINE-1A closed both gates)"
@@ -269,8 +277,13 @@ def test_the_status_record_still_states_the_canonical_facts():
         assert by[later]["status"] == "BLOCKED", (
             f"{later} is {by[later]['status']} - every phase after P3 must stay BLOCKED"
         )
-    assert re.search(r"P3 is READY .{0,40}NOT IMPLEMENTED", text, re.I | re.S), (
-        "CURRENT.md must state that P3 being READY does not mean P3 was implemented"
+    # REPLACED at P3 (see the same replacement in test_docs_control_system.test_24b). The original
+    # required "P3 is READY ... NOT IMPLEMENTED", which was true only while READY meant not-begun.
+    # P3 is now implemented AND still READY, because implementation is not adjudication. The
+    # distinction CURRENT.md must still draw is the one that can still mislead a fresh session:
+    # READY plus working code does NOT mean the unit is COMPLETE.
+    assert re.search(r"P3\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
+        "CURRENT.md must state that P3, though READY and implemented, is NOT COMPLETE"
     )
 
 

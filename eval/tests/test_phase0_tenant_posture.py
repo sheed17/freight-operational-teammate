@@ -33,7 +33,13 @@ from freight_recon.migrations.phase2_tenant_first import (
     CANONICAL_TENANT_TABLES,
     TENANT_EXEMPT_TABLES,
 )
+from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES
 from phase0 import manifest, schema_probe
+
+# The canonical exempt set across BOTH phases: the posture guards judge the union, because
+# "canonical" is one shape and P3's platform_brake is exempt by the same adjudication discipline
+# as the P2 three (each carries reason/removed_by_phase/accountable_unit/deletion_condition).
+ALL_EXEMPT_TABLES = (*TENANT_EXEMPT_TABLES, *P3_EXEMPT_TABLES)
 
 
 def test_the_probe_evaluates_a_real_population():
@@ -51,10 +57,9 @@ def test_ac_sec_001_is_green_in_source_and_the_probe_names_every_table_it_checke
     """The oracle is the exact SET, in both legs. 'No offenders' from an empty scan is not a pass."""
     tables, ev = schema_probe.tables()
     ev.require_population()
-    from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
 
     offenders = sorted(t.name for t in tables
-                       if not t.canonical and t.name not in TENANT_EXEMPT_TABLES)
+                       if not t.canonical and t.name not in ALL_EXEMPT_TABLES)
     exempt = manifest.tables_tenant_exempt()
     unexplained = sorted(set(offenders) - exempt)
     assert not unexplained, (
@@ -139,7 +144,7 @@ def test_the_scope_is_an_exact_set_never_a_count():
         f"the exact seven are not all tenant-first: "
         f"{sorted(set(CANONICAL_TENANT_TABLES) - tenant_owned)}"
     )
-    unaccounted = live - tenant_owned - set(TENANT_EXEMPT_TABLES)
+    unaccounted = live - tenant_owned - set(ALL_EXEMPT_TABLES)
     assert not unaccounted, (
         f"table(s) neither tenant-first nor adjudicated exempt: {sorted(unaccounted)}"
     )
@@ -164,7 +169,7 @@ def test_the_exempt_list_is_not_an_escape_hatch():
     """An exemption without a reason is an indefinite allowance wearing a temporary label."""
     entries = manifest.load()["expected_noncanonical_schema"]["tables_tenant_exempt"]
     assert entries, "the exempt list must not be empty-by-omission; it is asserted against"
-    assert {e["table"] for e in entries} == set(TENANT_EXEMPT_TABLES), (
+    assert {e["table"] for e in entries} == set(ALL_EXEMPT_TABLES), (
         "the manifest's exempt tables and the code's exempt tables disagree"
     )
     for e in entries:

@@ -103,6 +103,7 @@ def sha256_file(path: str | Path) -> str:
     return h.hexdigest()
 
 
+from .migrations.phase3_checkpoint import LIVE_HOLD_STATES as _P3_LIVE_HOLD_STATES
 from .schema import (
     SchemaNotReady,
     create_canonical_schema,
@@ -114,6 +115,47 @@ from .tenant import require_tenant
 # Internal, fixed. These names are interpolated into SQL for per-tenant id allocation, so they may
 # never come from a caller: the tuple IS the allowlist.
 _ID_ALLOCATED_TABLES = frozenset({"workflow_runs", "audit_events", "security_events"})
+
+# ---------------------------------------------------------------------------------------------
+# THE LEDGER-COMPATIBILITY BOUNDARY (P3 independent-review finding F-C).
+#
+# Phase 2 shipped `UNIQUE (tenant, commit_key)` STRICT, so "the reservation for this Commit Key"
+# was a total function: one row or none. Phase 3 REPLACED that index with the LIVE-HOLD partial
+# form (migrations/phase3_checkpoint.py) because the crash semantics require a provably-dead grant
+# to free its key for a safe re-checkpoint. That is correct - and it silently broke the P2
+# assumption underneath these four methods, which is a defect that exists NOW, not at P4:
+#
+#   * `operation_commit_claim` did `SELECT ... fetchone()` and could return DEAD P3 history in
+#     preference to the live legacy reservation - a silent wrong-row selection whose caller then
+#     read a status off the wrong row and chose DONE vs ESCALATED from it;
+#   * `release_operation_commit` did an unqualified DELETE and swept up checkpoint-bound P3 grant
+#     rows, which `checkpoint_witnesses` references - raising a FOREIGN KEY error out of a method
+#     whose entire contract is to be idempotent on the failure path;
+#   * `update_operation_commit_payload`'s "exactly one row" invariant became false;
+#   * `legacy_commit_rows` could report P3 grants as pre-migration evidence and escalate on them.
+#
+# TWO PREDICATES FIX ALL FOUR, and both are structural rather than conventional:
+#
+#   `checkpoint_id IS NULL`  - the exact, load-bearing difference between the two writers.
+#       `mint_grant` ALWAYS writes a non-null checkpoint_id (a grant with no witness is not
+#       claimable under the two-key rule); `claim_operation_commit` never writes one. So this
+#       predicate means "a row this legacy path owns", and no P3 row can ever satisfy it. It is
+#       not a heuristic and it does not depend on grant_id spelling.
+#   `state IN LIVE_HOLD_STATES` - "a reservation that still holds the Commit Key". Imported from
+#       the migration that DEFINES the index rather than retyped here, so the ledger's live set
+#       and its consumers' live set cannot drift apart.
+#
+# Together they preserve exactly one live reservation per (tenant, commit_key) for this consumer,
+# leave P3 dead-state history intact as permanent evidence [C-9], keep the witness foreign key
+# satisfiable, and stay compatible with the P3 claim-CAS model, which owns checkpoint-bound rows
+# and is the only thing allowed to transition them.
+#
+# `checkpoint_id` is part of the CANONICAL Phase-2 effect_grants DDL (it was reserved there for
+# P3), and every method below calls `_require_schema_ready()` first, so the column is always
+# present by the time these clauses run.
+_LIVE_HOLD_STATES: tuple[str, ...] = tuple(_P3_LIVE_HOLD_STATES)
+_LIVE_HOLD_SQL = f"state IN ({', '.join('?' for _ in _LIVE_HOLD_STATES)})"
+_LEGACY_OWNED_SQL = "checkpoint_id IS NULL"
 
 
 class WorkflowStore:
@@ -683,13 +725,29 @@ class WorkflowStore:
 
         Tenant A could observe tenant B's effect reservation - and, worse, act on its status. The
         same Commit Key in another tenant is a different effect and reads as absent here.
+
+        F-C: scoped to rows that still HOLD the key. Under the P3 live-hold index several rows can
+        share (tenant, commit_key) - one live, plus provably-dead history - and a bare `fetchone()`
+        returned whichever SQLite reached first. That is a silent wrong-row selection with a real
+        consequence: the caller reads `payload.status` off the returned row to choose between
+        "already committed" (DONE) and "unconfirmed" (ESCALATE), so a dead EXPIRED_UNCLAIMED row
+        could answer a question that was only ever about the live reservation. Dead history is
+        evidence, never a reservation, and absence of a live row is the honest `None`.
         """
         self._require_schema_ready()
-        row = self.conn.execute(
-            "SELECT * FROM effect_grants WHERE tenant = ? AND commit_key = ?",
-            (self._tenant, commit_key),
-        ).fetchone()
-        return self._grant_to_claim(row) if row is not None else None
+        rows = self.conn.execute(
+            f"SELECT * FROM effect_grants WHERE tenant = ? AND commit_key = ? AND {_LIVE_HOLD_SQL}",
+            (self._tenant, commit_key, *_LIVE_HOLD_STATES),
+        ).fetchall()
+        if len(rows) > 1:
+            # The live-hold index makes this impossible. If it fires, the index is gone, and
+            # picking one of the rows would be exactly the guess this method refuses to make.
+            raise WorkflowError(
+                f"{len(rows)} LIVE reservations hold commit_key {commit_key!r} in tenant "
+                f"{self._tenant!r}; the live-hold uniqueness the ledger depends on is gone "
+                f"(states: {[r['state'] for r in rows]})"
+            )
+        return self._grant_to_claim(rows[0]) if rows else None
 
     def legacy_commit_rows(
         self,
@@ -723,12 +781,18 @@ class WorkflowStore:
         - a caller could ask "what history exists for tenant X?" of a store bound to tenant Y and
         receive it, so cross-tenant history could be returned as THIS tenant's compatibility
         evidence and escalate (or fail to escalate) an effect on another tenant's past.
+
+        F-C: `checkpoint_id IS NULL` restores the documented scope above - "exactly the rows
+        written by the deleted amount-keyed algorithm". A checkpoint-bound P3 grant is not a
+        pre-Phase-1 reservation under any reading, and reporting one here would escalate a live
+        operation as historical double-commit evidence.
         """
         self._require_schema_ready()
         rows = self.conn.execute(
-            """
+            f"""
             SELECT * FROM effect_grants
             WHERE tenant = ? AND lane = ? AND load_ref = ? AND party = ? AND commit_key != ?
+              AND {_LEGACY_OWNED_SQL}
             """,
             (self._tenant, lane, load_ref, party, canonical_commit_key),
         ).fetchall()
@@ -816,15 +880,20 @@ class WorkflowStore:
         Strict on row count: a caller only updates a reservation it just claimed, so zero rows means
         the reservation vanished or belongs to another tenant. Both are anomalies, and silently
         updating nothing would let the caller believe it had recorded an outcome it did not.
+
+        F-C: scoped to the LIVE row this legacy path OWNS. Without the scope the "exactly one row"
+        invariant is simply false once dead P3 history shares the key - the method would raise on
+        a correct call - and, worse, an unscoped UPDATE would overwrite a checkpoint-bound grant's
+        payload, which belongs to the claim CAS and to nothing else.
         """
         self._require_schema_ready()
         cur = self.conn.execute(
-            """
+            f"""
             UPDATE effect_grants
             SET payload_json = ?
-            WHERE tenant = ? AND commit_key = ?
+            WHERE tenant = ? AND commit_key = ? AND {_LEGACY_OWNED_SQL} AND {_LIVE_HOLD_SQL}
             """,
-            (json.dumps(payload, sort_keys=True), self._tenant, commit_key),
+            (json.dumps(payload, sort_keys=True), self._tenant, commit_key, *_LIVE_HOLD_STATES),
         )
         if cur.rowcount != 1:
             self.conn.rollback()
@@ -839,19 +908,28 @@ class WorkflowStore:
 
         Row-count posture, deliberately asymmetric with the update above and worth stating: release
         is IDEMPOTENT by design - it is called on failure paths that may already have released - so
-        zero rows is a legitimate outcome. More than one row is not, and cannot be: `(tenant,
-        commit_key)` is unique. If that ever fires, the uniqueness this phase installed is gone.
+        zero rows is a legitimate outcome. More than one row is not, and cannot be: at most one
+        LIVE legacy-owned row can hold a Commit Key. If that ever fires, the uniqueness this phase
+        installed is gone.
+
+        F-C: scoped to the live legacy-owned row, and this is the finding's sharpest edge. The
+        unscoped DELETE swept up checkpoint-bound P3 grants, which `checkpoint_witnesses`
+        references with a tenant-consistent FK - so a method whose whole contract is "safe to call
+        twice on a failure path" raised a FOREIGN KEY error instead. Deleting P3 rows would also
+        be wrong even if the FK allowed it: a witnessed grant is permanent evidence of a
+        capability that existed, and this legacy path has no authority to erase it.
         """
         self._require_schema_ready()
         cur = self.conn.execute(
-            "DELETE FROM effect_grants WHERE tenant = ? AND commit_key = ?",
-            (self._tenant, commit_key),
+            f"DELETE FROM effect_grants WHERE tenant = ? AND commit_key = ? "
+            f"AND {_LEGACY_OWNED_SQL} AND {_LIVE_HOLD_SQL}",
+            (self._tenant, commit_key, *_LIVE_HOLD_STATES),
         )
         if cur.rowcount > 1:
             self.conn.rollback()
             raise WorkflowError(
-                f"{cur.rowcount} reservations matched commit_key {commit_key!r} in tenant "
-                f"{self._tenant!r}; (tenant, commit_key) is supposed to be unique"
+                f"{cur.rowcount} live reservations matched commit_key {commit_key!r} in tenant "
+                f"{self._tenant!r}; live-hold uniqueness is supposed to make that impossible"
             )
         self.conn.commit()
 

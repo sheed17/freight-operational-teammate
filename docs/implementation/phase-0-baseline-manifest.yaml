@@ -167,7 +167,13 @@ expected_noncanonical_schema:
     - delivery_action_claims
     - effect_grants
     - operation_token_amounts
-  # Deliberately NOT tenant-owned. Two members, each adjudicated - this is not an exemption hatch,
+    # Phase 3 (checkpoint kernel) - born tenant-first; never migrated because never legacy:
+    - checkpoint_witnesses
+    - brakes
+  # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
+  # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
+  # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
+  # names no number; the exact membership is guarded in test_bootstrap_hermeticity.)
   # and a table added here without a reason fails the guard.
   tables_tenant_exempt:
     - table: migration_quarantine
@@ -198,6 +204,19 @@ expected_noncanonical_schema:
         None. This is a durable audit table. Its exemption is bounded instead by a guard: it may
         never carry commit_key + state (that would make it a second effect ledger), and readiness
         asserts the canonical table set exactly, so it cannot quietly become business data.
+    - table: platform_brake
+      reason: >-
+        The ONE global admission brake (M13 section 17, SD-12) - a single row, id constrained to
+        1, engaged by a human or a Sev-0 detector when the failure is bigger than any tenant
+        (tenant-isolation breach). It is BY DEFINITION nobody's tenant data: a tenant column here
+        would make the platform stop a per-tenant fact, and "which tenant owns the platform
+        brake" is a question with no honest answer. Its version is bound into every witness and
+        grant and re-validated by the claim CAS, so it denies admission for EVERY tenant at once.
+      removed_by_phase: never (structural)
+      accountable_unit: P3
+      deletion_condition: >-
+        none. If this table ever grows a tenant column, the global brake has become a per-tenant
+        brake and a tenant-isolation breach can no longer stop the platform.
 
 # ---------------------------------------------------------------------------------------------
 # EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.
@@ -409,11 +428,32 @@ expected_acceptance_failures:
   - case: AC-CKPT-6-missing
     status: DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8
     reason: >-
-      The case asserts that an action class with a NULL policy gate fails to start. Typed policy and
-      action classes do not exist until P8; the current model has lanes with a fail-safe default,
-      not a NOT-NULL gate. Running this probe today would evaluate ZERO gates and report green - the
-      exact false-green M-9 pattern. It is therefore declared not-yet-executable rather than passed.
-      See finding P0-F1: the frozen plan lists U0.3 as a Phase-0 unit, which is not achievable.
+      The case asserts that an action class with a NULL policy gate causes the system to FAIL TO
+      START. It remains DEFERRED, but its GROUND WAS CORRECTED at P3 (independent-review finding
+      F-G / F-2 adjudication) and the original wording is superseded.
+
+      SUPERSEDED GROUND: "typed policy and action classes do not exist until P8". That is no
+      longer true and must not be repeated. P3 legitimately contains the MINIMAL STRUCTURAL
+      contract checkpoint step 5 (policy_evaluation) cannot be written without: the GateDecision
+      vocabulary and a fail-closed GateRegistry lookup. A checkpoint step that evaluates policy
+      needs a typed gate to evaluate, and a gate expressible as an absence is not a gate.
+
+      THE CORRECTED, CURRENT GROUND: the case is about STARTUP over a REGISTERED PRODUCTION
+      POPULATION, and that population is still EMPTY. P3 ships dark - no production module
+      constructs a GateRegistry or registers an action class; every registry in the tree is built
+      by a test or by a caller that does not exist yet. So running the probe today would still
+      evaluate ZERO gates and report green: the exact false-green M-9 pattern, and the same error
+      as PL-6 (a gate enabled before the thing it gates exists). Proven mechanically, not
+      asserted, by test_phase0_null_gate.py::test_the_production_gate_registration_population_is_
+      still_empty - which is what keeps this deferral honest instead of habitual.
+
+      WHAT P8 STILL OWNS, and what therefore still gates this case: rule authoring, compilation,
+      versioning, activation, precedence and conflict resolution, richer action-class descriptors,
+      the autonomy runtime, and the expectation/exception/compensation systems. Startup-time
+      registration of action classes arrives with those, and the case becomes executable then.
+
+      It is therefore declared not-yet-executable rather than passed. See finding P0-F1: the
+      frozen plan lists U0.3 as a Phase-0 unit, which is not achievable.
     green_at_phase: P8
     accountable_unit: U8.1
 

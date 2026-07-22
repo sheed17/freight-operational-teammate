@@ -1020,6 +1020,18 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
         _mark(conn, "verify:post_cleanup")
         conn.commit()
 
+        # ---- STEP 9 (P3): finish CANONICAL, not canonical-as-of-P2. "Canonical" is one shape,
+        # defined by one text, and since Phase 3 that shape includes the checkpoint tables and
+        # the ledger's live-hold index. A migration that stopped at the P2 shape would hand the
+        # readiness oracle a database it must refuse - the exact fresh-vs-migrated drift the
+        # single-TARGET_SCHEMA design exists to prevent. create_phase3_schema is create-only
+        # and idempotent; on a database that somehow already carries P3 structure it is a no-op.
+        from .phase3_checkpoint import create_phase3_schema
+
+        for step in create_phase3_schema(conn, now=_now()):
+            _mark(conn, f"phase3:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1031,6 +1043,10 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
                 "SELECT COUNT(*) FROM effect_grants").fetchone()[0]
         if rep.outcome in (CANONICAL_READY, MIGRATION_COMPLETE_RESTART_SAFE):
             _mark(conn, f"version:{SCHEMA_VERSION}", "readiness proven")
+            # The P3 stamp under the SAME proven-readiness condition, refusing internally too.
+            from .phase3_checkpoint import stamp_phase3_version
+
+            stamp_phase3_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

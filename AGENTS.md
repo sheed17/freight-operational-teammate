@@ -36,9 +36,11 @@ eleven canonical operational loops (W1–W11).
 **Do not read status from this file, and do not add it here.**
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) is the single authority.
 
-At the time of writing it records: Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED,
-R-07 OPEN — NOT CONTAINED**. If this line and `CURRENT.md` ever disagree, **`CURRENT.md` is right
-and this line is stale.**
+At the time of writing it records: Implementation **Phases P0/P1/P2 COMPLETE, P3 IN PROGRESS —
+NOT COMPLETE and still the sole READY unit, P4 BLOCKED, R-07 OPEN — NOT CONTAINED** (P3's kernel
+is implemented and ships dark, but its independent review and final adjudication are outstanding;
+only completing P4 closes R-07). If this line and `CURRENT.md` ever disagree, **`CURRENT.md` is
+right and this line is stale.**
 
 ## Roadmap
 

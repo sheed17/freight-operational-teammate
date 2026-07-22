@@ -311,11 +311,12 @@ def test_22_ac_sec_001_is_now_satisfied_at_the_schema_level():
     is the opposite one - and it is still a guard: it fails the moment a business table regresses.
     """
     from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+    from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES
     from phase0 import schema_probe
 
     tables, ev = schema_probe.tables()
     ev.require_population(minimum=8)
-    offending = [t.name for t in tables
-                 if not t.canonical and t.name not in TENANT_EXEMPT_TABLES]
+    exempt = set(TENANT_EXEMPT_TABLES) | set(P3_EXEMPT_TABLES)
+    offending = [t.name for t in tables if not t.canonical and t.name not in exempt]
     assert offending == [], f"AC-SEC-001 regressed: {offending} are not tenant-first"
 

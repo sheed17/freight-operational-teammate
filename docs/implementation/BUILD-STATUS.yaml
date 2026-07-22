@@ -21,33 +21,42 @@ derived:
 # end-derived-block
 
 snapshot:
-  active_work_unit: "P3 — Checkpoint Witness, seven-step atomic checkpoint, and claim CAS (READY; NOT started)"
-  next_approved_unit: "P3 — the one and only READY unit; its weighted 14-criterion acceptance contract is instantiated and entirely PENDING"
+  active_work_unit: "P3 — Checkpoint kernel (READY; IMPLEMENTED, NOT adjudicated COMPLETE)"
+  next_approved_unit: "P3 — the one and only READY unit; finish its acceptance, do not begin P4"
   completed_criteria:
-    - "U-HANDOFF-1 COMPLETE (handoff gate closed by U-HANDOFF-1D from the independent U-HANDOFF-2B review)"
-    - "U-REBASELINE-1 COMPLETE - RB-01..RB-24 ALL PASS, RB-24 awarded by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1"
-    - "the independent product/production rebaseline review: COMPLETE, delivered, preserved and adjudicated (15/16 findings resolved; F-10 recorded debt)"
-    - "the progress protocol, program weights and this build-status system"
-    - "P3's weighted acceptance contract instantiated (14 criteria, weights sum 100, all PENDING)"
+    - "an INDEPENDENT review of P3 exists and its 9 findings have been remediated in this repository (F-A CRITICAL through F-I LOW); remediation is not adjudication and awards no criterion"
+    - "the P3 kernel is implemented: seven-step atomic checkpoint, unconstructable CheckpointPassed, append-only witness, grant mint + claim CAS, brake ratchet, fp_v1 drift"
+    - "the P3 test files pass 181/181, including the 105-case AC-CKPT merge-gating matrix (7 steps x 15 conditions, universal oracle)"
+    - "U-HANDOFF-1 and U-REBASELINE-1 COMPLETE (both gates closed on independent evidence)"
   pending_criteria:
-    - "P3's 14 weighted acceptance criteria: ALL PENDING - P3 is READY, not started"
-    - "every implementation phase P4-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P3)"
-  blockers_to_p3: []
+    - "P3 acceptance: ALL 14 weighted criteria are PENDING in the registry. Code written is not completion (PROGRESS-PROTOCOL.md sec 3)"
+    - "P3 mutation battery, stated precisely (independent-review finding F-H). DONE: the IMPLEMENTER GUARD battery, 8/8 caught (scripts/mutate_phase3_guards.py) - it proves the P3 GUARDS. DONE: the KERNEL battery added at the remediation, extending the same harness - it mutates checkpoint.py, workflow.py, the migration and the rebaseline anchor, and each mutant must be caught by a test. NOT DONE: any INDEPENDENT mutation battery. The independent review ran its own kernel mutations and RETURNED FINDINGS, so no claim of final mutation success may be made from this repository - a battery written by the session it audits is evidence, not adjudication."
+    - "P3 full-suite final-tree validation: NOT PASSING. CORRECTED at the P3 remediation (independent-review finding F-B): the earlier record named the sandbox socket.bind() denial as THE blocker, which was false by omission. On the reviewed tree 38f2714 the canonical suite FAILED on a real repository defect (F-A: the mis-anchored rebaseline invariant guard) and the finalizer correctly REFUSED for that reason. F-A is now fixed, and the finalizer refusal on the remediated tree now has a different, fully deterministic cause: the status state is ILLEGAL (test_status_reality x3 - two unfinalized content commits). The sandbox socket.bind() denial is real but INTERMITTENT: direct pytest runs fail 19 test_action_callback cases, while both finalizer-driven canonical runs on the same tree reported them PASSED. It is therefore not named as THE blocker in either direction - overstating it would repeat the exact error F-B reported."
+    - "P3 finalizer + clean-clone gate: NOT EXECUTED (blocked by the same sandbox restriction; the finalizer runs the suite itself)"
+    - "P3 requires a FRESH INDEPENDENT REVIEW of the remediated tree: the session that fixed the findings may not certify the fixes, so independent_review (weight 5) and final_adjudication (weight 4) both stay PENDING"
+    - "P4's acceptance contract: to be instantiated from the acceptance_template when P4 begins"
+    - "every implementation phase P5-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P4)"
+  blockers_to_p4:
+    - "P3 is not COMPLETE: independent_review (weight 5) and final_adjudication (weight 4) are PENDING and require a session that did not implement P3, capping P3 at 91/100"
   open_program_risks:
-    - "R-07 OPEN - NOT CONTAINED. It closes at P4 and nowhere earlier; reaching or completing P3 does NOT close it."
+    - "the repository is in an ILLEGAL status state: 38f2714 and the remediation commit are TWO unfinalized content commits, which the two-commit convention forbids. test_status_reality.py reports it (x3), and it is now the DETERMINISTIC cause of the finalizer's refusal. It is a deadlock: only the finalizer writes the status block, and the finalizer requires a green suite, which requires a legal status state. Resolving it requires a decision this session does not have authority to make - squashing onto the reviewed commit 38f2714, or an authorized manual finalization."
+    - "R-07 OPEN - NOT CONTAINED. Completing P3 did NOT close it: the kernel ships dark, the six live-write paths are untouched, and only completing P4 closes it."
     - "customer-specific freight rules remain NEEDS VALIDATION (OPEN-VALIDATION-ITEMS.md); Delivered Load Closure is a HYPOTHESIS with zero recorded firsthand design-partner observations"
     - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5"
     - "recorded debt: independent-review finding F-10 (trace-id namespaces / unpublished 61-point index) - auditability noise, blocks nothing"
-  last_verified_test_evidence: "see CURRENT.md status block (finalizer-executed suite) and SUITE-RESULT.json"
-  finalizer_result: "see GATE-RESULT.json + CURRENT.md - executed by scripts/finalize_status.py"
-  clean_clone_result: "CLEAN-CLONE GATE: PASS (GATE-RESULT.json)"
-  independent_review_status: "COMPLETE - U-REBASELINE-REVIEW-1 delivered, preserved verbatim at docs/implementation/u-rebaseline-review-1-independent-report.md, and adjudicated by U-REBASELINE-1A (five PASS verdicts, zero CRITICAL)"
-  verdict: ON TRACK
+    - "recorded P6 obligation: the ledger's live-hold index relaxes again when Pipeline Instances take the Layer-1 hold (migrations/phase3_checkpoint.py)"
+  last_verified_test_evidence: "NOT REFRESHED FOR P3. The CURRENT.md status block still describes the pre-P3 content commit d96e745; no finalizer-executed suite record exists for any P3 tree. On the reviewed tree 38f2714 the suite FAILED: the F-A guard failure plus the environmental socket.bind failures in test_action_callback. Counts are deliberately not repeated here - volatile suite figures live ONLY in the CURRENT.md status block, and that block is finalizer-written."
+  finalizer_result: "REFUSED for P3 - not merely unexecuted, and refusing is correct behaviour rather than an obstacle. It refused first because of F-A (a real defect, now fixed). On the remediated tree it was executed twice and refused both times with the SAME deterministic cause: 3 test_status_reality failures - the status authority is stale beyond every legal state because 38f2714 and the remediation commit are two unfinalized content commits. That is a deadlock this session cannot break: only the finalizer writes the status block, and it requires a green suite, which requires a legal status state. NO finalizer success is claimed."
+  clean_clone_result: "FAILED for P3, and it never reached the suite. Executed on the remediated tree: it clones, builds a fresh venv, and then FAILS at the declared-dependency install because pip cannot verify pypi.org TLS certificates in this sandbox (SSLCertVerificationError OSStatus -26276). That is a third blocker, independent of F-A and of socket.bind. NO clean-clone success is claimed for any P3 tree."
+  independent_review_status: "P3: RECEIVED, NOT PASSED, and NOT re-reviewed since remediation. An INDEPENDENT review of P3 was delivered against commit 38f2714 and returned 9 findings (1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW), attestable weighted total 60/100, verdict NOT READY FOR FINAL ADJUDICATION; its findings are preserved at p3-independent-review-findings.md and each disposition is recorded in p3-findings-remediation-review.md. Remediation was performed by a session that is NOT the reviewer and NOT the adjudicator, so P3 independent_review remains PENDING: a remediated tree has not been independently re-reviewed, and no session may certify its own fixes. The implementer's record is phase-3-implementation-review.md, which explicitly does NOT adjudicate completion. The gate-level independent reviews (U-HANDOFF-2B, U-REBASELINE-REVIEW-1) are preserved and adjudicated, but they predate P3 and say nothing about it."
+  verdict: AT RISK
   expected_founder_experience: >-
-    Both gates are closed and P3 - the safety kernel - is the single approved next unit, but it has
-    NOT been started: no checkpoint, witness or claim-CAS code exists. The customer-facing numbers
-    are still zero on purpose. CLI switch readiness is 100% because every gate to BEGINNING P3 is
-    satisfied - that is readiness to build, not built. Expect no usable interface during P3-P5:
-    progress there shows as authorization, idempotency, concurrency safety and durable execution.
-    The first real user value arrives at P10 (Delivered Load Closure in shadow), and production
-    progress becomes measurable from P11.
+    The safety kernel is WRITTEN but NOT YET SIGNED OFF: the seven-step checkpoint, the
+    unforgeable witness, the claim CAS and the brake exist and pass 181 tests including the full
+    105-case matrix - but the mutation battery has not been run, the suite has not been validated
+    on the final tree, and no independent session has reviewed any of it. Treat the kernel as
+    unproven until it has. Nothing looks different from the outside - deliberately. The kernel
+    ships dark, the customer-facing numbers stay zero on purpose, and the six ungated live-write
+    paths still exist, which is why R-07 stays open. P4 is the payoff phase, and it may not begin
+    until P3 is genuinely adjudicated COMPLETE. Expect no usable interface until P10 (Delivered
+    Load Closure in shadow); production progress becomes measurable from P11.

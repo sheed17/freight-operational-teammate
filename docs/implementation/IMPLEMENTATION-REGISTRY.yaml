@@ -386,8 +386,36 @@ units:
       security_requirements: [witness unconstructable outside the checkpoint, grants tenant-scoped, no flag disables the checkpoint]
       readiness_target: LOCALLY_IMPLEMENTED
     # Weighted acceptance contract instantiated by U-REBASELINE-1A from the PROGRAM-WEIGHTS
-    # acceptance_template (sum = 100). Every criterion PENDING: P3 is READY, not started.
-    # Only PASS contributes to phase completion (PROGRESS-PROTOCOL.md sec 3).
+    # acceptance_template (sum = 100). Only PASS contributes to phase completion
+    # (PROGRESS-PROTOCOL.md sec 3), so P3 currently computes to 0% and that is correct.
+    #
+    # P3 UPDATE: the kernel IS implemented and its tests pass (see
+    # phase-3-implementation-review.md), yet every criterion is deliberately still PENDING.
+    # "Code written is not completion." Results here are set by the ADJUDICATING session from
+    # INDEPENDENT evidence, never by the session that wrote the code - independent_review (5) and
+    # final_adjudication (4) structurally cannot be self-supplied, which caps P3 at 91/100 until
+    # a different session reviews it.
+    #
+    # P3 UPDATE 2 - THE INDEPENDENT REVIEW HAPPENED, AND P3 DID NOT PASS IT. An INDEPENDENT review
+    # of commit 38f2714 returned 9 findings (1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW), attestable
+    # weighted total 60/100, verdict NOT READY FOR FINAL ADJUDICATION. Findings preserved at
+    # p3-independent-review-findings.md; per-finding dispositions at
+    # p3-findings-remediation-review.md. All nine were remediated - BY A SESSION THAT IS NOT THE
+    # REVIEWER AND NOT THE ADJUDICATOR - so every criterion below stays PENDING and P3 still
+    # computes to 0%. Remediating a finding is not passing a review, and no session may certify
+    # its own fixes. A FRESH INDEPENDENT REVIEW OF THE REMEDIATED TREE IS REQUIRED.
+    #
+    # The two implementer findings are now ADJUDICATED, from the independent review's F-E and F-G:
+    #   F-1 (platform_brake representation vs 16-brake.md) - ACCEPTED. The separate tenant-exempt
+    #       platform_brake table is the canonical representation; 16-brake.md point 7 is formally
+    #       AMENDED (amendment A1), with every substantive SD-12 requirement preserved and guarded.
+    #   F-2 (typed policy vs the P0 manifest's P8 deferral) - ACCEPTED. P3 may hold the MINIMAL
+    #       STRUCTURAL GateDecision/GateRegistry contract that checkpoint step 5 requires. P8 still
+    #       owns rule authoring, compilation, versioning, activation, precedence/conflict
+    #       resolution, richer action-class descriptors, the autonomy runtime and the
+    #       expectation/exception/compensation systems. The P0 manifest's stale rationale is
+    #       corrected; AC-CKPT-6-missing STAYS DEFERRED AND UNGREEN, on the ground that actually
+    #       holds - the production gate-registration population is still zero, proved mechanically.
     acceptance_criteria:
       - criterion: accepted_scope_and_design
         weight: 6

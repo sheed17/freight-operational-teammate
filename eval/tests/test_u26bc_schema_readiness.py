@@ -42,8 +42,19 @@ def _fresh(path) -> sqlite3.Connection:
 
 def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
              extra_table=None, orphan=False, fks_off=False) -> sqlite3.Connection:
-    """Build a database from the canonical DDL with exactly one thing wrong."""
+    """Build a database from the canonical DDL with exactly one thing wrong.
+
+    P3: 'canonical' includes the checkpoint tables and the live-hold ledger index, so the P3
+    structure is built first (create_phase3_schema is create-only) and the requested mutation is
+    then applied to whichever phase's object it names — keeping 'exactly one thing wrong' true
+    across both phases.
+    """
+    from freight_recon.migrations.phase3_checkpoint import (
+        P3_INDEXES, P3_TENANT_TABLES, create_phase3_schema,
+    )
+
     conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
     if not fks_off:
         conn.execute("PRAGMA foreign_keys = ON")
     for name, ddl in TARGET_SCHEMA.items():
@@ -65,6 +76,17 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
             conn.execute(ddl)
         except sqlite3.OperationalError:
             pass
+    # The P3 structure, then the P3-targeted mutation (if any). The strict P2 ledger index the
+    # loop above just created is replaced by the live-hold form here, exactly as migration does.
+    # (Skipped entirely when the ledger itself was dropped: the P3 tables FK into it, and the
+    # case under test is the missing ledger, which readiness flags regardless.)
+    if drop not in P3_TENANT_TABLES and drop not in ("platform_brake", "effect_grants"):
+        create_phase3_schema(conn, now="1970-01-01T00:00:00+00:00")
+    if skip_index and skip_index in P3_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {skip_index}")
+    if drop in P3_TENANT_TABLES or drop == "platform_brake":
+        create_phase3_schema(conn, now="1970-01-01T00:00:00+00:00")
+        conn.execute(f"DROP TABLE IF EXISTS {drop}")
     if extra_table:
         conn.execute(extra_table)
     if orphan:
@@ -222,9 +244,12 @@ def test_11_global_commit_key_uniqueness_retained_is_not_ready(tmp_path):
 
 
 def test_12_missing_tenant_commit_key_uniqueness_is_not_ready(tmp_path):
-    conn = _mutated(tmp_path / "m.db", skip_index="ix_effect_grants_tenant_commit_key")
+    """REPLACED at P3: the strict `ix_effect_grants_tenant_commit_key` was retired for the
+    live-hold form (migrations/phase3_checkpoint.py) — same property, one live-or-committed
+    reservation per (tenant, logical effect), so its absence must still refuse readiness."""
+    conn = _mutated(tmp_path / "m.db", skip_index="ix_effect_grants_live_hold")
     try:
-        _assert_flags(_problems(conn), "ix_effect_grants_tenant_commit_key")
+        _assert_flags(_problems(conn), "ix_effect_grants_live_hold")
     finally:
         conn.close()
 

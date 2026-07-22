@@ -47,9 +47,9 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **Implementation Phase 0** | ✅ COMPLETE — baseline and anti-false-green infrastructure |
 | **Implementation Phase 1** | ✅ COMPLETE — correct effect identity (the amount is out of the Commit Key) |
 | **Implementation Phase 2** | ✅ COMPLETE — tenant-safe persistence |
-| **Implementation Phase 3** | ⛔ **NOT STARTED** |
+| **Implementation Phase 3** | 🔄 IN PROGRESS — **NOT COMPLETE.** The checkpoint kernel is implemented and tested (seven-step checkpoint, Checkpoint Witness, claim CAS, brake admission) and **ships dark**, but its independent review and final adjudication are outstanding. |
 | **Suite** | green — ### **exact counts live ONLY in [`CURRENT.md`](docs/implementation/CURRENT.md)'s machine-maintained status block** |
-| **Next approved work** | **`P3` — Checkpoint Witness, seven-step atomic checkpoint, claim CAS** — the sole `READY` unit. Both gates closed on independent evidence (`U-HANDOFF-1` and `U-REBASELINE-1` are COMPLETE). **P3 is READY and not implemented.** |
+| **Next approved work** | **`P3` — finish the checkpoint kernel's acceptance** — still the sole `READY` unit. Implementation is not adjudication: mutation proofs, final-tree validation, an **independent** review and a final adjudication remain. **`P4` — the unit that closes R-07 — is BLOCKED**; R-07 stays OPEN — NOT CONTAINED until P4 completes. |
 
 **Phases are `P0`–`P14` with gates `G0`–`G10`.** Older documents refer to an 8-stage roadmap
 ("Stage 1"…"Stage 8") — **that roadmap is superseded.** See

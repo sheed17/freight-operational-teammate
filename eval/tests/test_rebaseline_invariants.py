@@ -491,21 +491,99 @@ def test_the_conversational_operations_layer_is_durable():
     assert re.search(r"chatbot-only product", prod, re.I), "PRODUCT.md must address the chatbot-only reading"
 
 
-def test_no_src_runtime_file_was_touched_by_the_rebaseline():
-    """The rebaseline diff (vs the recorded content baseline) must not touch src/.
+def _rebaseline_window() -> dict:
+    """The IMMUTABLE change window of the U-REBASELINE-1 unit, from its own acceptance contract."""
+    meta = yaml.safe_load(read("docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml"))["meta"]
+    win = meta.get("rebaseline_change_window")
+    assert win, (
+        "U-REBASELINE-1-ACCEPTANCE.yaml lost meta.rebaseline_change_window - the src/-untouched "
+        "invariant has no anchor left and would be unenforceable"
+    )
+    return win
 
-    F-07 (independent review): this guard used to `return` silently when git failed - a vacuous
-    pass inside the very module whose doctrine forbids them - and diffed against a hardcoded
-    commit. It now SKIPS LOUDLY (machine-visible, like the dirty-tree skips) and reads the baseline
-    from the registry."""
+
+def forbidden_runtime_changes(changed_paths, prefix: str) -> list[str]:
+    """THE INVARIANT ITSELF, as a pure predicate over an explicit population.
+
+    Separated from git so it is directly provable: `test_the_forbidden_runtime_predicate_is_not
+    _vacuous` feeds it a synthetic population containing a runtime path and requires it to flag,
+    which no history rewrite and no anchor drift can fake. A predicate never seen to fire is a
+    decoration (CLAUDE.md sec 9)."""
+    return sorted(p for p in changed_paths if p.startswith(prefix))
+
+
+def test_the_forbidden_runtime_predicate_is_not_vacuous():
+    """The guard below can only be trusted if its predicate discriminates. Prove it directly."""
+    prefix = _rebaseline_window()["forbidden_path_prefix"]
+    # FIXED-SPECIFICATION: these two lists are SYNTHETIC INPUTS to a pure predicate, not a
+    # discovered population of real files. Discovering them would defeat the point - the test
+    # exists to feed the predicate a known-clean case and a known-dirty case and check it
+    # separates them. Nothing here is asserted ABOUT the repository.
+    clean = ["docs/PRODUCT.md", "eval/tests/test_x.py", "scripts/finalize_status.py"]
+    assert forbidden_runtime_changes(clean, prefix) == [], (
+        "the predicate flags documentation-only changes - it would fail the rebaseline for doing "
+        "exactly what the rebaseline was authorized to do"
+    )
+    dirty = clean + ["src/freight_recon/checkpoint.py", "src/freight_recon/brake.py"]
+    assert forbidden_runtime_changes(dirty, prefix) == [
+        "src/freight_recon/brake.py", "src/freight_recon/checkpoint.py",
+    ], "the predicate did NOT flag a production runtime change - it proves nothing"
+
+
+def test_no_src_runtime_file_was_touched_by_the_rebaseline():
+    """RB-23: the rebaseline - a documentation/architecture/specification/control unit - may not
+    have touched production runtime code. Anchored to the unit's OWN immutable commit window.
+
+    F-07 (U-REBASELINE-1A) made the failure path a LOUD skip instead of a vacuous `return`; that
+    correction is preserved verbatim below.
+
+    ### F-A (P3 INDEPENDENT REVIEW) - THIS GUARD WAS MIS-ANCHORED AND IS REPLACED, NOT DELETED.
+    It diffed the WORKING TREE against `IMPLEMENTATION-REGISTRY.yaml meta.baseline_commit`, which
+    `scripts/finalize_status.py` REWRITES to the newest content commit on every finalization. The
+    rebaseline is finished history; that anchor is not. So the population it measured was "every
+    change since the last finalization", and the first unit after the rebaseline to legitimately
+    touch src/ - P3 - was reported as a rebaseline violation. The invariant was right; the
+    population was wrong.
+
+    The replacement measures the ONLY population the invariant is about: the diff between the
+    commit immediately BEFORE the rebaseline's first content commit and the rebaseline's LAST
+    commit. Both are recorded in U-REBASELINE-1-ACCEPTANCE.yaml, which the finalizer never writes,
+    beside the exact 63-path membership they produce. Consequences, stated so a future reader can
+    check them: the window cannot drift, later units' src/ changes are outside it by construction,
+    and a rewrite of that published history changes the membership and fails here.
+    """
     import subprocess
-    reg = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))
-    base = reg["meta"]["baseline_commit"]
-    assert re.fullmatch(r"[0-9a-f]{40}", str(base)), f"registry baseline_commit malformed: {base!r}"
-    r = subprocess.run(["git", "diff", "--name-only", base], cwd=ROOT,
+    win = _rebaseline_window()
+    base, head = str(win["base_commit"]), str(win["head_commit"])
+    for label, sha in (("base_commit", base), ("head_commit", head)):
+        assert re.fullmatch(r"[0-9a-f]{40}", sha), f"rebaseline {label} malformed: {sha!r}"
+
+    for label, sha in (("base_commit", base), ("head_commit", head)):
+        r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
+                           cwd=ROOT, capture_output=True, text=True)
+        if r.returncode != 0:
+            pytest.skip(
+                f"NOT-RUN: the rebaseline {label} {sha[:9]} is not present in this repository "
+                "(shallow clone or truncated history) - the window cannot be measured"
+            )
+
+    r = subprocess.run(["git", "diff", "--name-only", base, head], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode != 0:
-        pytest.skip(f"NOT-RUN: git diff against baseline {base[:9]} failed: {r.stderr.strip()[:200]}")
-    changed = [f for f in r.stdout.split("\n") if f.strip()]
-    src_changed = [f for f in changed if f.startswith("src/")]
-    assert not src_changed, f"the rebaseline changed production runtime code: {src_changed}"
+        pytest.skip(f"NOT-RUN: git diff {base[:9]}..{head[:9]} failed: {r.stderr.strip()[:200]}")
+
+    observed = sorted(f for f in r.stdout.split("\n") if f.strip())
+    require_population(observed, "the immutable rebaseline change window")
+
+    recorded = sorted(str(p) for p in win["changed_paths"])
+    require_population(recorded, "the recorded rebaseline path membership")
+    assert observed == recorded, (
+        "the rebaseline change window no longer produces its recorded membership - published "
+        "history was rewritten, or the anchors were moved. Membership, not count "
+        f"(observed {len(observed)}, recorded {len(recorded)}): "
+        f"unexpected={sorted(set(observed) - set(recorded))} "
+        f"missing={sorted(set(recorded) - set(observed))}"
+    )
+
+    offenders = forbidden_runtime_changes(observed, win["forbidden_path_prefix"])
+    assert not offenders, f"the rebaseline changed production runtime code: {offenders}"

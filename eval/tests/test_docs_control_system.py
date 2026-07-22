@@ -57,6 +57,12 @@ def registry_units() -> list[dict]:
     return yaml.safe_load(read(REGISTRY))["units"]
 
 
+def strip_historical(text: str) -> str:
+    """Explicitly-labelled historical blocks may retain superseded claims IN PLACE. Everything
+    outside them is live instruction. (Same rule as test_switch_consistency.strip_historical.)"""
+    return re.sub(r"<details>.*?</details>", "", text, flags=re.S)
+
+
 # ============================================================ 1-5. the required documents exist
 
 @pytest.mark.parametrize(
@@ -149,10 +155,57 @@ def test_8_phase_2_is_recorded_complete():
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "CURRENT.md must record P2 COMPLETE"
 
 
-def test_9_phase_3_is_recorded_not_started():
+def test_9_no_control_document_claims_a_phase_is_complete_before_the_registry_does():
+    """REPLACES `test_9_phase_3_is_recorded_not_started` (P3).
+
+    The original hardcoded one phase and one moment: P3 NOT STARTED. P3 has started, so the
+    literal assertion became false and could only be deleted or inverted. Deleting it would drop
+    the invariant it was really holding - that a control document must never run AHEAD of the
+    registry - which is precisely the failure this replacement was written after observing: the
+    working tree claimed 'P3 COMPLETE' while the registry still said READY, all 14 acceptance
+    criteria still said PENDING, and the review it cited as evidence did not exist.
+
+    Generalised and derived from the graph, so it protects every phase and cannot go stale:
+    a document may only call a phase COMPLETE once the registry records it COMPLETE.
+    """
+    statuses = {u["unit_id"]: u["status"] for u in registry_units()}
+    incomplete = sorted(u for u, s in statuses.items()
+                        if s != "COMPLETE" and re.fullmatch(r"P\d+", u))
+    assert incomplete, "no incomplete phases found - the guard would prove nothing"
+
+    # POSITIVE status-declaration forms only. A broad "<unit> ... COMPLETE" window scan fires on
+    # requirement prose ("Requires `P4` COMPLETE", "may not be recorded COMPLETE") - the guard
+    # tripping over its own assertion text, which is the substring-guard defect CLAUDE.md names.
+    # These patterns match a document ASSERTING completion, not one describing a precondition.
+    def declarations(unit: str) -> list[str]:
+        # BOTH spellings. A first version of this guard matched only the `P3` form and walked
+        # straight past README.md's "**Implementation Phase 3** | ✅ COMPLETE" - the documents do
+        # not agree on one spelling, so a guard that assumes one is a guard with a blind spot.
+        n = re.fullmatch(r"P(\d+)", unit)
+        alts = [re.escape(unit)] + ([rf"Phase\s+{n.group(1)}"] if n else [])
+        u = f"(?:{'|'.join(alts)})"
+        return [
+            rf"\*\*{u}\*\*[^|\n]*\|[^|\n]*\bCOMPLETE\b",   # status-table row: | **P3** | COMPLETE |
+            rf"\b{u}\b[^\n]{{0,40}}?✅\s*\**COMPLETE",       # ✅ COMPLETE badge
+            rf"\b{u}`?\s+(?:is|was|are)\s+\**COMPLETE",     # "P3 is COMPLETE"
+            rf"\b{u}`?\s*[—:-]\s*\**COMPLETE\b",            # "P3 — COMPLETE"
+            rf"\b{u}\b[^.\n]{{0,60}}?\bdelivered\b",        # "Phase 3 delivered"
+        ]
+
+    offenders = []
     for path in (CURRENT, CLAUDE, README):
-        assert re.search(r"(P3|Phase 3).{0,80}NOT STARTED", read(path), re.I | re.S), \
-            f"{path.name} must record Phase 3 NOT STARTED"
+        text = strip_historical(read(path))
+        for unit in incomplete:
+            for pat in declarations(unit):
+                for m in re.finditer(pat, text, re.I):
+                    window = " ".join(m.group(0).split())
+                    if re.search(r"\bNOT\b|never|may not|requires|until|once\b", window, re.I):
+                        continue
+                    offenders.append(f"{path.name}: {unit} -> {window[:110]!r}")
+    assert not offenders, (
+        "a control document declares a phase COMPLETE that the registry does not: "
+        f"{offenders}"
+    )
 
 
 def test_10_r07_is_recorded_open_and_never_contained():
@@ -427,8 +480,14 @@ def test_24b_the_current_status_file_forbids_the_phase_after_the_ready_one():
     nxt = f"Phase {int(m.group(1)) + 1}"
     assert re.search(rf"(must NOT begin|Not yet).{{0,600}}{re.escape(nxt)}", text, re.I | re.S), \
         f"CURRENT.md must explicitly forbid beginning {nxt} (the phase after the READY {ready[0]})"
-    assert re.search(rf"{re.escape(ready[0])} is READY .{{0,40}}NOT IMPLEMENTED", text, re.I | re.S), \
-        f"CURRENT.md must state that {ready[0]} being READY does not mean it was implemented"
+    # P3 UPDATE (rule 20 again - this guard has been replaced once already, by U-REBASELINE-1B).
+    # The old assertion required "READY ... NOT IMPLEMENTED", which held only while no READY unit
+    # had any code behind it. P3 is now implemented AND still READY, because implementation is not
+    # adjudication: its independent_review and final_adjudication criteria remain PENDING. So the
+    # durable statement CURRENT.md must carry is the one that is still true and still load-bearing
+    # - READY does not mean COMPLETE - rather than one that is now simply false.
+    assert re.search(rf"{re.escape(ready[0])}\b.{{0,120}}NOT COMPLETE", text, re.I | re.S), \
+        f"CURRENT.md must state that {ready[0]} being READY does not mean it is COMPLETE"
 
 
 # ============================================================ 25. no placeholders presented as fact
@@ -726,16 +785,49 @@ def test_specification_only_concepts_are_verifiably_absent_from_src():
     assert checked >= 15, f"only {checked} absence checks ran - population too small"
 
 
-def test_the_p3_concepts_are_specification_only_while_p3_is_blocked():
-    """Cross-check: the registry may not claim checkpoint work exists while P3 is BLOCKED."""
-    p3_status = next(u["status"] for u in registry_units() if u["unit_id"] == "P3")
-    for name in ("Checkpoint (seven-step)", "Checkpoint Witness", "Effect claim CAS"):
-        c = next(x for x in surface_concepts() if x["name"] == name)
-        if p3_status in {"BLOCKED", "READY"}:
-            assert c["status"] == "SPECIFICATION_ONLY", (
-                f"{name} is {c['status']} while P3 is {p3_status} - implemented checkpoint work "
-                "cannot exist before P3 runs"
+def test_a_concept_is_implemented_only_when_its_owning_unit_ran_and_its_symbols_exist():
+    """REPLACES `test_the_p3_concepts_are_specification_only_while_p3_is_blocked` (P3).
+
+    The original keyed on `p3_status in {BLOCKED, READY}`, which silently equated READY with
+    NOT-BEGUN. That held only while no phase had ever been mid-flight. P3 is now implemented but
+    NOT adjudicated COMPLETE - its independent_review and final_adjudication criteria are still
+    PENDING - so it is legitimately READY with real code behind it, and the old guard could only
+    be satisfied by lying in one direction or the other.
+
+    The surface file records CODE REALITY, so the replacement checks code reality against the
+    graph, which is strictly stronger than the rule it replaces:
+
+      * a concept owned by a BLOCKED unit must still be SPECIFICATION_ONLY - work cannot exist
+        before the unit that owns it is even permitted to start (the real safety property);
+      * a concept claiming IMPLEMENTED must produce its evidence symbols in src/ - the claim is
+        checked against the tree rather than trusted.
+    """
+    units = {u["unit_id"]: u["status"] for u in registry_units()}
+    checked = 0
+    for c in surface_concepts():
+        owner = c.get("owning_unit")
+        status = c["status"]
+        if owner in units and units[owner] == "BLOCKED":
+            # PARTIALLY_IMPLEMENTED is legitimate here and deliberately allowed: an earlier phase
+            # routinely lays groundwork a later unit completes - `ProvenanceClass` exists for
+            # checkpoint step 3 while the full provenance system remains P7. What may NOT happen
+            # is a BLOCKED unit's concept claiming to be FULLY implemented, because that would
+            # mean the unit effectively ran without ever becoming READY.
+            assert status != "IMPLEMENTED", (
+                f"{c['name']!r} is fully IMPLEMENTED while its owning unit {owner} is BLOCKED - "
+                "a blocked unit's work cannot already be complete"
             )
+            checked += 1
+        if status == "IMPLEMENTED":
+            symbols = [e["symbol"] for e in c.get("evidence", [])]
+            assert symbols, f"{c['name']!r} claims IMPLEMENTED with no evidence symbols"
+            missing = [s for s in symbols if not _src_contains_symbol(s)]
+            assert not missing, (
+                f"{c['name']!r} claims IMPLEMENTED but these symbols are absent from src/: "
+                f"{missing} - the surface is asserting code that does not exist"
+            )
+            checked += 1
+    assert checked, "the concept cross-check evaluated nothing and has proven nothing"
 
 
 # ============================================================ U-HANDOFF-1 executable checklist

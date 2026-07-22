@@ -229,13 +229,15 @@ Neyma is **not**:
 
 ## 13. Current implemented state
 
-**Implementation Phases 0, 1 and 2 are COMPLETE.** What that actually bought:
+**Implementation Phases 0, 1 and 2 are COMPLETE. Phase 3 is IN PROGRESS — NOT COMPLETE.** What
+that actually bought:
 
 | | |
 |---|---|
 | **P0** | A baseline manifest of adjudicated current-state facts, plus anti-false-green guard infrastructure |
 | **P1** | **Correct effect identity** — the Commit Key identifies the *effect*, and the amount is provably not in it |
 | **P2** | **Tenant-safe persistence** — tenant required at construction, first in every key, enforced by the database, with auditable human-asserted ownership of historical rows |
+| **P3** *(in progress)* | **The checkpoint kernel** — the seven-step atomic checkpoint, an unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark: no production path routes through it until P4 contains the adapters.** ### **Implemented but NOT COMPLETE** — independent review and final adjudication outstanding. |
 
 The suite is green; ### **exact suite counts and the current commit/tree live ONLY in the
 machine-maintained status block of [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md)** —
@@ -243,11 +245,11 @@ this file deliberately does not copy them, because a copied figure is a stale fi
 
 ## 14. Current unimplemented state
 
-**Everything that makes consequential external effects safe is unbuilt.** Specifically:
+**The safety kernel exists but nothing consequential is routed through it yet.** Specifically:
 
-- **P3** — the seven-step atomic checkpoint, the Checkpoint Witness, and the effect claim CAS
 - **P4** — adapter containment (**R-07 is OPEN — NOT CONTAINED**; six production-reachable
-  live-write paths remain physically capable of ungated external effects)
+  live-write paths remain physically capable of ungated external effects — the P3 kernel sits
+  dark beside them until this phase routes every effect through it)
 - **P5** — canonical events, outbox/inbox, replay isolation
 - **P6–P9** — entities and state machines, provenance and evidence, policy/brake/exceptions,
   freight-domain projections

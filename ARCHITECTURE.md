@@ -203,7 +203,7 @@ action class, read-or-effect class, verification mode, and Commit Key / Material
 All external effects pass through this boundary, and the boundary enforces the two-key rule.
 
 *Open finding:* **31 direct adapter-import edges** across 18 importer modules bypass this design
-today. Containment is **P4**.
+today — the P3 kernel exists beside them, dark. Containment is **P4**.
 
 ## 22. Replay rules
 
@@ -268,20 +268,23 @@ second orchestration system and no permanent second effect-authority system.**
 | **P0** | ✅ COMPLETE | baseline manifest + anti-false-green guard infrastructure |
 | **P1** | ✅ COMPLETE | **correct effect identity** — the amount is out of the Commit Key |
 | **P2** | ✅ COMPLETE | **tenant-safe persistence** — enforced by the database, ownership humanly asserted |
-| **P3+** | ⛔ NOT STARTED | everything below |
+| **P3** | 🔄 IN PROGRESS | **the checkpoint kernel** — seven-step atomic checkpoint, unconstructable `CheckpointPassed`, append-only Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark.** Code and tests exist; **independent review and final adjudication are outstanding, so P3 is NOT COMPLETE.** |
+| **P4+** | ⛔ NOT STARTED | everything below |
 
 ## 29. The remaining safety wall
 
 > ### **Phase 2 made tenant ownership real at persistence boundaries.**
 > ### **Phase 2 did NOT make consequential external effects safe.**
+> ### **Phase 3 built the checkpoint kernel — the two-key rule is enforced INSIDE it.**
+> ### **Phase 3 did NOT route any external effect through it. Nothing does, until P4.**
 > ### **R-07 remains OPEN — NOT CONTAINED.**
 
 What is still missing, and what it means concretely:
 
-- **No Checkpoint Witness exists** (P3) — so the two-key rule is specified but not enforced.
-- **No claim CAS** (P3) — so commit-once is not yet a database constraint at the effect boundary.
+- **The kernel exists but is dark** (P3 in progress): the seven checks, witness and claim CAS are
+  implemented and tested, and consulted by **zero** production paths.
 - **No adapter containment** (P4) — **six production-reachable live-write paths can execute real
-  external effects right now** with no checkpoint, no witness and no grant.
+  external effects right now** with no checkpoint, no witness and no grant, exactly as before P3.
 - The only current mitigation is the operator's one-writer-at-a-time discipline.
   ### **That is discipline, not a mechanism, and it may never be recorded as containment.**
 

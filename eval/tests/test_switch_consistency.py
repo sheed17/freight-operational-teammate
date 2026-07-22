@@ -175,19 +175,42 @@ def test_build_status_snapshot_agrees_with_its_derived_block():
 
 
 def test_build_status_does_not_claim_an_independent_review_is_unstarted_once_it_exists():
-    """(4) The snapshot may not say an independent review has not started when the preserved
-    independent report EXISTS and the unit it reviewed is COMPLETE."""
+    """(4) The snapshot may not DENY a preserved independent review that exists.
+
+    P3 UPDATE (CLAUDE.md sec 5 rule 20). The original read `independent_review_status` as a single
+    global fact and demanded the word COMPLETE once U-REBASELINE-1 closed. That field now has to
+    carry two different truths at once: the GATE-level reviews (U-HANDOFF-2B,
+    U-REBASELINE-REVIEW-1) are complete and preserved, while the PHASE-level review of P3 has not
+    started at all. Under the old rule the only way to stay green was to imply P3 had been
+    independently reviewed when it had not - the guard would have compelled the false claim it was
+    written to prevent. So it now checks the direction that actually protects the reader:
+    the closed reviews must still be acknowledged, and an unstarted one may be named honestly.
+    """
     snap = build_status()["snapshot"]
     status = str(snap["independent_review_status"])
     report = IMPL / "u-rebaseline-review-1-independent-report.md"
     if report.exists() and "U-REBASELINE-1" in completed_units():
-        assert not re.search(r"NOT STARTED|not started|has not run|awaiting", status, re.I), (
-            "BUILD-STATUS says the independent review is unstarted while the preserved report "
-            f"exists and U-REBASELINE-1 is COMPLETE: {status[:160]}"
+        assert re.search(r"U-REBASELINE-REVIEW-1|U-REBASELINE-1", status), (
+            "BUILD-STATUS no longer acknowledges the preserved independent rebaseline report, "
+            f"which exists on disk: {status[:160]}"
         )
-        assert re.search(r"COMPLETE", status, re.I), (
-            f"BUILD-STATUS must record the independent review as COMPLETE: {status[:160]}"
+        assert re.search(r"preserved|adjudicated|COMPLETE|closed", status, re.I), (
+            "BUILD-STATUS must record the standing of the closed gate-level independent reviews: "
+            f"{status[:160]}"
         )
+        # An unstarted PHASE-level review may be stated plainly, but only about a unit the
+        # registry agrees is incomplete - it may never be used to describe a COMPLETE unit.
+        if re.search(r"NOT STARTED|not started|has not run|awaiting", status, re.I):
+            named = {u for u in re.findall(r"\bP\d+\b", status)}
+            assert named, (
+                "BUILD-STATUS claims an independent review is unstarted without naming which "
+                f"unit it means: {status[:160]}"
+            )
+            wrong = sorted(named & completed_units())
+            assert not wrong, (
+                f"BUILD-STATUS calls the independent review unstarted for COMPLETE unit(s) "
+                f"{wrong}: {status[:160]}"
+            )
 
 
 # ------------------------------------------------------------------ (5) acceptance-oracle agreement

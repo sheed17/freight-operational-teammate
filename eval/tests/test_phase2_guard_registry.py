@@ -69,9 +69,21 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_rebaseline_invariants.py": (RETAIN, "the U-REBASELINE-1 invariants: rejected product absolutes cannot return as current authority, the ADR-012..017 commitments survive, no src/ change, R-07 stays open"),
     "test_progress_protocol.py": (RETAIN, "the founder progress protocol: percentages are mechanically derived, BUILD-STATUS cannot be inflated, the finalizer-rejection battery, required references"),
     "test_switch_consistency.py": (RETAIN, "switch consistency: live guidance surfaces (CLAUDE, CURRENT, BUILD-STATUS snapshot, authority map, index, agent files) must agree with the registry after a control transition - a completed unit may never remain the live next-work claim"),
+    # ---- Phase 3: the checkpoint kernel. The two-key rule becomes real. ----
+    "test_phase3_fingerprint.py": (RETAIN, "fp_v1 canonical serialization - determinism is the mechanism; false no-drift is a wrong payment"),
+    "test_phase3_witness.py": (RETAIN, "the unconstructable, immutable, single-use Checkpoint Witness - every forgery route must mint nothing"),
+    "test_phase3_checkpoint_matrix.py": (RETAIN, "THE 105-case merge-gating matrix - 7 steps x 15 conditions on the universal oracle, zero failure tolerance"),
+    "test_phase3_claim_cas.py": (RETAIN, "the claim CAS - single-use, race-proven, brake/policy revalidated inside the UPDATE"),
+    "test_phase3_brake.py": (RETAIN, "brake admission - the one-way ratchet, no TTL, fail-closed reads"),
+    "test_phase3_schema.py": (RETAIN, "checkpoint schema readiness, live-hold index semantics, and the one-transaction atomicity probe"),
+    # Added by the P3 findings remediation, closing independent-review findings F-C, F-D and F-F.
+    "test_phase3_ledger_compatibility.py": (RETAIN, "F-C: the live-hold index broke the P2 ledger consumers - both reviewer failures reproduced, wrong-row selection and the witness foreign-key error"),
+    "test_phase3_step_order.py": (RETAIN, "F-D: the canonical seven-step order under MULTI-FAULT inputs - the 105-case matrix cannot observe order, because one fault means one failing step"),
+    "test_phase3_observability.py": (RETAIN, "F-F: the unit's observability contract proven with a REAL observer, including that an observer which fails cannot corrupt checkpoint state"),
 }
 
-GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_")
+GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_",
+                  "test_phase3_")
 def guard_files() -> list[str]:
     """DISCOVERED, never listed (H-6 closed the last hand-typed remnant, EXTRA_GUARDS): the
     population is phase-prefixed modules UNION every control-guard module the central inventory

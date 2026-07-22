@@ -14,6 +14,7 @@ negative assertions over proven populations; whole-token matching.
 from __future__ import annotations
 
 import ast
+import itertools
 import re
 import subprocess
 import sys
@@ -275,26 +276,42 @@ def test_the_retired_24_figure_does_not_reappear_in_control_documents():
 # ============================================================ M-4: table partition
 
 def test_the_canonical_table_partition_is_exact_and_disjoint():
+    """P3 widened the partition from three classes to five. The doctrine is unchanged: the classes
+    must be PAIRWISE disjoint and must together explain EVERY canonical table, by membership and
+    not by count - a same-count substitution must still fail. The counts below are asserted only
+    after the membership equality, so they document the shape rather than standing in for it."""
     from freight_recon.migrations.phase2_tenant_first import (
         CANONICAL_TENANT_TABLES, TENANT_EXEMPT_TABLES,
     )
+    from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES, P3_TENANT_TABLES
     from freight_recon.schema import CANONICAL_TABLES
-    migrated = set(CANONICAL_TENANT_TABLES)
-    exempt = set(TENANT_EXEMPT_TABLES)
-    already = {"autonomous_run_counters"}
-    assert len(migrated) == 7 and len(exempt) == 3
-    assert not migrated & exempt and not migrated & already and not exempt & already, (
-        "the partition classes overlap"
+
+    classes = {
+        "migrated": set(CANONICAL_TENANT_TABLES),
+        "already_tenant_first": {"autonomous_run_counters"},
+        "exempt": set(TENANT_EXEMPT_TABLES),
+        "p3_tenant": set(P3_TENANT_TABLES),
+        "p3_exempt": set(P3_EXEMPT_TABLES),
+    }
+    for a, b in itertools.combinations(sorted(classes), 2):
+        overlap = classes[a] & classes[b]
+        assert not overlap, f"partition classes {a} and {b} overlap: {sorted(overlap)}"
+
+    union = set().union(*classes.values())
+    assert set(CANONICAL_TABLES) == union, (
+        "the partition no longer explains every canonical table: "
+        f"canonical-only={sorted(set(CANONICAL_TABLES) - union)}, "
+        f"partition-only={sorted(union - set(CANONICAL_TABLES))}"
     )
-    assert set(CANONICAL_TABLES) == migrated | already | exempt, (
-        "canonical tables != migrated(7) + already-tenant-first(1) + exempt(3) - the partition "
-        "no longer explains every table"
-    )
+    shape = {name: len(members) for name, members in classes.items()}
+    assert shape == {"migrated": 7, "already_tenant_first": 1, "exempt": 3,
+                     "p3_tenant": 2, "p3_exempt": 1}, f"the partition shape drifted: {shape}"
+
     text = read(IMPL / "CURRENT.md")
     assert "autonomous_run_counters" in text, (
         "CURRENT.md hides the eighth tenant-first table again (the rehearsal's 7+3-vs-11 finding)"
     )
-    for t in sorted(migrated | exempt):
+    for t in sorted(union):
         assert t in text, f"CURRENT.md's partition no longer names {t}"
 
 

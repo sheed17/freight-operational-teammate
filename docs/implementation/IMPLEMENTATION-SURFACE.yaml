@@ -46,12 +46,18 @@ concepts:
     status: PARTIALLY_IMPLEMENTED
     specification: docs/architecture/decisions/ADR-005-approval-binding-and-drift.md
     evidence:
-      - path: src/freight_recon/migrations/phase2_tenant_first.py
-        symbol: material_facts_json
+      - path: src/freight_recon/fingerprint.py
+        symbol: canonical_payload
+      - path: src/freight_recon/fingerprint.py
+        symbol: drift_diff
+      - path: src/freight_recon/checkpoint.py
+        symbol: material_fact_set
     owning_unit: P3
     note: >-
-      stored as a ledger column (the content travels with the grant); the canonical fingerprint
-      and drift-voiding are checkpoint step 2 and do NOT exist yet
+      P3 delivered the fp_v1 canonical fingerprint, payload retention and field-level
+      drift-voiding at checkpoint step 2 (the F-01 mechanism, live). Still partial because the
+      durable Approval lifecycle that composes and stores approved payloads is P6/P8 work -
+      approvals enter the checkpoint as typed, validated inputs today.
 
   - name: Effect Grant ledger (foundation)
     status: IMPLEMENTED
@@ -65,23 +71,50 @@ concepts:
     note: one canonical ledger, 8 states in the CHECK constraint, (tenant, commit_key) unique
 
   - name: Checkpoint (seven-step)
-    status: SPECIFICATION_ONLY
+    status: IMPLEMENTED
     specification: docs/architecture/decisions/ADR-004-effect-boundary.md
-    absent_symbols: [CheckpointPassed, seven_step_checkpoint, run_checkpoint]
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: run_checkpoint
+      - path: src/freight_recon/checkpoint.py
+        symbol: seven_step_checkpoint
+      - path: src/freight_recon/checkpoint.py
+        symbol: CheckpointPassed
     owning_unit: P3
+    note: >-
+      the seven checks in ONE transaction with the witness insert and the mint, canonical order,
+      short-circuit-first-failure (SD-7). SHIPS DARK - no production path routes through it
+      until P4 contains the adapters; the six live-write paths are untouched and R-07 stays OPEN.
 
   - name: Checkpoint Witness
-    status: SPECIFICATION_ONLY
+    status: IMPLEMENTED
     specification: docs/specifications/entities/05-checkpoint-witness.md
-    absent_symbols: [CheckpointWitness, mint_checkpoint_witness]
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: mint_checkpoint_witness
+      - path: src/freight_recon/checkpoint.py
+        symbol: CheckpointWitness
+      - path: src/freight_recon/migrations/phase3_checkpoint.py
+        symbol: checkpoint_witnesses
     owning_unit: P3
+    note: >-
+      unconstructable in-process pass (no public constructor, single-use, unpicklable) plus the
+      append-only durable record (UPDATE/DELETE refused by trigger), 1:1 with its grant by a
+      tenant-consistent unique FK
 
   - name: Effect claim CAS
-    status: SPECIFICATION_ONLY
+    status: IMPLEMENTED
     specification: docs/architecture/decisions/ADR-004-effect-boundary.md
-    absent_symbols: [claim_grant_cas, GRANTED_TO_CLAIMED]
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: claim_grant_cas
+      - path: src/freight_recon/checkpoint.py
+        symbol: GRANTED_TO_CLAIMED
     owning_unit: P3
-    note: rows are written GRANTED; nothing transitions them - deliberately
+    note: >-
+      atomic GRANTED -> CLAIMED revalidating state, expiry, brake token and policy version
+      inside the UPDATE's WHERE clause; witness freshness and the confusion check precede it;
+      zero rows updated means the caller does nothing
 
   - name: Work Item
     status: SPECIFICATION_ONLY
@@ -115,13 +148,20 @@ concepts:
     owning_unit: P7
 
   - name: Provenance classes
-    status: SPECIFICATION_ONLY
+    status: PARTIALLY_IMPLEMENTED
     specification: docs/architecture/decisions/ADR-002-state-classes-and-lineage.md
-    absent_symbols: [provenance_class, OWNER_ASSERTED, MODEL_INFERRED]
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: ProvenanceClass
+      - path: src/freight_recon/checkpoint.py
+        symbol: GateReadOfInferredFact
     owning_unit: P7
     note: >-
-      the six classes exist only in specification; extraction output does not yet carry its class,
-      which is exactly why MODEL_INFERRED-cannot-authorise is unenforceable before P7
+      P3 delivered the canonical six-member enum and the raise-on-read gate rule: inside the
+      checkpoint, a MODEL_INFERRED material fact cannot be read by a consequential gate and
+      fails step 4 (AC-SAFE-015). Still partial because extraction output does not yet carry
+      its class - provenance records and lineage are P7; until then the rule protects only
+      facts that enter through the checkpoint's typed inputs.
 
   - name: Policy (typed, compile-or-refuse)
     status: LEGACY_IMPLEMENTATION
@@ -130,16 +170,33 @@ concepts:
       - path: src/freight_recon/tool_permissions.py
         symbol: ToolPermission
     owning_unit: P8
-    note: legacy permission checks exist (S9/S3 dispositions); a prompt string is not a policy
+    note: >-
+      Legacy permission checks exist (S9/S3 dispositions); a prompt string is not a policy.
+      P3 BOUNDARY, adjudicated at P3 from independent-review finding F-G (the implementer's F-2):
+      P3 legitimately contains the MINIMAL STRUCTURAL contract checkpoint step 5 cannot be written
+      without - the GateDecision vocabulary and a fail-closed GateRegistry lookup, confined to the
+      kernel and guarded there. That is a lookup, not a policy runtime, so this concept's owning
+      unit stays P8. P8 still owns: rule authoring, compilation, versioning, activation,
+      precedence and conflict resolution, richer action-class descriptors, the autonomy runtime,
+      and the expectation/exception/compensation systems. Nothing in production registers a gate
+      yet (P3 ships dark), which is why AC-CKPT-6-missing stays deferred and ungreen.
 
   - name: Brake (admission control)
-    status: LEGACY_IMPLEMENTATION
+    status: PARTIALLY_IMPLEMENTED
     specification: docs/architecture/decisions/ADR-011-human-brake.md
     evidence:
-      - path: src/freight_recon/ops_control.py
-        symbol: pause
+      - path: src/freight_recon/brake.py
+        symbol: BrakeStore
+      - path: src/freight_recon/migrations/phase3_checkpoint.py
+        symbol: platform_brake
     owning_unit: P8
-    note: today a flag checked by convention; six entry points do not consult it (ADR-011)
+    note: >-
+      P3 delivered canonical admission control - two states, no TTL, monotonic versions, the
+      one-way ratchet (automation may engage/widen, never release/narrow), read inside the
+      checkpoint transaction and revalidated by the claim CAS. Still partial: the six legacy
+      live-write paths do not consult it until P4 routes them, brake events are P5, and the
+      full release-evidence machinery is P8. The legacy ops_control pause flag remains a
+      convention beside it (S3 disposition).
 
   - name: Canonical events (98 contracts)
     status: SPECIFICATION_ONLY

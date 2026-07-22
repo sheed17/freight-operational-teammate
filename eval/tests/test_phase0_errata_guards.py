@@ -50,12 +50,19 @@ def test_tenant_offending_tables_exact_set_not_count():
     tables, ev = schema_probe.tables()
     ev.require_population(minimum=8)
     from freight_recon.migrations.phase2_tenant_first import TENANT_EXEMPT_TABLES
+    from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES
 
     # BUSINESS tables only. The bookkeeping trio (schema_migrations, migration_quarantine,
     # owner_assertions) is canonically tenant-exempt and adjudicated in the manifest: the audit of a
     # DISPUTED ownership claim must not itself be owned by one of the disputing tenants.
-    enumerated = {t.name for t in tables
-                  if not t.canonical and t.name not in TENANT_EXEMPT_TABLES}
+    #
+    # P3 adds exactly one more exemption, on the same adjudicated footing and NOT as a widening of
+    # convenience: `platform_brake`. Entity spec `16-brake.md` point 7 resolves SD-12 outright -
+    # "the GLOBAL brake is ONE platform-level row, not N per-tenant rows" - so the row exists
+    # BECAUSE it is nobody's tenant data. The exemption is read from the migration module rather
+    # than spelled here, so a new P3 exempt table cannot appear without this set learning it.
+    exempt = set(TENANT_EXEMPT_TABLES) | set(P3_EXEMPT_TABLES)
+    enumerated = {t.name for t in tables if not t.canonical and t.name not in exempt}
     registered = manifest.tables_not_tenant_first()
     assert enumerated == registered, (
         f"tenant-posture set drift.\n"
@@ -235,11 +242,42 @@ def test_u81_carries_the_phase8_completion_obligation():
         assert required in u81, f"U8.1 does not carry '{required}'"
 
 
-def test_no_placeholder_policy_runtime_was_added_by_the_errata():
-    """The errata pass must not smuggle in the very structures it deferred."""
+def test_typed_policy_runtime_exists_only_with_its_canonical_authority():
+    """REPLACES `test_no_placeholder_policy_runtime_was_added_by_the_errata` (P3).
+
+    The original forbade the gate tokens ANYWHERE in src/, because the errata pass had deferred
+    typed policy and a bare token appearing then could only be a placeholder. P3 legitimately
+    implements the ladder for checkpoint step 5, so a blanket ban is now false and would have to
+    be deleted to go green - which is how a real invariant gets quietly lost. It is replaced.
+
+    The surviving invariant is the one that mattered all along: policy runtime may exist only
+    where it carries its canonical authority. A module that names a gate decision without citing
+    ADR-010 is a placeholder by definition - a magic string wearing a policy's clothes - and
+    CLAUDE.md is explicit that a prompt string is not a policy.
+
+    Confinement of these tokens to the kernel is asserted separately and independently by
+    test_phase0_null_gate.py; this guard is about AUTHORITY, not location.
+    """
     import freight_recon
     src = Path(freight_recon.__file__).parent
-    for token in ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
-                  "PERMANENT_HUMAN_ASSERTION_REQUIRED"):
-        hits = [p.name for p in src.rglob("*.py") if token in p.read_text(encoding="utf-8")]
-        assert not hits, f"placeholder policy runtime appeared during the errata pass: {token} in {hits}"
+    # Whole-token matching. The original used `token in text`, which is the substring-guard defect
+    # CLAUDE.md names: `FORBIDDEN_TENANTS` is not a policy gate, and a substring scan says it is.
+    tokens = ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
+              "PERMANENT_HUMAN_ASSERTION_REQUIRED")
+    carriers, unauthorised = [], []
+    for path in sorted(src.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if not any(re.search(rf"(?<![A-Za-z0-9_]){t}(?![A-Za-z0-9_])", text) for t in tokens):
+            continue
+        carriers.append(path.name)
+        if not re.search(r"ADR-010", text):
+            unauthorised.append(path.name)
+
+    assert carriers, (
+        "no module carries the typed gate ladder: P3 implements it for checkpoint step 5, so an "
+        "empty population means the kernel vanished and this guard just proved nothing"
+    )
+    assert not unauthorised, (
+        "typed policy runtime without its canonical authority (ADR-010 uncited) - a placeholder "
+        f"policy is exactly what this guard exists to catch: {unauthorised}"
+    )

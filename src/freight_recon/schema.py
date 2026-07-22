@@ -37,18 +37,40 @@ from .migrations.phase2_tenant_first import (
     TARGET_SCHEMA,
     TENANT_EXEMPT_TABLES,
 )
+from .migrations.phase3_checkpoint import (
+    P3_EXEMPT_TABLES,
+    P3_INDEXES,
+    P3_TARGET_SCHEMA,
+    P3_TENANT_TABLES,
+    REPLACED_INDEXES,
+    create_phase3_schema,
+    phase3_readiness_problems,
+    stamp_phase3_version,
+)
 
 TENANT_COLUMN = "tenant"
 
 # Indexes without which the tenant-first PROPERTY is not enforced by the database, only hoped for.
+# P3 replaced the strict `ix_effect_grants_tenant_commit_key` with the LIVE-HOLD form: still one
+# live-or-committed reservation per (tenant, logical effect), but a provably-dead row
+# (EXPIRED_UNCLAIMED / REVOKED / FAILED) frees the key for the safe re-mint the checkpoint crash
+# semantics require (migrations/phase3_checkpoint.py docstring).
 REQUIRED_INDEXES: tuple[str, ...] = (
     "ix_workflow_runs_tenant_document_hash",   # the doc-hash defect, closed structurally
-    "ix_effect_grants_tenant_commit_key",      # one live reservation per (tenant, logical effect)
+    "ix_effect_grants_live_hold",              # one live-or-committed reservation per effect
     "ix_effect_grants_commit_once",            # Layer-2 claim-instant exclusion
 )
 
 # Their presence proves a migration was never run, or died half-way. Either way: not ready.
 LEGACY_TABLES: tuple[str, ...] = ("operation_commit_claims",)
+
+# The complete canonical DDL: the Phase-2 shape plus the Phase-3 checkpoint tables. One merged
+# view so the readiness oracle and the fresh-database builder cannot disagree about what
+# canonical means.
+_ALL_TARGET_SCHEMA: dict[str, str] = {**TARGET_SCHEMA, **P3_TARGET_SCHEMA}
+
+# Tenant-owned tables across both phases: the readiness loop validates every one identically.
+ALL_TENANT_TABLES: tuple[str, ...] = (*CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES)
 
 # Every table a canonical database is allowed to contain. A new table must be added here
 # deliberately, which is the point (REG-1).
@@ -56,6 +78,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES,
     "autonomous_run_counters",
     *TENANT_EXEMPT_TABLES,
+    *P3_TENANT_TABLES,
+    *P3_EXEMPT_TABLES,
 )
 
 
@@ -92,17 +116,22 @@ def enable_and_verify_foreign_keys(conn: sqlite3.Connection) -> None:
 
 
 def create_canonical_schema(conn: sqlite3.Connection) -> None:
-    """Create a FRESH database directly in the tenant-first Phase-2 shape.
+    """Create a FRESH database directly in the tenant-first, checkpoint-shaped canonical form.
 
     Not the legacy schema plus a migration: a new database is canonical from its first statement.
     Idempotent - existing tables are left alone, so this is safe to call on every construction.
+    P3: the merged DDL view builds the checkpoint tables in the same pass, and the ledger index
+    is created directly in its live-hold form - a fresh database never carries the replaced
+    strict index even transiently.
     """
     present = _tables(conn)
     for name in CANONICAL_TABLES:
         if name not in present:
-            conn.execute(TARGET_SCHEMA[name])
+            conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
-    for name, ddl in INDEXES.items():
+    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES}.items()
+                      if n not in REPLACED_INDEXES}
+    for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
             conn.execute(ddl)
@@ -113,6 +142,11 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
             "VALUES (?,?,?,?)",
             (MIGRATION_ID, f"version:{SCHEMA_VERSION}", _now(), "fresh database created canonical"),
         )
+    # Triggers and the platform-brake seed row: one text, both entry paths. The version stamp
+    # comes LAST, only if the structure just built actually proves ready (marker-last, §26).
+    create_phase3_schema(conn, now=_now())
+    if not phase3_readiness_problems(conn):
+        stamp_phase3_version(conn, now=_now())
     conn.commit()
 
 
@@ -137,7 +171,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
             f"migration residue {residue}: a previous migration run did not reach its cleanup step."
         )
 
-    for table in CANONICAL_TENANT_TABLES:
+    for table in ALL_TENANT_TABLES:
         if table not in present:
             problems.append(f"required tenant-owned table {table!r} is missing")
             continue
@@ -168,7 +202,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
         )
 
     # Nullability, defaults and tenant-consistent foreign keys, per canonical table.
-    for table in CANONICAL_TENANT_TABLES:
+    for table in ALL_TENANT_TABLES:
         if table in present:
             problems.extend(_column_problems(conn, table))
             problems.extend(_foreign_key_problems(conn, table))
@@ -182,6 +216,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
         problems.extend(_ledger_problems(conn))
         problems.extend(_column_problems(conn, "effect_grants"))
 
+    problems.extend(phase3_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))
@@ -241,13 +276,13 @@ def _ledger_problems(conn: sqlite3.Connection) -> list[str]:
 # --------------------------------------------------------------------------------------------
 
 def _canonical_fks() -> dict[str, list[tuple[tuple[str, ...], str, tuple[str, ...]]]]:
-    """Parse the REQUIRED foreign keys out of TARGET_SCHEMA itself.
+    """Parse the REQUIRED foreign keys out of the merged canonical DDL itself.
 
     Derived, never hand-maintained: a second list would drift from the schema the moment either
     moved, and a readiness oracle that disagrees with the thing it validates is worse than none.
     """
     out: dict[str, list[tuple[tuple[str, ...], str, tuple[str, ...]]]] = {}
-    for table, ddl in TARGET_SCHEMA.items():
+    for table, ddl in _ALL_TARGET_SCHEMA.items():
         fks = []
         for m in re.finditer(
             r"FOREIGN\s+KEY\s*\(([^)]*)\)\s*REFERENCES\s+(\w+)\s*\(([^)]*)\)", ddl, re.IGNORECASE
@@ -261,8 +296,8 @@ def _canonical_fks() -> dict[str, list[tuple[tuple[str, ...], str, tuple[str, ..
 
 
 def _canonical_columns(table: str) -> dict[str, dict]:
-    """Column contract (nullability + default) for one canonical table, from TARGET_SCHEMA."""
-    ddl = TARGET_SCHEMA.get(table, "")
+    """Column contract (nullability + default) for one canonical table, from the merged DDL."""
+    ddl = _ALL_TARGET_SCHEMA.get(table, "")
     spec: dict[str, dict] = {}
     body = ddl[ddl.find("(") + 1: ddl.rfind(")")] if "(" in ddl else ""
     for raw in body.split("\n"):
