@@ -48,7 +48,7 @@ suite_skipped: 1
 | **P0** — baseline & anti-false-green infrastructure | ### **COMPLETE** | [`phase-0-implementation-review.md`](phase-0-implementation-review.md) · `d33f251` |
 | **P1** — correct effect identity (Commit Key) | ### **COMPLETE** | [`phase-1-implementation-review.md`](phase-1-implementation-review.md) · `149c02a`, `da07936` |
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
-| **P3** — checkpoint, witness, claim CAS | ### **IN PROGRESS — NOT COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100, NOT READY) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation. ### **A fresh independent review of the remediated tree is outstanding** |
+| **P3** — checkpoint, witness, claim CAS | ### **IN PROGRESS — NOT COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100, NOT READY) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS — READY FOR FINAL ADJUDICATION** (zero new defects). ### **The SEPARATE final adjudication remains; P3 stays NOT COMPLETE until it sets the 14 registry criteria** |
 | **P4–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
@@ -218,10 +218,14 @@ What remains, in order:
    clean-clone gate and the acceptance gates itself.
 3. **An INDEPENDENT review** by a session that did not implement P3, and then a **final
    adjudication** from that independent evidence — the two criteria the implementing session
-   structurally cannot supply for itself. ### **One independent review has been received and P3
-   FAILED it** (9 findings, 60/100). Its findings are remediated, so what remains is a **FRESH**
-   independent review of the remediated tree — by a session that neither implemented P3 nor
-   remediated its findings — and then the final adjudication.
+   structurally cannot supply for itself. ### **The first independent review was FAILED by P3**
+   (9 findings, 60/100); its findings were remediated; and a **FRESH** independent review of the
+   remediated, finalized tree has now been performed —
+   [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md), **PASS — READY FOR FINAL
+   ADJUDICATION**, zero new defects, by a session that neither implemented P3 nor remediated its
+   findings. ### **What remains is the SEPARATE final adjudication** that sets the 14 registry
+   criteria from that evidence; until it does, P3 is NOT COMPLETE and all 14 criteria stay
+   `PENDING`.
 
 > ### **P4 is BLOCKED and MUST NOT BEGIN.** Its dependency `P3` is not COMPLETE. The 31 direct
 > adapter-import edges and all six live-write paths are untouched; **R-07 is OPEN — NOT
