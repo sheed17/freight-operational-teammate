@@ -69,6 +69,7 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_rebaseline_invariants.py": (RETAIN, "the U-REBASELINE-1 invariants: rejected product absolutes cannot return as current authority, the ADR-012..017 commitments survive, no src/ change, R-07 stays open"),
     "test_progress_protocol.py": (RETAIN, "the founder progress protocol: percentages are mechanically derived, BUILD-STATUS cannot be inflated, the finalizer-rejection battery, required references"),
     "test_switch_consistency.py": (RETAIN, "switch consistency: live guidance surfaces (CLAUDE, CURRENT, BUILD-STATUS snapshot, authority map, index, agent files) must agree with the registry after a control transition - a completed unit may never remain the live next-work claim"),
+    "test_build_status_receipt_consistency.py": (RETAIN, "N-1: the authored BUILD-STATUS snapshot may not narrate finalizer/clean-clone failure the authoritative receipts contradict, nor claim PASS they do not support - checked both directions"),
     # ---- Phase 3: the checkpoint kernel. The two-key rule becomes real. ----
     "test_phase3_fingerprint.py": (RETAIN, "fp_v1 canonical serialization - determinism is the mechanism; false no-drift is a wrong payment"),
     "test_phase3_witness.py": (RETAIN, "the unconstructable, immutable, single-use Checkpoint Witness - every forgery route must mint nothing"),
