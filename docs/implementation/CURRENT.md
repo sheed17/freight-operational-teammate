@@ -21,8 +21,8 @@ version of this block goes stale within one commit and nothing notices.
 ```yaml
 # status-block: maintained by scripts/finalize_status.py - do not edit by hand
 recorded_authoring_branch: p3/checkpoint-witness   # advisory; not verified across bundles/clones
-content_commit: 789d5b3284b58046b1bd676254181619e3b70934
-content_tree: 708ca1a242734c737b9e5f065c1f21f8295305d0
+content_commit: f579d925d62f0ac5a5235fd490d081fa47cacce1
+content_tree: 65c9de5fbaa2e52a29e2902ab1d886a760c2dc3c
 suite_passed: 1535
 suite_failed: 0
 suite_skipped: 1
