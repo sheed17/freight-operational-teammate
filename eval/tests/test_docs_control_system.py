@@ -425,41 +425,56 @@ def test_23b_every_root_control_document_appears_in_the_authority_map():
 # ============================================================ 24. the next approved work
 
 def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
-    """U-REBASELINE-1A: both gates are CLOSED (handoff, adjudicated from U-HANDOFF-2B; rebaseline,
-    adjudicated from the INDEPENDENT U-REBASELINE-REVIEW-1) and the single READY unit is now P3
-    itself. Replaced - not deleted - from the rebaseline-is-READY guard (CLAUDE.md section 5
-    rule 20). P3 being READY is NOT permission to have implemented it: the absence guards still
-    prove no P3 symbol exists in src/."""
-    ready = [u for u in registry_units() if u["status"] == "READY"]
+    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md section 5 rule 20 - replaced, not deleted).
+
+    The function NAME is frozen to preserve its node identity in TEST-NODE-MANIFEST.json (the same
+    convention as test_24b); the BODY now asserts the post-adjudication truth. P3 has been
+    adjudicated COMPLETE from independent evidence, so the single READY unit is P4. The durable
+    invariants are preserved and re-pointed: a phase is COMPLETE only with all 14 weighted criteria
+    PASS - including independent_review and final_adjudication, which its own author structurally
+    cannot supply - and P4's gate ancestry stays closed on independent evidence."""
+    units = registry_units()
+    by_id = {u["unit_id"]: u for u in units}
+    ready = [u for u in units if u["status"] == "READY"]
     assert len(ready) == 1, f"exactly one unit may be READY, found {[u['unit_id'] for u in ready]}"
-    p3 = ready[0]
-    assert p3["unit_id"] == "P3", f"the READY unit is {p3['unit_id']}, expected P3"
-    # every gate ancestor must be COMPLETE - P3 may not be READY on an open gate
-    by_id = {u["unit_id"]: u for u in registry_units()}
-    for dep in p3["dependencies"]:
+    the_ready = ready[0]
+    assert the_ready["unit_id"] == "P4", f"the READY unit is {the_ready['unit_id']}, expected P4"
+
+    # P3 is COMPLETE, and that completion is legitimate ONLY on a fully-PASS weighted contract whose
+    # independent_review + final_adjudication were supplied by a session other than the author.
+    p3 = by_id["P3"]
+    assert p3["status"] == "COMPLETE", f"P3 is {p3['status']}, expected COMPLETE"
+    crits = p3.get("acceptance_criteria")
+    assert crits, "P3 has no weighted acceptance contract"
+    assert sum(int(c["weight"]) for c in crits) == 100, "P3 acceptance weights must total 100"
+    results = {c["criterion"]: str(c["result"]).upper() for c in crits}
+    assert results.get("independent_review") == "PASS" and results.get("final_adjudication") == "PASS", (
+        "P3 COMPLETE without independent_review + final_adjudication PASS - a self-adjudicated "
+        "completion is exactly what this guard exists to forbid"
+    )
+    unpassed = sorted(k for k, v in results.items() if v != "PASS")
+    assert not unpassed, f"P3 is COMPLETE while these criteria are not PASS: {unpassed}"
+
+    # every P4 gate ancestor must be COMPLETE - P4 may not be READY on an open gate
+    for dep in the_ready["dependencies"]:
         assert by_id[dep]["status"] == "COMPLETE", (
-            f"P3 is READY while dependency {dep} is {by_id[dep]['status']}"
+            f"P4 is READY while dependency {dep} is {by_id[dep]['status']}"
         )
+    # the closed gates that let P3 begin still carry their independent-review evidence
     for gate in ("U-HANDOFF-1", "U-REBASELINE-1"):
         assert gate in p3["dependencies"], f"P3 lost its {gate} gate dependency"
         evidence = " ".join(str(x) for x in by_id[gate]["completion_evidence"])
         assert "independent" in evidence.lower() or "u-handoff-2b" in evidence.lower(), (
             f"{gate} is COMPLETE without independent-review evidence recorded"
         )
-    # the rebaseline's completion must cite the preserved INDEPENDENT report
     reb = " ".join(str(x) for x in by_id["U-REBASELINE-1"]["completion_evidence"])
     assert "u-rebaseline-review-1-independent-report.md" in reb, (
         "U-REBASELINE-1 COMPLETE without the preserved independent review report"
     )
-    # P3 carries a weighted acceptance contract, entirely PENDING (READY is not started)
-    crits = p3.get("acceptance_criteria")
-    assert crits, "the READY P3 has no weighted acceptance contract"
-    assert sum(int(c["weight"]) for c in crits) == 100, "P3 acceptance weights must total 100"
-    started = [c["criterion"] for c in crits if str(c["result"]).upper() != "PENDING"]
-    assert not started, f"P3 is READY but criteria are already marked: {started}"
-    prohibited = " ".join(str(x) for x in p3["prohibited_scope"]).lower()
-    assert "adapter containment" in prohibited, "P3 must still prohibit P4 containment work"
-    assert re.search(r"P3", read(CURRENT)), "CURRENT.md must name the next approved program"
+    # P4 must still prohibit the NEXT phase's work (events, P5) - the safety wall does not collapse
+    prohibited = " ".join(str(x) for x in the_ready["prohibited_scope"]).lower()
+    assert "events" in prohibited, "P4 must still prohibit P5 (events) work"
+    assert re.search(r"P4", read(CURRENT)), "CURRENT.md must name the next approved program"
 
 
 def test_24b_the_current_status_file_forbids_the_phase_after_the_ready_one():

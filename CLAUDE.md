@@ -68,7 +68,7 @@ artificial ceilings and no assumed rip-and-replace.
 | **Phase 0** | ✅ COMPLETE — baseline + anti-false-green infrastructure |
 | **Phase 1** | ✅ COMPLETE — correct effect identity (amount out of the Commit Key) |
 | **Phase 2** | ✅ COMPLETE — tenant-safe persistence |
-| **Phase 3** | 🔄 **IN PROGRESS — NOT COMPLETE.** The checkpoint kernel is implemented and its tests pass: seven-step atomic checkpoint, unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark — nothing routes through it.** ### **An INDEPENDENT review happened and P3 DID NOT PASS IT** — 9 findings (1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW), 60/100, `NOT READY FOR FINAL ADJUDICATION` ([findings](docs/implementation/p3-independent-review-findings.md)). All nine are **remediated** ([dispositions](docs/implementation/p3-findings-remediation-review.md)) — by a session that is neither the reviewer nor the adjudicator. ### **Remediation is not adjudication:** all 14 criteria stay `PENDING`, a **fresh** independent review of the remediated tree is required, and P3 may not be recorded COMPLETE. |
+| **Phase 3** | ✅ **COMPLETE — ADJUDICATED.** The checkpoint kernel: seven-step atomic checkpoint, unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark — nothing routes through it.** The first INDEPENDENT review returned 9 findings (60/100, `NOT READY`) and P3 **did not pass it**; all nine were **remediated**; a **FRESH INDEPENDENT** review of the remediated, finalized tree then **PASSED** (zero new defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION** set all 14 weighted criteria `PASS` and recorded P3 COMPLETE ([adjudication](docs/implementation/p3-final-adjudication-review.md)). Completing P3 did **not** close R-07 — the kernel is dark until P4 routes effects through it. |
 | **R-07** | ### **OPEN — NOT CONTAINED** — completing P3 did NOT close it; only completing P4 does |
 | Live-write paths | **6 production-reachable** paths remain (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) |
 | Adapter imports | **31 direct adapter-import edges** remain across 18 importer modules |
@@ -76,7 +76,7 @@ artificial ceilings and no assumed rip-and-replace.
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
 | **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
-| **Next approved unit** | ### **`P3` — Finish the checkpoint kernel's acceptance. STILL THE ONE AND ONLY READY UNIT.** The code exists and the findings are fixed; the adjudication does not exist. Done: guard mutations (8/8), kernel mutations (K1–K11), and one independent review — which **P3 failed**, and whose findings are remediated. What remains: **green** final-tree validation, the finalizer, the clean-clone gate, a **FRESH INDEPENDENT** review of the remediated tree by a session that neither implemented P3 nor remediated its findings, and a final adjudication from that evidence. **`P4` is BLOCKED and must not begin** — it is the unit that closes R-07, and its dependency is not met. P5–P14 stay BLOCKED. |
+| **Next approved unit** | ### **`P4` — Adapter containment (the CI import gate). THE ONE AND ONLY READY UNIT — and it has NOT begun.** It routes every external effect through the checkpoint kernel and the two-key rule, deletes or de-actuates the six live-write paths, converts or removes the 31 adapter-import edges, and turns on the CI import gate. **This is the unit that closes R-07.** Its sole dependency is now satisfied. P5–P14 stay BLOCKED behind it. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -243,13 +243,13 @@ These are not style preferences. Each one is a defect this repository actually s
 
 Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
-- ⛔ **Do not begin Implementation Phase 4** (adapter containment, the CI import gate) — its
-  dependency `P3` is implemented but **not adjudicated COMPLETE**.
-- ⛔ **Do not begin Implementation Phase 5** (events, outbox/inbox, replay isolation, PostgreSQL).
-- ⛔ **Do not mark P3 COMPLETE from within the session that implemented it — or from the session
-  that remediated its independent-review findings.** `independent_review` and `final_adjudication`
-  require a session that did neither; certifying your own fixes is self-adjudication, a defect with
-  a passing status (section 5, rule 20).
+- ⛔ **Do not begin Implementation Phase 5** (events, outbox/inbox, replay isolation, PostgreSQL) —
+  its dependency `P4` is not COMPLETE. **`P4` (adapter containment) is now the READY unit and may
+  begin**; it is no longer forbidden here.
+- ⛔ **Do not adjudicate any phase COMPLETE from within the session that implemented or remediated
+  it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
+  your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
+  how P3 was completed — reviewer and adjudicator were sessions separate from the implementer.
 - ⛔ Do not declare R-07 contained — **only COMPLETING P4 closes it**, and P4 has not begun.
 - ⛔ Do not enable the checkpoint kernel on live traffic outside P4's own acceptance contract —
   it ships dark, and routing effects through it IS P4's content.
@@ -261,14 +261,13 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ Do not promote the Delivered Load Closure wedge to validated.
 
 **The next approved program is
-[P3 — FINISHING THE CHECKPOINT KERNEL'S ACCEPTANCE](docs/implementation/CURRENT.md)** — the one and
-only `READY` unit. Its kernel is implemented and tested
-([`phase-3-implementation-review.md`](docs/implementation/phase-3-implementation-review.md)), its
-guard and kernel mutation batteries are run, and one INDEPENDENT review has been received — ### **P3
-did not pass it** (9 findings, 60/100), and its findings have since been remediated. What is
-outstanding: green final-tree validation, the finalizer, the clean-clone gate, a **FRESH**
-INDEPENDENT review of the remediated tree, and a final adjudication from that evidence.
-**`P4` — the unit that closes R-07 — is BLOCKED until P3 is genuinely COMPLETE.**
+[P4 — ADAPTER CONTAINMENT](docs/implementation/CURRENT.md)** — the one and only `READY` unit, and it
+has **not begun**. P3 (the checkpoint kernel) is now **adjudicated COMPLETE**: its first INDEPENDENT
+review failed it (9 findings, 60/100), all nine findings were remediated, a **FRESH** INDEPENDENT
+review of the remediated, finalized tree **PASSED**, and a **separate FINAL ADJUDICATION** set all 14
+weighted criteria `PASS` ([`p3-final-adjudication-review.md`](docs/implementation/p3-final-adjudication-review.md)).
+**`P4` routes every external effect through the kernel and is the unit that closes R-07** — which
+stays **OPEN — NOT CONTAINED** until P4 completes.
 
 ## 12. Other instruction files
 

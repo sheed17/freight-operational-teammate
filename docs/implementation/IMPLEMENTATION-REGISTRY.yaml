@@ -335,7 +335,7 @@ units:
     objective: >-
       Make the two-key rule real: a grant becomes necessary but not sufficient, and no external
       effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
-    status: READY
+    status: COMPLETE
     dependencies: [P2, U-HANDOFF-1, U-REBASELINE-1]
     unlocked_by: [P2, U-HANDOFF-1, U-REBASELINE-1]
     blocks: [P4]
@@ -375,7 +375,18 @@ units:
       - "the independent product/production rebaseline review PASSED (five PASS verdicts)"
       - "the independent repository inspection agreed P3 may begin (same review: P3 symbols
          provably absent from src/, guard integrity audited, R-07 honestly OPEN)"
-    completion_evidence: ["a phase-3 implementation review with final-tree digests"]
+    completion_evidence:
+      - docs/implementation/phase-3-implementation-review.md
+      - "docs/implementation/p3-independent-review-findings.md - the first INDEPENDENT review (9
+         findings, 60/100, NOT READY), which P3 did not pass; all nine remediated"
+      - docs/implementation/p3-findings-remediation-review.md
+      - "docs/implementation/p3-genuine-independent-review.md - the FRESH INDEPENDENT review of the
+         remediated, finalized tree: PASS, zero new defects, 13/13 hostile probes"
+      - "docs/implementation/p3-final-adjudication-review.md - the final adjudication that set the
+         14 weighted criteria PASS from the independent evidence"
+      - "the finalized P3 content lineage 0bf72b7 (kernel tree cc53ff4f), byte-identical through
+         the recorded content commit; SUITE-RESULT.json (1535 passed / 0 failed / 1 skip) and
+         GATE-RESULT.json (clean-clone passed:true) bind to it"
     rebaseline_contract:
       user_visible_capability: none - kernel work; a customer notices nothing yet
       platform_capability: the seven-step atomic checkpoint, unconstructable witness, grant mint + claim CAS, brake admission
@@ -416,49 +427,61 @@ units:
     #       expectation/exception/compensation systems. The P0 manifest's stale rationale is
     #       corrected; AC-CKPT-6-missing STAYS DEFERRED AND UNGREEN, on the ground that actually
     #       holds - the production gate-registration population is still zero, proved mechanically.
+    #
+    # P3 UPDATE 3 - FINAL ADJUDICATION RECORDED. A separate ADJUDICATING session - which did not
+    # implement P3, perform either independent review, remediate F-A..F-I, normalize the git
+    # history, correct N-1, or author the genuine independent review - adjudicated the 14 weighted
+    # criteria PASS from the authoritative evidence: the FRESH INDEPENDENT review
+    # (p3-genuine-independent-review.md, PASS, zero new defects, 13/13 hostile probes, F-A..F-I
+    # confirmed remediated), an independent re-verification of the kernel source and the green P3
+    # test battery (248 passed / 0 failed / 0 skipped), the finalizer/clean-clone receipts, and an
+    # independent confirmation of the reviewer-authored N-1 narrative correction against the
+    # receipts. All 14 results are now PASS -> P3 phase completion 100/100 -> P3 COMPLETE. The
+    # kernel STILL SHIPS DARK; completing P3 does NOT close R-07 (only completing P4 does), and this
+    # session did NOT begin P4. Adjudication: docs/implementation/p3-final-adjudication-review.md.
     acceptance_criteria:
       - criterion: accepted_scope_and_design
         weight: 6
-        result: PENDING
+        result: PASS
       - criterion: required_tests
         weight: 8
-        result: PENDING
+        result: PASS
       - criterion: core_implementation
         weight: 20
-        result: PENDING
+        result: PASS
       - criterion: failure_handling
         weight: 8
-        result: PENDING
+        result: PASS
       - criterion: concurrency_handling
         weight: 8
-        result: PENDING
+        result: PASS
       - criterion: authorization_and_security
         weight: 10
-        result: PENDING
+        result: PASS
       - criterion: migrations_and_persistence
         weight: 6
-        result: PENDING
+        result: PASS
       - criterion: observability_and_operational_behavior
         weight: 6
-        result: PENDING
+        result: PASS
       - criterion: mutation_or_hostile_cases
         weight: 8
-        result: PENDING
+        result: PASS
       - criterion: full_test_suite
         weight: 5
-        result: PENDING
+        result: PASS
       - criterion: canonical_finalizer
         weight: 3
-        result: PENDING
+        result: PASS
       - criterion: clean_clone_execution
         weight: 3
-        result: PENDING
+        result: PASS
       - criterion: independent_review
         weight: 5
-        result: PENDING
+        result: PASS
       - criterion: final_adjudication
         weight: 4
-        result: PENDING
+        result: PASS
     next_units_unlocked: [P4]
 
   - unit_id: P4
@@ -466,7 +489,12 @@ units:
     objective: >-
       Route every external effect through the adapter boundary and the two-key rule, then turn on
       the CI import gate. THIS IS THE UNIT THAT CLOSES R-07.
-    status: BLOCKED
+    # U-P3-ADJUDICATION: P3 is now COMPLETE (14/14 weighted criteria PASS on independent evidence),
+    # so P4's sole dependency is satisfied and P4 becomes the single READY unit. READY is NOT a
+    # licence to have begun it: R-07 stays OPEN - NOT CONTAINED, the six live-write paths and the
+    # 31 adapter-import edges are physically untouched, and the checkpoint kernel ships dark until
+    # this unit routes effects through it. The adjudicating session did NOT begin P4.
+    status: READY
     dependencies: [P3]
     unlocked_by: [P3]
     blocks: [P5]
@@ -499,7 +527,7 @@ units:
     rollback_posture: >-
       Ships dark. The import gate is the last thing enabled, and a gate with nothing behind it is
       theatre - which is why P4 cannot precede P3.
-    validation_blockers: ["P3 complete"]
+    validation_blockers: []
     completion_evidence:
       - "R-07 marked CONTAINED with the mechanism named, in phase-0-baseline-manifest.yaml"
       - "the adapter_import_allowlist edges list empty"

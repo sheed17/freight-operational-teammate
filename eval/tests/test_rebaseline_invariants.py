@@ -202,14 +202,17 @@ def test_the_evidence_program_exists_and_fails_closed():
 
 
 def test_exactly_one_ready_unit_and_it_is_p3():
-    """U-REBASELINE-1A: the rebaseline gate closed on INDEPENDENT evidence, so the single READY
-    unit is now P3. Replaced, not deleted, from the rebaseline-is-READY assertion."""
+    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md sec 5 rule 20 - name frozen to preserve the
+    node id, same as test_24b; body re-pointed). P3 has been adjudicated COMPLETE from independent
+    evidence, so the single READY unit is now P4. The rebaseline gate stays closed, and R-07 stays
+    OPEN - NOT CONTAINED: completing P3 did not close it, and only completing P4 does."""
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P3"], f"READY set drifted: {ready}"
+    assert ready == ["P4"], f"READY set drifted: {ready}"
     by = {u["unit_id"]: u for u in units}
     assert by["U-REBASELINE-1"]["status"] == "COMPLETE"
-    # R-07 must still be open, and P3 must still be unimplemented
+    assert by["P3"]["status"] == "COMPLETE", f"P3 is {by['P3']['status']}, expected COMPLETE"
+    # R-07 must still be OPEN - the rebaseline and P3 are both non-containment work
     assert "status: OPEN - NOT CONTAINED" in read("docs/implementation/phase-0-baseline-manifest.yaml")
 
 

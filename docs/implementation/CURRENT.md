@@ -5,7 +5,8 @@
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
 > **Last updated:** P3 — Checkpoint Witness, seven-step atomic checkpoint and claim CAS
-> **IMPLEMENTED AND IN PROGRESS, NOT COMPLETE.** P3 remains the sole READY unit; P4 stays BLOCKED.
+> **ADJUDICATED COMPLETE.** All 14 weighted P3 criteria PASS on independent evidence. **P4 (adapter
+> containment) is now the sole READY unit — it has NOT begun.** R-07 stays OPEN — NOT CONTAINED.
 
 ---
 
@@ -48,7 +49,7 @@ suite_skipped: 1
 | **P0** — baseline & anti-false-green infrastructure | ### **COMPLETE** | [`phase-0-implementation-review.md`](phase-0-implementation-review.md) · `d33f251` |
 | **P1** — correct effect identity (Commit Key) | ### **COMPLETE** | [`phase-1-implementation-review.md`](phase-1-implementation-review.md) · `149c02a`, `da07936` |
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
-| **P3** — checkpoint, witness, claim CAS | ### **IN PROGRESS — NOT COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100, NOT READY) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS — READY FOR FINAL ADJUDICATION** (zero new defects). ### **The SEPARATE final adjudication remains; P3 stays NOT COMPLETE until it sets the 14 registry criteria** |
+| **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark; only completing P4 closes R-07 |
 | **P4–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
@@ -105,37 +106,36 @@ suite_skipped: 1
 ## Current implementation milestone
 
 **P3 — CHECKPOINT WITNESS, SEVEN-STEP ATOMIC CHECKPOINT, AND CLAIM CAS** —
-### **IMPLEMENTED, IN PROGRESS, NOT COMPLETE.**
-Implementer's record: [`phase-3-implementation-review.md`](phase-3-implementation-review.md).
+### **ADJUDICATED COMPLETE.**
+Implementer's record: [`phase-3-implementation-review.md`](phase-3-implementation-review.md);
+final adjudication: [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md).
 
-> ### **Why P3 is not COMPLETE.** Its weighted acceptance contract has 14 criteria. Twelve are
-> satisfiable from this repository; **`independent_review` (weight 5) and `final_adjudication`
-> (weight 4) are not** — by construction they require a session other than the implementing one.
-> Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §3 a `PENDING` criterion contributes **0%**,
-> so P3 stands at **91/100 at best** and ### **may not be recorded COMPLETE.** "Code written is
-> not completion." The kernel exists; the adjudication does not.
+> ### **How P3 reached COMPLETE.** Its weighted acceptance contract has 14 criteria. Twelve were
+> supplied by the implementing lineage; **`independent_review` (weight 5) and `final_adjudication`
+> (weight 4) could not be** — by construction they require a session other than the implementing
+> one, which is why P3 stood at **91/100 at best** until a different session closed them. All 14 are
+> now `PASS`, so under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §3 the phase computes to
+> **100/100** and P3 is recorded **COMPLETE**.
 >
-> ### **THE INDEPENDENT REVIEW HAPPENED, AND P3 DID NOT PASS IT.** An INDEPENDENT session reviewed
-> commit `38f2714` and returned **9 findings — 1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW — attestable
-> weighted total 60/100, verdict `NOT READY FOR FINAL ADJUDICATION`**
-> ([findings](p3-independent-review-findings.md)). All nine have been **remediated**
-> ([dispositions](p3-findings-remediation-review.md)), and the implementer's F-1 and F-2 are now
-> adjudicated. ### **Remediation is not adjudication.** The remediating session is neither the
-> reviewer nor the adjudicator and may not certify its own fixes, so all 14 criteria remain
-> `PENDING` and ### **a FRESH INDEPENDENT review of the remediated tree is required.**
+> ### **THE FULL REVIEW HISTORY, PRESERVED.** The first INDEPENDENT review (commit `38f2714`)
+> returned **9 findings — 1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW — 60/100, `NOT READY`**
+> ([findings](p3-independent-review-findings.md)); **P3 did not pass it.** All nine were
+> **remediated** ([dispositions](p3-findings-remediation-review.md)) by a session that was neither
+> the reviewer nor the adjudicator. A **FRESH INDEPENDENT** review of the remediated, finalized tree
+> then **PASSED** with zero new defects and 13/13 hostile probes
+> ([`p3-genuine-independent-review.md`](p3-genuine-independent-review.md)). Finally, a **separate
+> ADJUDICATING session** — which did not implement P3, perform either review, remediate the
+> findings, normalize the git history, correct N-1, or author the genuine review — set the 14
+> criteria from that evidence ([`p3-final-adjudication-review.md`](p3-final-adjudication-review.md)).
+> ### **Remediation is not adjudication, and no session adjudicated its own work** — the two-key
+> discipline held end to end.
 >
-> ### **The CRITICAL finding (F-A) failed the canonical suite, and the finalizer correctly refused
-> because of it.** An earlier record here attributed that refusal entirely to the sandbox's
-> `socket.bind` restriction; that was **false by omission** and is corrected. F-A is now fixed, and
-> the finalizer's refusal on the remediated tree has a different, **deterministic** cause: the
-> status state is **illegal** — `38f2714` and the remediation commit are two unfinalized content
-> commits, so `test_status_reality` fails ×3. That is a **deadlock**: only the finalizer writes this
-> block, and it requires a green suite, which requires a legal status state. The clean-clone gate is
-> blocked earlier still — pip cannot verify pypi.org's TLS certificate here, so it never reaches the
-> suite. The `socket.bind` denial is real but **intermittent** (direct `pytest` runs fail 19
-> `test_action_callback` cases; both finalizer-driven canonical runs on the same tree reported them
-> PASSED), so it is named as neither the cause nor a dismissal.
-> ### **No finalizer or clean-clone success is recorded for any P3 tree.**
+> ### **The finalizer and clean-clone gate EXECUTED and PASSED on the finalized P3 tree.** The
+> CRITICAL finding (F-A) — a mis-anchored rebaseline-invariant guard that failed the canonical suite
+> — is fixed; the earlier illegal-history deadlock (two unfinalized content commits) is resolved by
+> consolidating the content and finalizing it. `SUITE-RESULT.json` (green) and `GATE-RESULT.json`
+> (`passed: true`) bind to the recorded content commit and tree. The finalizer PRODUCED the status
+> record by executing the suite, the clean-clone gate and the acceptance gates itself.
 
 **What P3 bought, concretely:** the two-key rule is real. The seven checks run in canonical order
 inside ONE transaction with the witness insert and the grant mint (`run_checkpoint` /
@@ -157,7 +157,8 @@ the six live-write paths are physically untouched, exactly as P3's prohibited sc
 ### Gate history — ### **BOTH GATES ARE CLOSED**, all on independent evidence
 
 > These two gates are closed. ### **Neither is a P3 review.** They predate P3 and say nothing
-> about the checkpoint kernel; P3's own `independent_review` remains `PENDING`.
+> about the checkpoint kernel; P3's own `independent_review` was performed **separately** (the
+> genuine independent review of the remediated tree) and is now adjudicated `PASS`.
 - **U-HANDOFF-1** — closed by U-HANDOFF-1D from the independent U-HANDOFF-2B hostile review
   ([`u-handoff-1d-final-adjudication-review.md`](u-handoff-1d-final-adjudication-review.md)).
 - **U-REBASELINE-1** — RB-01..RB-24 ALL PASS, adjudicated by U-REBASELINE-1A from the INDEPENDENT
@@ -202,41 +203,40 @@ transport truncation disclosed, in
 
 ## ✅ The exact next approved work program
 
-### **P3 — FINISH THE CHECKPOINT KERNEL'S ACCEPTANCE. IT IS STILL THE SOLE `READY` UNIT.**
+### **P4 — ADAPTER CONTAINMENT. IT IS THE SOLE `READY` UNIT. IT HAS NOT BEGUN.**
 
-### **The next approved unit is `P3`** — unchanged, because implementing it did not complete it.
+### **The next approved unit is `P4`.** The checkpoint-kernel phase (the unit just adjudicated) is
+COMPLETE — all 14 weighted criteria PASS on independent evidence — so P4's sole dependency is
+satisfied and it becomes READY.
 
-Unit `P3` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
-READY unit.** The kernel is implemented and its tests pass, but the unit is **not adjudicated**.
-What remains, in order:
+Unit `P4` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
+READY unit.** It routes every external effect through the adapter boundary and the two-key rule,
+deletes or de-actuates the six production-reachable live-write paths, converts or removes the 31
+adapter-import edges, and turns on the CI import gate. ### **P4 is READY but NOT COMPLETE, and this
+adjudication session did not begin it** — beginning P4 is the next session's work, under P4's own
+acceptance contract.
 
-1. **Mutation proofs** (`mutation_requirements: required`) — each new and rescoped guard must be
-   seen to FAIL against a mutant that reintroduces the real defect, then restored via the
-   in-memory harness. ### **Never with `git checkout`/`restore`/`stash`/`clean`.**
-2. **Final-tree validation run LAST** on the final tree, then
-   [`scripts/finalize_status.py`](../../scripts/finalize_status.py), which EXECUTES the suite, the
-   clean-clone gate and the acceptance gates itself.
-3. **An INDEPENDENT review** by a session that did not implement P3, and then a **final
-   adjudication** from that independent evidence — the two criteria the implementing session
-   structurally cannot supply for itself. ### **The first independent review was FAILED by P3**
-   (9 findings, 60/100); its findings were remediated; and a **FRESH** independent review of the
-   remediated, finalized tree has now been performed —
-   [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md), **PASS — READY FOR FINAL
-   ADJUDICATION**, zero new defects, by a session that neither implemented P3 nor remediated its
-   findings. ### **What remains is the SEPARATE final adjudication** that sets the 14 registry
-   criteria from that evidence; until it does, P3 is NOT COMPLETE and all 14 criteria stay
-   `PENDING`.
+How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
+green final-tree validation via [`scripts/finalize_status.py`](../../scripts/finalize_status.py),
+which EXECUTES the suite, the clean-clone gate and the acceptance gates itself; the first
+INDEPENDENT review — which **P3 failed** (9 findings, 60/100) — then remediation of all nine; a
+**FRESH INDEPENDENT** review of the remediated, finalized tree
+([`p3-genuine-independent-review.md`](p3-genuine-independent-review.md), **PASS**, zero new
+defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION**
+([`p3-final-adjudication-review.md`](p3-final-adjudication-review.md)) that set the 14 criteria PASS
+— by a session that neither implemented P3, reviewed it, remediated it, normalized the history, nor
+corrected N-1.
 
-> ### **P4 is BLOCKED and MUST NOT BEGIN.** Its dependency `P3` is not COMPLETE. The 31 direct
-> adapter-import edges and all six live-write paths are untouched; **R-07 is OPEN — NOT
-> CONTAINED**, and completing P3 will not change that either. Only completing **P4** closes R-07.
+> ### **R-07 is OPEN — NOT CONTAINED, and completing P3 did not change that.** The 31 direct
+> adapter-import edges and all six live-write paths are physically untouched; the checkpoint kernel
+> ships dark beside them. **Only completing P4 closes R-07** — not P3, not a plan, not operator
+> discipline, and not merely beginning P4.
 
 ## ⛔ What must NOT begin yet
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 4** (adapter containment, the CI import gate) | ### **Requires `P3` COMPLETE, and P3 is not.** Its kernel is implemented but unadjudicated; routing effects through a kernel no independent session has reviewed is how a dark capability becomes a live one by accident |
-| ### **Implementation Phase 5** (events, outbox/inbox, replay isolation, PostgreSQL) | Requires `P4` COMPLETE; also blocked on the **G2** transition/event adjudication |
+| ### **Implementation Phase 5** (events, outbox/inbox, replay isolation, PostgreSQL) | Requires `P4` COMPLETE; also blocked on the **G2** transition/event adjudication. ### **P4 itself is now READY and MAY begin** — it is deliberately no longer in this table |
 | Declaring R-07 contained | ### **Only COMPLETING P4 closes it.** Not P3, not a plan, not operator discipline — and not beginning P4 either |
 | Freight workflow implementation | Requires P6–P9 foundations |
 | Deleting legacy production code | Requires the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md) — P4 executes the S1/S2 deletions under its own acceptance, not before |

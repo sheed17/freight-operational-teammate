@@ -268,8 +268,9 @@ second orchestration system and no permanent second effect-authority system.**
 | **P0** | ✅ COMPLETE | baseline manifest + anti-false-green guard infrastructure |
 | **P1** | ✅ COMPLETE | **correct effect identity** — the amount is out of the Commit Key |
 | **P2** | ✅ COMPLETE | **tenant-safe persistence** — enforced by the database, ownership humanly asserted |
-| **P3** | 🔄 IN PROGRESS | **the checkpoint kernel** — seven-step atomic checkpoint, unconstructable `CheckpointPassed`, append-only Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark.** Code and tests exist; **independent review and final adjudication are outstanding, so P3 is NOT COMPLETE.** |
-| **P4+** | ⛔ NOT STARTED | everything below |
+| **P3** | ✅ COMPLETE | **the checkpoint kernel** — seven-step atomic checkpoint, unconstructable `CheckpointPassed`, append-only Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark.** A FRESH independent review PASSED and a separate final adjudication set all 14 weighted criteria PASS; completing P3 did **not** close R-07. |
+| **P4** | 🔄 READY — NOT STARTED | **adapter containment** — route every external effect through the kernel and close R-07 |
+| **P5+** | ⛔ NOT STARTED | everything below |
 
 ## 29. The remaining safety wall
 
@@ -281,8 +282,8 @@ second orchestration system and no permanent second effect-authority system.**
 
 What is still missing, and what it means concretely:
 
-- **The kernel exists but is dark** (P3 in progress): the seven checks, witness and claim CAS are
-  implemented and tested, and consulted by **zero** production paths.
+- **The kernel exists but is dark** (P3 COMPLETE, adjudicated): the seven checks, witness and claim
+  CAS are implemented, tested and independently reviewed, and consulted by **zero** production paths.
 - **No adapter containment** (P4) — **six production-reachable live-write paths can execute real
   external effects right now** with no checkpoint, no witness and no grant, exactly as before P3.
 - The only current mitigation is the operator's one-writer-at-a-time discipline.

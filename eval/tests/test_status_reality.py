@@ -244,46 +244,60 @@ def test_no_secondary_file_carries_its_own_volatile_status_claim():
 # ------------------------------------------------------------------ 5. fresh but also RIGHT
 
 def test_the_status_record_still_states_the_canonical_facts():
+    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md sec 5 rule 20 - replaced, not deleted).
+
+    Every prior version pinned a moment in P3's life: NOT STARTED, then READY-but-NOT-COMPLETE.
+    P3 has now been adjudicated COMPLETE from independent evidence, so those literal assertions
+    became false and could only be deleted or inverted. The load-bearing invariants they were
+    really holding are preserved and re-pointed at the new truth:
+      * a phase reaches COMPLETE only when the registry says so, and P3's completion is backed by
+        its independent_review AND final_adjudication criteria PASS - the two a phase's own author
+        structurally cannot supply (THE anti-self-adjudication fact);
+      * the single READY unit is now P4, whose only dependency (P3) is COMPLETE;
+      * every phase after P4 stays BLOCKED, and R-07 stays OPEN - completing P3 did not close it.
+    """
     text = CURRENT.read_text(encoding="utf-8")
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "P2 no longer recorded COMPLETE"
-    # REPLACED, not deleted (this guard's own instruction, two asserts below). P3 has started, so
-    # "NOT STARTED" became false. The fact that must stay recorded is the one that is still load-
-    # bearing and still easy to lose: P3 is NOT COMPLETE. Its kernel is implemented, but
-    # independent_review and final_adjudication are PENDING and cannot be supplied by the session
-    # that wrote the code, so the phase table must not quietly promote it.
-    assert re.search(r"\*\*P3\*\*.{0,120}NOT COMPLETE", text, re.S), (
-        "P3 is no longer recorded NOT COMPLETE - it may only be recorded COMPLETE once the "
-        "registry says so on independent evidence"
-    )
-    assert re.search(r"the next approved unit is `P3`", text, re.I), (
-        "the current work program is no longer P3 - if the program moved on, this guard must be "
-        "REPLACED with the new truth, not deleted (U-REBASELINE-1A closed both gates)"
-    )
     assert re.search(r"BOTH GATES ARE CLOSED", text, re.I), (
         "the status must record that both gates closed (U-HANDOFF-1D on the independent "
         "U-HANDOFF-2B evidence; U-REBASELINE-1A on the independent U-REBASELINE-REVIEW-1) - "
-        "losing that record un-explains why P3 is READY"
+        "losing that record un-explains how P3 became READY, then COMPLETE"
+    )
+    assert re.search(r"R-07.{0,120}OPEN", text, re.S), (
+        "CURRENT.md must still record R-07 OPEN - completing P3 does not close it, only P4 does"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
     by = {u["unit_id"]: u for u in units}
-    # U-REBASELINE-1A: P3 is now READY (both gates closed on independent evidence). READY is NOT
-    # implemented - the absence guards prove no P3 symbol exists in src/, and CURRENT.md must keep
-    # saying so. Replaced, not deleted, from the P3-must-be-BLOCKED assertion.
-    assert by["P3"]["status"] == "READY", f"P3 is {by['P3']['status']} - expected READY"
-    assert not by["P3"].get("validation_blockers"), (
-        "P3 is READY while validation blockers remain recorded"
+    assert by["P3"]["status"] == "COMPLETE", f"P3 is {by['P3']['status']} - expected COMPLETE"
+    # P3 COMPLETE is legitimate ONLY with the two independently-supplied criteria PASS. A phase's
+    # own author can supply the other twelve; these two require a different session, by construction.
+    crits = {c["criterion"]: str(c["result"]).upper() for c in by["P3"]["acceptance_criteria"]}
+    assert crits.get("independent_review") == "PASS" and crits.get("final_adjudication") == "PASS", (
+        "P3 is COMPLETE without independent_review + final_adjudication PASS - a self-adjudicated "
+        "completion is exactly what this guard exists to forbid"
     )
-    for later in ("P4", "P5", "P14"):
-        assert by[later]["status"] == "BLOCKED", (
-            f"{later} is {by[later]['status']} - every phase after P3 must stay BLOCKED"
+    assert all(v == "PASS" for v in crits.values()), (
+        "P3 is COMPLETE while some criteria are not PASS: "
+        f"{sorted(k for k, v in crits.items() if v != 'PASS')}"
+    )
+    # the single READY unit is now P4, and its dependency P3 is COMPLETE
+    ready = [u["unit_id"] for u in units if u["status"] == "READY"]
+    assert ready == ["P4"], f"expected P4 as the sole READY unit, found {ready}"
+    for dep in by["P4"]["dependencies"]:
+        assert by[dep]["status"] == "COMPLETE", (
+            f"P4 is READY while dependency {dep} is {by[dep]['status']}"
         )
-    # REPLACED at P3 (see the same replacement in test_docs_control_system.test_24b). The original
-    # required "P3 is READY ... NOT IMPLEMENTED", which was true only while READY meant not-begun.
-    # P3 is now implemented AND still READY, because implementation is not adjudication. The
-    # distinction CURRENT.md must still draw is the one that can still mislead a fresh session:
-    # READY plus working code does NOT mean the unit is COMPLETE.
-    assert re.search(r"P3\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
-        "CURRENT.md must state that P3, though READY and implemented, is NOT COMPLETE"
+    for later in ("P5", "P14"):
+        assert by[later]["status"] == "BLOCKED", (
+            f"{later} is {by[later]['status']} - every phase after the READY P4 must stay BLOCKED"
+        )
+    # CURRENT.md must name P4 as the approved next unit and state P4 is not thereby complete.
+    assert re.search(r"the next approved unit is `P4`", text, re.I), (
+        "CURRENT.md must record P4 as the next approved unit - if the program moves on again, "
+        "this guard must be REPLACED with the new truth, not deleted"
+    )
+    assert re.search(r"P4\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
+        "CURRENT.md must state that P4, though READY, is NOT COMPLETE"
     )
 
 
