@@ -6,7 +6,9 @@
 >
 > **Last updated:** P3 — Checkpoint Witness, seven-step atomic checkpoint and claim CAS
 > **ADJUDICATED COMPLETE.** All 14 weighted P3 criteria PASS on independent evidence. **P4 (adapter
-> containment) is now the sole READY unit — it has NOT begun.** R-07 stays OPEN — NOT CONTAINED.
+> containment) is the sole READY unit; its implementation checkpoint landed this session but it is
+> NOT COMPLETE — independent review and final adjudication are PENDING.** R-07 stays OPEN — NOT
+> CONTAINED.
 
 ---
 
@@ -88,8 +90,10 @@ suite_skipped: 1
 | ID | Finding | Status | Closes at |
 |---|---|---|---|
 | **R-07** | Ungated live-write paths | ### **OPEN — NOT CONTAINED** | **P4** |
-| — | **6 production-reachable live-write paths** — EP-1, EP-3, EP-6, EP-7, EP-9, EP-10 | OPEN | P4 |
-| — | **31 direct adapter-import edges** across 18 importer modules | OPEN | P4 |
+| — | **6 production-reachable live-write paths** — EP-1, EP-3, EP-6, EP-7, EP-9, EP-10 (the P0 baseline finding) | OPEN | P4 |
+| — | **31 direct adapter-import edges** across 18 importer modules (the P0 baseline finding) | OPEN | P4 |
+| — | P4 CHECKPOINT (prior session): EP-6/7/9/10 **DELETED** → 2 live-write paths remain (EP-1, EP-3); edges cut 31 → 20; effect-capable gate violations 12 → 5 | ### **STILL OPEN** | P4 |
+| — | P4 CONTAINMENT CUTOVER CHECKPOINT (this session): findings **F1 + F4 fixed** (F1 = EP-12's live `--browser` path removed + AST structural quarantine proof; F4 = a generic post-attempt adapter exception becomes UNKNOWN_OUTCOME, never CLAIMED, never FAILED); **brain_runtime → tms_write edge cut** by injection; the **orphan-effect detective sweep mechanism implemented and mutation-proven** (`run_detective_sweep` is its per-cycle invocation surface; **no production/runtime caller exists yet** — production scheduling is deferred to P11 and the boundary still ships dark); gate violations **5 → 4**, edges **20 → 18**, importer modules **14 → 13**. The remaining 4 violations (EP-1, EP-3, EP-8, EP-14) + finding **F2** are DEFERRED — browser-untestable in this environment. | ### **STILL OPEN** | P4 |
 | — | **Transition/event completeness: 13 of 134 name no event outright** (5 bare · 3 documented non-producing · 3 unnamed-ILLEGAL · 2 delegating; exact members in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION**: the specs do not define which classes violate AC-EVT-003, and the retired "24" was never mechanically computed | OPEN | **G2, before P5** |
 | — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
 | — | ~~Checkpoint Witness + seven-step checkpoint + claim CAS unimplemented~~ | ### **RESOLVED at P3** — the kernel exists and ships dark; nothing routes through it until P4 | **P3 ✅** |
@@ -151,8 +155,10 @@ strict one-row-per-effect index was replaced by the **live-hold** form so a prov
 semantics require — VERIFIED and UNKNOWN_OUTCOME hold their keys forever.
 
 ### **P3 SHIPS DARK.** No production path routes through the kernel; the capability becomes load-
-bearing only when **P4** contains the adapters behind it. **Completing P3 does NOT close R-07** —
-the six live-write paths are physically untouched, exactly as P3's prohibited scope required.
+bearing only when **P4** contains the adapters behind it. **Completing P3 did NOT close R-07** —
+the six live-write paths were physically untouched by P3, exactly as its prohibited scope required.
+(P4 has since deleted EP-6/7/9/10; R-07 nonetheless stays OPEN — EP-1/EP-3 and the read-only paths
+remain and nothing routes through the kernel yet.)
 
 ### Gate history — ### **BOTH GATES ARE CLOSED**, all on independent evidence
 
@@ -212,9 +218,27 @@ satisfied and it becomes READY.
 Unit `P4` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
 READY unit.** It routes every external effect through the adapter boundary and the two-key rule,
 deletes or de-actuates the six production-reachable live-write paths, converts or removes the 31
-adapter-import edges, and turns on the CI import gate. ### **P4 is READY but NOT COMPLETE, and this
-adjudication session did not begin it** — beginning P4 is the next session's work, under P4's own
-acceptance contract.
+adapter-import edges, and turns on the CI import gate. ### **P4 is READY but NOT COMPLETE.** Two
+sessions have advanced it, both **awaiting independent review**:
+
+1. The **implementation checkpoint** (prior session): the containment boundary, the boundary-aware
+   import gate, and the DELETE cutover of EP-6/7/9/10 — acceptance-proven (33 boundary cases) and
+   mutation-proven (14/14 mutants caught).
+2. The **containment cutover checkpoint** (this session): the mandated review findings **F1** and
+   **F4** are fixed, the **brain_runtime → tms_write** edge is cut by injection, and the
+   **orphan-effect detective sweep** mechanism is implemented and mutation-proven
+   (`run_detective_sweep` is its per-cycle invocation surface; **no production/runtime caller exists
+   yet** — production scheduling is deferred to P11 and the boundary still ships dark). The boundary
+   mutation battery is now **21/21** (added F4 B15/B16, F1
+   B17/B18, brain_runtime B19, detective B20/B21). Gate violations fell **5 → 4**; edges **20 → 18**.
+   The remaining four violations (**EP-1, EP-3, EP-8, EP-14**) and finding **F2** (cdp_session.evaluate
+   is an ungated actuation primitive) are DEFERRED: each hinges on correctness-critical browser code
+   with no live-browser/live-TMS runtime available to verify against, so per CLAUDE.md §9 they were
+   NOT done blind. EP-1 in particular routes the OperationRouter→OperatorAgent autonomous browser
+   write (the live R-07 write), whose containment is the P12-scale supervised-write integration.
+
+So the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only cuts, F2's cdp_session split, and
+flipping the gate to assert EMPTY remain — **R-07 stays OPEN** under P4's own acceptance contract.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
 green final-tree validation via [`scripts/finalize_status.py`](../../scripts/finalize_status.py),
@@ -227,10 +251,12 @@ defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION**
 — by a session that neither implemented P3, reviewed it, remediated it, normalized the history, nor
 corrected N-1.
 
-> ### **R-07 is OPEN — NOT CONTAINED, and completing P3 did not change that.** The 31 direct
-> adapter-import edges and all six live-write paths are physically untouched; the checkpoint kernel
-> ships dark beside them. **Only completing P4 closes R-07** — not P3, not a plan, not operator
-> discipline, and not merely beginning P4.
+> ### **R-07 is OPEN — NOT CONTAINED, and neither completing P3 nor either P4 checkpoint changed
+> that.** The P0 finding was 31 direct adapter-import edges and all six live-write paths; P4 has
+> since deleted EP-6/7/9/10 and cut the brain_runtime edge (2 live-write paths and 18 adapter-import
+> edges remain, **4 effect-capable gate violations**), but nothing routes through the checkpoint
+> kernel in production yet and the gate is not flipped to EMPTY. **Only completing P4 closes R-07** —
+> not P3, not a plan, not operator discipline, and not a partial implementation checkpoint.
 
 ## ⛔ What must NOT begin yet
 

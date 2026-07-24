@@ -721,7 +721,8 @@ SRC = ROOT / "src" / "freight_recon"
 
 REQUIRED_CONCEPTS = {
     "Tenant", "Commit Key", "Material Facts", "Effect Grant ledger (foundation)",
-    "Checkpoint (seven-step)", "Checkpoint Witness", "Effect claim CAS", "Work Item",
+    "Checkpoint (seven-step)", "Checkpoint Witness", "Effect claim CAS",
+    "Adapter containment boundary (P4)", "Work Item",
     "Pipeline Instance", "Expectation", "Obligation", "Evidence (content-addressed)",
     "Provenance classes", "Policy (typed, compile-or-refuse)", "Brake (admission control)",
     "Canonical events (98 contracts)", "Outbox / inbox", "Replay isolation",

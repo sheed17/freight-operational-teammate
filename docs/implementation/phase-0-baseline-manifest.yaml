@@ -235,16 +235,17 @@ expected_legacy_paths:
   containment_mechanism: >-
     NONE. Until P4 the only mitigation is the operator's one-writer-at-a-time discipline, which is
     discipline, not a mechanism. This entry may never be read as containment.
+  # P4 UPDATE: EP-6/7/9/10 (enter_truckingoffice_invoice, enter_invoice_discovered,
+  # run_operate_request, run_operator_agent) were PHYSICALLY DELETED this session, executing their
+  # frozen REMOVE_BEFORE_ENABLE disposition, so they are gone from this by-import list. The
+  # entrypoint probe no longer finds them; test_effect_capable_entry_points_match_the_manifest
+  # holds found == known against the shrunk list. Their adjudication record (now REMOVED_AT_P4)
+  # is preserved in EFFECT-PATH-INVENTORY.yaml. Six effect-capable-by-import scripts remain; R-07
+  # stays OPEN because EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) are not yet cut.
   effect_capable_by_import:
-    - script: scripts/enter_invoice_discovered.py
-      ep: EP-7
-      cutover: REMOVE_BEFORE_ENABLE
     - script: scripts/enter_tms_payable.py
       ep: EP-12
       cutover: test-only (mock-guarded)
-    - script: scripts/enter_truckingoffice_invoice.py
-      ep: EP-6
-      cutover: REMOVE_BEFORE_ENABLE
     - script: scripts/orient_tms.py
       ep: EP-8
       cutover: MAKE_READ_ONLY (remove the cdp_actuator import)
@@ -267,12 +268,6 @@ expected_legacy_paths:
     - script: scripts/run_dogfood_pilot.py
       ep: EP-13
       cutover: test-only (mock-guarded)
-    - script: scripts/run_operate_request.py
-      ep: EP-9
-      cutover: REMOVE_BEFORE_ENABLE
-    - script: scripts/run_operator_agent.py
-      ep: EP-10
-      cutover: REMOVE_BEFORE_ENABLE
   references_to_effect_capable:
     - script: scripts/run_teammate.py
       references:
@@ -288,6 +283,16 @@ expected_legacy_paths:
       note: >-
         Emits the command as a runbook STRING for a human to copy. Launches nothing. Adjudicated as
         not effect-capable. A first version of this probe guessed SPAWNS here and was wrong.
+    - script: scripts/mutate_phase4_boundary.py
+      references:
+        - scripts/enter_tms_payable.py
+      classification: DOCUMENTS
+      note: >-
+        The P4 boundary MUTATION HARNESS. It names enter_tms_payable.py (EP-12) as a mutation TARGET
+        - it reads the file, applies an in-memory text mutation, runs a pytest guard, and restores
+        the exact bytes (CLAUDE.md sec 9 save/restore, never git). It NEVER launches the script and
+        never produces an effect; the reference is a file-path string for the F1 quarantine mutants
+        (B17/B18). Adjudicated DOCUMENTS: names it, spawns nothing.
 
 # ---------------------------------------------------------------------------------------------
 # EXPECTED_DEPRECATED_TERM - recorded and frozen at these counts. Phase 0 renames nothing.
@@ -350,7 +355,7 @@ expected_deprecated_terms:
     - src/freight_recon/workflow.py
   terms:
     - term: lane
-      count: 234
+      count: 228   # P4 cutover: was 234; deleting EP-6/7/9/10 removed 6 `lane` occurrences
       canonical: action_class | workflow_id | policy scope
       removed_by_phase: P8
       accountable_unit: U8.5
@@ -488,6 +493,15 @@ prohibited_new_regressions:
 
 # ---------------------------------------------------------------------------------------------
 # The direct adapter import allowlist. SHRINKING-ONLY. Adding an entry is prohibited.
+#
+# P4 UPDATE (boundary-aware, U4.9): this is the full DETECTION surface - every (importer,
+# adapter-module) edge, including the `cdp_session` READ SUBSTRATE and intra-adapter composition,
+# which are architecturally legitimate and remain. The R-07 ENFORCEMENT surface is the smaller
+# `effect_adapter_import_gate.violation_edges` below: effect-capable imports by a module that is
+# not the containment boundary, another adapter, or a recorded quarantine. The gate's violation
+# list is what goes to EMPTY at P4; this detection list shrinks toward the legitimate residue
+# (substrate + composition). test_phase0_adapter_imports.py keeps this shrinking-only; the
+# boundary-aware gate is test_import_gate.py.
 # ---------------------------------------------------------------------------------------------
 adapter_import_allowlist:
   counting_rule: >-
@@ -495,14 +509,15 @@ adapter_import_allowlist:
     is not the adapter itself. This rule is stated because the frozen plan's "13 direct adapter
     import sites" is not reproducible: several defensible rules give 13, 16, 18 or 31. An unstated
     counting rule is the M-4 pattern - a number nobody can adjudicate. See finding P0-F3.
-  recomputed_edges: 31
-  recomputed_importer_modules: 18
+  recomputed_edges: 18   # P4: 31 -> EP-6/7/9/10 delete (-11) -> F1 removed EP-12's browser edge (-1) -> brain_runtime rewire (-1)
+  recomputed_importer_modules: 13   # 18 -> four EP scripts deleted -> brain_runtime no longer imports an adapter
   frozen_plan_claimed: 13
   removed_by_phase: P4
   accountable_unit: U4.1-U4.9
-  deletion_condition: the U4.9 CI import gate is ON and this list is empty
+  deletion_condition: >-
+    the U4.9 CI import gate is ON and effect_adapter_import_gate.violation_edges is empty; this
+    detection list shrinks to the legitimate substrate/composition residue (never below it)
   edges:
-    - src/freight_recon/brain_runtime.py -> tms_write
     - src/freight_recon/browser_use_adapter.py -> tms_write
     - src/freight_recon/cdp_actuator.py -> cdp_session
     - src/freight_recon/discovered_write.py -> tms_write
@@ -512,15 +527,7 @@ adapter_import_allowlist:
     - src/freight_recon/multistep_write.py -> truckingoffice_write
     - src/freight_recon/truckingoffice_write.py -> tms_write
     - scripts/discover_tms_screen.py -> cdp_session
-    - scripts/enter_invoice_discovered.py -> cdp_session
-    - scripts/enter_invoice_discovered.py -> discovered_write
-    - scripts/enter_invoice_discovered.py -> tms_write
-    - scripts/enter_invoice_discovered.py -> truckingoffice_write
     - scripts/enter_tms_payable.py -> tms_write
-    - scripts/enter_tms_payable.py -> browser_use_adapter
-    - scripts/enter_truckingoffice_invoice.py -> cdp_session
-    - scripts/enter_truckingoffice_invoice.py -> tms_write
-    - scripts/enter_truckingoffice_invoice.py -> truckingoffice_write
     - scripts/orient_tms.py -> cdp_actuator
     - scripts/orient_tms.py -> cdp_session
     - scripts/propose_ar_from_tms.py -> cdp_actuator
@@ -529,10 +536,81 @@ adapter_import_allowlist:
     - scripts/run_action_callback_server.py -> cdp_actuator
     - scripts/run_action_callback_server.py -> cdp_session
     - scripts/run_dogfood_pilot.py -> tms_write
-    - scripts/run_operate_request.py -> cdp_actuator
-    - scripts/run_operate_request.py -> cdp_session
-    - scripts/run_operator_agent.py -> cdp_actuator
-    - scripts/run_operator_agent.py -> cdp_session
+
+# ---------------------------------------------------------------------------------------------
+# THE U4.9 IMPORT GATE - boundary-aware ENFORCEMENT surface (P4). SHRINKING-ONLY -> EMPTY.
+#
+# A VIOLATION is an import of an EFFECT-CAPABLE adapter (a module that produces an external
+# effect - NOT the `cdp_session` read substrate) by a module that is not the containment boundary
+# (`effect_boundary`), another adapter (intra-layer composition), or a recorded, mock-guarded
+# quarantine. This is the R-07 surface: when it is empty and the gate is ON, an external effect
+# without a grant is structurally impossible. Enforced by test_import_gate.py (boundary-aware,
+# mutation-proven). The residual edges below are what THIS staged session did NOT yet cut - the
+# two ADAPT pipeline-client conversions (EP-1, EP-3), the two READ_ONLY import cuts that require
+# building untestable read-only surfaces (EP-8, EP-14), and the brain_runtime effect-routing
+# rewire - and they keep R-07 OPEN until a subsequent session removes them and flips the gate to
+# assert EMPTY. This session DELETED EP-6/7/9/10, taking the surface from 12 edges to 5.
+# ---------------------------------------------------------------------------------------------
+effect_adapter_import_gate:
+  counting_rule: >-
+    An (importer, effect_capable_adapter) edge where the importer is not in
+    {effect_boundary} U {the adapter layer} U {the recorded quarantine importers}. Computed by
+    eval/phase0/import_probe.effect_adapter_violation_edges().
+  effect_capable_adapters:
+    [cdp_actuator, browser_use_adapter, browser_tms_adapter, truckingoffice_write, multistep_write,
+     discovered_write, tms_write, browser_agent, browser_use_write]
+  containment_boundary: [effect_boundary]
+  read_substrate: [cdp_session]
+  quarantine_importers: [enter_tms_payable, run_dogfood_pilot]
+  removed_by_phase: P4
+  accountable_unit: U4.1-U4.9
+  deletion_condition: >-
+    this violation list is EMPTY and the gate asserts empty (not merely shrinking); that is the
+    mechanical close condition for R-07
+  status: >-
+    OPEN - 4 residual violations. This list is the EXACT current effect-capable-bypass surface and
+    shrinks monotonically in lockstep with every cutover edit (test_import_gate.py asserts
+    live == recorded, both-sided, so a cut that is not recorded here fails, and a recorded edge that
+    is not really cut fails). A prior session DELETED the four REMOVE_BEFORE_ENABLE paths
+    (EP-6/7/9/10). THIS session (P4 containment checkpoint) cut ONE more edge (brain_runtime) and
+    fixed the mandated findings that are verifiable without a live browser:
+      * F4: a generic post-attempt adapter exception now becomes UNKNOWN_OUTCOME (never CLAIMED,
+        never FAILED) - hostile-tested and mutation-proven (B15/B16).
+      * F1: EP-12's live `--browser` write path was removed and the quarantine exemption is now
+        proved STRUCTURALLY (AST import graph + constructor AST), not by substring (B17/B18).
+      * brain_runtime -> tms_write cut by injection (the effect executor is injected, not imported).
+      * the orphan-effect detective sweep MECHANISM is implemented and mutation-proven (B20/B21);
+        run_detective_sweep is its per-cycle invocation surface, but NO production/runtime caller
+        exists yet - only tests invoke it, and its own docstring records that the scheduler/daemon
+        that ticks it lives in the production runtime (P11). Production scheduling is therefore
+        deferred to P11 and the boundary still ships dark.
+    The remaining FOUR keep R-07 OPEN until a subsequent session cuts them and flips the gate to
+    assert EMPTY. Each hinges on correctness-critical browser code with NO live-browser / live-TMS
+    runtime available in this environment to verify against, so per CLAUDE.md sec 9 (not done blind)
+    they are NOT attempted on faith:
+      * EP-1 (run_action_callback_server -> cdp_actuator): its cdp_actuator import feeds the
+        OperationRouter -> OperatorAgent autonomous browser WRITE path (the live R-07 write) plus
+        several read closures. Containing the write path is the P12-scale supervised-write
+        integration; unverifiable here.
+      * EP-3 (propose_ar_from_tms -> cdp_actuator): reads + one nav-click via the actuator; needs
+        the F2 read-only CDP surface (below).
+      * EP-8 (orient_tms -> cdp_actuator): READ_ONLY conversion needs a read-only navigator that
+        reimplements observe/click/navigate on the cdp_session read substrate; correctness-critical
+        (a click can hit a submit target) and untestable here (no CDP browser).
+      * EP-14 (read_tms_browser_use -> browser_use_adapter): READ_ONLY conversion. browser_use_adapter
+        carries the TESTED BrowserUseWriteLedger (14 test nodes) whose canonical future is a
+        boundary-routed write adapter (P12), so it may NOT be deleted; splitting its read surface from
+        its write surface into a new module would ADD an adapter-import edge, which the shrinking-only
+        allowlist forbids. The clean cut therefore waits on the same read-only browser work as EP-8.
+    Finding F2 (cdp_session.evaluate is an ungated actuation primitive) is coupled to EP-3/EP-8/EP-1:
+    a robust read-only cdp_session surface is the prerequisite for those three cuts and is itself
+    browser-untestable here, so F2's behavioural split is deferred with them (its structural intent
+    is recorded here and in the cutover plan).
+  violation_edges:
+    - scripts/orient_tms.py -> cdp_actuator
+    - scripts/propose_ar_from_tms.py -> cdp_actuator
+    - scripts/read_tms_browser_use.py -> browser_use_adapter
+    - scripts/run_action_callback_server.py -> cdp_actuator
 
 # ---------------------------------------------------------------------------------------------
 # Recomputed corpus counts. The guards assert these against the FILES, not against a headline.

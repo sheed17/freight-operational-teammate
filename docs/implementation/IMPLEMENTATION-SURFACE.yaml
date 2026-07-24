@@ -116,6 +116,31 @@ concepts:
       inside the UPDATE's WHERE clause; witness freshness and the confusion check precede it;
       zero rows updated means the caller does nothing
 
+  - name: Adapter containment boundary (P4)
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/specifications/acceptance/adapter-boundary-acceptance.md
+    evidence:
+      - path: src/freight_recon/effect_boundary.py
+        symbol: execute_effect
+      - path: src/freight_recon/effect_boundary.py
+        symbol: ExecutionCapability
+      - path: src/freight_recon/effect_boundary.py
+        symbol: detect_orphan_effect_attempts
+      - path: eval/phase0/import_probe.py
+        symbol: effect_adapter_import_violations
+    owning_unit: P4
+    note: >-
+      The containment BOUNDARY exists and is acceptance- and mutation-proven: the single-door
+      execute_effect algorithm (claim CAS -> record EffectAttempted -> touch world once with an
+      unforgeable single-use capability -> verify), the CLAIMED->ATTEMPTED->VERIFIED/
+      UNKNOWN_OUTCOME/FAILED outcome machine that never downgrades UNKNOWN to FAILED, orphan
+      detection (Sev-0 + auto-brake), the cross-tenant GLOBAL-brake path, and the boundary-aware
+      import gate (detection). PARTIALLY, not fully, IMPLEMENTED and SHIPS DARK: no production path
+      routes through it yet, EP-6/7/9/10 are deleted but EP-1/EP-3 (ADAPT), EP-8/EP-14 (READ_ONLY)
+      and brain_runtime remain as five effect-capable import edges, and the gate is not yet flipped
+      to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those five and turns the gate
+      ON.
+
   - name: Work Item
     status: SPECIFICATION_ONLY
     specification: docs/specifications/entities/01-work-item.md

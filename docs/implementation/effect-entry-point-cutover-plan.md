@@ -2,6 +2,15 @@
 
 *Derived by **import inspection** (recon §6/§7), not reputation. ### **No write-capable entry point is unclassified.***
 
+> **P4 EXECUTION STATUS (implementation checkpoint, this session).** The **Terminal direct writes**
+> row below is EXECUTED: **EP-6, EP-7, EP-9, EP-10 are physically DELETED** (rollback does not
+> restore them). The effect-capable import surface fell from 31 edges to 20 and the boundary-aware
+> gate's violation surface from 12 to 5. The remaining rows are NOT yet done and keep **R-07 OPEN**:
+> EP-1/EP-3 (**CONVERT_TO_PIPELINE_CLIENT**), EP-8/EP-14 (**MAKE_READ_ONLY** — each needs a
+> read-only surface that could not be built and verified in this environment), and the
+> `brain_runtime -> tms_write` rewire; the CI import gate is not yet flipped to assert EMPTY. This
+> checkpoint is **awaiting independent review and final adjudication.**
+
 ## The inventory *(EP-id · file · symbol · effect capability · classification)*
 | EP | File | Imports | External system / op | Tenant derivation | Current idempotency | Current commit identity | Verification | Can race? | Bypasses target pipeline? | Prod reachable | Target adapter op | Action Class | ### Class | ### Cutover |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

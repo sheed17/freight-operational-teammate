@@ -1,25 +1,28 @@
 # EFFECT-PATH INVENTORY
 #
-# THE EXACT LIVE-WRITE ADJUDICATION (U-HANDOFF-1B, M-4). The canonical claim was "six
-# production-reachable live-write paths" while the import probe returns TEN effect-capable
-# candidates and one script sat unlisted. This inventory adjudicates every candidate exactly once,
-# records WHY each is or is not in the six, and closes the unlisted case (read_tms_browser_use.py,
-# finding P0-F4) by assigning it EP-14.
+# THE EXACT LIVE-WRITE ADJUDICATION (U-HANDOFF-1B, M-4), NOW WITH THE P4 CUTOVER PARTLY EXECUTED.
+# The original adjudication established six production-reachable live-write paths
+# (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) and recorded a per-entry disposition for every candidate.
 #
-# THE ADJUDICATED RESULT: the production-reachable live-write set REMAINS EXACTLY SIX
-# (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) - not forced, re-derived: the four excluded candidates
-# are excluded for reasons stated per-entry below, and every exclusion reason is the kind an
-# import probe cannot see (mock-guarded, read-by-convention). The R-07 CONTAINMENT SCOPE is
-# LARGER than the six: it also includes the two read-by-convention/actuator-capable-by-import
-# paths (EP-8, EP-14), whose import edges P4 must cut, and EP-2 (spawn-capable supervisor).
+# P4 UPDATE (this session, staged clean cutover): the four REMOVE_BEFORE_ENABLE paths
+# (EP-6 enter_truckingoffice_invoice, EP-7 enter_invoice_discovered, EP-9 run_operate_request,
+# EP-10 run_operator_agent) have been PHYSICALLY DELETED, executing their frozen disposition.
+# Rollback does not restore them (cutover plan). They are reclassified REMOVED_AT_P4 below and the
+# guard proves each file is gone from disk. The production-reachable live-write set is therefore no
+# longer six: it is EXACTLY TWO - EP-1 and EP-3 - the ADAPT paths still awaiting pipeline-client
+# conversion. R-07 stays OPEN - NOT CONTAINED because those two, plus the two read-by-convention
+# actuator-capable paths (EP-8, EP-14) whose import edges are not yet cut, remain.
 #
-# Guarded by eval/tests/test_bootstrap_hermeticity.py: exact candidate membership against the
-# baseline manifest probe, exact six-set, exact exclusion set, every entry classified, nonzero
-# populations. R-07 remains OPEN - NOT CONTAINED regardless of the count.
+# Guarded by eval/tests/test_bootstrap_hermeticity.py: exact removed-set membership WITH on-disk
+# absence proof, exact live-set (== {EP-1, EP-3}), every candidate still adjudicated against the
+# baseline manifest probe, every entry classified, nonzero populations. R-07 remains OPEN - NOT
+# CONTAINED regardless of the count.
 
 meta:
-  candidates_from_import_probe: 10
-  production_reachable_live_write: 6
+  candidates_from_import_probe_original: 10
+  production_reachable_live_write_original: 6
+  removed_at_p4: [EP-6, EP-7, EP-9, EP-10]
+  production_reachable_live_write_remaining: 2   # EP-1, EP-3 (ADAPT, deferred)
   adjudication: U-HANDOFF-1B closes P0-F4 (read_tms_browser_use.py -> EP-14)
   containment_phase: P4
   risk: R-07 OPEN - NOT CONTAINED
@@ -49,42 +52,54 @@ paths:
   - id: EP-6
     path: scripts/enter_truckingoffice_invoice.py
     external_system: TruckingOffice (browser)
-    production_reachable: true
-    enablement: enabled - direct operator invocation
-    authority_bypass: full - bypasses every review surface
-    classification: PRODUCTION_LIVE_WRITE
+    production_reachable: false   # PHYSICALLY DELETED at P4; the file no longer exists
+    enablement: removed - the script was deleted, executing REMOVE_BEFORE_ENABLE
+    authority_bypass: none - there is no longer a path
+    classification: REMOVED_AT_P4
     containment_phase: P4
-    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+    disposition: DELETED (executed REMOVE_BEFORE_ENABLE; rollback does not restore it)
+    excluded_from_the_six_because: >-
+      physically deleted this session, so it is no longer a live-write path; the on-disk absence is
+      proven by the effect-path guard.
 
   - id: EP-7
     path: scripts/enter_invoice_discovered.py
     external_system: any discovered TMS (browser)
-    production_reachable: true
-    enablement: enabled - direct operator invocation
-    authority_bypass: full
-    classification: PRODUCTION_LIVE_WRITE
+    production_reachable: false   # PHYSICALLY DELETED at P4; the file no longer exists
+    enablement: removed - the script was deleted, executing REMOVE_BEFORE_ENABLE
+    authority_bypass: none - there is no longer a path
+    classification: REMOVED_AT_P4
     containment_phase: P4
-    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+    disposition: DELETED (executed REMOVE_BEFORE_ENABLE; rollback does not restore it)
+    excluded_from_the_six_because: >-
+      physically deleted this session, so it is no longer a live-write path; the on-disk absence is
+      proven by the effect-path guard.
 
   - id: EP-9
     path: scripts/run_operate_request.py
     external_system: any TMS via operator brain (browser)
-    production_reachable: true
-    enablement: enabled - direct operator invocation
-    authority_bypass: full
-    classification: PRODUCTION_LIVE_WRITE
+    production_reachable: false   # PHYSICALLY DELETED at P4; the file no longer exists
+    enablement: removed - the script was deleted, executing REMOVE_BEFORE_ENABLE
+    authority_bypass: none - there is no longer a path
+    classification: REMOVED_AT_P4
     containment_phase: P4
-    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+    disposition: DELETED (executed REMOVE_BEFORE_ENABLE; rollback does not restore it)
+    excluded_from_the_six_because: >-
+      physically deleted this session, so it is no longer a live-write path; the on-disk absence is
+      proven by the effect-path guard.
 
   - id: EP-10
     path: scripts/run_operator_agent.py
     external_system: any TMS via operator agent (browser)
-    production_reachable: true
-    enablement: enabled - direct operator invocation
-    authority_bypass: full
-    classification: PRODUCTION_LIVE_WRITE
+    production_reachable: false   # PHYSICALLY DELETED at P4; the file no longer exists
+    enablement: removed - the script was deleted, executing REMOVE_BEFORE_ENABLE
+    authority_bypass: none - there is no longer a path
+    classification: REMOVED_AT_P4
     containment_phase: P4
-    disposition: DELETE (REMOVE_BEFORE_ENABLE)
+    disposition: DELETED (executed REMOVE_BEFORE_ENABLE; rollback does not restore it)
+    excluded_from_the_six_because: >-
+      physically deleted this session, so it is no longer a live-write path; the on-disk absence is
+      proven by the effect-path guard.
 
   - id: EP-8
     path: scripts/orient_tms.py
@@ -109,6 +124,13 @@ paths:
     classification: READ_BY_CONVENTION_ACTUATOR_CAPABLE
     containment_phase: P4
     disposition: MAKE_READ_ONLY (with S15b; import edge cut at P4)
+    p4_deferral: >-
+      DEFERRED at the P4 containment checkpoint. The clean cut (split BrowserUseTmsAdapter's read
+      surface from BrowserUseWriteLedger's write surface) is blocked here: BrowserUseWriteLedger is a
+      TESTED capability (eval/tests/test_browser_use_write.py, 14 nodes) whose canonical future is a
+      boundary-routed write adapter (P12), so it may not be deleted, and moving it to a new module
+      would ADD an adapter-import edge the shrinking-only allowlist forbids. Waits on the same
+      read-only browser work as EP-8; browser-untestable in this environment.
     excluded_from_the_six_because: >-
       it reads the MOCK TMS and initiates no write flow; it was UNLISTED in the frozen EP-1..13
       inventory (finding P0-F4) and is hereby adjudicated EP-14 rather than left unclassified.
@@ -116,14 +138,25 @@ paths:
 
   - id: EP-12
     path: scripts/enter_tms_payable.py
-    external_system: mock TMS write server
+    external_system: mock JSON write ledger only (MockTmsWriteLedger)
     production_reachable: false
-    enablement: test-only, mock-guarded
+    enablement: test-only, structurally mock-only
     authority_bypass: n/a (mock)
     classification: TEST_ONLY
     containment_phase: P4
     disposition: QUARANTINE
-    excluded_from_the_six_because: mock-guarded test fixture; no live system reachable
+    f1_remediation: >-
+      P4 finding F1. The former `--browser` path constructed a live BrowserUseWriteLedger +
+      NativeBrowserUseRunner against an operator-supplied base URL and drove the real write driver;
+      its quarantine exemption was earned only by the substring `MockTmsWriteLedger` appearing in the
+      file. That live-browser write path was REMOVED. EP-12 now imports no effect-capable adapter but
+      `tms_write` (the mock ledger's home) and constructs only MockTmsWriteLedger. The exemption is
+      now proved STRUCTURALLY (AST import graph + constructor AST), not by substring, in
+      test_import_gate.py::test_every_quarantine_importer_is_structurally_production_unreachable and
+      ::test_every_quarantine_importer_constructs_the_mock_and_no_live_driver.
+    excluded_from_the_six_because: >-
+      structurally mock-only test fixture; no live system reachable (no live-reaching effect-capable
+      adapter imported, only the mock ledger constructed)
 
   - id: EP-13
     path: scripts/run_dogfood_pilot.py

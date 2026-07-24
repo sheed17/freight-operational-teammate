@@ -1,4 +1,11 @@
-"""Enter an APPROVED payable into the mock TMS through the gated write path (confirm + readback)."""
+"""Enter an APPROVED payable into the mock TMS through the gated write path (confirm + readback).
+
+QUARANTINE (EP-12, test-only): this fixture targets ONLY the mock JSON write ledger. It constructs
+no live actuator and imports no effect-capable adapter that reaches an external system, so it is
+structurally production-unreachable — the earned basis for its import-gate quarantine exemption
+(proved by AST, not by a substring, in test_import_gate.py). The former ``--browser`` path drove a
+real browser-use agent against an operator-supplied base URL; it was a live-write path wearing a
+mock label and was removed at P4 (finding F1)."""
 
 from __future__ import annotations
 
@@ -44,11 +51,6 @@ def main() -> int:
         help="inject a mock TMS failure mode for drills",
     )
     parser.add_argument("--no-write-enabled", action="store_true", help="simulate the TMS-write feature gate being off")
-    parser.add_argument("--browser", action="store_true", help="execute the write through browser-use against a writable mock TMS (not the JSON ledger)")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8012", help="writable mock TMS base URL (with --browser)")
-    parser.add_argument("--model", default=None, help="browser-use LLM model (with --browser)")
-    parser.add_argument("--no-headless", action="store_true", help="show the browser window (with --browser)")
-    parser.add_argument("--browser-verify", action="store_true", help="verify-by-readback via the agent instead of a deterministic read (less reliable)")
     parser.add_argument("--slack-thread", action="store_true", help="post execution status as threaded replies under the run's Slack review card")
     parser.add_argument("--client-config", default=None, help="client delivery config (needed with --slack-thread)")
     args = parser.parse_args()
@@ -59,23 +61,10 @@ def main() -> int:
         charges.append(ChargeLine(name=name, amount=amount))
 
     store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="enter_tms_payable.py"))
-    if args.browser:
-        from freight_recon.browser_use_adapter import (
-            BrowserUseWriteLedger,
-            NativeBrowserUseRunner,
-            http_payable_readback,
-        )
-
-        # Agent operates the form (write); verify-by-readback is a deterministic, independent read.
-        readback_fn = None if args.browser_verify else (lambda lid: http_payable_readback(args.base_url, lid))
-        ledger = BrowserUseWriteLedger(
-            runner=NativeBrowserUseRunner(model=args.model),
-            base_url=args.base_url,
-            headless=not args.no_headless,
-            readback_fn=readback_fn,
-        )
-    else:
-        ledger = MockTmsWriteLedger(args.ledger, fail_modes=frozenset(args.fail_mode))
+    # QUARANTINE: the ONLY write target is the mock JSON ledger. There is no live-write path here —
+    # the former browser-use path (a live actuator against an operator-supplied base URL) was removed
+    # at P4 so the quarantine exemption is structurally earned, not asserted (F1).
+    ledger = MockTmsWriteLedger(args.ledger, fail_modes=frozenset(args.fail_mode))
 
     from freight_recon.ops_control import OpsControl, TmsWritesPausedError
 

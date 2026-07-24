@@ -39,6 +39,20 @@ def allowed_adapter_import_edges() -> set[str]:
     return set(load()["adapter_import_allowlist"]["edges"])
 
 
+def effect_adapter_import_gate() -> dict:
+    """The P4 boundary-aware import gate: its recorded residual-violation allowlist and the exact
+    mechanical condition under which it closes R-07 (the violation list becomes EMPTY)."""
+    return load()["effect_adapter_import_gate"]
+
+
+def recorded_effect_violation_edges() -> set[str]:
+    """The residual effect-capable import edges the gate still tolerates, as adjudicated in the
+    manifest. The live probe's violation set must be a SUBSET of this: the detection surface may
+    only shrink toward the empty set, never grow. When this list is empty and the probe agrees,
+    the R-07 close condition is met."""
+    return set(effect_adapter_import_gate()["violation_edges"])
+
+
 def effect_capable_scripts() -> set[str]:
     return {e["script"] for e in load()["expected_legacy_paths"]["effect_capable_by_import"]}
 

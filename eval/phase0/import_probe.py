@@ -25,6 +25,40 @@ ADAPTER_MODULES = {
     "browser_agent", "browser_use_write",
 }
 
+# ---------------------------------------------------------------------------------------------
+# THE P4 BOUNDARY-AWARE PARTITION (the U4.9 import gate).
+#
+# ADR-004 §4.2: "no module outside `pipeline/` imports `adapters/`." This repository is a flat
+# package, so the rule is expressed as a partition over module names rather than directories.
+# The gate forbids EFFECT-CAPABLE adapter imports by any module that is not the containment
+# boundary, another adapter (intra-layer composition), or a recorded, mock-guarded quarantine.
+# ---------------------------------------------------------------------------------------------
+
+# The write-capable adapters — the ones that PRODUCE an external effect. `cdp_session` is the
+# read substrate (navigate + evaluate; ADR/repository authority keeps it importable by read-only
+# tooling — EP-8's disposition removes only the `cdp_actuator` import), so it is deliberately NOT
+# in this set. The deterministic money-path actuation lives in `cdp_actuator`, which IS here.
+EFFECT_CAPABLE_ADAPTERS = {
+    "cdp_actuator", "browser_use_adapter", "browser_tms_adapter",
+    "truckingoffice_write", "multistep_write", "discovered_write", "tms_write",
+    "browser_agent", "browser_use_write",
+}
+
+# The ONE containment boundary: the only non-adapter module permitted to import an effect-capable
+# adapter. Everything consequential flows through `execute_effect` here (P4).
+CONTAINMENT_BOUNDARY = {"effect_boundary"}
+
+# The adapter layer: modules that may import an effect-capable adapter because they ARE part of the
+# adapter substrate (adapters compose, and the mock write server is the test double of one). A
+# module importing itself is already excluded by the probe.
+ADAPTER_LAYER = EFFECT_CAPABLE_ADAPTERS | {"cdp_session", "mock_tms_write_server"}
+
+# Quarantined, mock-guarded, test-only entry points: retained for evidence, structurally excluded
+# from production execution, and proven mock-guarded by `test_no_mock_effect_in_production`. They
+# are recorded here (NOT in the shrinking violation allowlist) so the gate can distinguish a
+# quarantined fixture from a live-production bypass. Populated as P4 quarantines each one.
+QUARANTINE_IMPORTERS: set[str] = {"enter_tms_payable", "run_dogfood_pilot"}
+
 
 @dataclass(frozen=True)
 class ImportSite:
@@ -103,3 +137,52 @@ def adapter_import_sites() -> tuple[list[ImportSite], Evaluation]:
 
 def is_adapter_module(path: Path) -> bool:
     return path.stem in ADAPTER_MODULES
+
+
+def _importer_stem(module_path: str) -> str:
+    """The importer module's stem, e.g. `scripts/orient_tms.py` -> `orient_tms`."""
+    return Path(module_path).stem
+
+
+def is_effect_capable_violation(site: ImportSite) -> bool:
+    """The single partition decision the gate turns on, exposed so it can be exercised directly.
+
+    A site is a VIOLATION iff it imports an EFFECT-CAPABLE adapter AND its importer is not one of
+    the three exempt classes: the containment boundary, another adapter (intra-layer composition),
+    or a recorded, mock-guarded quarantine importer. A read-substrate import (`cdp_session`) is
+    never a violation — it produces no external effect. The exempt set is recomputed on each call
+    so a test can extend `QUARANTINE_IMPORTERS` and watch the gate react; it is not frozen at
+    import time.
+    """
+    if site.imported not in EFFECT_CAPABLE_ADAPTERS:
+        return False  # a read-substrate import (cdp_session) is not an effect
+    allowed = CONTAINMENT_BOUNDARY | ADAPTER_LAYER | QUARANTINE_IMPORTERS
+    return _importer_stem(site.module) not in allowed
+
+
+def effect_adapter_import_violations() -> tuple[list[ImportSite], Evaluation]:
+    """THE P4 import gate, boundary-aware. A VIOLATION is an import of an EFFECT-CAPABLE adapter by
+    a module that is not the containment boundary, another adapter, or a recorded quarantine.
+
+    This is stricter where it matters (it names the boundary and refuses everyone else) and looser
+    only where the architecture is: adapters compose, and the read substrate (`cdp_session`) is not
+    an effect. The decision is `is_effect_capable_violation`, recomputed each call so a test can
+    extend `QUARANTINE_IMPORTERS` and see the gate react — nothing is frozen at import time.
+    """
+    sites, base_ev = adapter_import_sites()
+    ev = Evaluation(name="imports.effect_adapter_violations")
+    ev.sources_inspected = list(base_ev.sources_inspected)
+    violations: list[ImportSite] = []
+    for s in sites:
+        if s.imported not in EFFECT_CAPABLE_ADAPTERS:
+            continue  # a read-substrate import (cdp_session) is not an effect
+        ev.candidates.append(s.key)
+        if is_effect_capable_violation(s):
+            ev.accepted.append(f"{s.module} -> {s.imported}")
+            violations.append(s)
+    return violations, ev
+
+
+def effect_adapter_violation_edges() -> set[str]:
+    sites, _ = effect_adapter_import_violations()
+    return {f"{s.module} -> {s.imported}" for s in sites}

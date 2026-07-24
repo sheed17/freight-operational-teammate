@@ -318,28 +318,55 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
 # ============================================================ M-4: effect-path inventory
 
 def test_the_effect_path_inventory_is_exact_and_fully_classified():
+    """M-4, re-grounded at P4. The original guard pinned the SIX live-write paths. P4 has now
+    executed the REMOVE_BEFORE_ENABLE disposition on four of them (EP-6/7/9/10), so this guard is
+    REPLACED (rule 20) with the post-cutover truth AND a stronger check: the four are proven GONE
+    from disk, and the live-write set is pinned to the two ADAPT paths that remain. R-07 stays OPEN
+    because those two (plus the two read-by-convention actuator-capable paths) are not yet cut."""
     inv = yaml.safe_load(read(IMPL / "EFFECT-PATH-INVENTORY.yaml"))
     paths = require_population(inv["paths"], "effect paths")
     ids = [p["id"] for p in paths]
     assert len(ids) == len(set(ids)), "duplicate effect-path IDs"
+
+    REMOVED = {"EP-6", "EP-7", "EP-9", "EP-10"}
+    LIVE = {"EP-1", "EP-3"}
     for p in paths:
         for field in ("path", "external_system", "production_reachable", "enablement",
                       "authority_bypass", "classification", "containment_phase", "disposition"):
             assert field in p, f"{p['id']}: unclassified - missing {field}"
-        if p["id"] not in ("EP-1", "EP-3", "EP-6", "EP-7", "EP-9", "EP-10"):
+        if p["id"] not in LIVE:
             assert "excluded_from_the_six_because" in p, (
-                f"{p['id']}: excluded from the six with no stated reason"
+                f"{p['id']}: not a current live-write path but no reason stated"
             )
-    live = {p["id"] for p in paths if p["classification"] == "PRODUCTION_LIVE_WRITE"}
-    assert live == {"EP-1", "EP-3", "EP-6", "EP-7", "EP-9", "EP-10"}, (
-        f"the production-reachable live-write set drifted: {sorted(live)}"
+
+    # the P4 deletion actually happened: exact removed set, and every removed file is GONE on disk.
+    removed = {p["id"] for p in paths if p["classification"] == "REMOVED_AT_P4"}
+    assert removed == REMOVED, f"the P4-removed set drifted: {sorted(removed)}"
+    removed_pop = require_population(
+        [p for p in paths if p["id"] in REMOVED], "P4-removed effect paths"
     )
-    # every import-probe candidate from the manifest is adjudicated here
+    for p in removed_pop:
+        f = ROOT / p["path"]
+        assert not f.exists(), (
+            f"{p['id']} is classified REMOVED_AT_P4 but {p['path']} still exists on disk - "
+            f"the deletion was recorded but not performed (a false green)"
+        )
+
+    # the live-write set shrank from six to exactly the two ADAPT paths still awaiting conversion.
+    live = {p["id"] for p in paths if p["classification"] == "PRODUCTION_LIVE_WRITE"}
+    assert live == LIVE, f"the production-reachable live-write set drifted: {sorted(live)}"
+
+    # every import-probe candidate from the (shrunk) manifest is still adjudicated here.
     manifest = yaml.safe_load(read(IMPL / "phase-0-baseline-manifest.yaml"))
     probe_scripts = {e["script"] for e in manifest["expected_legacy_paths"]["effect_capable_by_import"]}
     inventory_scripts = {p["path"] for p in paths}
     missing = probe_scripts - inventory_scripts
     assert not missing, f"import-probe candidates left unclassified: {sorted(missing)}"
+    # and the manifest no longer lists a deleted path as effect-capable-by-import.
+    still_listed = {p["path"] for p in paths if p["id"] in REMOVED} & probe_scripts
+    assert not still_listed, (
+        f"deleted path(s) still listed as effect-capable-by-import: {sorted(still_listed)}"
+    )
     ep14 = next(p for p in paths if p["id"] == "EP-14")
     assert ep14["path"] == "scripts/read_tms_browser_use.py", "the P0-F4 adjudication is gone"
     assert re.search(r"R-07 OPEN", read(IMPL / "EFFECT-PATH-INVENTORY.yaml")), (
