@@ -489,11 +489,14 @@ units:
     objective: >-
       Route every external effect through the adapter boundary and the two-key rule, then turn on
       the CI import gate. THIS IS THE UNIT THAT CLOSES R-07.
-    # U-P3-ADJUDICATION: P3 is now COMPLETE (14/14 weighted criteria PASS on independent evidence),
-    # so P4's sole dependency is satisfied and P4 becomes the single READY unit. READY is NOT a
-    # licence to have begun it: R-07 stays OPEN - NOT CONTAINED, the six live-write paths and the
-    # 31 adapter-import edges are physically untouched, and the checkpoint kernel ships dark until
-    # this unit routes effects through it. The adjudicating session did NOT begin P4.
+    # U-P3-ADJUDICATION set P3 COMPLETE (14/14 weighted criteria PASS on independent evidence), so
+    # P4's sole dependency is satisfied and P4 is the single READY unit. READY is NOT COMPLETE.
+    # STATUS-TRUTH (reconciled): the P3-adjudication session did not begin P4, but subsequent P4
+    # checkpoints have since physically deleted EP-6/EP-7/EP-9/EP-10 and cut adapter-import edges
+    # (see CURRENT.md); EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) remain, nothing routes through
+    # the checkpoint kernel in production, and the CI import gate is not yet EMPTY - so R-07 stays
+    # OPEN - NOT CONTAINED and P4 is NOT COMPLETE. Exact live-write/edge counts are CURRENT.md's;
+    # this note copies none.
     status: READY
     dependencies: [P3]
     unlocked_by: [P3]

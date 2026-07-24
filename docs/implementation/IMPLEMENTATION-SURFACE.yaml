@@ -84,7 +84,9 @@ concepts:
     note: >-
       the seven checks in ONE transaction with the witness insert and the mint, canonical order,
       short-circuit-first-failure (SD-7). SHIPS DARK - no production path routes through it
-      until P4 contains the adapters; the six live-write paths are untouched and R-07 stays OPEN.
+      until P4 contains the adapters; R-07 stays OPEN - NOT CONTAINED. (P3 touched no live-write
+      path; subsequent P4 checkpoints have since deleted EP-6/EP-7/EP-9/EP-10, while EP-1/EP-3/
+      EP-8/EP-14 remain and nothing routes through the kernel yet - see CURRENT.md.)
 
   - name: Checkpoint Witness
     status: IMPLEMENTED

@@ -82,6 +82,21 @@ an auditable trail for every consequential thing it did or refused to do.
 assumed, and never a default. The end state is not "the AI runs the brokerage"; it is
 **"every loop has an accountable owner, and Neyma does the carrying."**
 
+**The long-term end state is that a freight company can add Neyma as its AI operations team** — a
+**coordinated AI workforce** of specialized, role-based teammates (an AI sales coordinator, load
+planner, carrier representative, dispatcher, track-and-trace and appointment coordinator, document
+and claims specialists, AP and AR clerks, a customer-service representative, a compliance teammate,
+and an operations manager). **These are not disconnected bots**: they are roles over the *one*
+shared system — shared load/work-item state, knowledge, evidence and provenance, policies and
+approvals, communications history, safety and effect boundary, and audit trail — so **one
+teammate's completed work becomes the next teammate's context automatically** (the atomic cross-loop
+handoff, §6 and the workflow registry). This teammate/role layer is a **presentation over the eleven
+loops and the shared spine, not a new set of loops** — the full articulation, with the strict
+current-vs-future distinction, is in
+[`docs/product/FREIGHT-OPERATING-VISION.md`](docs/product/FREIGHT-OPERATING-VISION.md). **This end
+state is directional, not a claim of present capability; nothing here is implemented until
+[`CURRENT.md`](docs/implementation/CURRENT.md) says so.**
+
 ## 5. User experience
 
 The accountable human stays in the operating seat. Neyma works in the background across the
@@ -313,6 +328,11 @@ foundational architecture work.
 | [`docs/product/design-partner-observations.md`](docs/product/design-partner-observations.md) | **EVIDENCE** — what is actually known, by source class |
 | [`docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md`](docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md) | **CANONICAL** — the evidence the wedge requires, its accountable sources and fail-closed behaviour |
 | [`docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml`](docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml) | **CANONICAL** — the one operational use-case coverage matrix: every major use case classified (in-wedge / planned platform / needs design-partner or mode-specific validation / future / out of scope), with role, loop, source of truth, authority, evidence, closure, phase and readiness tier |
+| [`docs/product/FREIGHT-OPERATING-VISION.md`](docs/product/FREIGHT-OPERATING-VISION.md) | **CANONICAL (navigation)** — the complete quote-to-cash product vision, expansion path, one-shared-system principle and product boundaries; holds no authority independent of this file and its cited sources |
+| [`docs/product/FREIGHT-CAPABILITY-MAP.md`](docs/product/FREIGHT-CAPABILITY-MAP.md) | **CANONICAL (navigation)** — the 18 freight capability areas; defers classification/phase/tier to `OPERATIONAL-USE-CASE-COVERAGE.yaml` |
+| [`docs/product/QUOTE-TO-CASH-LIFECYCLE.md`](docs/product/QUOTE-TO-CASH-LIFECYCLE.md) | **CANONICAL (navigation)** — the end-to-end load lifecycle across the eleven loops; defers loop/handoff detail to the workflow registry |
+| [`docs/product/OPERATIONAL-LOOPS.md`](docs/product/OPERATIONAL-LOOPS.md) | **CANONICAL (navigation)** — capability→loop coverage + the recorded loop-gap analysis; proposes no new loop and no rename |
+| [`docs/product/AUTONOMY-MATRIX.md`](docs/product/AUTONOMY-MATRIX.md) | **CANONICAL (navigation)** — per-capability autonomy ceilings mapped onto the ADR-010 gate decisions; defers enforcement to ADR-010/ADR-003 |
 | [`docs/architecture/decisions/ADR-012`](docs/architecture/decisions/ADR-012-product-identity-and-strategy.md)–[`017`](docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md) | **CANONICAL** — the rebaseline decisions: identity/strategy, authority migration, credentials, communications, production topology, tenant & integration lifecycle |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **CANONICAL** — the architecture entry point |
 | [`docs/CANONICAL-DOCUMENTS.md`](docs/CANONICAL-DOCUMENTS.md) | **CANONICAL** — which documents may authorise decisions |
