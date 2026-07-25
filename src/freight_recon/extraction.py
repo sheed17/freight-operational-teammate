@@ -50,7 +50,7 @@ class ExtractionResult:
 # ----------------------------------------------------------------------------
 
 def _resolve_provider(provider: str | None) -> str:
-    provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "anthropic").lower()
+    provider = (provider or os.getenv("EXTRACTION_PROVIDER") or "openai").lower()
     if provider not in ("anthropic", "openai"):
         raise ValueError(f"unsupported EXTRACTION_PROVIDER: {provider!r}")
     return provider
@@ -61,7 +61,7 @@ def _resolve_model(provider: str, model: str | None) -> str:
         return model
     if provider == "anthropic":
         return os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
-    return os.getenv("OPENAI_MODEL", "gpt-4o")
+    return os.getenv("OPENAI_MODEL", "gpt-5.4")
 
 
 def _build_user_prompt(config: DocTypeConfig) -> str:
@@ -113,9 +113,16 @@ def _extract_openai(model_name: str, response_model, prompt: str, pages: list[Pa
                 "image_url": {"url": f"data:image/png;base64,{page.base64}"},
             }
         )
+    # gpt-5 / o-series reject `max_tokens` (they require `max_completion_tokens`); older models want
+    # `max_tokens`. Pick the right one so a top-quality model can be used for extraction.
+    token_kw = (
+        {"max_completion_tokens": 2048}
+        if any(model_name.startswith(p) for p in ("gpt-5", "o1", "o3", "o4"))
+        else {"max_tokens": 2048}
+    )
     return client.chat.completions.create(
         model=model_name,
-        max_tokens=2048,
+        **token_kw,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": content},

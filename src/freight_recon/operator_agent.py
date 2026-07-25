@@ -1,0 +1,583 @@
+"""The embedded Operator Agent: the model-in-the-loop driver that operates a TMS on its own.
+
+This is the agent that lives INSIDE Neyma's runtime and does what a human (or the dev driving in a
+sidebar) would do — but autonomously: observe the current screen, reason about the single next move
+toward a goal, do it, observe the result, repeat, until done or stuck. Its "brain" is a reasoning model
+(Claude/GPT via API), injected as ``complete``. It is system-agnostic: nothing here is TMS-specific.
+
+The money fence makes it safe to let it drive unattended:
+- The agent decides NAVIGATION and which field to fill, but it NEVER chooses a monetary value. When it
+  types into a money field, the runtime substitutes the human-APPROVED amount — the model's own number
+  is discarded.
+- A CONSEQUENTIAL action (the committing submit) requires the gate/approval before it executes; without
+  it, the agent escalates rather than commit.
+- Bounded steps; ESCALATE and exhaustion both fail closed.
+
+The loop is pure and injectable (``Actuator`` for the browser, ``complete`` for the model), so it is
+unit-tested with fakes; the real Actuator drives Chrome over CDP (with real keyboard/mouse input).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
+from enum import Enum
+from typing import Callable, Protocol
+
+from freight_recon.browser_failures import FailureClass, classify_page
+from freight_recon.screen_discovery import _parse_llm_json
+
+Completer = Callable[[str], str]
+
+
+class LiveActionKind(str, Enum):
+    NAVIGATE = "NAVIGATE"
+    CLICK = "CLICK"
+    TYPE = "TYPE"
+    SELECT = "SELECT"
+    READ = "READ"            # read a value back (for the agent's own verification)
+    UPLOAD = "UPLOAD"        # attach a runtime-supplied file to a file-input (POD/BOL/rate-con)
+    DONE = "DONE"            # goal achieved
+    ESCALATE = "ESCALATE"    # stuck/unsafe -> hand to the human
+
+
+@dataclass
+class LiveAction:
+    kind: LiveActionKind
+    target: str = ""         # url / element label / selector / option text
+    value: str = ""          # text to type / option to choose
+    why: str = ""
+
+
+@dataclass
+class AgentResult:
+    goal: str
+    status: str              # DONE | ESCALATED | FAILED
+    steps: list[dict]
+    note: str
+
+
+class Actuator(Protocol):
+    """The browser the agent drives. The real impl is CDP (with real input); tests pass a fake."""
+    def observe(self) -> dict: ...                       # {url, interactive:[...], errors:[...], headings:[...]}
+    def navigate(self, url: str) -> bool: ...
+    def click(self, target: str) -> bool: ...
+    def type(self, target: str, value: str) -> bool: ...
+    def select(self, target: str, option: str) -> bool: ...
+    def read(self, target: str) -> str: ...
+    def upload_file(self, file_path: str, target: str = "") -> bool: ...  # optional; guarded by getattr
+
+
+@dataclass
+class MoneyFence:
+    """Keeps the model away from money.
+
+    Numeric TYPE values are treated as money-risky by value inspection. They may only be written into a
+    designated money field, where the runtime substitutes the approved amount; otherwise the agent
+    escalates instead of typing a model-chosen number into an unknown field.
+    """
+    is_money_field: Callable[[LiveAction], bool] = lambda a: bool(
+        a.kind == LiveActionKind.TYPE
+        and any(
+            k in (a.target or "").lower()
+            for k in (
+                "amount",
+                "price",
+                "total",
+                "charge",
+                "rate",
+                "line haul",
+                "linehaul",
+                "freight",
+                "settlement",
+                "balance due",
+                "cost",
+                "pay",
+                "value",
+                "accessorial",
+            )
+        )
+    )
+    # PRIMARY commit signal is form-submit detection (see OperatorAgent: is_submit_target) — it is
+    # label-independent and correct. This keyword check is only a NARROW fallback for JS commits that
+    # aren't real form submits. Keep it to the least-ambiguous verbs: "pay"/"post"/"create"/"raise"
+    # are excluded because they match OPENERS and fields ("Enter Payment", "Create Invoice", "Pay
+    # Later") and false-positive-gated them, stalling the agent before it could even open a form.
+    is_consequential: Callable[[LiveAction], bool] = lambda a: bool(
+        a.kind == LiveActionKind.CLICK and any(k in (a.target or "").lower() for k in ("save", "submit", "confirm"))
+    )
+
+
+class OperatorAgent:
+    def __init__(
+        self,
+        *,
+        actuator: Actuator,
+        complete: Completer,
+        approved_amount: str | None = None,
+        document_path: str | None = None,
+        approve: Callable[[LiveAction], bool] | None = None,
+        money_fence: MoneyFence | None = None,
+        max_steps: int = 20,
+        stuck_after: int = 3,
+        prepare_only: bool = False,
+        memory=None,
+        tenant: str = "default",
+        task: str = "",
+        trace_dir=None,
+        record_ref: str = "",
+    ) -> None:
+        self.actuator = actuator
+        self.complete = complete
+        self.approved_amount = approved_amount
+        # DOCUMENT FENCE: the file an UPLOAD attaches is fixed here by the runtime — the model can pick
+        # the field to attach to, never the file. Same shape as the money fence: no model-chosen path.
+        self.document_path = str(document_path) if document_path else ""
+        self.approve = approve
+        self.fence = money_fence or MoneyFence()
+        self.max_steps = max_steps
+        self.stuck_after = stuck_after  # escalate after this many identical actions in a row
+        # prepare_only: drive + fill everything but STOP before the committing action, so a human does
+        # the final Save. This is the safe default for a supervised lane (full-auto is the graduation).
+        self.prepare_only = prepare_only
+        # Memory makes the agent improve with repetition: recall learned facts about this system, and
+        # crystallize what worked (per tenant). Optional — without it the agent just reasons fresh.
+        self.memory = memory
+        self.tenant = tenant
+        self.task = task
+        # When set, a screenshot of the screen the agent stopped on is captured on any non-clean finish
+        # (ESCALATED/FAILED) — so a human debugging or unblocking has the actual visual, not just a note.
+        self.trace_dir = trace_dir
+        # The specific record this run operates on (invoice/load ref). Used to PARAMETERIZE crystallized
+        # recipes: the literal ref is stored as "{record}" so the path learned on one record replays on
+        # any other (learn once per WORKFLOW, not once per record).
+        self.record_ref = str(record_ref or "")
+
+    def run(self, goal: str) -> AgentResult:
+        result = self._run_inner(goal)
+        # OBSERVABILITY: on a stuck/failed finish, grab a screenshot of the exact screen it stopped on
+        # (the loop returns immediately, so the browser is still there). Best-effort — never let capture
+        # failure change the outcome.
+        if self.trace_dir and result.status in ("ESCALATED", "FAILED"):
+            shot = getattr(self.actuator, "capture_screenshot", None)
+            if callable(shot):
+                try:
+                    from pathlib import Path
+                    stamp = f"{result.status.lower()}_{abs(hash(result.note)) % 10_000_000}.png"
+                    path = shot(Path(self.trace_dir) / "escalations" / stamp)
+                    result.steps.append({"screenshot": str(path), "why": "screen at escalation"})
+                except Exception:  # noqa: BLE001 - evidence is best-effort
+                    pass
+        return result
+
+    def _run_inner(self, goal: str) -> AgentResult:
+        history: list[dict] = []
+        repeats = 0
+        last_sig: tuple | None = None
+        domain = "unknown"
+        forced_nudge: str | None = None   # a one-off instruction injected into the next decision
+        self._committed = False           # has a consequential action succeeded this run?
+        self._money_staged = False        # is the approved amount on the form yet? (a submit before this
+        #                                   is navigation — search/filter — not the money commit)
+        self._commit_approved: bool | None = None  # cached approval so a failed commit click can retry
+        self._readback_confirmed = False  # did a READ after the commit confirm the saved record?
+        self._forced_readback = False     # have we already made it read the record back before DONE?
+        # Business knowledge about whoever/whatever this goal is about (recalled up front, from the goal).
+        business = self.memory.recall_business(tenant=self.tenant, text=goal) if self.memory is not None else []
+        procedures = self.memory.recall_procedures(tenant=self.tenant, text=goal) if self.memory is not None else []
+        learned: list[str] = list(business)
+        # MACRO REPLAY: if we've crystallized a working path for this exact task, replay its navigation
+        # skeleton instead of re-reasoning every step — the expensive reasoning was done once, on the
+        # first success. A macro is a NAVIGATION shortcut, never an AUTHORITY shortcut: each replayed
+        # action still passes through the money fence, the consequential gate, amount reconciliation, and
+        # verify-before-DONE. The moment a replayed step fails (stale UI), we abandon the macro and hand
+        # back to the model from the current screen.
+        replay: list[dict] = []
+        if self.memory is not None and self.task:
+            try:
+                replay = [s for s in (self.memory.recall_recipe(tenant=self.tenant, task=self.task) or [])
+                          if s.get("action") in LiveActionKind._value2member_map_]
+            except Exception:  # noqa: BLE001
+                replay = []
+        for _ in range(self.max_steps):
+            observation = self.actuator.observe()
+            # First real screen: recall what we've learned about THIS system, so the agent reasons with
+            # memory instead of from scratch (what makes it faster the tenth time than the first).
+            if self.memory is not None and domain == "unknown":
+                from freight_recon.agent_memory import domain_of
+
+                domain = domain_of(observation.get("url"))
+                if domain != "unknown":
+                    learned = self.memory.recall_facts(tenant=self.tenant, domain=domain) + business
+            # FAILURE TAXONOMY: read the ACTUAL page state and stop with a precise, categorized reason on a
+            # clear failure — a login wall or a permission wall is terminal for the agent (a human must
+            # act); a rejected form is escalated only once we've actually attempted the commit (so a
+            # pre-existing warning banner doesn't false-trip). Deterministic, not model-dependent.
+            fclass, freason = classify_page(observation)
+            if fclass in (FailureClass.SESSION_EXPIRED, FailureClass.PERMISSION_DENIED):
+                return AgentResult(goal, "ESCALATED", history, freason)
+            if fclass == FailureClass.VALIDATION_ERROR and self._commit_approved is not None:
+                return AgentResult(goal, "ESCALATED", history, freason)
+            # A forced instruction (e.g. "read the record back to confirm") takes priority; otherwise, if
+            # the agent has been repeating itself, warn it to change tack before it decides again.
+            nudge = forced_nudge
+            forced_nudge = None
+            if nudge is None and repeats >= 1:
+                nudge = (f"You have already taken this exact action {repeats + 1} time(s) with no progress. "
+                         "Do NOT repeat it. Choose a DIFFERENT action — e.g. NAVIGATE directly to a URL from "
+                         "the page's navigation — or ESCALATE if you are stuck.")
+            # Take the next crystallized step if replaying, else ask the model. A replayed step carries no
+            # value — money fields are filled by the fence/reconciliation, so the amount is never replayed.
+            replayed_step = bool(replay) and forced_nudge is None
+            if replayed_step:
+                s = replay.pop(0)
+                target = str(s.get("target") or "")
+                value = str(s.get("value") or "")  # only ever the "{record}" placeholder; money is never replayed
+                if self.record_ref:
+                    target = target.replace("{record}", self.record_ref)
+                    value = value.replace("{record}", self.record_ref)  # e.g. re-fill a search box with the record
+                action = LiveAction(LiveActionKind(s["action"]), target=target,
+                                    value=value, why="replaying crystallized path")
+            else:
+                action = self._decide(goal, observation, history, nudge=nudge, learned=learned, procedures=procedures)
+
+            # No-progress guard: identical action repeated too many times -> stop, don't grind/loop.
+            sig = (action.kind, action.target)
+            repeats = repeats + 1 if sig == last_sig else 0
+            last_sig = sig
+            if repeats >= self.stuck_after and action.kind not in (LiveActionKind.DONE, LiveActionKind.ESCALATE):
+                return AgentResult(goal, "ESCALATED", history,
+                                   f"stuck: repeated {action.kind.value} {action.target!r} with no progress")
+
+            if action.kind == LiveActionKind.DONE:
+                # VERIFY-BEFORE-DONE: a money operation may not be declared DONE until a READ has confirmed
+                # the saved record. Crucially this is gated on the run being a MONEY LANE (an approved
+                # amount is bound) OR a detected commit — NOT on commit-detection alone. A live run showed
+                # why: when the commit button's label didn't match the consequential keywords, _committed
+                # stayed False, the gate never fired, and the agent reported a hallucinated total off an
+                # EMPTY readback. Decoupling from _committed closes that: any money run must read back.
+                must_confirm = self._committed or bool(self.approved_amount)
+                if must_confirm and not self._readback_confirmed:
+                    if not self._forced_readback:
+                        self._forced_readback = True
+                        forced_nudge = (
+                            "You have not confirmed the write saved. READ the saved record now (e.g. the "
+                            "invoice number and total) to verify it exists with the correct amount. If you "
+                            "cannot find the saved record, ESCALATE — do NOT declare DONE without confirming.")
+                        continue
+                    return AgentResult(
+                        goal, "ESCALATED", history,
+                        "could not confirm the record actually saved with the right details — please "
+                        "verify it in the system before trusting this")
+                self._crystallize(history, domain)  # learn from what just worked
+                return AgentResult(goal, "DONE", history, action.why or "goal achieved")
+            if action.kind == LiveActionKind.ESCALATE:
+                return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
+
+            # DOCUMENT FENCE: an UPLOAD attaches the RUNTIME-supplied file — the model chooses only the
+            # field, never the path. With no file bound, the lane fails CLOSED (escalate) rather than
+            # pretending to attach nothing — the exact "no file available to upload" gap file_document hit.
+            if action.kind == LiveActionKind.UPLOAD and not self.document_path:
+                return AgentResult(goal, "ESCALATED", history,
+                                   "a document must be attached but no file is available to upload")
+
+            # MONEY FENCE: the model never supplies a monetary value.
+            if self.fence.is_money_field(action):
+                # A designated money field ALWAYS receives the human-approved amount. The model's own
+                # value is discarded whether it's a number OR a placeholder like "approved amount" (the
+                # prompt tells the model to type into the field and let the runtime substitute).
+                if not self.approved_amount:
+                    return AgentResult(goal, "ESCALATED", history, "money field but no approved amount bound")
+                action = LiveAction(action.kind, action.target, self.approved_amount, action.why + " [amount from approval]")
+                self._money_staged = True  # the approved amount is now on the form -> a later submit commits it
+            elif _looks_like_money(action.value):
+                # A CURRENCY-shaped value typed into a NON-money field: the model may be trying to write a
+                # dollar figure somewhere it shouldn't. Fail closed (P0-2). Bare integers/refs (a load
+                # number, a search query, a quantity, a zip) are NOT money-shaped and pass through — the
+                # fence must not block legitimate typing like searching for load "100".
+                return AgentResult(
+                    goal, "ESCALATED", history,
+                    f"unexpected monetary write to non-money field: {action.target}",
+                )
+
+            # CONSEQUENTIAL GATE: the committing action. A click is consequential if its label matches a
+            # commit verb OR it actually SUBMITS a form — the label-independent signal that catches a
+            # save button ("Create Invoice") whose text collides with a non-committing link elsewhere.
+            consequential = self.fence.is_consequential(action)
+            if not consequential and action.kind == LiveActionKind.CLICK:
+                is_submit = getattr(self.actuator, "is_submit_target", None)
+                if callable(is_submit) and is_submit(action.target):
+                    # A form-submit is the money COMMIT only when we're actually on a record form with the
+                    # amount on it — staged by us, or a money input the TMS pre-filled. Before that, a
+                    # submit is navigation (a search/filter to FIND the record, a "next") and must not be
+                    # mistaken for the commit — that false commit then blocks the real save.
+                    if (not self.approved_amount) or self._money_staged or self._form_has_money():
+                        consequential = True
+            if consequential:
+                # PREPARE MODE: everything is filled and staged — stop here and let the human commit.
+                if self.prepare_only:
+                    return AgentResult(goal, "PREPARED", history,
+                                       f"Everything is filled and staged; I stopped before the final "
+                                       f"step ({action.target}) so you can commit it. Reply 'submit' to "
+                                       "commit, or do the final action in the browser.")
+                # Already committed once this run -> never repeat a consequential action (double-pay guard).
+                # But do not declare DONE until a readback has confirmed it saved (this is the exact path
+                # that falsely reported DONE when a form-opener was mis-taken for the commit).
+                if self._committed:
+                    if self._readback_confirmed:
+                        self._crystallize(history, domain)  # a success via THIS path must learn too
+                        return AgentResult(goal, "DONE", history, "committed and confirmed; not repeating the commit")
+                    if not self._forced_readback:
+                        self._forced_readback = True
+                        forced_nudge = (
+                            "You have not confirmed the write saved. READ the saved record now (e.g. the "
+                            "invoice number and total) to verify it exists with the correct amount. If you "
+                            "cannot find the saved record, ESCALATE — do NOT declare DONE without confirming.")
+                        continue
+                    return AgentResult(
+                        goal, "ESCALATED", history,
+                        "committed the write but could not confirm it saved — please verify the record")
+                # Ask for approval ONCE and cache it — a FAILED commit click must not burn the approval,
+                # so retries of the same commit are allowed until one actually succeeds.
+                if self._commit_approved is None:
+                    self._commit_approved = bool(self.approve is not None and self.approve(action))
+                if not self._commit_approved:
+                    return AgentResult(goal, "ESCALATED", history, f"consequential action needs approval: {action.target}")
+
+                # AMOUNT RECONCILIATION: the human-approved amount must be authoritative before money is
+                # written. A TMS that DEFAULTED an amount (e.g. pre-filled a payment = balance) must not
+                # commit a figure the human didn't approve. Make every ACTIVE (non-zero) money field equal
+                # the approved amount; if one can't be set, stop rather than write the wrong number.
+                if self.approved_amount:
+                    reconcile_err = self._reconcile_money_fields()
+                    if reconcile_err:
+                        return AgentResult(goal, "ESCALATED", history, reconcile_err)
+
+            ok, observed = self._execute(action)
+            if replayed_step and not ok:
+                replay = []  # the crystallized path no longer fits (UI changed) -> hand back to the model
+            committed_now = ok and consequential  # the REAL commit signal: a gated submit actually succeeded
+            if committed_now:
+                self._committed = True  # a consequential action succeeded — commit is done
+            # A READ that returns real content is the confirmation the record exists. Not coupled to
+            # commit-detection (which can miss a label like "Create Invoice") — an EMPTY readback never
+            # confirms, so a hallucinated "it saved" off a blank read cannot reach DONE.
+            if action.kind == LiveActionKind.READ and ok and observed:
+                self._readback_confirmed = True
+            entry = {"action": action.kind.value, "target": action.target,
+                     "value": action.value, "why": action.why, "ok": ok}
+            if committed_now:
+                entry["committed"] = True  # real signal for _result_committed — never inferred from a label
+            if observed is not None:
+                # Feed the result back so the model can actually USE what it read (it was blind to this).
+                entry["observed"] = str(observed)[:300]
+            if not ok:
+                entry["note"] = "action failed; agent may adapt"
+            history.append(entry)
+
+        return AgentResult(goal, "FAILED", history, f"did not finish within {self.max_steps} steps")
+
+    def _crystallize(self, history: list[dict], domain: str) -> None:
+        """Learn from a run that just worked: save the path as a recipe + a recallable fact. Never lets
+        a memory hiccup break a successful run."""
+        if self.memory is None:
+            return
+        try:
+            from freight_recon.agent_memory import fact_from_successful_run
+
+            # Parameterize the record ref out of the path so the recipe is per-WORKFLOW, not per-record:
+            # "560003 -> Enter Payment" is stored as "{record} -> Enter Payment" and re-specialized on replay.
+            steps = history
+            if self.record_ref:
+                steps = [{**s,
+                          "target": str(s.get("target", "")).replace(self.record_ref, "{record}"),
+                          "value": str(s.get("value", "")).replace(self.record_ref, "{record}")}
+                         for s in history]
+            self.memory.save_recipe(steps, tenant=self.tenant, task=self.task or "task")
+            fact = fact_from_successful_run(history, task=self.task or "the task", domain=domain)
+            if fact:
+                self.memory.learn_fact(fact, tenant=self.tenant, domain=domain)
+        except Exception:  # noqa: BLE001 - memory is best-effort; a success must still be a success
+            pass
+
+    def _form_has_money(self) -> bool:
+        """Is there an ACTIVE money input on the current form (typed OR TMS-defaulted)? This tells a
+        record form (a submit here can commit money) apart from a search/list page (a submit is just
+        navigation), so we still gate + reconcile a form whose amount the TMS pre-filled without a type."""
+        getter = getattr(self.actuator, "money_field_values", None)
+        if not callable(getter):
+            return False
+        try:
+            fields = getter() or []
+        except Exception:  # noqa: BLE001
+            return False
+        return any(_money_value((f or {}).get("value")) not in (None, 0) for f in fields)
+
+    def _reconcile_money_fields(self) -> str | None:
+        """Make the human-approved amount authoritative in every ACTIVE money field before committing.
+
+        Handles the DEFAULTED case (a TMS pre-fills the amount): any visible money field holding a
+        non-zero currency value that differs from the approved amount is re-set to the approved amount
+        and re-read to confirm. Empty/zero money fields (an optional expense/late-charge line) are left
+        alone — they are not this operation's amount. Returns an error string to escalate on if a field
+        can't be set, else None. No-ops when the actuator can't enumerate money fields (fakes/tests)."""
+        getter = getattr(self.actuator, "money_field_values", None)
+        if not callable(getter):
+            return None
+        approved = _money_value(self.approved_amount)
+        if approved is None:
+            return None
+        try:
+            fields = getter() or []
+        except Exception:  # noqa: BLE001
+            return None
+        for f in fields:
+            target = (f or {}).get("target") or ""
+            current = _money_value((f or {}).get("value"))
+            if current is None or current == 0 or current == approved:
+                continue  # empty / non-numeric / zero / already correct -> leave it
+            # A defaulted amount that differs from what the human approved -> make approved authoritative.
+            self.actuator.type(target, self.approved_amount)
+            if _money_value(self.actuator.read(target)) != approved:
+                return (f"could not set the approved amount in the money field {target!r} — it still does "
+                        "not match the approved amount, so I stopped rather than write the wrong figure")
+        return None
+
+    def _decide(self, goal: str, observation: dict, history: list[dict], nudge: str | None = None,
+                learned: list[str] | None = None, procedures: list[str] | None = None) -> LiveAction:
+        parsed = _parse_llm_json(
+            self.complete(_decide_prompt(goal, observation, history, nudge, learned, procedures)))
+        raw = parsed.get("action") if isinstance(parsed, dict) else None
+        if raw not in LiveActionKind._value2member_map_:
+            return LiveAction(LiveActionKind.ESCALATE, why=f"model returned unknown action {raw!r}")
+        return LiveAction(
+            kind=LiveActionKind(raw),
+            target=str(parsed.get("target", "")),
+            value=str(parsed.get("value", "")),
+            why=str(parsed.get("why", "")),
+        )
+
+    def _execute(self, action: LiveAction) -> tuple[bool, str | None]:
+        """Run an action. Returns (ok, observed) — observed is the read-back text for READ, else None."""
+        if action.kind == LiveActionKind.NAVIGATE:
+            return bool(self.actuator.navigate(action.target)), None
+        if action.kind == LiveActionKind.CLICK:
+            return bool(self.actuator.click(action.target)), None
+        if action.kind == LiveActionKind.TYPE:
+            return bool(self.actuator.type(action.target, action.value)), None
+        if action.kind == LiveActionKind.SELECT:
+            return bool(self.actuator.select(action.target, action.value)), None
+        if action.kind == LiveActionKind.READ:
+            value = self.actuator.read(action.target)
+            return True, (value or "")
+        if action.kind == LiveActionKind.UPLOAD:
+            # The file is the runtime-bound document (fenced above); the target is only a field hint.
+            up = getattr(self.actuator, "upload_file", None)
+            if not callable(up):
+                return False, None
+            return bool(up(self.document_path, action.target)), None
+        return False, None
+
+
+def _money_value(value) -> Decimal | None:
+    """Parse a currency-ish string to a normalized Decimal, or None if it isn't a number. '$3,200.00',
+    '3200', '(50.00)' -> Decimal; a date '07/03/2026' or '' -> None (so non-amount fields are ignored)."""
+    raw = str(value or "").strip().replace("$", "").replace(",", "")
+    if not raw:
+        return None
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = "-" + raw[1:-1]
+    try:
+        return Decimal(raw)
+    except InvalidOperation:
+        return None
+
+
+def _looks_like_money(value: str) -> bool:
+    """True only for values shaped like a CURRENCY amount — not every number.
+
+    A dollar figure carries money signals: a ``$``, cents (``2000.00``), or comma-grouped thousands
+    (``2,850``). A bare integer or reference — a load number ``100``, a search query, a quantity, a
+    zip — is NOT money and must pass through the fence, or the agent can't even search for a record.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    if "$" in raw:
+        return True
+    core = raw.replace("$", "").strip()
+    if core.startswith("(") and core.endswith(")"):
+        core = core[1:-1]
+    if re.fullmatch(r"-?\d+\.\d{1,2}", core.replace(",", "")):  # has cents -> looks like an amount
+        return True
+    if re.fullmatch(r"-?\d{1,3}(,\d{3})+", core):               # comma-grouped thousands -> money
+        return True
+    return False
+
+
+def _decide_prompt(goal: str, observation: dict, history: list[dict], nudge: str | None = None,
+                   learned: list[str] | None = None, procedures: list[str] | None = None) -> str:
+    warn = f"\n!!! {nudge}\n" if nudge else ""
+    # Recalled memory: what we've learned about THIS system before, so the agent reasons like an
+    # experienced hire instead of a first-day one.
+    memory = ""
+    if learned:
+        memory = ("\nWHAT YOU'VE LEARNED ABOUT THIS SYSTEM (from past runs — use it to move faster; "
+                  "still verify against the current screen):\n- " + "\n- ".join(learned[:12]) + "\n")
+    # Company SOPs from onboarding — how THIS company does things. Follow them, but they NEVER override
+    # the money fence / gates (an SOP can't authorize an unapproved amount or a duplicate).
+    sop = ""
+    if procedures:
+        sop = ("\nCOMPANY PROCEDURES (this company's way — follow these; they never override the money "
+               "fence or the safety gates):\n- " + "\n- ".join(procedures[:10]) + "\n")
+    return (
+        "You are an autonomous back-office agent operating an unfamiliar freight TMS in a browser, one "
+        "step at a time, to accomplish a goal. Decide the SINGLE next action from the current screen.\n"
+        + warn + memory + sop + "\n"
+        f"GOAL: {goal}\n\n"
+        f"CURRENT SCREEN (observation):\n{json.dumps(observation, indent=1)[:3500]}\n\n"
+        f"RECENT ACTIONS:\n{json.dumps(history[-6:], indent=1)[:1500]}\n\n"
+        "Allowed actions (use exactly these): NAVIGATE(target=url), CLICK(target=button/link text, selector, "
+        "or row/action target like 'Coyote Logistics -> Create Invoice'), TYPE(target=field, value=text), "
+        "SELECT(target=field, value=option), READ(target=field), "
+        "UPLOAD(target=file field/label), DONE(why=...), ESCALATE(target=reason). Rules: take the minimal "
+        "next step; if you are blocked or "
+        "unsure, ESCALATE rather than guess. NEVER decide a monetary amount — for money fields the system "
+        "supplies the approved value, so just TYPE into the amount field and the value will be substituted. "
+        "To attach a document (POD/BOL/rate con), open the load's document/attachment form and UPLOAD "
+        "(target=the file input's label); the FILE itself is supplied by the system — you only pick the field. "
+        "To use a table row action, target it explicitly as '<row visible text> -> <action text>' so the "
+        "actuator clicks the action inside that row. To open a specific record (order, load, invoice), CLICK "
+        "it by its visible reference text in the list/table — do NOT NAVIGATE to a guessed record URL like "
+        "/orders/1002; you don't know the internal id and it will 404. If an action fails twice, switch "
+        "approach (a nav link, or CLICK the row/action shown in tables) rather than repeating it. "
+        "If you search for the record and it is NOT in this system (the search returns no matching results), "
+        "ESCALATE with target 'record not found: <reference>' — do NOT keep hunting, invent a record, or act "
+        "on a different one; a missing record is the human's decision (create it, correct the reference, or "
+        "skip), never yours.\n"
+        "HOW FREIGHT TMSs ARE USUALLY SHAPED (navigation, not a rule to force) — raising an invoice or "
+        "recording a payable is almost always an ACTION ON a specific delivered load/order, not a standalone "
+        "top-level form. So first OPEN the relevant load/order (find it in the loads/orders list and CLICK it "
+        "by its reference), THEN use that record's billing action — often under a 'Billing', 'Invoice', "
+        "'Invoicing', 'Accounting', 'Settlement', or 'Actions' menu on the record. Look for a standalone "
+        "'new invoice' form only if the opened record has no such action. If the current screen already shows "
+        "the billing form, just fill it — don't navigate away.\n"
+        "EDGE CASES — when anything is unclear, ESCALATE with a specific reason; never guess on money:\n"
+        "- ALREADY EXISTS: if a matching invoice/payable for this reference already exists, ESCALATE "
+        "'already exists: <reference>' — NEVER create a duplicate (that double-pays/double-bills).\n"
+        "- AMBIGUOUS: if multiple records match the reference, ESCALATE 'ambiguous: <reference>' and let "
+        "the human pick — do not choose one.\n"
+        "- BLOCKED / NO PERMISSION: if the screen says you lack permission or the action is disabled, "
+        "ESCALATE 'blocked: <what>'.\n"
+        "- REJECTED: if the system rejects the form with a validation error you can't fix from the visible "
+        "message in one try, ESCALATE 'rejected: <error>' rather than retrying blindly.\n"
+        "DO NOT HALLUCINATE — this is a money system:\n"
+        "- Decide ONLY from what is actually on the CURRENT SCREEN above. Never describe a record, number, "
+        "button, or confirmation you have not actually seen in the observation.\n"
+        "- Only report DONE AFTER you have READ the saved record back and seen it exists with the correct "
+        "details. If you cannot confirm it saved, ESCALATE — never claim a success you have not verified.\n"
+        "- If you are unsure whether something worked, READ to check or ESCALATE; do not assume.\n\n"
+        'Respond with ONLY JSON: {"action": "...", "target": "...", "value": "...", "why": "..."}'
+    )

@@ -1,191 +1,103 @@
-# Codex Project Instructions
+# AGENTS.md — Compatibility Entry Point
 
-This repo is the **Neyma Freight Ops Agentic Workflow Engine**: an AI operational
-teammate for freight and logistics teams with roughly 5-50 employees.
+> ### ⛔ **THIS FILE IS NOT THE OPERATING GUIDE.**
+> ### **The operating guide is [`CLAUDE.md`](CLAUDE.md). Read it. It outranks this file.**
+>
+> This file exists so that agents which auto-load `AGENTS.md` (Codex and others) are routed to the
+> canonical control system instead of a stale one. It deliberately holds **no status, no roadmap,
+> and no product definition of its own** — because this repository previously maintained status in
+> four places and all four disagreed with each other and with reality.
 
-The long-term product is broader than invoice extraction. Neyma should read email/PDF
-threads, classify freight documents, extract structured operational data, reconcile it
-against source-of-truth systems, route exceptions to humans, and eventually execute
-approved work inside the customer's existing tools.
+---
 
-The first teammate family is Document & Data Entry. The first production workflow inside it is
-carrier-invoice-to-rate-con reconciliation because it has direct ROI and creates the primitives
-needed for adjacent document workflows: BOL data entry, rate confirmation processing, POD
-capture/filing, customer invoice generation, fuel receipts, and manifest data entry.
+## Read these, in this order
 
-Read these before major planning or architecture work:
+| # | Document | For |
+|---|---|---|
+| 1 | ### [`CLAUDE.md`](CLAUDE.md) | ### **How to work here. Non-negotiable rules, work-unit protocol, stop conditions.** |
+| 2 | [`PRODUCT.md`](PRODUCT.md) | What Neyma is and is not |
+| 3 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | The canonical architecture |
+| 4 | [`docs/CANONICAL-DOCUMENTS.md`](docs/CANONICAL-DOCUMENTS.md) | Which documents may authorise decisions |
+| 5 | ### [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) | ### **The ONLY status authority** |
+| 6 | [`docs/implementation/IMPLEMENTATION-REGISTRY.yaml`](docs/implementation/IMPLEMENTATION-REGISTRY.yaml) | The work units |
 
-- `docs/NEYMA_VISION.md`
-- `docs/PRODUCT_ROADMAP.md`
-- `docs/AGENTIC_ARCHITECTURE.md`
-- `docs/DESIGN_PARTNER_PILOT.md`
-- `docs/WHEN_DESIGN_PARTNER_DATA_ARRIVES.md`
-- `docs/BUILD_SUPERVISION_PROTOCOL.md`
-- `docs/SYNTHETIC_CORPUS.md`
-- `docs/MODEL_STRATEGY.md`
-- `docs/INTERNAL_DOGFOOD_PILOT.md`
+## Product identity, in one line
 
-## Current Phase
+**Neyma is the AI-native operating platform and system of action for small and medium freight
+and logistics companies** (ADR-012; initial ICP: US freight brokerages), spanning
+eleven canonical operational loops (W1–W11).
 
-The project is in **Stage 5 V0 — Human review payloads**, using the realistic synthetic corpus
-as the development proving ground.
+> ### **It is NOT an invoice processor, an AP reconciliation tool, a document-extraction service,
+> a TMS chatbot, or a Slack interface over old workflows.** The repository contains code doing all
+> of those; that code is the first implemented surface, not the product.
 
-Stage 1 extraction still needs a real/client-approved document validation gate before live
-production claims, but core development should continue through the operational workflow spine.
-The next product slice is Review Payload V2 for the internal dogfood pilot: evidence links,
-packet detail URL, unambiguous money actions, aging metadata, severity routing, and found-money
-fields.
+## Status
 
-Built now:
+**Do not read status from this file, and do not add it here.**
+[`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) is the single authority.
 
-- Config-driven carrier invoice extraction.
-- Confidence-scored Pydantic models.
-- PyMuPDF rendering.
-- Instructor-based vision extraction.
-- Stage 1 eval harness with synthetic fixtures, mocks, report, and regression tests.
-- Realistic synthetic freight corpus generator with clean/dirty PDFs and hidden truth.
-- Deterministic reconciliation V0 for generated load scenarios.
-- SQLite-backed workflow state/audit/idempotency V0 for carrier invoice reconciliation.
-- Channel-agnostic human review payloads for variances, duplicates, missing POD, and missing
-  backup.
+At the time of writing it records: Implementation **Phases P0/P1/P2/P3 COMPLETE, P4 the sole READY
+unit (adapter containment) — not begun, R-07 OPEN — NOT CONTAINED** (P3's checkpoint kernel is
+adjudicated COMPLETE and ships dark; only completing P4 closes R-07). If this line and `CURRENT.md`
+ever disagree, **`CURRENT.md` is right and this line is stale.**
 
-Not built yet:
+## Roadmap
 
-- Email/thread ingestion.
-- Multi-document packet classification.
-- POD, BOL, lumper, accessorial-backup, rate-con, and carrier-packet schemas.
-- Slack/Teams/email human-in-the-loop adapter and signed webhooks.
-- Minimal packet detail page and internal dogfood client simulation.
-- Mock TMS and browser automation against mock TMS before any real TMS.
-- Tool permission registry.
-- Browser/TMS read or write agent.
-- Deployment packaging.
+Implementation phases **P0–P14**, gates **G0–G10** —
+[`docs/implementation/PHASE-OUTPUTS.md`](docs/implementation/PHASE-OUTPUTS.md).
 
-Do not wait on real client documents for core development. Advance Stage 1 using the realistic
-synthetic freight corpus while keeping a later real-client validation gate before unsupervised
-production use.
+> ### **The 8-stage roadmap ("Stage 1 … Stage 8") in `docs/PRODUCT_ROADMAP.md` is SUPERSEDED.**
+> Any file telling you the project is at "Stage 1" or "Stage 5" is describing a state from before
+> the architectural reset.
 
-## Stage 1 Gate
+## Non-negotiable rules
 
-Stage 1 development is done when extraction on a realistic generated corpus of public-template-
-inspired, synthetic carrier invoices is accurate enough on required fields, across clean and dirty
-scan variants:
+They live in [`CLAUDE.md`](CLAUDE.md) §5 and are not duplicated here — a duplicated rule set drifts,
+and then two files both claim to be the rules. The load-bearing ones:
 
-- `load_or_pro_number`
-- `linehaul_amount`
-- `total_amount`
+- LLM output is never canonical truth; the model never chooses an amount.
+- `MODEL_INFERRED` cannot authorise a consequential action; `OWNER_ASSERTED` cannot be silently
+  overwritten.
+- Commit Key ≠ Material Facts. Events are facts, never authority. Replay cannot call adapters.
+- Timeout alone never means `FAILED`.
+- Every open obligation has one accountable human owner.
+- No permanent dual orchestration or dual effect-authority systems.
+- Tests protecting unsafe or obsolete behaviour are **replaced**, not preserved.
 
-The eval gate requires:
+## Work-unit protocol
 
-- Required fields each at least 90% accurate.
-- Zero dangerous overconfidence on required fields.
-- Overall accuracy at least 85%.
-- High-confidence predictions at least 85% actually accurate.
+Read the status → pick the **one** `READY` unit → verify dependencies → read its acceptance
+contract → check legacy dispositions → implement only that unit → run the required acceptance,
+concurrency and mutation cases → update status → commit clean. **Stop on any contradiction.**
+Full protocol: [`CLAUDE.md`](CLAUDE.md) §6, stop conditions §7, definition of done §8.
 
-Old tiny mock success is useful harness validation, but it is not enough. The richer synthetic
-corpus is the development gate; later design-partner or customer docs become the production
-validation gate.
-
-## Commands To Verify
-
-Use the project venv because plain `python` may not be on PATH:
+## Verification
 
 ```bash
-.venv/bin/python -m pytest eval/tests -q
-.venv/bin/python scripts/run_extraction.py --render-only
-.venv/bin/python eval/run_eval.py --mock eval/golden_set/mock_v1.json
-.venv/bin/python eval/run_eval.py --mock eval/golden_set/mock_v2.json
+.venv/bin/python -m pytest eval/ -q                                  # full suite
+.venv/bin/python -m pytest eval/tests/test_docs_control_system.py -q  # documentation guards
 ```
 
-Generate the realistic synthetic freight corpus:
+Run validation **last, on the final tree**. See [`CLAUDE.md`](CLAUDE.md) §9 for the verification
+discipline — every rule there is a defect this repository actually shipped.
 
-```bash
-.venv/bin/python scripts/generate_realistic_corpus.py --loads 18 --seed 42
-.venv/bin/python eval/run_corpus_eval.py --mock-from-truth
-.venv/bin/python scripts/run_reconciliation.py
-.venv/bin/python scripts/run_workflow.py --reset
-.venv/bin/python scripts/run_review.py --record-audit
-```
+**End every session by printing the `NEYMA BUILD STATUS` block** — the mandatory, evidence-based
+progress report defined in
+[`docs/implementation/PROGRESS-PROTOCOL.md`](docs/implementation/PROGRESS-PROTOCOL.md). Its
+percentages come from [`BUILD-STATUS.yaml`](docs/implementation/BUILD-STATUS.yaml), which the
+canonical finalizer derives from [`PROGRAM-WEIGHTS.yaml`](docs/implementation/PROGRAM-WEIGHTS.yaml)
+and refuses to let anyone inflate. Progress reporting is part of the control system, not optional.
 
-Real API eval, after `.env` has `ANTHROPIC_API_KEY`:
+## Agent definitions
 
-```bash
-.venv/bin/python eval/run_eval.py --save eval/results/real_$(date +%Y%m%d).json
-```
+`.claude/agents/*` and `.codex/agents/*` are **task lenses**, not authorities. Each now carries a
+supersession banner. Their embedded status blocks and stage roadmaps are historical — see
+[`docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md).
 
-If real/client-approved invoices arrive later, add them to the golden set:
+---
 
-```bash
-.venv/bin/python eval/add_to_golden_set.py path/to/real_invoice.pdf
-```
-
-## Model Strategy
-
-Runtime extraction defaults to Anthropic with `ANTHROPIC_MODEL=claude-opus-4-8`. Real API evals
-should use the same production-candidate model unless intentionally running a bakeoff with
-`EVAL_MODEL`.
-
-Mock evals do not use a model and are only harness validation. Use `docs/MODEL_STRATEGY.md` before
-changing model defaults or claiming production extraction readiness.
-
-## Non-Negotiable Rules
-
-1. Structured output everywhere: Pydantic + Instructor, never free-text parsing.
-2. Matching is deterministic Python, never LLM judgment.
-3. Every document outcome must land in a clear bucket with confidence and reason.
-4. Variances and low-confidence items require a human gate before consequential action.
-5. Idempotency is SHA-256 of file content.
-6. TMS automation uses a human-established session, never stored credentials.
-7. Never mark entry complete until data is read back and verified.
-8. Browser/TMS agents must be bounded by allowlists, timeouts, and early confirm-before-submit.
-9. Keep a queryable audit trail for extraction, matching, approvals, disputes, and entry.
-10. New doc types or clients should be config changes, not code forks.
-11. Keep deployment portable across VM and in-office machine paths.
-12. Workflow state controls tool access. Risky tools require explicit approval and audit.
-13. LangChain/native tool calling is for LLM-accessible tools and retrieval; LangGraph/state
-    machine owns workflow control; deterministic Python owns money decisions.
-
-## Product Build Direction
-
-Build toward workflow packs:
-
-1. Carrier invoice reconciliation.
-2. POD packet review.
-3. Lumper/accessorial validation.
-4. BOL data entry.
-5. Rate confirmation processing.
-6. Customer invoice generation.
-7. Fuel receipt processing.
-8. Manifest data entry.
-9. Billing-ready packet assembly.
-10. Carrier packet completeness.
-11. Missing-document follow-up.
-12. TMS read/write execution for approved work.
-
-Each workflow pack needs schemas, deterministic rules, review UX, state transitions,
-eval fixtures, audit events, and a production gate.
-
-## Known Alignment Watch
-
-The runtime config uses `load_or_pro`; the eval harness uses `load_or_pro_number`.
-Before Stage 2 matching, align this naming or add an explicit translation layer so the
-money path does not split into two field dialects.
-
-## Codex Posture
-
-When working in this repo, read the code first, run the relevant verification command, and
-call out gate status honestly. "Almost" is a failed gate. Browser/TMS work must start against
-mock TMS and only graduate to real/sandbox TMS after adapter, permission, audit, and readback
-tests pass.
-
-## Build Supervision
-
-Substantial build work should follow `docs/BUILD_SUPERVISION_PROTOCOL.md`.
-
-Use two roles conceptually:
-
-- Implementing agent: builds the feature.
-- Principal architect supervisor: audits production readiness, design-partner fit, tool
-  permissioning, evals, and architecture.
-
-The supervisor's Codex-facing prompt is `.codex/agents/principal-architect-supervisor.md`.
+*This file previously carried a "Current Phase" block naming a stage of the superseded
+8-stage roadmap, a 40-command
+verification list targeting the pre-reset suites, a 12-item feature-expansion plan, and links to two
+documents that do not exist. All of it predated the architectural reset. It is preserved in git
+history and has been replaced here by pointers to the canonical control system.*

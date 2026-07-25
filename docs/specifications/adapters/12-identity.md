@@ -1,0 +1,7 @@
+# Adapter Family 12 — Identity Provider / User Directory Adapter *(A17)*
+
+*Registry + defaults apply.*
+
+**Purpose.** ### **Establish WHO an authenticated human is — the source of `actor_type=human` + `actor_id` + authority, which underpins `OWNER_ASSERTED` provenance, Approvals, brake release, and policy activation.** **Not.** ### **NOT a source of business facts; NOT an authority on counterparties (only on OUR authenticated users).** **Direction.** inbound. **Vendors.** the tenant's IdP (SSO/OAuth/SAML), Slack identity — same contract.
+
+**Ops.** `authenticate_user` (`OBSERVATION_ONLY` — establishes an authenticated session); `read_authority` (`DECISION_SUPPORT_READ` — the user's roles/authority per Policy §ownership). **Authority binding.** ### **an authenticated user's action is the ONLY route to `OWNER_ASSERTED` (M-9, ER-10); the IdP asserts identity, the Policy layer maps it to authority (who may approve/release/activate — V12/V14).** **Least privilege.** the adapter reads identity + group membership; it grants nothing. **Security.** ### **a spoofed/unauthenticated actor is `actor_type` ≠ `human` ⇒ can never produce `OWNER_ASSERTED`, an Approval, or a brake release; token/session compromise ⇒ a security event.** **Tenant.** a user belongs to exactly one tenant (cross-tenant identity ⇒ rejected). **Acceptance.** `test_a17_only_authenticated_user_yields_owner_asserted`; `test_a17_idp_asserts_identity_policy_maps_authority`. **Open.** per-tenant IdP + authority mapping — NEEDS VALIDATION (V12).

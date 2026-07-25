@@ -13,6 +13,7 @@ from rich.text import Text
 
 from evaluator import (
     GATE_HIGH_CONF_BUCKET_ACCURACY,
+    HIGH_CONF,
     GATE_OVERALL_ACCURACY,
     GATE_REQUIRED_FIELD_ACCURACY,
     REQUIRED_FIELDS,
@@ -157,9 +158,14 @@ def _section_recommendations(report: EvalReport) -> None:
     overall_ok = report.overall_accuracy >= GATE_OVERALL_ACCURACY
     console.print(f"    Overall accuracy ≥{GATE_OVERALL_ACCURACY*100:.0f}% "
                   f"(={report.overall_accuracy*100:.1f}%): " + _passfail(overall_ok))
-    top = report.high_conf_bucket()
-    calib_ok = (top is None) or (top.n == 0) or (top.accuracy >= GATE_HIGH_CONF_BUCKET_ACCURACY)
-    console.print(f"    High-confidence bucket ≥{GATE_HIGH_CONF_BUCKET_ACCURACY*100:.0f}% accurate: " + _passfail(calib_ok))
+    high = report.high_confidence
+    calib_ok = high.n == 0 or high.accuracy >= GATE_HIGH_CONF_BUCKET_ACCURACY
+    console.print(
+        f"    High-confidence predictions (conf ≥{HIGH_CONF:.2f}) "
+        f"≥{GATE_HIGH_CONF_BUCKET_ACCURACY*100:.0f}% accurate "
+        f"(={high.accuracy*100:.1f}% on {high.n} predictions): "
+        + _passfail(calib_ok)
+    )
     console.print("    → " + ("[green]GATE PASSED — ready for Stage 2.[/green]" if report.production_ready()
                               else "[red]GATE NOT PASSED — tune and re-eval before Stage 2.[/red]"))
     console.print()

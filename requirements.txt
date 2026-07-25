@@ -1,4 +1,6 @@
-# Phase 1 dependencies — install with: pip install -r requirements.txt
+# COMPATIBILITY MIRROR of pyproject.toml [project.dependencies] — pyproject is canonical.
+# Bootstrap canonically with: python3 scripts/check_env.py && pip install -e ".[dev]"
+# (U-HANDOFF-1B: this file previously drifted from pyproject and omitted websocket-client.)
 pydantic>=2.7
 instructor>=1.5
 anthropic>=0.39

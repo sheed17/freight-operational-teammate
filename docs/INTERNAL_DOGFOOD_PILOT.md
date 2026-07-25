@@ -1,3 +1,9 @@
+> # ⛔ QUARANTINED_GUIDANCE — DO NOT FOLLOW
+> **Authority classification: QUARANTINED_GUIDANCE** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **PRODUCT.md / docs/implementation/CURRENT.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Internal Dogfood Pilot
 
 Before Neyma is installed for a real customer, Rasheed should be the first simulated client.
@@ -35,7 +41,7 @@ Company: Neyma Test Freight LLC
 Team size: 12 employees
 Role in pilot: small freight brokerage / trucking operation
 Workflow owner: Rasheed acting as controller / payables reviewer
-Primary channel: local Slack/Teams/email simulator first, real Slack later
+Primary channel: local Slack-shaped simulator first, real Slack later
 TMS: mock TMS first, browser/API adapter later
 Invoice volume: 50-150 invoice packets/week simulated
 ```
@@ -68,6 +74,36 @@ carrier invoice packet
 
 No live TMS write. No real carrier emails. No real customer data.
 
+The current local pilot runner should prove the operational loop in one command:
+
+```text
+synthetic freight email corpus
+→ inbound .eml ingestion and packet/link scoring
+→ local mailbox-to-workflow processing
+→ invoice/rate/load reconciliation
+→ Slack-shaped review cards and packet pages
+→ signed action intake
+→ local callback bridge for email/action-link clicks
+→ follow-up draft behind send gate
+→ mock TMS readback
+→ mock-only payable entry drill
+→ daily summary
+```
+
+The pilot's operational workflow runs must come from the mailbox path. Standalone ingestion
+scoring is still useful gate evidence, but it is not the source of review cards or delivery
+messages.
+
+The multi-day ledger must fail closed unless each day proves:
+
+- mailbox messages were scanned and packet runs were created;
+- mailbox review and delivery counts match the operational workflow output;
+- missing required docs, extraneous/wrong-load docs, and duplicate invoices became reviewable;
+- the request-backup loop was exercised;
+- generated delivery artifacts, including mailbox workflow reports, contain only redacted action
+  token fingerprints;
+- mock TMS write verification remains mock-only with no real TMS write.
+
 ## TMS Simulation Strategy
 
 Neyma should not try to support every TMS before the first pilot. Build one adapter interface and
@@ -75,7 +111,8 @@ move through realism:
 
 ```text
 MockTMSAdapter
-→ browser automation against mock TMS
+→ Playwright/local browser automation against mock TMS
+→ browser-use/browser-use adapter against mock TMS
 → optional real sandbox/demo TMS
 → first design partner's TMS
 → additional TMS adapters only when customers require them
@@ -103,8 +140,17 @@ For dogfood, the mock TMS should behave enough like a real system to expose the 
 - readback mismatch
 - slow page or failed action
 
-Browser-use should first operate only against this mock TMS. The first browser-write path must be
-dry-run or confirm-before-submit and must verify by readback before any state can become done.
+The production browser agent implementation should be
+[`browser-use/browser-use`](https://github.com/browser-use/browser-use). It should first operate
+only against this mock TMS. The first browser-write path must be dry-run or
+confirm-before-submit and must verify by readback before any state can become done.
+
+AscendTMS is a reference TMS-style UI to study for dogfood realism, not the assumed production
+integration. Use it to map common navigation and screen semantics, then update the mock TMS and
+screen-map contract to mirror the important concepts. Production browser-use agents will operate
+inside each customer's actual TMS/accounting/browser systems using customer-specific maps and
+permissions. AscendTMS exploration stays read-only; fake sandbox record creation is allowed only
+for reference mapping, and no live financial/customer action is allowed.
 
 ## Required Simulation Inputs
 
@@ -180,8 +226,13 @@ Dispute
 
 ## Minimal Packet Detail Page
 
-Slack/Teams/email is the notification and quick-action layer. The packet detail page is the
+Slack is the notification and quick-action layer. The packet detail page is the
 evidence canvas.
+
+The generated `site/operator/index.html` page is a local-only dogfood inspection index. It helps
+Rasheed inspect mailbox counts, safety cases, review cards, signed-message summaries, and artifact
+links after a pilot run. It is not a customer-facing dashboard and should not become the routine
+operator surface.
 
 The first packet page should show:
 
@@ -292,17 +343,49 @@ Neyma is ready to show a design partner only after the internal pilot proves:
 - All actions are audited.
 - Browser automation has been tested against mock TMS before any real TMS.
 - Mock TMS readback verification works.
-- No autonomous TMS write exists.
+- No real/live autonomous TMS write exists. The local pilot may run a mock-only ledger entry drill
+  after signed approval, but it must be labeled as local auto-confirmed verification and must not be
+  presented as browser/UI write verification.
 
 ## Build Order From Here
 
 1. Review Payload V2: evidence links, packet URL, money-specific action labels, aging metadata,
-   routing rules, and found-money fields.
-2. Packet detail page V0 for local/internal use.
-3. Review action intake: approve, edit, dispute, request backup, mark duplicate.
-4. Draft follow-up email generator with send gate.
-5. Daily summary generator with aging and found-money counters.
-6. Slack/Teams/email adapter.
-7. Mock TMS read adapter.
-8. Internal one-week simulated pilot.
-9. Only then design-partner deployment planning.
+   routing rules, and found-money fields. **Built.**
+2. Packet detail page V0 for local/internal use. **Built.**
+3. Review action intake: approve expected amount, approve full amount, edit, dispute, request
+   backup, mark duplicate. **Built.**
+4. Draft follow-up email generator with send gate. **Built.**
+5. Daily summary generator with aging and found-money counters. **Built.**
+6. Local one-command dogfood pilot runner. **Built.**
+7. Mock TMS UI/data. **Built.**
+8. Bounded mock TMS read adapter. **Built.**
+9. Browser-read/readback tests against mock TMS. **Built.**
+10. Browser-use/browser-use adapter skeleton against mock TMS. **Built.**
+11. Tool permission registry. **Built.**
+12. Channel-neutral Slack-first delivery adapter with signed action intake. **Built.**
+    Renders review payloads into channel-neutral messages with HMAC-signed, expiring, single-use
+    action tokens; verifies the signature, applies the action through the existing review action
+    intake (workflow state cannot be bypassed), mutates the message state text, triggers the
+    send-gated follow-up draft, and audits every step. Local artifacts/audits redact tokens to
+    fingerprints, and the dogfood runner advances review state through signed actions rather than
+    a direct local mutation path.
+12a. Slack transport (Block Kit + `v0` request-signature verification + interactive intake) and
+    local email-link artifact support (multipart MIME + signed action links + gated local outbox).
+    **Built.** Both sit on the signed intake; real Slack workspace posting is gated.
+12b. Mock TMS realism pass: MC#/USDOT#/SCAC, settlement number and AP voucher status
+    (PENDING/APPROVED/ON_HOLD/SHORT_PAY/PAID), payment terms, fuel basis, accessorial terms, and a
+    required-document checklist. **Built** (additive; read-adapter contract preserved).
+12c. Delivery dispatch layer for Slack route selection, `DRY_RUN`/`LOCAL_OUTBOX`/`LIVE`
+    modes, audited dispatch attempts, token-redacted artifacts, and live Slack outbound gating.
+    **Built.**
+12d. Local signed-action callback server for dogfood link-click testing. **Built.** Serves
+    `/email/action?token=...` and `POST /actions/signed` locally, applies actions only through the
+    signed intake/workflow state machine, and is exercised by the dogfood runner. No public
+    endpoint or live send is implied.
+13. Internal pilot session ledger. **Built.** Run:
+    `.venv/bin/python scripts/run_internal_pilot_session.py --days 7 --loads-per-day 18 --text`.
+    It stores each day under its own workspace, writes `pilot_session_ledger.json`, and blocks
+    design-partner readiness if ingestion, evidence, callback action, token redaction, mock TMS
+    readback, mock write verification, or no-real-write gates fail.
+14. Internal one-week simulated pilot execution.
+15. Only then design-partner deployment planning.

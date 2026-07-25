@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.workflow import WorkflowStore, process_load_packet  # noqa: E402
 
@@ -28,6 +29,8 @@ def load_synthetic_loads(corpus: Path) -> list[FreightLoadForReconciliation]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="Synthetic corpus directory")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite workflow DB path")
     parser.add_argument("--reset", action="store_true", help="Delete existing DB before run")
@@ -39,7 +42,7 @@ def main() -> int:
         db.unlink()
 
     loads = load_synthetic_loads(corpus)
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="run_workflow.py"))
     seen_invoice_keys: set[tuple[str, str]] = set()
     try:
         for load in loads:

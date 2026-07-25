@@ -1,0 +1,330 @@
+# IMPLEMENTATION SURFACE REGISTRY
+#
+# Which load-bearing architecture concepts are IMPLEMENTED versus SPECIFICATION_ONLY.
+#
+# The zero-context rehearsal had to grep the source tree to answer this question - the distinction
+# lived only in prose. This registry makes it machine-checkable, and
+# eval/tests/test_docs_control_system.py enforces it in both directions:
+#
+#   - IMPLEMENTED / PARTIALLY_IMPLEMENTED / LEGACY_IMPLEMENTATION entries must cite evidence
+#     (file + symbol) that actually exists in the tree; and
+#   - SPECIFICATION_ONLY / BLOCKED entries must cite absent_symbols that are verifiably ABSENT
+#     from src/ - so a specification-only concept cannot be presented as implemented, and an
+#     implementation cannot land without this registry noticing.
+#
+# Statuses: IMPLEMENTED | PARTIALLY_IMPLEMENTED | SPECIFICATION_ONLY | LEGACY_IMPLEMENTATION | BLOCKED
+#
+#   LEGACY_IMPLEMENTATION = a pre-reset analogue exists and carries a disposition in
+#   LEGACY-DISPOSITION.md, but the CANONICAL concept is not built. It must never be read as
+#   "done" - it is the thing the owning unit replaces.
+
+concepts:
+
+  - name: Tenant
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-001-authority-model.md
+    evidence:
+      - path: src/freight_recon/tenant.py
+        symbol: require_tenant
+      - path: src/freight_recon/workflow.py
+        symbol: _require_schema_ready
+    owning_unit: P2
+    note: required at construction, sentinel-validated, first in every key, DB-enforced
+
+  - name: Commit Key
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-009-concurrency-and-reservations.md
+    evidence:
+      - path: src/freight_recon/commit_key.py
+        symbol: LogicalEffect
+      - path: src/freight_recon/commit_key.py
+        symbol: CanonicalOccurrence
+    owning_unit: P1
+    note: amount provably excluded; occurrence identity canonical; forward-only
+
+  - name: Material Facts
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-005-approval-binding-and-drift.md
+    evidence:
+      - path: src/freight_recon/fingerprint.py
+        symbol: canonical_payload
+      - path: src/freight_recon/fingerprint.py
+        symbol: drift_diff
+      - path: src/freight_recon/checkpoint.py
+        symbol: material_fact_set
+    owning_unit: P3
+    note: >-
+      P3 delivered the fp_v1 canonical fingerprint, payload retention and field-level
+      drift-voiding at checkpoint step 2 (the F-01 mechanism, live). Still partial because the
+      durable Approval lifecycle that composes and stores approved payloads is P6/P8 work -
+      approvals enter the checkpoint as typed, validated inputs today.
+
+  - name: Effect Grant ledger (foundation)
+    status: IMPLEMENTED
+    specification: docs/specifications/entities/04-effect-grant.md
+    evidence:
+      - path: src/freight_recon/migrations/phase2_tenant_first.py
+        symbol: effect_grants
+      - path: src/freight_recon/workflow.py
+        symbol: claim_operation_commit
+    owning_unit: P2
+    note: one canonical ledger, 8 states in the CHECK constraint, (tenant, commit_key) unique
+
+  - name: Checkpoint (seven-step)
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-004-effect-boundary.md
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: run_checkpoint
+      - path: src/freight_recon/checkpoint.py
+        symbol: seven_step_checkpoint
+      - path: src/freight_recon/checkpoint.py
+        symbol: CheckpointPassed
+    owning_unit: P3
+    note: >-
+      the seven checks in ONE transaction with the witness insert and the mint, canonical order,
+      short-circuit-first-failure (SD-7). SHIPS DARK - no production path routes through it
+      until P4 contains the adapters; R-07 stays OPEN - NOT CONTAINED. (P3 touched no live-write
+      path; subsequent P4 checkpoints have since deleted EP-6/EP-7/EP-9/EP-10, while EP-1/EP-3/
+      EP-8/EP-14 remain and nothing routes through the kernel yet - see CURRENT.md.)
+
+  - name: Checkpoint Witness
+    status: IMPLEMENTED
+    specification: docs/specifications/entities/05-checkpoint-witness.md
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: mint_checkpoint_witness
+      - path: src/freight_recon/checkpoint.py
+        symbol: CheckpointWitness
+      - path: src/freight_recon/migrations/phase3_checkpoint.py
+        symbol: checkpoint_witnesses
+    owning_unit: P3
+    note: >-
+      unconstructable in-process pass (no public constructor, single-use, unpicklable) plus the
+      append-only durable record (UPDATE/DELETE refused by trigger), 1:1 with its grant by a
+      tenant-consistent unique FK
+
+  - name: Effect claim CAS
+    status: IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-004-effect-boundary.md
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: claim_grant_cas
+      - path: src/freight_recon/checkpoint.py
+        symbol: GRANTED_TO_CLAIMED
+    owning_unit: P3
+    note: >-
+      atomic GRANTED -> CLAIMED revalidating state, expiry, brake token and policy version
+      inside the UPDATE's WHERE clause; witness freshness and the confusion check precede it;
+      zero rows updated means the caller does nothing
+
+  - name: Adapter containment boundary (P4)
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/specifications/acceptance/adapter-boundary-acceptance.md
+    evidence:
+      - path: src/freight_recon/effect_boundary.py
+        symbol: execute_effect
+      - path: src/freight_recon/effect_boundary.py
+        symbol: ExecutionCapability
+      - path: src/freight_recon/effect_boundary.py
+        symbol: detect_orphan_effect_attempts
+      - path: eval/phase0/import_probe.py
+        symbol: effect_adapter_import_violations
+    owning_unit: P4
+    note: >-
+      The containment BOUNDARY exists and is acceptance- and mutation-proven: the single-door
+      execute_effect algorithm (claim CAS -> record EffectAttempted -> touch world once with an
+      unforgeable single-use capability -> verify), the CLAIMED->ATTEMPTED->VERIFIED/
+      UNKNOWN_OUTCOME/FAILED outcome machine that never downgrades UNKNOWN to FAILED, orphan
+      detection (Sev-0 + auto-brake), the cross-tenant GLOBAL-brake path, and the boundary-aware
+      import gate (detection). PARTIALLY, not fully, IMPLEMENTED and SHIPS DARK: no production path
+      routes through it yet, EP-6/7/9/10 are deleted but EP-1/EP-3 (ADAPT), EP-8/EP-14 (READ_ONLY)
+      and brain_runtime remain as five effect-capable import edges, and the gate is not yet flipped
+      to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those five and turns the gate
+      ON.
+
+  - name: Work Item
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/01-work-item.md
+    absent_symbols: [WorkItem, work_items]
+    owning_unit: P6
+
+  - name: Pipeline Instance
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/02-pipeline-instance.md
+    absent_symbols: [PipelineInstance, pipeline_instances]
+    owning_unit: P6
+
+  - name: Expectation
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/11-expectation.md
+    absent_symbols: [ExpectationMachine, expectations_table]
+    owning_unit: P8
+
+  - name: Obligation
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/semantic-model.md
+    absent_symbols: [Obligation, obligations_table]
+    owning_unit: P6
+    note: the accountable-owner semantics land with Work Item ownership
+
+  - name: Evidence (content-addressed)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/entities/08-evidence.md
+    absent_symbols: [EvidenceRecord, evidence_store]
+    owning_unit: P7
+
+  - name: Provenance classes
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-002-state-classes-and-lineage.md
+    evidence:
+      - path: src/freight_recon/checkpoint.py
+        symbol: ProvenanceClass
+      - path: src/freight_recon/checkpoint.py
+        symbol: GateReadOfInferredFact
+    owning_unit: P7
+    note: >-
+      P3 delivered the canonical six-member enum and the raise-on-read gate rule: inside the
+      checkpoint, a MODEL_INFERRED material fact cannot be read by a consequential gate and
+      fails step 4 (AC-SAFE-015). Still partial because extraction output does not yet carry
+      its class - provenance records and lineage are P7; until then the rule protects only
+      facts that enter through the checkpoint's typed inputs.
+
+  - name: Policy (typed, compile-or-refuse)
+    status: LEGACY_IMPLEMENTATION
+    specification: docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+    evidence:
+      - path: src/freight_recon/tool_permissions.py
+        symbol: ToolPermission
+    owning_unit: P8
+    note: >-
+      Legacy permission checks exist (S9/S3 dispositions); a prompt string is not a policy.
+      P3 BOUNDARY, adjudicated at P3 from independent-review finding F-G (the implementer's F-2):
+      P3 legitimately contains the MINIMAL STRUCTURAL contract checkpoint step 5 cannot be written
+      without - the GateDecision vocabulary and a fail-closed GateRegistry lookup, confined to the
+      kernel and guarded there. That is a lookup, not a policy runtime, so this concept's owning
+      unit stays P8. P8 still owns: rule authoring, compilation, versioning, activation,
+      precedence and conflict resolution, richer action-class descriptors, the autonomy runtime,
+      and the expectation/exception/compensation systems. Nothing in production registers a gate
+      yet (P3 ships dark), which is why AC-CKPT-6-missing stays deferred and ungreen.
+
+  - name: Brake (admission control)
+    status: PARTIALLY_IMPLEMENTED
+    specification: docs/architecture/decisions/ADR-011-human-brake.md
+    evidence:
+      - path: src/freight_recon/brake.py
+        symbol: BrakeStore
+      - path: src/freight_recon/migrations/phase3_checkpoint.py
+        symbol: platform_brake
+    owning_unit: P8
+    note: >-
+      P3 delivered canonical admission control - two states, no TTL, monotonic versions, the
+      one-way ratchet (automation may engage/widen, never release/narrow), read inside the
+      checkpoint transaction and revalidated by the claim CAS. Still partial: the six legacy
+      live-write paths do not consult it until P4 routes them, brake events are P5, and the
+      full release-evidence machinery is P8. The legacy ops_control pause flag remains a
+      convention beside it (S3 disposition).
+
+  - name: Canonical events (98 contracts)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/events/registry.md
+    absent_symbols: [EventContract, emit_canonical_event]
+    owning_unit: P5
+    note: a legacy audit_events trail exists (implemented, P2-scoped); it is not the event corpus
+
+  - name: Outbox / inbox
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-008-durable-workflows.md
+    absent_symbols: [TransactionalOutbox, dedup_inbox]
+    owning_unit: P5
+
+  - name: Replay isolation
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-008-durable-workflows.md
+    absent_symbols: [replay_sandbox, ReplayContext]
+    owning_unit: P5
+    note: replay-cannot-mint-authority is currently a rule about code that does not exist yet
+
+  - name: Reconciliation (canonical)
+    status: LEGACY_IMPLEMENTATION
+    specification: docs/architecture/decisions/ADR-006-verification-and-unknown-outcomes.md
+    evidence:
+      - path: src/freight_recon/reconciliation.py
+        symbol: reconcile_load
+    owning_unit: P8
+    note: legacy deterministic matcher (S7, REWRITE); canonical Expectation/Exception/Conflict absent
+
+  - name: The eleven operational loops
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/workflows/registry.md
+    absent_symbols: [W6DocumentationLoop, workflow_loop_registry]
+    owning_unit: P10
+    note: legacy code touches W6/W8-shaped work; no loop is implemented to canonical architecture
+
+  - name: Delivered Load Closure shadow slice (formerly "first vertical slice W6 -> W8")
+    status: BLOCKED
+    specification: PRODUCT.md
+    absent_symbols: [vertical_slice_w6_w8, delivered_load_closure]
+    owning_unit: P10
+    note: >-
+      Rebaselined by U-REBASELINE-1: the wedge is Delivered Load Closure (PRODUCT.md section 15,
+      HYPOTHESIS). NEEDS DESIGN-PARTNER VALIDATION (V-W1) and blocked behind P9 - recorded as
+      BLOCKED rather than merely unimplemented because a validation gate, not just sequencing,
+      stands in front of it
+
+  - name: Communications subsystem (ingestion + governed sends)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-015-communications-subsystem.md
+    absent_symbols: [communications_ingestion, outbound_message_effect, delivery_state_verifier]
+    owning_unit: P9
+    note: >-
+      ADR-015 (U-REBASELINE-1) - email/SMS as evidence, surface and governed external effect;
+      ingestion lands at P9, supervised sends at P12. Legacy email triage code exists under a
+      disposition; the canonical subsystem is unbuilt.
+
+  - name: Production deployment topology (PostgreSQL, workers, object storage, secrets)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-016-production-topology.md
+    absent_symbols: [postgres_store, transactional_outbox_pg, production_scheduler]
+    owning_unit: P5
+    note: >-
+      ADR-016 (U-REBASELINE-1) - PostgreSQL production persistence lands at P5; deployment,
+      environments and operations at P11. SQLite remains dev/test-only. Every item is
+      SPECIFICATION_ONLY; nothing production-shaped exists.
+
+  - name: Web control plane and tenant/integration lifecycle
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md
+    absent_symbols: [control_plane_app, tenant_onboarding, integration_health]
+    owning_unit: P11
+    note: ADR-017 (U-REBASELINE-1) - the thin control plane and onboarding land at P11
+
+  - name: Workflow-authority migration model
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-013-workflow-authority-migration.md
+    absent_symbols: [authority_migration_record, authority_cutover]
+    owning_unit: P13
+    note: >-
+      ADR-013 (U-REBASELINE-1) - the thirteen-field customer-authorized migration model; no
+      migration capability exists and none is offered before P13.
+
+  - name: Conversational layer channel stores (one conversation, no per-channel memory)
+    status: SPECIFICATION_ONLY
+    specification: docs/architecture/decisions/ADR-019-conversational-operations-layer.md
+    absent_symbols: [slack_conversation_store, teams_conversation_store, voice_conversation_store, channel_conversation_memory]
+    owning_unit: P11
+    note: >-
+      ADR-019 section 7 forward tripwire (U-REBASELINE-1A, closing review finding F-15): channel
+      divergence becomes REAL the moment a second conversational channel lands with its own store.
+      These absent_symbols fail the build if any per-channel conversation store appears before the
+      single cross-channel conversation exists at P11.
+
+  - name: Customer Operational System Map (TMS-agnostic operational graph)
+    status: SPECIFICATION_ONLY
+    specification: docs/specifications/operational-system-map.md
+    absent_symbols: [operational_system_map, operational_graph_node]
+    owning_unit: P11
+    note: >-
+      ADR-018 (U-REBASELINE-1) - the TMS is one node, not the center; the per-tenant Operational
+      System Map is an onboarding deliverable at P11 and the domain model is authored
+      TMS-schema-independent at P9. Nothing built yet.

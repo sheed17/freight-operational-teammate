@@ -1,0 +1,67 @@
+# Copy this file to configs/clients/<partner_id>.yaml for a supervised design-partner pilot.
+# Keep secrets in environment variables only. Do not commit real customer documents or credentials.
+
+client_id: design_partner_template
+company_name: Design Partner Freight LLC
+simulation_role: supervised_design_partner_pilot
+
+operator:
+  name: Partner Controller
+  role: controller/payables reviewer
+
+review:
+  primary_channel: slack_or_email
+  follow_up_tone: short_and_direct
+  packet_base_url: https://<neyma-host>/packets
+  evidence_base_url: https://<neyma-host>/evidence
+  thresholds:
+    critical_variance_amount: 100.00
+    medium_variance_amount: 25.00
+
+tms:
+  mode: customer_specific_mapping_required
+  system_name: TBD
+  browser_automation_allowed_against: customer_system_read_only_after_screen_map
+  live_write_enabled: false
+  tms_write_enabled: false
+  credentials_storage: none
+  session_policy: human_established_session_only
+  screen_map_path: configs/tms/<partner_id>_screen_map.json
+
+pilot:
+  scope: carrier_invoice_reconciliation
+  supervised: true
+  live_sends_enabled: false
+  autonomous_tms_write_enabled: false
+  historical_docs_required: 20-50 closed-load carrier invoice PDFs
+  matching_data_required: rate confirmations or exported load/payable data
+  success_metrics:
+    - extraction_accuracy_required_fields
+    - dangerous_overconfidence_count
+    - review_time_per_invoice
+    - variances_caught
+    - missing_backup_caught
+    - duplicate_candidates
+    - false_positive_rate
+    - human_correction_rate
+
+delivery:
+  default_channel: slack
+  action_token_secret_env: NEYMA_DELIVERY_SECRET_<PARTNER_ID>
+  slack:
+    enabled: true
+    outbound_enabled: false
+    signing_secret_env: NEYMA_SLACK_SIGNING_SECRET_<PARTNER_ID>
+    bot_token_env: NEYMA_SLACK_BOT_TOKEN_<PARTNER_ID>
+    default_channel_id: C0REPLACE
+    routing:
+      IMMEDIATE_PING: C0REPLACE
+      CHANNEL_POST: C0REPLACE
+      DIGEST_ONLY: C0REPLACE
+  email:
+    enabled: true
+    sender: neyma@<partner-domain>
+    to:
+      - controller@<partner-domain>
+    action_base_url: https://<neyma-host>/email/action
+    outbound_enabled: false

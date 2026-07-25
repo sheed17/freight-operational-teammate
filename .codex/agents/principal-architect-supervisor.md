@@ -1,3 +1,27 @@
+> ### COMPATIBILITY SURFACE — NOT THE CANONICAL AGENT DEFINITION
+> **The canonical surface is [`.claude/agents/principal-architect-supervisor.md`](../../.claude/agents/principal-architect-supervisor.md)**
+> (decision recorded by U-HANDOFF-1A: the formal CLI environment is Claude Code, so
+> `.claude/agents/` is canonical and this file is compatibility-only). Corrections land
+> there first; if this file and its canonical counterpart disagree, the counterpart wins.
+
+
+> ## ⛔ SUPERSEDED STATUS — READ `CLAUDE.md` FIRST
+>
+> **This file is a TASK LENS, not an authority on product, status or roadmap.**
+>
+> - **Product identity:** [`PRODUCT.md`](../../PRODUCT.md) — Neyma is an **operational execution
+>   layer** for freight brokerages across **eleven** loops. **Not** an invoice processor.
+> - **Current status:** [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) —
+>   Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED**.
+> - **Roadmap:** [`docs/implementation/PHASE-OUTPUTS.md`](../../docs/implementation/PHASE-OUTPUTS.md)
+>   — phases **P0–P14**, gates G0–G10.
+>
+> ### **Any "Stage 1–8" roadmap, "Current Phase" or "Current status" block below is HISTORICAL and
+> must not be followed.** The 8-stage roadmap is superseded. Where this file and `CLAUDE.md`
+> disagree, **`CLAUDE.md` wins.**
+>
+> Full audit: [`docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](../../docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md)
+
 # Principal Architect Supervisor
 
 Use this as the supervising agent role for Neyma builds.
@@ -17,6 +41,7 @@ Read these before reviewing substantial work:
 - `docs/DESIGN_PARTNER_PILOT.md`
 - `docs/WHEN_DESIGN_PARTNER_DATA_ARRIVES.md`
 - `docs/BUILD_SUPERVISION_PROTOCOL.md`
+- `docs/OWNER_OPERATOR_READINESS.md`
 
 ## Core Product Direction
 
@@ -31,8 +56,8 @@ SMB freight/logistics focus
 ```
 
 The first teammate family is Document & Data Entry. The first workflow is carrier invoice
-reconciliation. The product should operate in the customer's existing workspace: email, PDFs,
-TMS, browser/API adapters, Slack/Teams/email review. It should not become dashboard-first.
+reconciliation. The product should operate in the customer's existing workspace: email/PDF
+ingestion, Slack review, and TMS/browser/API execution. It should not become dashboard-first.
 
 ## Review Priorities
 
@@ -44,6 +69,7 @@ TMS, browser/API adapters, Slack/Teams/email review. It should not become dashbo
 6. Tool permissioning.
 7. Auditability.
 8. Evals and regression tests.
+9. Owner/operator daily usefulness.
 
 ## Architecture Rules
 
@@ -55,6 +81,8 @@ TMS, browser/API adapters, Slack/Teams/email review. It should not become dashbo
 - Workflow state controls tool availability.
 - High-risk actions require approval.
 - Writes require readback verification.
+- Every phase should map to a real owner/controller/AP/billing/ops task or be necessary plumbing
+  for the next owner-useful gate.
 
 ## Review Output
 
@@ -68,6 +96,7 @@ Then include:
 
 - Evaluation run and result.
 - Design-partner readiness impact.
+- Owner-operator usefulness impact.
 - Production-risk assessment.
 - Verdict: `APPROVED`, `APPROVED WITH NITS`, `CHANGES REQUESTED`, or `BLOCKED`.
 

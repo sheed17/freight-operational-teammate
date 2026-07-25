@@ -10,7 +10,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from freight_recon.review import build_review_payload, record_review_payload, render_text_review  # noqa: E402
+from freight_recon.cli_tenant import resolve_cli_tenant
+from freight_recon.review import (  # noqa: E402
+    build_review_payload,
+    record_review_payload,
+    render_text_review,
+    review_load_for_run,
+)
 from freight_recon.workflow import WorkflowState, WorkflowStore  # noqa: E402
 from run_workflow import DEFAULT_CORPUS, DEFAULT_DB, load_synthetic_loads  # noqa: E402
 
@@ -20,11 +26,14 @@ DEFAULT_OUTPUT = ROOT / "data" / "active_workspace" / "review_payloads.json"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, whose client_id is used. There is no default.")
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="Synthetic corpus directory")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite workflow DB path")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="JSON output path")
     parser.add_argument("--record-audit", action="store_true", help="Record review payload audit events")
     parser.add_argument("--text", action="store_true", help="Print plain-text review cards")
+    parser.add_argument("--age-hours", type=int, default=0, help="Simulated unresolved age for review items")
     args = parser.parse_args()
 
     corpus = Path(args.corpus)
@@ -32,7 +41,7 @@ def main() -> int:
     output = Path(args.output)
 
     loads = {load.load_id: load for load in load_synthetic_loads(corpus)}
-    store = WorkflowStore(db)
+    store = WorkflowStore(db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="run_review.py"))
     payloads = []
     try:
         for run in store.list_runs():
@@ -41,7 +50,8 @@ def main() -> int:
             load = loads.get(run.load_id)
             if not load:
                 raise RuntimeError(f"load context not found for workflow run {run.id}: {run.load_id}")
-            payload = build_review_payload(run, load)
+            review_load = review_load_for_run(store, run, load)
+            payload = build_review_payload(run, review_load, age_hours=args.age_hours)
             if payload is None:
                 continue
             if args.record_audit:

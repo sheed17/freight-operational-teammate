@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .workflow_direction import WorkflowDirection
+
 MONEY = Decimal("0.01")
 
 
@@ -36,15 +38,32 @@ class ChargeLine(BaseModel):
 
 
 class FreightLoadForReconciliation(BaseModel):
+    workflow_direction: WorkflowDirection = WorkflowDirection.CARRIER_PAYABLE
     load_id: str
+    pro_number: str | None = None
+    bol_number: str | None = None
+    manifest_number: str | None = None
     invoice_number: str
     carrier: str
+    carrier_mc: str | None = None
+    customer: str | None = None
+    shipper: str | None = None
+    consignee: str | None = None
+    origin: str | None = None
+    destination: str | None = None
+    equipment: str | None = None
+    commodity: str | None = None
+    pickup_date: str | None = None
+    delivery_date: str | None = None
     rate_linehaul: Decimal
     rate_fuel: Decimal
     invoice_linehaul: Decimal
     invoice_fuel: Decimal
     rate_accessorials: list[ChargeLine] = Field(default_factory=list)
     invoice_accessorials: list[ChargeLine] = Field(default_factory=list)
+    scenario: str | None = None
+    expected_outcome: str | None = None
+    variance_reasons: list[str] = Field(default_factory=list)
     documents: dict[str, str] = Field(default_factory=dict)
 
     @classmethod
@@ -53,6 +72,7 @@ class FreightLoadForReconciliation(BaseModel):
 
 
 class ReconciliationResult(BaseModel):
+    workflow_direction: WorkflowDirection = WorkflowDirection.CARRIER_PAYABLE
     load_id: str
     invoice_number: str
     carrier: str
@@ -64,6 +84,18 @@ class ReconciliationResult(BaseModel):
 
 def money(value: Decimal | str | int | float) -> Decimal:
     return Decimal(str(value)).quantize(MONEY, rounding=ROUND_HALF_UP)
+
+
+def agreed_rate_total(load: "FreightLoadForReconciliation") -> Decimal:
+    """The deterministic rate-confirmed total a carrier is owed: linehaul + fuel + agreed accessorials.
+
+    For a cleanly MATCHED invoice the carrier billed exactly this, so it is the only figure safe to put
+    on an auto-proposed 'record payable' button — it comes from the rate con, never from a model.
+    """
+    total = money(load.rate_linehaul) + money(load.rate_fuel)
+    for charge in load.rate_accessorials:
+        total += money(charge.amount)
+    return money(total)
 
 
 def normalize_charge_name(name: str) -> str:
@@ -81,24 +113,31 @@ def _accessorial_map(lines: list[ChargeLine]) -> dict[str, ChargeLine]:
 def reconcile_load(
     load: FreightLoadForReconciliation,
     *,
-    seen_invoice_keys: set[tuple[str, str]] | None = None,
+    workflow_direction: WorkflowDirection | str | None = None,
+    seen_invoice_keys: set[tuple[str, str, str]] | None = None,
     tolerance: Decimal = Decimal("0.00"),
 ) -> ReconciliationResult:
     """Classify a single load's invoice against rate-confirmed values and packet evidence."""
+    direction = WorkflowDirection(workflow_direction or load.workflow_direction)
     tolerance = money(tolerance)
     reasons: list[str] = []
     review_reasons: list[str] = []
     variance_amount = Decimal("0.00")
 
-    invoice_key = (load.carrier.strip().lower(), load.invoice_number.strip().lower())
+    invoice_key = (
+        direction.value,
+        load.carrier.strip().lower(),
+        load.invoice_number.strip().lower(),
+    )
     if seen_invoice_keys is not None:
         if invoice_key in seen_invoice_keys:
             return ReconciliationResult(
+                workflow_direction=direction,
                 load_id=load.load_id,
                 invoice_number=load.invoice_number,
                 carrier=load.carrier,
                 outcome=ReconciliationOutcome.DUPLICATE,
-                reasons=[f"duplicate invoice number {load.invoice_number} for carrier {load.carrier}"],
+                reasons=[_duplicate_reason(load, direction)],
                 needs_human_review=True,
             )
         seen_invoice_keys.add(invoice_key)
@@ -147,6 +186,7 @@ def reconcile_load(
 
     if reasons:
         return ReconciliationResult(
+            workflow_direction=direction,
             load_id=load.load_id,
             invoice_number=load.invoice_number,
             carrier=load.carrier,
@@ -158,6 +198,7 @@ def reconcile_load(
 
     if review_reasons:
         return ReconciliationResult(
+            workflow_direction=direction,
             load_id=load.load_id,
             invoice_number=load.invoice_number,
             carrier=load.carrier,
@@ -167,6 +208,7 @@ def reconcile_load(
         )
 
     return ReconciliationResult(
+        workflow_direction=direction,
         load_id=load.load_id,
         invoice_number=load.invoice_number,
         carrier=load.carrier,
@@ -177,8 +219,15 @@ def reconcile_load(
 
 
 def reconcile_many(loads: list[FreightLoadForReconciliation]) -> list[ReconciliationResult]:
-    seen_invoice_keys: set[tuple[str, str]] = set()
+    seen_invoice_keys: set[tuple[str, str, str]] = set()
     return [reconcile_load(load, seen_invoice_keys=seen_invoice_keys) for load in loads]
+
+
+def _duplicate_reason(load: FreightLoadForReconciliation, direction: WorkflowDirection) -> str:
+    if direction == WorkflowDirection.CUSTOMER_INVOICE:
+        customer = load.customer or "customer"
+        return f"duplicate customer invoice number {load.invoice_number} for {customer}"
+    return f"duplicate carrier invoice number {load.invoice_number} for carrier {load.carrier}"
 
 
 def _requires_backup(charge: ChargeLine) -> bool:

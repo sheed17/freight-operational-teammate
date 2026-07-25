@@ -1,0 +1,134 @@
+{
+  "tms_name": "TruckingOffice",
+  "environment": "live_design_partner_account",
+  "source": "live_cdp_readonly_dom_observation",
+  "default_automation_mode": "READ_ONLY",
+  "allowed_domains": ["secure.truckingoffice.com", "*.truckingoffice.com"],
+  "prohibited_global_actions": [
+    "submit payment",
+    "send email",
+    "batch payment",
+    "export to quickbooks",
+    "delete record",
+    "change billing",
+    "invite user"
+  ],
+  "screens": [
+    {
+      "screen_id": "invoices_list",
+      "name": "Invoices (Accounts Receivable list)",
+      "url_pattern": "https://secure.truckingoffice.com/invoices*",
+      "navigation_path": ["Invoices"],
+      "purpose": "Read the AR invoice list to verify an invoice exists with the expected number and total after a write (deterministic readback target).",
+      "risk": "LOW",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "top nav Invoices",
+        "Add Invoice -> /invoices/customer",
+        "No Load Invoice -> /no_load_invoice/new",
+        "Unpaid -> /invoices?scope=unpaid",
+        "invoice rows table"
+      ],
+      "fields": [
+        {"name": "invoice_number", "label": "Invoice #", "selector_hint": "invoices table invoice-number column", "required_for_read": true},
+        {"name": "customer", "label": "Customer", "selector_hint": "invoices table customer column", "required_for_read": true},
+        {"name": "total_charge", "label": "Total", "selector_hint": "invoices table amount column", "required_for_read": true},
+        {"name": "status", "label": "Paid/Unpaid", "selector_hint": "invoices table status column", "required_for_read": false}
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read invoice rows", "filter by scope (unpaid/all)"],
+        "forbidden_actions": ["batch payment", "email invoice", "export to quickbooks", "delete invoice"],
+        "human_confirmation_point": null,
+        "readback_verification_point": "Match the newly written invoice by invoice_number, then compare total_charge to the human-approved amount."
+      },
+      "failure_modes": [
+        "empty list on a fresh account (Welcome to Invoices!)",
+        "amount formatting includes currency symbol/commas",
+        "multiple invoices share a customer (must match by invoice_number)",
+        "session expires"
+      ],
+      "observation_status": "OBSERVED",
+      "observation_evidence": [
+        "CDP read-only DOM at secure.truckingoffice.com/invoices; heading 'Invoices | Welcome to Invoices!' (empty on fresh account)",
+        "Action links observed: Add Invoice -> /invoices/customer, No Load Invoice -> /no_load_invoice/new, Batch Payment -> /batch_payments/new, Quickbooks Exporter -> /qbo_invoices, Unpaid -> /invoices?scope=unpaid"
+      ]
+    },
+    {
+      "screen_id": "no_load_invoice_new",
+      "name": "New No Load Invoice (standalone AR invoice)",
+      "url_pattern": "https://secure.truckingoffice.com/no_load_invoice/new",
+      "navigation_path": ["Invoices", "No Load Invoice"],
+      "purpose": "Create a standalone customer invoice not tied to a load. This is the first real gated-write target: the approved amount binds to Total Charge.",
+      "risk": "HIGH",
+      "automation_mode": "PREPARE_ONLY",
+      "stable_selectors": [
+        "form post action /no_load_invoice",
+        "Customer finder input customer_finder_field",
+        "input invoice[total_charge]",
+        "Save button (commit)"
+      ],
+      "fields": [
+        {"name": "customer", "label": "Customer", "selector_hint": "input[name=customer_finder_field]", "required_for_read": true, "required_for_write": true, "write_role": "bill_to"},
+        {"name": "invoice_number", "label": "Invoice Number", "selector_hint": "input[name='invoice[invoice_number]']", "required_for_read": false, "write_role": "idempotency_key"},
+        {"name": "invoice_date", "label": "Invoice Date", "selector_hint": "input[name='invoice[invoiced_on]']", "required_for_read": false, "write_role": "metadata"},
+        {"name": "charge_description", "label": "Charge Description", "selector_hint": "textarea[name='invoice[charge_description]']", "required_for_read": false, "write_role": "metadata"},
+        {"name": "total_charge", "label": "Total Charge", "selector_hint": "input[name='invoice[total_charge]']", "required_for_read": true, "required_for_write": true, "write_role": "approved_amount_binding"},
+        {"name": "note", "label": "Note", "selector_hint": "textarea[name='invoice[note]']", "required_for_read": false, "write_role": "metadata"}
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read form structure", "prepare field values for human confirmation"],
+        "forbidden_actions": ["click Save before human approval", "create a customer silently", "submit without approved-amount binding", "submit without idempotency invoice_number"],
+        "human_confirmation_point": "Slack approval of the exact amount before Save is clicked.",
+        "readback_verification_point": "After Save, verify on invoices_list by invoice_number that total_charge equals the approved amount."
+      },
+      "customer_binding_quirk": "There are TWO hidden inputs both named invoice[customer_id] (DOM ids 'invoice_customer_id' and 'customer'). Rails reads the LAST one on submit, so BOTH must be set to the customer's address id or Save fails with 'Customer can't be blank'. Customers are Addresses; create via /addresses/save?object=customer and read the id from /addresses?object=customer.",
+      "failure_modes": [
+        "Customer can't be blank: only one of the two invoice[customer_id] hidden inputs was set (must set both #invoice_customer_id and #customer)",
+        "Customer must already exist or be created first (Create Customer modal -> /addresses/form?object=customer)",
+        "Total Charge accepts free text — must be the bound approved amount, never an LLM-inferred number",
+        "duplicate invoice_number may be silently accepted (idempotency must be enforced by us via readback)",
+        "session expires mid-form"
+      ],
+      "observation_status": "OBSERVED",
+      "observation_evidence": [
+        "CDP read-only DOM at secure.truckingoffice.com/no_load_invoice/new; form 'post /no_load_invoice'",
+        "Fields: customer_finder_field (Customer*, with Create Customer), invoice[invoice_number], invoice[invoice_number_override] (Custom Invoice Number), invoice[invoiced_on] (Invoice Date), invoice[charge_description] (textarea), invoice[total_charge] (Total Charge), invoice[note] (textarea)",
+        "Submit buttons: Create Customer, Save (commit)",
+        "PROVEN WRITE 2026-06-27: created invoice #1000 ($2,450.00) for Total Quality Logistics (customer_id 15114781); readback on /invoices confirmed Total Amount == 2450.00"
+      ]
+    },
+    {
+      "screen_id": "loads_not_invoiced",
+      "name": "Loads Not Invoiced (load-driven AR path)",
+      "url_pattern": "https://secure.truckingoffice.com/invoices/customer",
+      "navigation_path": ["Invoices", "Add Invoice"],
+      "purpose": "List delivered loads that have not been invoiced; select one to generate its invoice. This is the authentic steady-state AR path (requires a load to exist).",
+      "risk": "MEDIUM",
+      "automation_mode": "READ_ONLY",
+      "stable_selectors": [
+        "Add Planned Load -> /planned_loads/new",
+        "Invoice List -> /invoices",
+        "No Load Invoice -> /no_load_invoice/new"
+      ],
+      "fields": [
+        {"name": "load_id", "label": "Load/Trip", "selector_hint": "loads-not-invoiced table reference column", "required_for_read": true}
+      ],
+      "action_boundary": {
+        "allowed_actions": ["read uninvoiced loads", "open a load to invoice it"],
+        "forbidden_actions": ["generate invoice before reconciliation + approval"],
+        "human_confirmation_point": "Slack approval before generating a load's invoice.",
+        "readback_verification_point": "Same as invoices_list."
+      },
+      "failure_modes": [
+        "empty on a fresh account: 'You cannot add an invoice: all loads are invoiced' when zero loads exist",
+        "requires a pre-existing load/trip (Add Planned Load -> /planned_loads/new)",
+        "session expires"
+      ],
+      "observation_status": "NAV_OBSERVED",
+      "observation_evidence": [
+        "CDP read-only DOM at secure.truckingoffice.com/invoices/customer; title 'Loads Not Invoiced'",
+        "Fresh account shows 'All Loads Are Invoiced' / 'You cannot add an invoice: all loads are invoiced' (zero loads). Links: Add Planned Load -> /planned_loads/new, No Load Invoice -> /no_load_invoice/new"
+      ]
+    }
+  ]
+}

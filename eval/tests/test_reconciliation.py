@@ -11,8 +11,10 @@ from generate_realistic_corpus import generate  # noqa: E402
 from freight_recon.reconciliation import (  # noqa: E402
     FreightLoadForReconciliation,
     ReconciliationOutcome,
+    reconcile_load,
     reconcile_many,
 )
+from freight_recon.workflow_direction import WorkflowDirection  # noqa: E402
 
 
 def _reconcile_generated(tmp_path, count=18, seed=42):
@@ -65,4 +67,24 @@ def test_reconciliation_detects_duplicate_invoices_before_other_issues(tmp_path)
 
     duplicate = by_id["LD-560007"]
     assert duplicate.outcome == ReconciliationOutcome.DUPLICATE
-    assert any("duplicate invoice number" in reason for reason in duplicate.reasons)
+    assert any("duplicate carrier invoice number" in reason for reason in duplicate.reasons)
+
+
+def test_duplicate_detection_is_scoped_by_ap_ar_direction(tmp_path):
+    corpus = tmp_path / "corpus"
+    generate(corpus, 4, seed=42)
+    raw = json.loads((corpus / "ground_truth" / "loads_and_scenarios.json").read_text())
+    source = FreightLoadForReconciliation.from_mapping(raw["LD-560003"])
+    ap_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CARRIER_PAYABLE})
+    ar_load = source.model_copy(update={"workflow_direction": WorkflowDirection.CUSTOMER_INVOICE})
+    second_ar = ar_load.model_copy(update={"load_id": "LD-AR-DUP"})
+    seen: set[tuple[str, str, str]] = set()
+
+    ap_result = reconcile_load(ap_load, seen_invoice_keys=seen)
+    ar_result = reconcile_load(ar_load, seen_invoice_keys=seen)
+    duplicate_ar = reconcile_load(second_ar, seen_invoice_keys=seen)
+
+    assert ap_result.outcome == ReconciliationOutcome.VARIANCE
+    assert ar_result.outcome == ReconciliationOutcome.VARIANCE
+    assert duplicate_ar.outcome == ReconciliationOutcome.DUPLICATE
+    assert "duplicate customer invoice number" in duplicate_ar.reasons[0]

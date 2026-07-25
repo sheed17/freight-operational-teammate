@@ -1,0 +1,65 @@
+# BUILD STATUS — the finalizer-derived founder progress snapshot
+#
+# CANONICAL / CURRENT_STATUS. The `derived:` block below is MACHINE-MAINTAINED by
+# scripts/finalize_status.py from scripts/progress_status.py - never edit it by hand; the finalizer
+# refuses to record a hand-inflated number. The `snapshot:` block is the authored narrative for the
+# NEYMA BUILD STATUS report (PROGRESS-PROTOCOL.md sec 2). This file does NOT compete with CURRENT.md:
+# content_commit/content_tree follow the two-commit convention and must equal CURRENT.md's block.
+
+# derived-block: maintained by scripts/finalize_status.py - do not edit by hand
+derived:
+  content_commit: 2394743ca77baa25f8f2246bca4a51a31b832f28
+  content_tree: 905aa70101ed5c2121df8aafe7b9ee198dda1af6
+  active_phase: P4
+  single_ready_unit: P4
+  cli_switch_readiness_percent: 100.0
+  overall_program_percent: 12.0
+  current_phase_percent: 0.0
+  user_visible_maturity_percent: 0.0
+  production_readiness_percent: 0.0
+  readiness_tier: SPECIFIED
+# end-derived-block
+
+snapshot:
+  active_work_unit: "P4 — Adapter containment (READY, NOT begun). The checkpoint-kernel phase is adjudicated COMPLETE — all 14 weighted criteria PASS — and the active phase is now P4"
+  next_approved_unit: "P4 — the one and only READY unit; route every external effect through the checkpoint kernel and the two-key rule and close R-07. It has not begun; this adjudication session did not start it"
+  completed_criteria:
+    # The FINAL ADJUDICATION is now recorded: a separate adjudicating session set all 14 weighted
+    # P3 criteria to PASS from independent evidence, so P3 is COMPLETE (phase computes to 100/100).
+    - "FINAL ADJUDICATION recorded: all 14 weighted P3 criteria are PASS and P3 is COMPLETE (p3-final-adjudication-review.md), set by a session that did not implement, review, remediate, normalize, N-1, or author the genuine review of P3"
+    - "a FRESH INDEPENDENT review of the remediated, finalized tree PASSED with zero new defects and 13/13 hostile probes (p3-genuine-independent-review.md)"
+    - "the first INDEPENDENT review returned 9 findings (60/100, NOT READY); P3 did not pass it; all nine (F-A CRITICAL through F-I LOW) were remediated by a session that was neither reviewer nor adjudicator"
+    - "the checkpoint kernel is implemented: seven-step atomic checkpoint, unconstructable CheckpointPassed, append-only witness, grant mint + claim CAS, brake ratchet, fp_v1 drift"
+    - "the P3 test battery is green across the nine test_phase3_* files, including the 105-case AC-CKPT merge-gating matrix (7 steps x 15 conditions, universal oracle)"
+    - "the prior illegal-history deadlock is RESOLVED: the P3 content was consolidated into a single content commit (0bf72b7, kernel tree cc53ff4f) and finalized as the metadata commit on top, so the status authority is back in the legal FINALIZED state"
+    - "the canonical suite was validated GREEN on the finalized P3 content by scripts/finalize_status.py (zero failures, one conditionally-justified skip; exact counts live only in CURRENT.md's status block and SUITE-RESULT.json), and the clean-clone gate reproduced it (GATE-RESULT.json passed:true) — executed evidence, not a criterion award"
+    - "U-HANDOFF-1 and U-REBASELINE-1 COMPLETE (both gates closed on independent evidence)"
+  pending_criteria:
+    - "P3 acceptance: nothing remains — all 14 weighted criteria are now PASS in the registry and P3 is COMPLETE (phase 100/100). The twelve implementer-supplyable criteria plus the two that require a different session (independent_review weight 5, final_adjudication weight 4) are all recorded PASS from independent evidence"
+    - "recorded caveat (independent-review finding F-H): no INDEPENDENT mutation battery was run. The implementer guard battery (8/8) and the kernel battery (K1-K11) are evidence; the FRESH independent review corroborated the kernel with 13/13 independent hostile probes rather than a mutation battery. Noted, non-blocking"
+    - "P4's acceptance contract: to be instantiated from the acceptance_template when P4 begins"
+    - "every implementation phase P5-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P4)"
+  blockers_to_p4:
+    - "none from P3 — P3 is COMPLETE (all 14 criteria PASS), so P4's sole dependency is satisfied and P4 is READY. P4 has NOT begun; a session picking it up must read the P4 onboarding set first, and beginning P4 is the payoff that closes R-07"
+  open_program_risks:
+    - "R-07 OPEN - NOT CONTAINED. Completing P3 does NOT close it: the kernel ships dark, the six live-write paths are untouched, and only completing P4 closes it."
+    - "customer-specific freight rules remain NEEDS VALIDATION (OPEN-VALIDATION-ITEMS.md); Delivered Load Closure is a HYPOTHESIS with zero recorded firsthand design-partner observations"
+    - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5"
+    - "recorded debt: independent-review finding F-10 (trace-id namespaces / unpublished 61-point index) - auditability noise, blocks nothing"
+    - "recorded P6 obligation: the ledger's live-hold index relaxes again when Pipeline Instances take the Layer-1 hold (migrations/phase3_checkpoint.py)"
+  last_verified_test_evidence: "REFRESHED FOR P3. CURRENT.md's status block records the finalized P3 content commit (0bf72b7 lineage, kernel tree cc53ff4f), and scripts/finalize_status.py executed the full canonical suite green on that tree (zero failures, one conditionally-justified skip). Exact counts are deliberately not repeated here — volatile suite figures live ONLY in the CURRENT.md status block and SUITE-RESULT.json, both finalizer-written. The earlier failing run on reviewed tree 38f2714 (finding F-A) is history and is fixed."
+  finalizer_result: "PASS — scripts/finalize_status.py executed the full canonical suite, the clean-clone gate, the control guards and the AC gates on the finalized P3 content commit and wrote the status record; SUITE-RESULT.json is its green suite receipt, bound to the recorded content commit and tree in CURRENT.md's status block. The earlier deadlock (the P3 content sat across more than one content commit with no finalizer metadata commit on top) has been resolved by consolidating the content and finalizing it, so the status authority is in the legal FINALIZED state."
+  clean_clone_result: "PASS — scripts/clean_clone_gate.py cloned the committed state, built a fresh venv, installed only the declared dependencies, and reproduced the full green canonical suite on the recorded content commit and tree; GATE-RESULT.json records passed:true bound to that commit and tree. The earlier dependency-install and illegal-status obstacles are resolved."
+  independent_review_status: "P3: the first independent review (commit 38f2714) returned 9 findings (1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW), 60/100, NOT READY (preserved at p3-independent-review-findings.md; dispositions at p3-findings-remediation-review.md). All nine were remediated. A FRESH independent review of the remediated, finalized tree then PASSED with zero new defects and 13/13 hostile probes (p3-genuine-independent-review.md). A SEPARATE final adjudication (p3-final-adjudication-review.md) then set independent_review and final_adjudication to PASS from that evidence, and P3 is COMPLETE — no session adjudicated its own review. The gate-level independent reviews (U-HANDOFF-2B, U-REBASELINE-REVIEW-1) are preserved and adjudicated/closed; they predate P3 and say nothing about it."
+  verdict: ON TRACK
+  expected_founder_experience: >-
+    The safety kernel is WRITTEN, GREEN, FINALIZED and now ADJUDICATED COMPLETE. The seven-step
+    checkpoint, the unforgeable witness, the claim CAS and the brake exist and pass their tests
+    including the full 105-case matrix; the guard and kernel mutation batteries have run; the
+    canonical suite is green on the finalized tree; the finalizer and clean-clone gate executed and
+    passed; a FRESH independent review PASSED; and a separate final adjudication set all 14 weighted
+    criteria PASS. Nothing looks different from the outside - deliberately. The kernel ships dark,
+    the customer-facing numbers stay zero on purpose, and the six ungated live-write paths still
+    exist, which is why R-07 stays OPEN - NOT CONTAINED. P4 is the payoff phase: it is now READY and
+    routes effects through the kernel to close R-07, but it has NOT begun. Expect no usable interface
+    until P10 (Delivered Load Closure in shadow); production progress becomes measurable from P11.

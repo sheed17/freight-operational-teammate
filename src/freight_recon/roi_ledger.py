@@ -1,0 +1,333 @@
+"""ROI instrumentation: turn what Neyma DID into dollars and a receipt the owner trusts.
+
+This is the product-side moat from the strategy work: a freight owner buys provable money, not
+"AI." So every consequential thing the agent does leaves an auditable **receipt**, and the receipts
+roll up into a **value digest** (caught $, recovered $, invoiced $, hours saved). It reads the same
+event log the safety spine already writes — it invents no new source of truth:
+
+- AP side (carrier-invoice reconciliation): overbilling *flagged* and *recovered* come from
+  ``summary.DailySummary`` (recovered = only on a verified readback, never on a mere approval).
+- Agent-operation side (the OperationRouter runs): invoices raised, payables recorded, and the
+  outcome of each run come from the ``slack_operation_applied`` security events the callback writes.
+
+Two render targets map to the owner's Slack UX:
+- ``render_operation_receipt`` -> the proof-carrying receipt ("✅ Done — Invoice #4912 · $2,850,
+  verified") shown right after a run.
+- ``render_value_digest`` -> the periodic value digest ("this week: caught $1,310, recovered $940,
+  invoiced $34,200 same-day, ~6 hrs saved").
+
+Hours saved is an explicit, tunable ESTIMATE (minutes-per-task) and is always labelled as such — we
+never dress an estimate up as a measured fact.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from decimal import Decimal
+
+from pydantic import BaseModel, Field
+
+from .summary import DailySummary
+from .workflow import WorkflowStore
+
+APPLIED_EVENT = "slack_operation_applied"
+
+# Which value bucket each known lane contributes to (mirrors operation_router.freight_lanes()).
+_INVOICE_LANES = {"raise_invoice"}
+_PAYABLE_LANES = {"record_payable"}
+
+
+@dataclass(frozen=True)
+class MinutesPerTask:
+    """Tunable, deliberately CONSERVATIVE estimate of the back-office minutes each handled task would
+    have cost a human. We under-claim on purpose: an inflated hours number sitting next to real
+    recovered dollars would make an owner doubt the dollars too, and the dollars are the product."""
+
+    invoice_raised: int = 4
+    payable_recorded: int = 4
+    overbilling_reviewed: int = 5
+    auto_cleared: int = 2
+
+
+class OperationReceipt(BaseModel):
+    """One agent-operation run, rendered as the owner sees it."""
+
+    lane: str | None
+    status: str  # DONE | ESCALATED | FAILED | REFUSED
+    amount: str | None = None
+    proof: str | None = None  # the verifiable artifact (invoice #, record id)
+    # True only when ``proof`` came from the agent's own READ-back of the saved record — not from prose.
+    # A receipt may show an id without claiming "verified"; "verified" must mean we read it back.
+    verified: bool = False
+    summary: str = ""
+    # Owner-legible "what Neyma did" trace: read -> clicked -> filled -> committed -> verified. The
+    # receipt shows the OUTCOME; the trace shows the PATH, so a supervising owner can audit the run.
+    trace: list[str] = Field(default_factory=list)
+    channel_id: str | None = None
+    thread_ts: str | None = None
+    created_at: str | None = None
+
+
+class ValueDigest(BaseModel):
+    """The owner-facing ROI roll-up for a period."""
+
+    overbilling_flagged: str = "0.00"
+    overbilling_recovered: str = "0.00"
+    invoices_raised: int = 0
+    invoiced_amount: str = "0.00"
+    payables_recorded: int = 0
+    payables_amount: str = "0.00"
+    operations_done: int = 0
+    operations_escalated: int = 0
+    operations_failed: int = 0
+    hours_saved_estimate: str = "0.0"
+    recent_receipts: list[OperationReceipt] = Field(default_factory=list)
+
+
+def build_operation_receipts(store: WorkflowStore) -> list[OperationReceipt]:
+    """Read every applied agent operation out of the audit log, newest last (insertion order)."""
+    receipts: list[OperationReceipt] = []
+    for event in store.security_events():
+        if event["event_type"] != APPLIED_EVENT:
+            continue
+        payload = event.get("payload") or {}
+        steps = payload.get("steps") or []
+        proof, verified = _extract_proof(str(payload.get("note", "")), steps)
+        receipts.append(
+            OperationReceipt(
+                lane=payload.get("lane"),
+                status=str(payload.get("status", "")) or "UNKNOWN",
+                amount=_amount_str(payload.get("approved_amount")),
+                proof=proof,
+                verified=verified,
+                summary=str(payload.get("summary", "")),
+                trace=build_run_trace(steps),
+                channel_id=payload.get("channel_id"),
+                thread_ts=payload.get("thread_ts"),
+                created_at=event.get("created_at"),
+            )
+        )
+    return receipts
+
+
+def build_value_digest(
+    store: WorkflowStore,
+    *,
+    daily: DailySummary | None = None,
+    minutes: MinutesPerTask | None = None,
+    recent: int = 5,
+) -> ValueDigest:
+    """Compose the AP reconciliation numbers (``daily``) with the agent-operation receipts into one
+    ROI roll-up. ``daily`` is optional so the digest still works before the AP path has run."""
+    minutes = minutes or MinutesPerTask()
+    receipts = build_operation_receipts(store)
+
+    invoiced = Decimal("0.00")
+    payables = Decimal("0.00")
+    invoices_raised = payables_recorded = done = escalated = failed = 0
+    for r in receipts:
+        if r.status == "DONE":
+            done += 1
+            if r.lane in _INVOICE_LANES:
+                invoices_raised += 1
+                invoiced += _to_decimal(r.amount)
+            elif r.lane in _PAYABLE_LANES:
+                payables_recorded += 1
+                payables += _to_decimal(r.amount)
+        elif r.status == "ESCALATED":
+            escalated += 1
+        elif r.status == "FAILED":
+            failed += 1
+
+    auto_cleared = daily.auto_cleared if daily else 0
+    overbilling_reviewed = daily.needs_review if daily else 0
+    saved_minutes = (
+        invoices_raised * minutes.invoice_raised
+        + payables_recorded * minutes.payable_recorded
+        + overbilling_reviewed * minutes.overbilling_reviewed
+        + auto_cleared * minutes.auto_cleared
+    )
+
+    return ValueDigest(
+        overbilling_flagged=daily.potential_overbilling_flagged if daily else "0.00",
+        overbilling_recovered=daily.confirmed_recovered if daily else "0.00",
+        invoices_raised=invoices_raised,
+        invoiced_amount=_money(invoiced),
+        payables_recorded=payables_recorded,
+        payables_amount=_money(payables),
+        operations_done=done,
+        operations_escalated=escalated,
+        operations_failed=failed,
+        hours_saved_estimate=f"{saved_minutes / 60:.1f}",
+        recent_receipts=receipts[-recent:][::-1] if recent else [],
+    )
+
+
+def _short(value, limit: int = 30) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def build_run_trace(steps) -> list[str]:
+    """Owner-legible 'what Neyma did' trace from the agent's raw steps: read → clicked → filled →
+    committed → verified. Bookkeeping-only steps (screenshots, bare commit markers) are folded away —
+    this is the audit surface a supervising owner reads, so it stays plain-language, not a step dump."""
+    lines: list[str] = []
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        action = str(step.get("action") or "").upper()
+        target, value, observed = _short(step.get("target")), _short(step.get("value"), 40), _short(step.get("observed"), 60)
+        if action == "READ":
+            lines.append(f"Read {target}" + (f" → {observed}" if observed else "") if target else f"Read back → {observed}")
+        elif action == "CLICK":
+            verb = "Committed:" if step.get("committed") is True else "Clicked"
+            lines.append(f"{verb} {target}" + (" (failed)" if step.get("ok") is False else ""))
+        elif action == "TYPE":
+            lines.append(f"Filled {target}" + (f" = {value}" if value else ""))
+        elif action == "SELECT":
+            lines.append(f"Selected {target}" + (f" = {value}" if value else ""))
+        # else: bookkeeping-only steps ({committed: True} marker, {screenshot: …}) are intentionally omitted
+    return lines
+
+
+def receipt_from_result(result, *, amount: str | None = None) -> OperationReceipt:
+    """Build an owner receipt straight from an OperationRouter result (duck-typed: lane/status/note/
+    steps), so the live Slack post can be proof-carrying without re-reading the audit log."""
+    note = str(getattr(result, "note", "") or "")
+    steps = getattr(result, "steps", None) or []
+    proof, verified = _extract_proof(note, steps)
+    return OperationReceipt(
+        lane=getattr(result, "lane", None),
+        status=str(getattr(result, "status", "")) or "UNKNOWN",
+        amount=_amount_str(amount),
+        proof=proof,
+        verified=verified,
+        summary=note,
+        trace=build_run_trace(steps),
+    )
+
+
+def render_operation_receipt(receipt: OperationReceipt, *, show_trace: bool = True) -> str:
+    """Shape #3: the proof-carrying receipt shown right after a run. Proof, not a bare claim — and it
+    only says 'verified' when the id was actually read back, otherwise it says 'reported'. When the run
+    took real steps, an owner-legible trace (read → clicked → filled → committed → verified) is appended
+    so the owner can audit exactly what Neyma did, not just the outcome."""
+    money = f" · ${receipt.amount}" if receipt.amount else ""
+    what = _lane_label(receipt.lane)
+    if receipt.status == "DONE":
+        proof = f" — {receipt.proof}" if receipt.proof else ""
+        tag = (" (verified)" if receipt.verified else " (reported by agent)") if receipt.proof else ""
+        headline = f"✅ Done — {what}{money}{proof}{tag}"
+    elif receipt.status == "PREPARED":
+        headline = (f"🅿️ Staged — {what}{money}: filled and ready. Do the final Save in the browser, "
+                    "or reply 'submit' to commit.")
+    elif receipt.status == "ESCALATED":
+        headline = f"✋ I need you — {what}{money}: {receipt.summary or 'stopped and handed it to you'}"
+    elif receipt.status == "REFUSED":
+        return f"🚫 I won't improvise — {receipt.summary or what}"  # nothing was done -> no trace
+    else:
+        headline = f"⚠️ Couldn't finish — {what}{money}: {receipt.summary or 'see the audit log'}"
+    if show_trace and receipt.trace:
+        return headline + "\n" + "\n".join(f"   • {line}" for line in receipt.trace)
+    return headline
+
+
+def render_value_digest(digest: ValueDigest, *, period: str = "this week") -> str:
+    """Shape #5: the periodic value digest — the single message that makes the ROI legible."""
+    lines = [f"📊 Neyma {period}"]
+    if _nonzero(digest.overbilling_flagged) or _nonzero(digest.overbilling_recovered):
+        lines.append(
+            f"• Caught ${digest.overbilling_flagged} in carrier overbilling "
+            f"→ recovered ${digest.overbilling_recovered}"
+        )
+    if digest.invoices_raised:
+        lines.append(
+            f"• Raised {digest.invoices_raised} customer invoice"
+            f"{'s' if digest.invoices_raised != 1 else ''} (${digest.invoiced_amount}) — same-day"
+        )
+    if digest.payables_recorded:
+        lines.append(
+            f"• Recorded {digest.payables_recorded} carrier payable"
+            f"{'s' if digest.payables_recorded != 1 else ''} (${digest.payables_amount})"
+        )
+    if digest.operations_escalated or digest.operations_failed:
+        lines.append(
+            f"• {digest.operations_escalated} handed back to you · {digest.operations_failed} failed"
+        )
+    lines.append(f"• ~{digest.hours_saved_estimate} hrs of back-office saved (conservative estimate)")
+    if not (
+        _nonzero(digest.overbilling_flagged)
+        or digest.invoices_raised
+        or digest.payables_recorded
+    ):
+        lines.append("Nothing consequential yet — I'll surface work as it lands.")
+    return "\n".join(lines)
+
+
+# --- helpers ---------------------------------------------------------------------------------
+
+_PROOF_RE = re.compile(
+    r"\b(?P<lettered>[A-Za-z]{2,4}-?\d+)\b"          # INV-7001, INV-5, PO1234
+    r"|(?:invoice|inv|record)\s*#?\s*(?P<num>\d{2,})"  # invoice 4912, record #88
+    r"|#(?P<hash>\d{2,})",                            # #4912
+    re.IGNORECASE,
+)
+
+
+def _proof_token(match) -> str:
+    if match.group("lettered"):
+        return match.group("lettered").strip()
+    if match.group("num"):
+        return match.group("num").strip()
+    return f"#{match.group('hash')}"
+
+
+def _extract_proof(note: str, steps: list) -> tuple[str | None, bool]:
+    """Pull the verifiable artifact (an invoice/record id) AND whether it was actually read back.
+
+    Returns ``(proof, verified)``. ``verified`` is True ONLY when the id came from a READ step's
+    observed value — the agent's own read-back of the saved record — which is the only thing that
+    earns a "verified" claim. An id mentioned merely in the DONE prose is returned as proof but
+    ``verified=False`` (shown to the owner as "reported", never "verified"). A receipt must not
+    launder a chatty sentence into a verification.
+    """
+    for step in steps:
+        if isinstance(step, dict) and str(step.get("action", "")).upper() == "READ":
+            match = _PROOF_RE.search(str(step.get("observed", "")))
+            if match:
+                return _proof_token(match), True
+    match = _PROOF_RE.search(note or "")
+    if match:
+        return _proof_token(match), False
+    return None, False
+
+
+def _lane_label(lane: str | None) -> str:
+    if lane in _INVOICE_LANES:
+        return "customer invoice"
+    if lane in _PAYABLE_LANES:
+        return "carrier payable"
+    return lane or "operation"
+
+
+def _amount_str(value) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _to_decimal(value) -> Decimal:
+    try:
+        return Decimal(str(value)) if value not in (None, "") else Decimal("0.00")
+    except (ValueError, ArithmeticError):
+        return Decimal("0.00")
+
+
+def _money(value: Decimal) -> str:
+    return f"{value:.2f}"
+
+
+def _nonzero(money_str: str) -> bool:
+    return _to_decimal(money_str) != Decimal("0.00")

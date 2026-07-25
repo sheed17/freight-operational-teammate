@@ -1,0 +1,288 @@
+# Canonical Expected Identifiers — the REGISTERED set for exact-set equality.
+#
+# Errata 2026-07-16. These lists are the "registered expected identifiers" leg of the three-way
+# oracle required by the errata brief:
+#
+#     enumerated canonical identifiers == registered expected identifiers == acceptance-mapped
+#
+# COUNTS ARE DIAGNOSTICS, NOT THE ORACLE. A count match with different members MUST fail. That is
+# why this file lists every identifier by name rather than asserting 134 and 98: the whole class of
+# defect being corrected here was a NUMBER that had drifted away from the members it claimed to
+# count. A guard that checks only the number would have agreed with the wrong total forever.
+#
+# Regenerate deliberately, never automatically: a change here must be a decision, not a side effect.
+
+transitions:
+  # 01-work-item.machine.md
+  01-work-item.machine.md:
+    - WI-1
+    - WI-2
+    - WI-3
+    - WI-4
+    - WI-5
+    - WI-6
+    - WI-7
+    - WI-8
+    - WI-9
+    - WI-10
+    - WI-11
+    - WI-12
+    - WI-13
+    - WI-14
+  # 02-pipeline-instance.machine.md
+  02-pipeline-instance.machine.md:
+    - PL-1
+    - PL-1b
+    - PL-2
+    - PL-3
+    - PL-4
+    - PL-5
+    - PL-6
+    - PL-7a
+    - PL-7b
+    - PL-7v
+    - PL-8
+    - PL-8f
+    - PL-9
+    - PL-9v
+    - PL-10
+    - PL-10f
+    - PL-10u
+    - PL-11
+    - PL-11c
+    - PL-11d
+    - PL-12
+    - PL-13
+    - PL-14
+    - PL-15
+    - PL-15x
+  # 03-external-effect-grant.machine.md
+  03-external-effect-grant.machine.md:
+    - EF-1
+    - EF-2
+    - EF-2r
+    - EF-2x
+    - EF-2f
+    - EF-3
+    - EF-3f
+    - EF-3u
+    - EF-4
+    - EF-4c
+    - EF-4u
+    - EF-5
+    - EF-5x
+  # 04-approval.machine.md
+  04-approval.machine.md:
+    - AP-1
+    - AP-2
+    - AP-2d
+    - AP-3
+    - AP-4
+    - AP-4p
+    - AP-5
+    - AP-6
+    - AP-7
+    - AP-8
+    - AP-9
+  # 05-observation.machine.md
+  05-observation.machine.md:
+    - OB-1
+    - OB-1c
+    - OB-2
+    - OB-2f
+    - OB-3
+    - OB-3u
+    - OB-4
+    - OB-5
+  # 06-identity-binding-claim.machine.md
+  06-identity-binding-claim.machine.md:
+    - IB-1
+    - IB-2
+    - IB-2r
+    - IB-2h
+    - IB-3
+    - IB-4
+    - IB-5
+    - IB-5x
+    - IB-6
+    - IB-7
+    - IB-8
+  # 07-conflict.machine.md
+  07-conflict.machine.md:
+    - CF-1
+    - CF-2
+    - CF-3
+    - CF-4
+    - CF-5
+    - CF-6
+    - CF-7
+  # 08-expectation.machine.md
+  08-expectation.machine.md:
+    - EX-1
+    - EX-2
+    - EX-3
+    - EX-3i
+    - EX-4
+    - EX-5
+    - EX-6
+    - EX-7
+  # 09-exception.machine.md
+  09-exception.machine.md:
+    - EC-1
+    - EC-2
+    - EC-3
+    - EC-4
+    - EC-5
+    - EC-6
+    - EC-7
+  # 10-compensation.machine.md
+  10-compensation.machine.md:
+    - CM-1
+    - CM-1r
+    - CM-2
+    - CM-2n
+    - CM-3
+    - CM-4
+    - CM-4f
+    - CM-5
+    - CM-5x
+  # 11-policy.machine.md
+  11-policy.machine.md:
+    - PO-1
+    - PO-2
+    - PO-3
+    - PO-4
+    - PO-5
+    - PO-6
+    - PO-7
+  # 12-rule.machine.md
+  12-rule.machine.md:
+    - RU-1
+    - RU-2
+    - RU-2f
+    - RU-3
+    - RU-4
+    - RU-5
+    - RU-6
+    - RU-7
+    - RU-8
+  # 13-brake.machine.md
+  13-brake.machine.md:
+    - BR-1
+    - BR-2
+    - BR-3
+    - BR-4
+    - BR-5
+
+emitted_events:
+  F1:
+    - WorkItemCreated
+    - WorkStarted
+    - WorkItemClosed
+    - AttemptFailed
+    - WorkBlocked
+    - WorkUnblocked
+    - HumanRequested
+    - HumanDecided
+    - WorkEscalated
+    - OwnershipTransferred
+    - WorkItemCancelled
+    - Reopened
+  F2:
+    - PipelineStarted
+    - DuplicateProposalAbsorbed
+    - PolicyEvaluated
+    - IntentValidated
+    - PipelineRejected
+    - ApprovalBound
+    - CheckpointPassed
+    - CheckpointFailed
+    - PipelineVoided
+    - EffectRecorded
+    - ProjectionUpdated
+    - PipelineClosed
+  F3:
+    - EffectGranted
+    - GrantClaimed
+    - EffectAttempted
+    - ClaimRefused
+    - GrantRevoked
+    - GrantExpired
+    - EffectExecuted
+    - EffectFailed
+    - OutcomeUnknown
+    - EffectVerified
+    - VerificationConflict
+    - VerificationUnavailable
+    - VerificationDeferred
+    - RealityEstablished
+  F4:
+    - ApprovalRequested
+    - ApprovalGranted
+    - ApprovalDenied
+    - ApprovalExpired
+    - ApprovalVoided
+    - ApprovalRevoked
+    - ApprovalConsumed
+  F5:
+    - ObservationReceived
+    - ObservationConfirmed
+    - ObservationParsed
+    - ObservationUnparseable
+    - ObservationBound
+    - ObservationUnbound
+    - ObservationSuperseded
+  F6:
+    - ClaimProposed
+    - ClaimConfirmed
+    - ClaimEvidenced
+    - ClaimAmbiguous
+    - ClaimSuperseded
+    - ClaimCorrected
+  F7:
+    - ConflictRaised
+    - ConflictOpened
+    - ConflictEscalated
+    - ConflictResolved
+  F8:
+    - ExpectationRaised
+    - ExpectationDischarged
+    - ExpectationOverdue
+    - ExpectationIndeterminate
+    - ExpectationReVersioned
+    - ExpectationCancelled
+    - ExpectationExpired
+  F9:
+    - ExceptionRaised
+    - ExceptionAcknowledged
+    - ExceptionAgeing
+    - ExceptionEscalated
+    - ExceptionResolved
+  F10:
+    - CompensationRequired
+    - CompensationRefused
+    - CompensationApproved
+    - CompensationImpossible
+    - CompensationStarted
+    - CompensationCompleted
+    - CompensationFailed
+  F11:
+    - PolicyProposed
+    - PolicyActivated
+    - PolicySuperseded
+    - PolicyRevoked
+    - PolicyExpired
+    - PolicyVersionChanged
+  F12:
+    - RuleProposed
+    - RuleCompiled
+    - RuleNotEnforceable
+    - RuleConfirmed
+    - RuleActivated
+    - RuleSuperseded
+    - RuleRevoked
+  F13:
+    - BrakeEngaged
+    - BrakeWidened
+    - BrakeNarrowed
+    - BrakeReleased

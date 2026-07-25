@@ -1,0 +1,131 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - strong [ref=e4]: Neyma Test Freight LLC
+      - text: Brokerage Operations
+    - navigation "Top navigation" [ref=e5]:
+      - link "Loads" [ref=e6] [cursor=pointer]:
+        - /url: ../index.html
+      - link "Payables" [ref=e7] [cursor=pointer]:
+        - /url: ../payables.html
+      - link "Data" [ref=e8] [cursor=pointer]:
+        - /url: ../data.json
+  - generic [ref=e9]:
+    - complementary "TMS modules" [ref=e10]:
+      - link "Load Management" [ref=e11] [cursor=pointer]:
+        - /url: ../index.html
+      - generic [ref=e12]: Dispatch Board
+      - generic [ref=e13]: Tracking
+      - generic [ref=e14]: Documents
+      - link "Carrier Payables" [ref=e15] [cursor=pointer]:
+        - /url: ../payables.html
+      - generic [ref=e16]: Customer Billing
+      - generic [ref=e17]: Carriers
+      - generic [ref=e18]: Reports
+    - main [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Load Detail
+          - heading "LD-560003" [level=1] [ref=e23]
+          - paragraph [ref=e24]: Fresno, CA → Phoenix, AZ
+        - generic [ref=e25]:
+          - link "Back to Loads" [ref=e26] [cursor=pointer]:
+            - /url: ../index.html
+          - link "Open Neyma Packet" [ref=e27] [cursor=pointer]:
+            - /url: ../../packets/3/
+      - navigation "Load detail tabs" [ref=e28]:
+        - link "Overview" [ref=e29] [cursor=pointer]:
+          - /url: "#overview"
+        - link "Accounting" [ref=e30] [cursor=pointer]:
+          - /url: "#accounting"
+        - link "Documents" [ref=e31] [cursor=pointer]:
+          - /url: "#documents"
+        - link "Notes" [ref=e32] [cursor=pointer]:
+          - /url: "#notes"
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]: PRO
+          - strong [ref=e36]: PRO-9200411
+        - generic [ref=e37]:
+          - generic [ref=e38]: Invoice
+          - strong [ref=e39]: INV-2026003
+        - generic [ref=e40]:
+          - generic [ref=e41]: Carrier
+          - strong [ref=e42]: Summit Valley Trucking
+        - generic [ref=e43]:
+          - generic [ref=e44]: Customer
+          - strong [ref=e45]: Harbor Appliance Group
+        - generic [ref=e46]:
+          - generic [ref=e47]: Pickup
+          - strong [ref=e48]: 2026-05-05
+        - generic [ref=e49]:
+          - generic [ref=e50]: Delivery
+          - strong [ref=e51]: 2026-05-07
+        - generic [ref=e52]:
+          - generic [ref=e53]: Equipment
+          - strong [ref=e54]: 26' Box Truck
+        - generic [ref=e55]:
+          - generic [ref=e56]: Commodity
+          - strong [ref=e57]: retail dry goods
+      - generic [ref=e58]:
+        - heading "Accounting" [level=2] [ref=e59]
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e62]: Rate total
+            - strong [ref=e63]: $3334.50
+          - generic [ref=e64]:
+            - generic [ref=e65]: Invoice total
+            - strong [ref=e66]: $3634.50
+          - generic [ref=e67]:
+            - generic [ref=e68]: Payable status
+            - strong [ref=e69]: NEEDS_REVIEW
+          - generic [ref=e70]:
+            - generic [ref=e71]: Workflow state
+            - strong [ref=e72]: NEEDS_REVIEW
+        - heading "Charge Lines" [level=3] [ref=e73]
+        - table "Charge lines" [ref=e74]:
+          - rowgroup [ref=e75]:
+            - row "Charge Rate Invoice Authorized Backup" [ref=e76]:
+              - columnheader "Charge" [ref=e77]
+              - columnheader "Rate" [ref=e78]
+              - columnheader "Invoice" [ref=e79]
+              - columnheader "Authorized" [ref=e80]
+              - columnheader "Backup" [ref=e81]
+          - rowgroup [ref=e82]:
+            - row "Linehaul $2925.00 $2925.00 Yes" [ref=e83]:
+              - cell "Linehaul" [ref=e84]
+              - cell "$2925.00" [ref=e85]
+              - cell "$2925.00" [ref=e86]
+              - cell "Yes" [ref=e87]
+              - cell [ref=e88]
+            - row "Fuel Surcharge $409.50 $409.50 Yes" [ref=e89]:
+              - cell "Fuel Surcharge" [ref=e90]
+              - cell "$409.50" [ref=e91]
+              - cell "$409.50" [ref=e92]
+              - cell "Yes" [ref=e93]
+              - cell [ref=e94]
+            - row "Detention — $300.00 No" [ref=e95]:
+              - cell "Detention" [ref=e96]
+              - cell "—" [ref=e97]
+              - cell "$300.00" [ref=e98]
+              - cell "No" [ref=e99]
+              - cell [ref=e100]
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - heading "Documents" [level=2] [ref=e103]
+          - list [ref=e104]:
+            - listitem [ref=e105]:
+              - link "Bol" [ref=e106] [cursor=pointer]:
+                - /url: /Users/sammyfammy/freight-logistics-operational-teammate/data/synthetic_corpus/clean/003_LD-560003_bol.pdf
+            - listitem [ref=e107]:
+              - link "Carrier Invoice" [ref=e108] [cursor=pointer]:
+                - /url: /Users/sammyfammy/freight-logistics-operational-teammate/data/synthetic_corpus/clean/003_LD-560003_carrier_invoice.pdf
+            - listitem [ref=e109]:
+              - link "Pod" [ref=e110] [cursor=pointer]:
+                - /url: /Users/sammyfammy/freight-logistics-operational-teammate/data/synthetic_corpus/clean/003_LD-560003_pod.pdf
+            - listitem [ref=e111]:
+              - link "Rate Confirmation" [ref=e112] [cursor=pointer]:
+                - /url: /Users/sammyfammy/freight-logistics-operational-teammate/data/synthetic_corpus/clean/003_LD-560003_rate_confirmation.pdf
+        - generic [ref=e113]:
+          - heading "Workflow Note" [level=2] [ref=e114]
+          - paragraph [ref=e115]: "unauthorized accessorial: detention 300.00 not on rate confirmation"

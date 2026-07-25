@@ -1,0 +1,651 @@
+"""Run the local Neyma signed-action callback server for dogfood testing."""
+
+from __future__ import annotations
+
+import argparse
+import ipaddress
+import os
+import re
+import sys
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from freight_recon.cli_tenant import resolve_cli_tenant
+from freight_recon.action_callback import run_callback_server  # noqa: E402
+from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
+from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
+from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
+from freight_recon.delivery import DeliverySigner  # noqa: E402
+from freight_recon.delivery_dispatch import SlackApiPoster, slack_thread_status_poster  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operator_agent import OperatorAgent  # noqa: E402
+from freight_recon.ops_control import OpsControl  # noqa: E402
+from freight_recon.screen_discovery import openai_completer  # noqa: E402
+from run_dogfood_pilot import DEFAULT_WORKSPACE  # noqa: E402
+from run_workflow import load_synthetic_loads  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tenant", default=None,
+                        help="Canonical tenant. Omit only when --client-config names one, "
+                             "whose client_id is used. There is no default.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE))
+    parser.add_argument("--db", default=None, help="Workflow SQLite DB path; defaults to workspace DB")
+    parser.add_argument("--corpus", default=None, help="Synthetic corpus path; defaults to workspace corpus")
+    parser.add_argument(
+        "--client-config",
+        default=None,
+        help="Client config; when set, the action-token signer and Slack interactivity route "
+        "(/slack/actions) use that customer's secrets, enabling live Slack button clicks",
+    )
+    parser.add_argument(
+        "--allow-local-dev-secret",
+        action="store_true",
+        help="Use the fixed local dogfood signing secret when NEYMA_DELIVERY_SECRET is not set",
+    )
+    parser.add_argument(
+        "--status-file",
+        default=None,
+        help="Loop heartbeat the Slack `status` command reads; defaults to <workspace>/teammate_status.json",
+    )
+    parser.add_argument(
+        "--watchdog-interval-seconds",
+        type=int,
+        default=120,
+        help="How often the callback server checks the loop heartbeat and proactively alerts Slack if "
+        "the loop has gone STALE (hung/died). 0 disables. Requires --client-config for the Slack post.",
+    )
+    parser.add_argument(
+        "--enable-operation-router",
+        action="store_true",
+        help="Enable Slack operation approvals -> OperationRouter. Requires --client-config and owner/channel allowlist.",
+    )
+    parser.add_argument("--operation-cdp-url", default=os.getenv("NEYMA_OPERATION_CDP_URL", "http://localhost:9222"))
+    parser.add_argument("--operation-url-filter", default=os.getenv("NEYMA_OPERATION_URL_FILTER", ""))
+    parser.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-5.5"))
+    parser.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "40")))
+    parser.add_argument(
+        "--allowed-slack-user",
+        action="append",
+        default=[],
+        help="Slack user id allowed to approve operation-router runs. Can be repeated; defaults to NEYMA_ALLOWED_SLACK_USERS csv.",
+    )
+    parser.add_argument(
+        "--allowed-slack-channel",
+        default=os.getenv("NEYMA_ALLOWED_SLACK_CHANNEL"),
+        help="Slack channel id allowed for operation-router approvals.",
+    )
+    args = parser.parse_args()
+
+    workspace = Path(args.workspace)
+    db_path = Path(args.db) if args.db else workspace / "workflow.sqlite3"
+    corpus = Path(args.corpus) if args.corpus else workspace / "synthetic_corpus"
+    status_file = Path(args.status_file) if args.status_file else workspace / "teammate_status.json"
+
+    slack_signing_secret = None
+    if args.client_config:
+        # Wire the customer's real secrets: the signer must match the secret used to sign tokens at
+        # dispatch, and the Slack route needs the Slack signing secret to verify button clicks.
+        config = load_delivery_config(args.client_config)
+        if config is None:
+            parser.error(f"no delivery config found in {args.client_config}")
+        signer = build_signer(config)
+        if config.slack is not None:
+            slack_signing_secret = os.environ.get(config.slack.signing_secret_env)
+            if not slack_signing_secret:
+                parser.error(f"Slack signing secret env var is not set: {config.slack.signing_secret_env}")
+    else:
+        local_dev_secret_enabled = (
+            args.allow_local_dev_secret or os.environ.get("NEYMA_ALLOW_LOCAL_DELIVERY_SECRET") == "1"
+        )
+        if local_dev_secret_enabled and not _is_loopback_host(args.host):
+            parser.error("the local dogfood delivery secret may only be used with a loopback host")
+        signer = DeliverySigner.from_env(allow_local_dev=args.allow_local_dev_secret)
+
+    follow_up_loads = None
+    if corpus.exists():
+        follow_up_loads = {load.load_id: load for load in load_synthetic_loads(corpus)}
+
+    # SAFETY (ADR-004 precursor): no post-approval effect executor. A mock financial adapter
+    # must never be selectable from a production entry point, and an approval must never reach an
+    # externally-completed state without a real, verified effect. Fail closed.
+    post_action_executor = None
+
+    operation_router = None
+    operation_result_poster = None
+    allowed_slack_users = tuple(
+        args.allowed_slack_user
+        or [u.strip() for u in os.getenv("NEYMA_ALLOWED_SLACK_USERS", "").split(",") if u.strip()]
+    )
+    if args.enable_operation_router:
+        if not args.client_config:
+            parser.error("--enable-operation-router requires --client-config")
+        if not slack_signing_secret:
+            parser.error("--enable-operation-router requires a Slack signing secret from --client-config")
+        if not allowed_slack_users or not args.allowed_slack_channel:
+            parser.error("--enable-operation-router requires --allowed-slack-user and --allowed-slack-channel")
+        # The canonical tenant, resolved ONCE at the entry point from the client config's
+        # client_id. --enable-operation-router already requires --client-config above, so the
+        # source is guaranteed present here; resolve_cli_tenant still refuses a blank or sentinel.
+        tenant = resolve_cli_tenant(
+            tenant=args.tenant, client_config=args.client_config,
+            context="run_action_callback_server --enable-operation-router",
+        )
+        operation_router = _build_live_operation_router(
+            tenant=tenant,
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            model=args.operation_model,
+            max_steps=args.operation_max_steps,
+            workspace=workspace,
+            db_path=db_path,
+        )
+        operation_result_poster = _build_operation_result_poster(args.client_config)
+        load_amount_resolver = _build_load_amount_resolver(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+        receivables_reader = _build_receivables_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+        tms_brief_reader = _build_tms_brief_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            invoices_url=os.getenv("NEYMA_TMS_INVOICES_URL", "https://secure.truckingoffice.com/invoices"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+        load_state_reader = _build_load_state_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+        load_docs_reader = _build_load_docs_reader(
+            cdp_url=args.operation_cdp_url,
+            url_filter=args.operation_url_filter or None,
+            loads_url=os.getenv("NEYMA_TMS_LOADS_URL", "https://secure.truckingoffice.com/loads"),
+            lock_path=(workspace / "browser.busy") if workspace else None,
+        )
+    else:
+        load_amount_resolver = None
+        receivables_reader = None
+        tms_brief_reader = None
+        load_state_reader = None
+        load_docs_reader = None
+
+    # Preflight: a health/status surface wired to the wrong files reports confident falsehoods, which
+    # is worse than no surface. Warn loudly if the Slack `status` command will read a DB/heartbeat the
+    # loop is not actually writing (the loop and this server must share one --workspace).
+    if not db_path.exists():
+        print(f"WARNING: workflow DB not found at {db_path}")
+        print("         -> Slack `status` counts and button actions will be wrong until it exists.")
+        print("         -> point --db at the loop's DB (<loop --workspace>/workflow.sqlite3).")
+    if not status_file.exists():
+        print(f"WARNING: loop heartbeat not found at {status_file}")
+        print("         -> Slack `status` will report NOT_STARTED until the loop writes it.")
+        print("         -> point --status-file at <loop --workspace>/teammate_status.json.")
+
+    # Liveness watchdog: the loop alerts on its own *failures*, but a loop that hangs or dies simply
+    # stops heart-beating and would go unnoticed. This independent thread (the callback is always up)
+    # watches the same heartbeat and proactively pings Slack when it goes STALE / recovers.
+    watchdog_poster = _build_digest_poster(args.client_config) if args.watchdog_interval_seconds > 0 else None
+    if args.watchdog_interval_seconds > 0 and watchdog_poster is None:
+        print("NOTE: heartbeat watchdog idle — needs --client-config with a Slack channel to post alerts.")
+    elif watchdog_poster is not None:
+        _start_heartbeat_watchdog(status_file, watchdog_poster, args.watchdog_interval_seconds)
+        print(f"Liveness watchdog: alerting Slack if the loop heartbeat goes stale (every {args.watchdog_interval_seconds}s)")
+
+    server = run_callback_server(
+        host=args.host,
+        port=args.port,
+        db_path=str(db_path),
+        signer=signer,
+        follow_up_loads=follow_up_loads,
+        slack_signing_secret=slack_signing_secret,
+        post_action_executor=post_action_executor,
+        status_file=str(status_file),
+        operation_router=operation_router,
+        operation_result_poster=operation_result_poster,
+        allowed_slack_users=allowed_slack_users,
+        allowed_slack_channel=args.allowed_slack_channel,
+        # Natural-language routing for /neyma (cheap model — it only picks which read/operate, never money).
+        nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
+        load_amount_resolver=load_amount_resolver,
+        receivables_reader=receivables_reader,
+        tms_brief_reader=tms_brief_reader,
+        load_state_reader=load_state_reader,
+        load_docs_reader=load_docs_reader,
+        operation_cdp_url=args.operation_cdp_url if args.operation_url_filter else None,
+        operation_url_filter=args.operation_url_filter or None,
+    )
+    print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
+    print("Email actions: /email/action?token=<signed-token>")
+    print("JSON actions: POST /actions/signed {'token': '<signed-token>'}")
+    if slack_signing_secret:
+        print("Slack interactivity: POST /slack/actions (Slack-signed)")
+    if post_action_executor is not None:
+        print("Post-approval execution: mock TMS auto-entry enabled")
+    if operation_router is not None:
+        print("Operation router approvals: enabled for allowed Slack user/channel only")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping Neyma action callback server")
+    finally:
+        server.server_close()
+    return 0
+
+
+def _build_digest_poster(client_config: str | None):
+    """Return callable(text)->None that posts to the client's Slack digest channel, or None.
+
+    Best-effort: any failure to build or post is swallowed so watchdog alerting never crashes the
+    callback server. Mirrors the loop's alert poster so both surfaces speak to the same channel.
+    """
+    if not client_config:
+        return None
+    try:
+        from freight_recon.channels import slack_channel_for_route
+        from freight_recon.delivery_dispatch import post_text_to_slack
+        from freight_recon.review import ReviewRoute
+
+        config = load_delivery_config(client_config)
+        if config is None or config.slack is None:
+            return None
+        channel = slack_channel_for_route(config.slack, ReviewRoute.DIGEST_ONLY)
+    except Exception:  # noqa: BLE001 - alerting must never block the server
+        return None
+
+    def _post(text: str) -> None:
+        try:
+            post_text_to_slack(text, channel=channel, config=config, env=os.environ)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return _post
+
+
+def _build_live_operation_router(
+    *,
+    tenant: str,
+    cdp_url: str,
+    url_filter: str | None,
+    model: str,
+    max_steps: int,
+    workspace: "Path | None" = None,
+    db_path: "Path | None" = None,
+) -> OperationRouter:
+    """Build the real browser-agent router for Slack-approved operation runs.
+
+    Supervised lanes PREPARE (fill + stop before Save; the human commits); a graduated lane runs
+    unattended. The graduation policy is persisted per workspace so `/neyma graduate <lane>` sticks.
+    """
+    completer = openai_completer(model=model)
+
+    from freight_recon.agent_memory import AgentMemory
+    from freight_recon.browser_session_health import read_browser_session_health
+    from freight_recon.lane_graduation import LaneGraduation
+    from freight_recon.workflow import WorkflowStore
+
+    mem_path = (Path(workspace) / "agent_memory.json") if workspace else Path("agent_memory.json")
+    memory = AgentMemory(mem_path)  # recall learned facts + crystallize what works, per client
+
+    def _build_agent(*, approved_amount=None, approve=None, prepare_only=False):
+        session = CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter)
+        session.__enter__()
+        actuator = CdpActuator(session)
+
+        class _ClosingOperatorAgent(OperatorAgent):
+            def run(self, goal):
+                try:
+                    return super().run(goal)
+                finally:
+                    session.__exit__(None, None, None)
+
+        return _ClosingOperatorAgent(
+            actuator=actuator,
+            complete=completer,
+            approved_amount=approved_amount,
+            approve=approve,
+            max_steps=max_steps,
+            prepare_only=prepare_only,
+            memory=memory,
+        )
+
+    grad_path = (Path(workspace) / "lane_graduation.json") if workspace else Path("lane_graduation.json")
+    from freight_recon.browser_lock import BrowserLock
+    lock_path = (Path(workspace) / "browser.busy") if workspace else Path("browser.busy")
+    return OperationRouter(
+        lanes=freight_lanes(),
+        build_agent=_build_agent,
+        approved_amount_for=lambda intent: intent.params.get("approved_amount"),
+        document_for=_build_document_resolver(workspace=workspace),
+        graduation=LaneGraduation(grad_path),
+        # The router mints the Commit Key and the store owns the row: they must name ONE tenant.
+        # This site passed `tenant` to the store and let the router default to "default".
+        tenant=tenant,
+        commit_store=WorkflowStore(db_path, tenant=tenant) if db_path is not None else None,
+        browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
+        browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),
+    )
+
+
+def _build_document_resolver(*, workspace: "Path | None"):
+    """Resolve the local file a ``file_document`` lane should attach — the RUNTIME picks it, never the
+    model. It looks in the workspace ``documents/`` dir for a file matching the bound load ref AND the
+    document type (POD/BOL/rate con). Returns None when nothing matches, so the router fails CLOSED
+    (refuses to "attach" nothing) rather than filing the wrong paperwork on a load."""
+    docs_dir = (Path(workspace) / "documents") if workspace else Path("documents")
+
+    def resolve(intent):
+        params = intent.params or {}
+        ref = str(params.get("load_ref") or params.get("record") or params.get("load") or "").strip()
+        text = f"{intent.summary or ''} {' '.join(str(v) for v in params.values())}"
+        if not ref:
+            m = re.search(r"\b(\d{2,6})\b", text)   # a load/order ref in free text, never a money token
+            ref = m.group(1) if m else ""
+        if not ref or not docs_dir.is_dir():
+            return None
+        low = text.lower()
+        dtype = ("pod" if ("pod" in low or "proof of delivery" in low)
+                 else "bol" if ("bol" in low or "bill of lading" in low)
+                 else "rate" if ("rate con" in low or "rate confirmation" in low)
+                 else "")
+        files = sorted(p for p in docs_dir.glob("*") if p.is_file())
+        for f in files:  # a file naming BOTH the requested type and the ref
+            n = f.name.lower()
+            if ref in n and (not dtype or dtype in n):
+                return str(f)
+        if dtype:
+            return None  # a specific doc type was asked for but no file matches -> fail closed
+        for f in files:  # no type specified: any file naming this ref
+            if ref in f.name.lower():
+                return str(f)
+        return None
+
+    return resolve
+
+
+def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
+    """A reader so "what's outstanding / who owes us" answers with a live aged-AR digest. Reads the TMS
+    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy."""
+    import time as _time
+
+    from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _read():
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                act = CdpActuator(session)
+                session.evaluate(f"location.href={invoices_url!r}")
+                _time.sleep(2.5)
+                obs = act.observe()
+                if not invoices_table_present(obs):      # unrendered/logged-out page: retry once, then
+                    _time.sleep(3.0)                      # honest "couldn't read" — NEVER "all paid"
+                    obs = act.observe()
+                if not invoices_table_present(obs):
+                    return None
+                return receivables_from_invoices_table(obs)
+        except Exception:  # noqa: BLE001 - a read miss must not render as a false empty receivables list
+            return None
+
+    return _read
+
+
+def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, lock_path):
+    """The 'what's happening?' snapshot reader: loads by status + ready-to-bill rows + receivables in one
+    pass. Returns None when the shared browser is busy or unreachable (never a fake all-clear)."""
+    import time as _time
+
+    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.ar_collections import invoices_table_present
+    from freight_recon.operation_proposal import loads_status_counts, ready_to_bill_from_loads_table
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _read():
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
+                act = CdpActuator(session)
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(2.5)
+                loads_obs = act.observe()
+                session.evaluate(f"location.href={invoices_url!r}")
+                _time.sleep(2.5)
+                invoices_obs = act.observe()
+            if not invoices_table_present(invoices_obs):
+                _time.sleep(3.0)
+                invoices_obs = act.observe()
+            if not invoices_table_present(invoices_obs):
+                return None                               # blind on AR -> honest miss, not a fake brief
+            return {
+                "status_counts": loads_status_counts(loads_obs),
+                "ready": ready_to_bill_from_loads_table(loads_obs),
+                "receivables": receivables_from_invoices_table(invoices_obs),
+            }
+        except Exception:  # noqa: BLE001 - unreadable TMS must surface as "couldn't read", not zeros
+            return None
+
+    return _read
+
+
+def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
+    """A resolver so "bill load 105" can fetch the load's Total from the TMS itself. Reads /loads and
+    returns the billable amount for that load ref (deterministic — the model never supplies it). Defers
+    if the shared browser is busy, and fails soft (None -> the assistant just asks for the amount)."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_actuator import CdpActuator
+    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.operation_proposal import ready_to_bill_from_loads_table
+
+    lock = BrowserLock(lock_path) if lock_path else None
+
+    def _resolve(load_ref: str) -> "str | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(1.2)
+                rows = ready_to_bill_from_loads_table(CdpActuator(session).observe())
+            for row in rows:
+                if str(row.get("load_ref")) == str(load_ref):
+                    return row.get("amount")
+        except Exception:  # noqa: BLE001 - resolution is best-effort; asking for the amount is the fallback
+            return None
+        return None
+
+    return _resolve
+
+
+def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
+    """Given a load ref, read its live row from the TMS /loads list: {load_ref, status, customer, total}.
+    Header-based column mapping (robust to column drift, like the AR reader). Returns None if the browser
+    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+    _JS = r"""(function(ref){
+      ref=String(ref);
+      var tables=[].slice.call(document.querySelectorAll('table'));
+      for(var ti=0;ti<tables.length;ti++){
+        var t=tables[ti];
+        var hs=[].slice.call(t.querySelectorAll('tr')[0].querySelectorAll('th,td')).map(function(h){return (h.innerText||'').trim().toLowerCase();});
+        function idx(n){for(var i=0;i<hs.length;i++){if(hs[i].indexOf(n)>=0)return i;}return -1;}
+        var iL=idx('load'), iS=idx('status'), iC=idx('customer'), iT=idx('total');
+        if(iS<0) continue;
+        var rows=[].slice.call(t.querySelectorAll('tr'));
+        for(var ri=1;ri<rows.length;ri++){
+          var cells=[].slice.call(rows[ri].querySelectorAll('td')).map(function(c){return (c.innerText||'').replace(/\s+/g,' ').trim();});
+          if(!cells.length) continue;
+          var lc=(iL>=0?cells[iL]:cells[0])||'';
+          var first=lc.split(' ')[0];
+          if(first===ref || lc.replace(/[^0-9]/g,'')===ref.replace(/[^0-9]/g,'')){
+            return JSON.stringify({load_ref:ref, status:(iS>=0?cells[iS]:''), customer:(iC>=0?cells[iC]:''), total:(iT>=0?cells[iT]:'')});
+          }
+        }
+      }
+      return null;
+    })"""
+
+    def _read(load_ref: str) -> "dict | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(1.3)
+                raw = session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")
+        except Exception:  # noqa: BLE001 — a read is best-effort; None means "unreadable", never "not found as truth"
+            return None
+        if not raw:
+            return None
+        import json as _json
+        try:
+            return _json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return None
+
+    return _read
+
+
+def _build_load_docs_reader(*, cdp_url, url_filter, loads_url, lock_path):
+    """Given a load ref, return the list of document filenames on that load (its FileSafe attachments).
+    Finds the load's detail link on /loads, opens its /attachments page, reads the .pdf names. Returns
+    None if unreadable (browser busy / not found) — never an empty list as a false 'no docs'."""
+    import time as _time
+
+    from freight_recon.browser_lock import BrowserLock
+    from freight_recon.cdp_session import CdpBrowserSession
+
+    lock = BrowserLock(lock_path) if lock_path else None
+    _HREF_JS = r"""(function(ref){ref=String(ref);
+      var links=[].slice.call(document.querySelectorAll('table a'));
+      for(var i=0;i<links.length;i++){var txt=(links[i].innerText||'').trim().split(' ')[0];
+        if(txt===ref){return links[i].getAttribute('href');}}
+      return null;})"""
+    _DOCS_JS = r"""(function(){return JSON.stringify([].slice.call(document.querySelectorAll('a'))
+      .map(function(a){return (a.innerText||'').trim();}).filter(function(t){return /\.[a-z]{3,4}$/i.test(t) && /pdf|jpg|jpeg|png|tiff?/i.test(t);}));})()"""
+
+    def _read(load_ref: str) -> "list | None":
+        if lock is not None and lock.is_busy():
+            return None
+        try:
+            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=8) as session:
+                session.evaluate(f"location.href={loads_url!r}")
+                _time.sleep(1.3)
+                href = session.evaluate(_HREF_JS + "(" + repr(str(load_ref)) + ")")
+                if not href:
+                    return None  # load not found on the list -> unreadable, not "no docs"
+                if href.startswith("/"):
+                    base = loads_url.split("/loads")[0]
+                    href = base + href
+                session.evaluate(f"location.href={(href.rstrip('/') + '/attachments')!r}")
+                _time.sleep(1.3)
+                raw = session.evaluate(_DOCS_JS)
+        except Exception:  # noqa: BLE001 — best-effort read
+            return None
+        import json as _json
+        try:
+            return _json.loads(raw) if raw else []
+        except Exception:  # noqa: BLE001
+            return None
+
+    return _read
+
+
+def _build_operation_result_poster(client_config: str | None):
+    if not client_config:
+        return None
+    config = load_delivery_config(client_config)
+    if config is None or config.slack is None:
+        return None
+    token = os.environ.get(config.slack.bot_token_env or "")
+    if not token:
+        return None
+    poster = SlackApiPoster(token)
+
+    def _post(receipt: dict) -> None:
+        channel = receipt.get("channel_id") or _default_slack_channel(config)
+        if not channel:
+            return
+        payload = {"text": receipt.get("text", "Neyma operation finished.")}
+        if receipt.get("blocks"):  # a conversational proposal carries its Approve button in blocks
+            payload["blocks"] = receipt["blocks"]
+        if receipt.get("thread_ts"):
+            payload["thread_ts"] = receipt["thread_ts"]
+        poster.post_message(channel=channel, payload=payload)
+
+    return _post
+
+
+def _default_slack_channel(config) -> str | None:
+    if config.slack is None:
+        return None
+    return config.slack.default_channel_id
+
+
+def _start_heartbeat_watchdog(status_file: Path, poster, interval_seconds: int) -> threading.Thread:
+    """Start a daemon thread that classifies the loop heartbeat each interval and posts a fire-once
+    Slack alert when it goes STALE (loop hung/died) and a recovery when it heart-beats again."""
+    from freight_recon.teammate_health import read_loop_health, watchdog_decision
+
+    def _run() -> None:
+        already_alerted = False
+        while True:
+            time.sleep(max(interval_seconds, 1))
+            try:
+                snapshot = read_loop_health(status_file)
+                message, already_alerted = watchdog_decision(snapshot, already_alerted=already_alerted)
+                if message:
+                    poster(message)
+            except Exception:  # noqa: BLE001 - the watchdog must never take down the server
+                continue
+
+    thread = threading.Thread(target=_run, name="neyma-heartbeat-watchdog", daemon=True)
+    thread.start()
+    return thread
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = host.strip().lower()
+    if normalized in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

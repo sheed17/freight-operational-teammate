@@ -1,3 +1,9 @@
+> # ⛔ SUPERSEDED — DO NOT FOLLOW
+> **Authority classification: SUPERSEDED** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **ARCHITECTURE.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Agentic Architecture
 
 Neyma should be built as a deterministic workflow engine with bounded AI capabilities, not as
@@ -23,11 +29,38 @@ The primary interface should be the customer's existing workspace, not a new por
 ```text
 email/PDF/TMS/portal input
 → Neyma works in the background
-→ Slack/Teams/email exception or approval request
+→ Slack exception or approval request
 → human approves/edits/disputes in-channel
 → Neyma executes approved action by API/browser where appropriate
 → Neyma verifies and posts completion summary
 ```
+
+## Channel Roles (canonical)
+
+Neyma lives **inside** the customer's existing systems (the Ventus pattern). Each channel has one
+distinct role; do not conflate them:
+
+- **Email = where the agent lives and waits (inbound only).** Carrier invoices, PODs, accessorial
+  backup, and "all the information" arrive by email. Neyma sits in the inbox, ingests every document
+  (classify → extract → link to load), and processes it. Email is the agent's inbound workspace —
+  it is **not** a place Neyma notifies the user. (Outbound email is reserved for *carrier-facing*
+  follow-ups — dispute / backup-request emails — never for user review notifications.)
+- **Slack = the headless UI.** There is no dashboard; Slack is the user's entire window into the
+  system. Review/approval/evidence happen here and **only** here — review cards with money-specific
+  buttons and evidence links; clicking applies the decision through the signed action intake.
+- **Browser-use agent = execution.** Once the user approves in Slack, the agent operates the
+  customer's TMS screen like a human, behind the adapter boundary — read-only first, then gated
+  write (confirm-before-submit + verify-by-readback).
+
+The canonical operator loop is therefore:
+
+```text
+agent lives in EMAIL (ingest every inbound doc: classify + extract + link) → deterministic reconciliation
+→ surface only what needs a human to SLACK (the headless UI) → user approves
+→ browser-use EXECUTES in the TMS → verify-by-readback → audit → done
+```
+
+Review notifications go to Slack only. The user is never emailed a review card.
 
 ## Orchestration And Tooling Stack
 
@@ -261,9 +294,9 @@ Corrections become:
 Default surfaces:
 
 - Slack messages and interactive webhooks.
-- Email approvals or reply-based workflows when Slack is not available.
 - Daily summaries.
 - Escalation messages for missing documents, failed sessions, and uncertain matches.
+- Carrier-facing follow-up drafts/sends only after an approved dispute or backup request.
 
 A web dashboard is optional later for admin, audit search, or configuration. It is not the core
 operator experience.
@@ -272,7 +305,7 @@ operator experience.
 
 Adapters execute approved actions:
 
-- Slack/email messages.
+- Slack messages.
 - TMS read.
 - TMS write.
 - Document upload.
@@ -286,13 +319,28 @@ Adapter rules:
 - Domain allowlist and timeouts.
 - Verify-by-readback before marking complete.
 
-Browser-use agents are implementation options for these adapters. Keep the role names separate
-from the implementation:
+Production browser-use agents should use [`browser-use/browser-use`](https://github.com/browser-use/browser-use)
+behind Neyma's adapter boundary. Keep the role names separate from the implementation:
 
-- `tms_read_adapter` may be an API client, browser-use agent, or fixture.
-- `tms_write_adapter` may be an API client, browser-use agent, or stub.
-- `email_adapter` may use Gmail/IMAP/API.
-- `review_adapter` may use Slack, Teams, or email.
+- `tms_read_adapter` may be an API client, `browser-use/browser-use` agent, Playwright/mock
+  adapter, or fixture.
+- `tms_write_adapter` may be an API client, `browser-use/browser-use` agent, Playwright/mock
+  adapter, or stub.
+- `email_adapter` ingests inbound mailbox threads and supports carrier-facing follow-up sends behind
+  a separate gate.
+- `review_adapter` uses Slack for human review. Teams can be considered later as another headless UI;
+  email is not a human review surface.
+
+Playwright remains the cheap local verification layer for generated mock TMS and deterministic
+selector/readback tests. `browser-use/browser-use` is the intended production browser-agent
+implementation when Neyma needs to operate a customer's browser/TMS like a human. It still must
+run behind Neyma's state machine, tool permission registry, domain allowlist, approval gates,
+timeouts, action trace, and verify-by-readback rules.
+
+Reference systems such as AscendTMS are useful for learning freight UI patterns and making the
+mock TMS more realistic. They are not the assumed production target. Production browser-use agents
+operate inside each customer's actual systems with a customer-specific screen map, allowlist,
+session policy, permission gates, and readback contract.
 
 Adapter calls should be wrapped as tools only through the permission model above. Browser tools
 need extra controls:
@@ -320,9 +368,11 @@ Build the adapters in this order:
 
 ```text
 MockTMSAdapter
-→ BrowserTMSAdapter against mock TMS
-→ optional sandbox/demo TMS adapter
-→ first design partner TMS adapter
+→ Playwright/local BrowserTMSAdapter against mock TMS
+→ browser-use/browser-use adapter against mock TMS
+→ optional reference/sandbox TMS screen mapping
+→ customer-specific screen map for the design partner's actual system
+→ first design partner browser/API TMS adapter
 → additional TMS adapters only when customer demand requires them
 ```
 

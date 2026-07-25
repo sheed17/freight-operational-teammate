@@ -1,3 +1,27 @@
+> ### COMPATIBILITY SURFACE — NOT THE CANONICAL AGENT DEFINITION
+> **The canonical surface is [`.claude/agents/build-supervisor.md`](../../.claude/agents/build-supervisor.md)**
+> (decision recorded by U-HANDOFF-1A: the formal CLI environment is Claude Code, so
+> `.claude/agents/` is canonical and this file is compatibility-only). Corrections land
+> there first; if this file and its canonical counterpart disagree, the counterpart wins.
+
+
+> ## ⛔ SUPERSEDED STATUS — READ `CLAUDE.md` FIRST
+>
+> **This file is a TASK LENS, not an authority on product, status or roadmap.**
+>
+> - **Product identity:** [`PRODUCT.md`](../../PRODUCT.md) — Neyma is an **operational execution
+>   layer** for freight brokerages across **eleven** loops. **Not** an invoice processor.
+> - **Current status:** [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) —
+>   Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED**.
+> - **Roadmap:** [`docs/implementation/PHASE-OUTPUTS.md`](../../docs/implementation/PHASE-OUTPUTS.md)
+>   — phases **P0–P14**, gates G0–G10.
+>
+> ### **Any "Stage 1–8" roadmap, "Current Phase" or "Current status" block below is HISTORICAL and
+> must not be followed.** The 8-stage roadmap is superseded. Where this file and `CLAUDE.md`
+> disagree, **`CLAUDE.md` wins.**
+>
+> Full audit: [`docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md`](../../docs/implementation/AUTO-LOADED-GUIDANCE-REVIEW.md)
+
 # Codex Build Supervisor
 
 Use this as the Codex review lens after implementing or changing any component in this

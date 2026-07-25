@@ -13,11 +13,15 @@ dependencies = [
     "python-dotenv>=1.0",
     "reportlab>=4.0",
     "pillow>=10.0",
+    "websocket-client>=1.6",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+]
+browser-agent = [
+    "browser-use[core]==0.13.1",
 ]
 
 [build-system]
@@ -28,5 +32,8 @@ build-backend = "hatchling.build"
 packages = ["src/freight_recon"]
 
 [tool.pytest.ini_options]
+# Bare `pytest` must run the canonical population, never quietly collect zero tests
+# (it previously pointed at a nonexistent tests/ directory). Canonical executions use
+# eval/pytest-canonical.ini explicitly; this stanza only keeps ad-hoc `pytest` honest.
 pythonpath = ["src"]
-testpaths = ["tests"]
+testpaths = ["eval"]

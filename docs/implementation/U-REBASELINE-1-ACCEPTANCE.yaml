@@ -1,0 +1,354 @@
+# U-REBASELINE-1 EXECUTABLE ACCEPTANCE CONTRACT
+#
+# U-REBASELINE-1 — PRODUCT, INTEGRATION AND PRODUCTION REBASELINE. Registered by U-HANDOFF-1D on
+# founder authority (the founder determined that several early product assumptions may
+# unnecessarily constrain Neyma's long-term product and production architecture; the rebaseline
+# re-evaluates them BEFORE P3 begins). It is a documentation, architecture, specification and
+# control unit ONLY - it must not implement runtime product behavior.
+#
+# results: ADJUDICATED COMPLETE. RB-01..RB-23 were executed by the U-REBASELINE-1 session with the
+# produced artifact named as evidence; RB-24 was awarded by U-REBASELINE-1A from the INDEPENDENT
+# U-REBASELINE-REVIEW-1 (preserved at u-rebaseline-review-1-independent-report.md) after every
+# accepted blocking finding was resolved. The executing session never self-certified RB-24.
+# eval/tests/test_docs_control_system.py enforces: exactly these 24 criteria exist, every PASS
+# names its evidence, and RB-24's evidence must cite the INDEPENDENT report.
+
+meta:
+  unit: U-REBASELINE-1
+  registered_by: U-HANDOFF-1D
+  registered_on: "2026-07-20"
+  executed_by: U-REBASELINE-1 session
+  executed_on: "2026-07-20"
+  execution_review: docs/implementation/u-rebaseline-1-product-production-review.md
+  completion_rule: >-
+    CLOSED. U-REBASELINE-1 is COMPLETE, adjudicated by U-REBASELINE-1A on 2026-07-20 from the
+    INDEPENDENT U-REBASELINE-REVIEW-1 with all accepted blocking findings resolved first.
+  adjudicated_by: U-REBASELINE-1A
+  independent_review: docs/implementation/u-rebaseline-review-1-independent-report.md
+  adjudication_review: docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
+  verdict_vocabulary: [READY FOR INDEPENDENT PRODUCT/PRODUCTION REBASELINE REVIEW, NOT READY]
+  authority: >-
+    Founder-authorized product decisions (CLAUDE.md section 4 authority classes). The rebaseline
+    may revise product direction because the FOUNDER directed it; customer-specific freight rules
+    remain NEEDS VALIDATION regardless (RB-18), and founder decisions and customer operational
+    rules remain distinct authority classes (RB-19).
+  scope_rule: >-
+    Documentation, architecture, specification and control only. No production runtime behavior
+    changes, no freight-workflow changes, no integrations added, R-07 stays OPEN - NOT CONTAINED,
+    P3 stays BLOCKED and unimplemented throughout.
+  progress_protocol: >-
+    Phase completion and program progress are reported per
+    docs/implementation/PROGRESS-PROTOCOL.md; the weighted acceptance template and program weights
+    live in docs/implementation/PROGRAM-WEIGHTS.yaml, and the finalizer derives
+    docs/implementation/BUILD-STATUS.yaml and refuses inflated numbers.
+  pass_rule: all 24 criteria PASS with evidence; any FAIL fails the rebaseline
+
+  # ------------------------------------------------------------------------------------
+  # THE IMMUTABLE REBASELINE CHANGE WINDOW (U-REBASELINE-1 remediation, P3 finding F-A).
+  #
+  # RB-23's src/-untouched invariant is a statement about a CLOSED, HISTORICAL unit: the
+  # rebaseline was documentation/architecture/specification/control ONLY, so none of ITS OWN
+  # commits may have touched production runtime code. The guard that enforced it diffed the
+  # WORKING TREE against `IMPLEMENTATION-REGISTRY.yaml meta.baseline_commit` - a field the
+  # finalizer REWRITES to the newest content commit. That anchor moves; the rebaseline does
+  # not. Every later unit's legitimate src/ change therefore accumulated into the rebaseline's
+  # population and was reported as a rebaseline violation. P3 was the first unit to touch src/
+  # after the rebaseline, so P3 is where the mis-anchoring became visible - it was never a P3
+  # defect. The guard is REPLACED, not relaxed (CLAUDE.md sec 5 rule 20): the invariant is
+  # unchanged, only its anchor is corrected to the two commits that actually bound the unit.
+  #
+  # THESE TWO COMMITS AND THIS PATH SET ARE IMMUTABLE. They describe finished history. The
+  # finalizer must never write here; nothing but a rewrite of published history can change them,
+  # and the guard treats any divergence as exactly that.
+  rebaseline_change_window:
+    base_commit: 43a0c4a69c68a2991efa00148a5868fbf427603b   # 43a0c4a - the U-HANDOFF-1D status-metadata commit, immediately BEFORE
+                                                       #           the first rebaseline content commit fbbeff9
+    head_commit: b3306148e2ad4efad76135e48b7b04572be9be15   # b330614 - the U-REBASELINE-1B status-metadata commit, the LAST
+                                                       #           commit of the rebaseline family
+    forbidden_path_prefix: src/
+    # EXPLICIT AND PROVEN POPULATION (membership, never a count - a same-count substitution must
+    # fail, CLAUDE.md sec 8). This is `git diff --name-only <base_commit> <head_commit>`, verbatim.
+    changed_paths:
+      - .codex/agents/roadmap-steward.md
+      - AGENTS.md
+      - ARCHITECTURE.md
+      - CLAUDE.md
+      - PRODUCT.md
+      - README.md
+      - docs/CANONICAL-DOCUMENTS.md
+      - docs/architecture/decisions/ADR-012-product-identity-and-strategy.md
+      - docs/architecture/decisions/ADR-013-workflow-authority-migration.md
+      - docs/architecture/decisions/ADR-014-credential-and-machine-identity.md
+      - docs/architecture/decisions/ADR-015-communications-subsystem.md
+      - docs/architecture/decisions/ADR-016-production-topology.md
+      - docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md
+      - docs/architecture/decisions/ADR-018-customer-operational-graph.md
+      - docs/architecture/decisions/ADR-019-conversational-operations-layer.md
+      - docs/architecture/target-system-specification.md
+      - docs/implementation/APPROVED-SKIPS.yaml
+      - docs/implementation/BUILD-STATUS.yaml
+      - docs/implementation/CURRENT.md
+      - docs/implementation/GATE-RESULT.json
+      - docs/implementation/IMPLEMENTATION-REGISTRY.yaml
+      - docs/implementation/IMPLEMENTATION-SURFACE.yaml
+      - docs/implementation/LEGACY-DISPOSITION.md
+      - docs/implementation/PHASE-OUTPUTS.md
+      - docs/implementation/PROGRAM-WEIGHTS.yaml
+      - docs/implementation/PROGRESS-PROTOCOL.md
+      - docs/implementation/SUITE-RESULT.json
+      - docs/implementation/TEST-NODE-MANIFEST.json
+      - docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml
+      - docs/implementation/implementation-roadmap.md
+      - docs/implementation/registry.md
+      - docs/implementation/u-rebaseline-1-product-production-review.md
+      - docs/implementation/u-rebaseline-1a-founder-adjudication-review.md
+      - docs/implementation/u-rebaseline-review-1-independent-report.md
+      - docs/product/DESIGN-PARTNER-EVIDENCE-PROGRAM.md
+      - docs/product/OPEN-VALIDATION-ITEMS.md
+      - docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml
+      - docs/product/operating-model.md
+      - docs/specifications/adapters/02-tms.md
+      - docs/specifications/adapters/10-browser.md
+      - docs/specifications/adapters/registry.md
+      - docs/specifications/operational-system-map.md
+      - docs/specifications/operational-workflow-review.md
+      - docs/specifications/workflows/W10-customer-comms.md
+      - docs/specifications/workflows/W11-claims.md
+      - docs/specifications/workflows/W2-procurement.md
+      - docs/specifications/workflows/W3-compliance.md
+      - docs/specifications/workflows/W4-dispatch.md
+      - docs/specifications/workflows/W5-tracking.md
+      - docs/specifications/workflows/W6-documentation.md
+      - docs/specifications/workflows/W7-exceptions.md
+      - docs/specifications/workflows/W8-billing.md
+      - docs/specifications/workflows/W9-settlement.md
+      - docs/specifications/workflows/registry.md
+      - eval/tests/test_bootstrap_hermeticity.py
+      - eval/tests/test_docs_control_system.py
+      - eval/tests/test_phase2_guard_registry.py
+      - eval/tests/test_progress_protocol.py
+      - eval/tests/test_rebaseline_invariants.py
+      - eval/tests/test_status_reality.py
+      - eval/tests/test_switch_consistency.py
+      - scripts/finalize_status.py
+      - scripts/progress_status.py
+
+criteria:
+
+  - id: RB-01
+    statement: Stable product identity is explicit.
+    evidence_required: the rebaselined product-identity statement and its canonical location
+    result: PASS
+    evidence: >-
+      PRODUCT.md section 1 (the canonical identity, verbatim) + ADR-012 section 1
+
+  - id: RB-02
+    statement: Initial ICP and broader company direction are distinguished.
+    evidence_required: the ICP definition separated from the long-term direction, with sources
+    result: PASS
+    evidence: >-
+      PRODUCT.md section 2 (initial ICP vs broader direction) + ADR-012 section 3
+
+  - id: RB-03
+    statement: >-
+      Neyma is not permanently prohibited from replacing individual TMS workflows or becoming
+      the primary operating interface.
+    evidence_required: >-
+      the revised authority text, plus removal or supersession of any absolute prohibition, with
+      the superseded claims disarmed in place
+    result: PASS
+    evidence: >-
+      ADR-013 section 1 (points 4-7); the operating-model.md section 2.4/7.2/7.5 in-place supersessions; PRODUCT.md section 12 ceilings block; guard test_no_authority_ceiling_returns + mutations
+
+  - id: RB-04
+    statement: >-
+      Integrate-first adoption remains supported and immediate TMS replacement is not assumed.
+    evidence_required: the adoption-path statement showing both truths simultaneously
+    result: PASS
+    evidence: >-
+      ADR-013 section 1 (points 1-3, 8) + PRODUCT.md section 5 - integrate-first and migration-capable stated simultaneously
+
+  - id: RB-05
+    statement: >-
+      Workflow-by-workflow authority and system-of-record migration are specified.
+    evidence_required: the migration model naming how authority moves one workflow at a time
+    result: PASS
+    evidence: >-
+      ADR-013 section 2 - the thirteen-field authority-migration model; P13 carries implementation
+
+  - id: RB-06
+    statement: >-
+      Secure OAuth, API key, service-account, bot-user, EDI, database and managed-browser access
+      models are architecturally permitted.
+    evidence_required: the integration/credential architecture enumerating each permitted model
+    result: PASS
+    evidence: >-
+      ADR-014 section 1 - every named access model architecturally permitted
+
+  - id: RB-07
+    statement: Employee raw-password handling is minimized and governed.
+    evidence_required: the credential-governance rules and their control location
+    result: PASS
+    evidence: >-
+      ADR-014 section 1 (the permanent minimization rule) + section 3 governance
+
+  - id: RB-08
+    statement: Access and authentication remain separate from action authority.
+    evidence_required: >-
+      the boundary restated in the rebaselined architecture, consistent with
+      TOOL-ACCESS-POLICY.md's tool-access-is-not-action-authority rule
+    result: PASS
+    evidence: >-
+      ADR-014 header + section 3 (authentication does not create action authority; credentials resolve only inside the adapter on a claimed grant); TOOL-ACCESS-POLICY.md unchanged
+
+  - id: RB-09
+    statement: >-
+      Email, SMS and communications are treated as core operational subsystems, evidence sources
+      and external effects.
+    evidence_required: the communications architecture with all three roles named
+    result: PASS
+    evidence: >-
+      ADR-015 sections 1-3 (evidence source + operational surface + governed external effect; the message-effect contract)
+
+  - id: RB-10
+    statement: >-
+      The initial commercial workflow is stated as a hypothesis with measurable closure
+      conditions and required validation.
+    evidence_required: the hypothesis, its closure metrics, and its validation requirement
+    result: PASS
+    evidence: >-
+      PRODUCT.md section 15 - Delivered Load Closure as HYPOTHESIS with 13 measurable wedge outcomes and required validation
+
+  - id: RB-11
+    statement: The eleven loops remain the domain map but are not simultaneous scope.
+    evidence_required: the loop map with explicit sequencing/scoping language
+    result: PASS
+    evidence: >-
+      PRODUCT.md section 6 (domain map, not simultaneous scope) + ADR-012 section 1
+
+  - id: RB-12
+    statement: A credible production deployment architecture is defined.
+    evidence_required: the production architecture document
+    result: PASS
+    evidence: >-
+      ADR-016 (modular monolith on managed infrastructure) + ARCHITECTURE.md section 29b
+
+  - id: RB-13
+    statement: >-
+      PostgreSQL, object storage, workers, scheduling, queues/outbox, webhooks, secrets and
+      tenant isolation are addressed.
+    evidence_required: each subsystem addressed by name in the production architecture
+    result: PASS
+    evidence: >-
+      ADR-016 section 2 Persistence row (PostgreSQL, migrations, transactional outbox + durable
+      inbox, durable timers/scheduler), Evidence row (S3-compatible object storage) and Identity &
+      access row (managed secrets, tenant auth/roles/authorization); queues are the outbox/inbox in
+      that same row, and PROGRAM-WEIGHTS.yaml production_readiness_checklist tracks
+      queues_inbox_outbox as a discrete item. (Citation corrected by U-REBASELINE-1A, finding F-08.)
+
+  - id: RB-14
+    statement: >-
+      A thin web control plane, approvals, audit and integration health are addressed.
+    evidence_required: each surface addressed by name in the production architecture
+    result: PASS
+    evidence: >-
+      ADR-017 section 2 (the control plane surface list incl. approvals, audit, integration health)
+
+  - id: RB-15
+    statement: >-
+      Observability, CI/CD, environments, migrations, backups, recovery, security and incident
+      handling are addressed.
+    evidence_required: each operational concern addressed by name
+    result: PASS
+    evidence: >-
+      ADR-016 section 2 CI/CD & release row (added by U-REBASELINE-1A - CI/CD, release promotion,
+      rollback exercises), plus its Operations/Environments/Resilience/Lifecycle rows; per-phase
+      rollback semantics in implementation-roadmap.md; PROGRAM-WEIGHTS.yaml
+      production_readiness_checklist items ci_cd / rollback_exercises / monitoring_and_alerting /
+      backup_and_restoration / disaster_recovery / incident_response. (Citation corrected by
+      U-REBASELINE-1A, finding F-08 - the original cited ADR-016 for CI/CD, which it did not name.)
+
+  - id: RB-16
+    statement: P3 remains the next safety implementation unit after rebaseline.
+    evidence_required: the registry graph showing P3 first after U-REBASELINE-1 completes
+    result: PASS
+    evidence: >-
+      IMPLEMENTATION-REGISTRY.yaml - P3 BLOCKED with deps [P2, U-HANDOFF-1, U-REBASELINE-1], next after the rebaseline; roadmap unchanged P3 row
+
+  - id: RB-17
+    statement: >-
+      The revised P3-P14 program produces a deployable product rather than only a local engine.
+    evidence_required: the revised program with deployability named per phase or gate
+    result: PASS
+    evidence: >-
+      implementation-roadmap.md rebaseline banner + revised P5/P9/P10/P11/P12/P13 rows and registry rebaseline_contract blocks - deployable product, not a local engine
+
+  - id: RB-18
+    statement: >-
+      Customer-specific freight rules remain NEEDS VALIDATION and are not invented.
+    evidence_required: OPEN-VALIDATION-ITEMS.md intact or extended; no invented rule anywhere
+    result: PASS
+    evidence: >-
+      OPEN-VALIDATION-ITEMS.md intact (V-W1 rebaselined, still OPEN); DESIGN-PARTNER-EVIDENCE-PROGRAM.md section 3 fail-closed rules; no rule invented anywhere in the diff
+
+  - id: RB-19
+    statement: >-
+      Founder product decisions and customer operational rules remain distinct authority classes.
+    evidence_required: the authority-class distinction preserved in the rebaselined documents
+    result: PASS
+    evidence: >-
+      ADR-012 authority header + U-REBASELINE-1-ACCEPTANCE meta.authority + evidence program accountable-source discipline
+
+  - id: RB-20
+    statement: No production runtime behavior is changed by the rebaseline.
+    evidence_required: the diff showing documentation/specification/control files only
+    result: PASS
+    evidence: >-
+      the unit diff touches docs/, eval/ and scripts/finalize_status.py metadata only - no file under src/ changed (review item 27)
+
+  - id: RB-21
+    statement: >-
+      Current control-system truthfulness, finalization and clean-clone guarantees remain intact.
+    evidence_required: the canonical finalizer and clean-clone gate green on the final tree
+    result: PASS
+    evidence: >-
+      scripts/finalize_status.py executed on the final tree: suite green, clean-clone gate PASS (review items 20-22; receipts SUITE-RESULT.json / GATE-RESULT.json)
+
+  - id: RB-22
+    statement: Historical claims are disarmed where the rebaseline supersedes them.
+    evidence_required: in-place supersession banners on every newly superseded claim
+    result: PASS
+    evidence: >-
+      in-place supersession annotations: operating-model.md sections 2.4/7.2/7.5, target-system-specification.md non-goals, adapters registry.md/02-tms.md/10-browser.md, V-W1
+
+  - id: RB-23
+    statement: >-
+      Guards and mutations prevent the rejected absolute product restrictions from returning as
+      current authority.
+    evidence_required: >-
+      the guards, plus mutation proofs showing a reintroduced absolute restriction fails the
+      build
+    result: PASS
+    evidence: >-
+      eval/tests/test_rebaseline_invariants.py + its mutation battery (review items 18-19) - a reintroduced absolute fails the build
+
+  - id: RB-24
+    statement: >-
+      A fresh reviewer can determine exactly what Claude will build and what inputs it still
+      requires.
+    evidence_required: the independent rebaseline review reaching that determination
+    result: PASS
+    evidence: >-
+      The INDEPENDENT U-REBASELINE-REVIEW-1 (fresh testing-account clone at fb5fcd93 / tree
+      6bbef434, preserved verbatim at docs/implementation/u-rebaseline-review-1-independent-report.md)
+      determined exactly this: five PASS verdicts (product, surface/conversational, freight
+      coverage, production specification, safety/control, implementation handoff), zero CRITICAL
+      findings, and an explicit statement that the repository "gives a fresh implementation agent
+      one coherent, honest, guard-defended definition" with "the reading order works, the status
+      authority is unambiguous". Its four HIGH and the accepted MEDIUM findings - the
+      fresh-reviewer-legibility defects it said must be resolved before RB-24 is declared PASS
+      (F-01, F-02, F-04, F-08) and the guard-integrity set (F-03, F-05, F-06, F-07) - were ALL
+      RESOLVED by U-REBASELINE-1A before this criterion was set; see
+      docs/implementation/u-rebaseline-1a-founder-adjudication-review.md for the per-finding
+      adjudication. Awarded by the ADJUDICATING session from INDEPENDENT evidence, never
+      self-certified.

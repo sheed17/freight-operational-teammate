@@ -1,3 +1,9 @@
+> # ⛔ QUARANTINED_GUIDANCE — DO NOT FOLLOW
+> **Authority classification: QUARANTINED_GUIDANCE** (see [`docs/CANONICAL-DOCUMENTS.md`](CANONICAL-DOCUMENTS.md)).
+> This document **must not direct implementation**. It predates the architectural reset and is
+> retained **only as historical evidence**. Canonical replacement: **PRODUCT.md / docs/implementation/CURRENT.md**. The product is NOT
+> what this file describes — read [`PRODUCT.md`](../PRODUCT.md) and [`CLAUDE.md`](../CLAUDE.md).
+
 # Design Partner Pilot Playbook
 
 This playbook defines what "ready to deploy for a design partner" means for Neyma's first
@@ -7,8 +13,8 @@ The first deployment should be supervised. Neyma should prove it can read docume
 data, identify issues, and help the human review faster before it is allowed to write into a TMS.
 
 The first deployment should not require a new web app. Neyma should operate in the partner's
-existing workspace: email/PDFs/TMS for inputs and Slack, Teams, or email for review and
-approvals.
+existing workspace: email/PDFs/TMS for inputs, Slack for review/approvals, and carrier-facing
+email only for approved follow-ups behind a send gate.
 
 Before the first design partner, run the [Internal Dogfood Pilot](INTERNAL_DOGFOOD_PILOT.md).
 Rasheed should experience Neyma as the controller/payables reviewer for a simulated freight
@@ -73,7 +79,7 @@ Neyma is ready for a supervised review pilot when:
 - Rate confirmation or TMS fixture data is available for test loads.
 - Deterministic reconciliation rules exist.
 - State machine and audit log exist.
-- Human review output exists through Slack, Teams, or email. CLI/report output is acceptable
+- Human review output exists through Slack. CLI/report output is acceptable
   only for internal testing before partner-facing pilot.
 
 Gate:
@@ -142,7 +148,7 @@ Ask these before building partner-specific logic:
 12. Can you provide matching rate confirmations or exported load data for those invoices?
 13. Are we allowed to use these docs for testing and configuration only?
 14. Are any redactions required before sharing?
-15. What channel should Neyma use for review: Slack, email, Teams, or a simple report?
+15. Which Slack workspace/channel should Neyma use for supervised review?
 
 ## Data Request
 
@@ -173,7 +179,7 @@ Recommended v0 scope:
 - Closed historical loads first.
 - No autonomous TMS writes.
 - Reconciliation against supplied rate-con fixtures or exported load data.
-- Human-reviewed results delivered through Slack, Teams, or email.
+- Human-reviewed results delivered through Slack.
 - Daily/weekly pilot summary.
 
 Recommended success metrics:
@@ -240,6 +246,10 @@ Before telling a design partner Neyma is ready for pilot deployment:
 
 When the design partner data arrives, use [When Design Partner Data Arrives](WHEN_DESIGN_PARTNER_DATA_ARRIVES.md)
 as the execution plan for the build.
+
+For deployment packaging, use [Design Partner Deployment Package](DESIGN_PARTNER_DEPLOYMENT_PACKAGE.md).
+It contains the config template, secrets checklist, deployment commands, success metrics,
+rollback plan, and customer-system screen-mapping workflow.
 
 ## First Call Script
 

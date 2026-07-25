@@ -1,0 +1,634 @@
+# Phase-0 Baseline Manifest
+#
+# The adjudicated record of what is TRUE about this repository today. Every Phase-0 guard RECOMPUTES
+# these facts and compares them here. A changed fact fails the build and requires a human to change
+# this file deliberately - that is the whole mechanism.
+#
+# This manifest does not make anything safe. Several entries below record that the repository is
+# UNSAFE, on purpose, so that the unsafe state cannot drift or be forgotten. An allowance here is
+# not containment; it is a receipt for a known hole, with a named owner and a deletion condition.
+#
+# RULE: no indefinite allowance. No wildcard allowance. No allowance justified only as "legacy".
+
+baseline:
+  commit: 9f20b25
+  recon_commit: 6057dfe
+  tests_passing_at_baseline: 677
+  test_count_rule: >-
+    The guard direction is >=. Tests may be added freely; a DROP in the collected count is a hard
+    failure. Silently losing a test is how a guard disappears without anyone deciding to remove it.
+
+# ---------------------------------------------------------------------------------------------
+# REQUIRED_INVARIANT - true now and forever. Breaking one is a hard failure, not a delta.
+# ---------------------------------------------------------------------------------------------
+required_invariants:
+  - id: INV-P0-1
+    rule: every Phase-0 probe reports its evaluated count and fails on an empty population
+    reason: a checker that parsed nothing has proven nothing (planning review M-9)
+    accountable_unit: U0.5
+  - id: INV-P0-2
+    rule: no production entry point may execute a financial effect against a mock
+    reason: finding R-01, the archetype defect. Already green; must never regress.
+    accountable_unit: pre-existing (test_no_mock_effect_in_production)
+  - id: INV-P0-3
+    rule: a CONSEQUENTIAL_FRESHNESS_READ may not accept a cache
+    reason: guard V-3. Already green by negative control.
+    accountable_unit: pre-existing (test_consequential_read_boundary)
+  - id: INV-P0-4
+    rule: every completion oracle must resolve to a canonical acceptance case id
+    reason: the invented AC-SEC-000 oracle (planning review M-1) named a test that did not exist
+    accountable_unit: U0.6
+  - id: INV-P0-5
+    rule: G4 must resolve through Phase 8
+    reason: planning review M-3. An under-scoped G4 is a path to an ungated live write.
+    accountable_unit: U0.7
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_CURRENT_DEFECT - real defects, adjudicated, allowed ONLY until the named phase.
+# ---------------------------------------------------------------------------------------------
+expected_current_defects:
+  - id: DEF-1
+    status: CLOSED 2026-07-16 by Phase 1 (U1.1/U1.2). Forward-only - may never be restored.
+    fact: operation_router.py::_commit_identity includes approved_amount in the commit identity
+    reason: >-
+      The live defect that Migration Safety Task 1 exists to fix. The amount belongs in the
+      Material-Facts Fingerprint, never in the identity of the effect.
+    risk_id: R-02
+    acceptance: AC-SAFE-012
+    removed_by_phase: P1
+    accountable_unit: U1.2
+    deletion_condition: AC-SAFE-012 flips red to green and no amount reaches any key derivation
+
+  - id: DEF-2
+    status: CLOSED 2026-07-16 by Phase 1 (U1.3). Forward-only - may never be restored.
+    fact: operation_router.py::_commit_identity returns None when there is no amount
+    reason: >-
+      Non-money effects (filing a POD) get no commit identity, so their single-commitment cannot be
+      enforced or proven.
+    risk_id: R-02
+    acceptance: AC-SAFE-013
+    removed_by_phase: P1
+    accountable_unit: U1.3
+    deletion_condition: AC-SAFE-013 green and a non-money effect mints a key
+
+  - id: DEF-3
+    status: >-
+      CLOSED 2026-07-16 by Phase 1 (U1.4). NOTE: the frozen plan named test_lane_graduation.py:206,
+      which encodes the NULLABLE-identity defect (DEF-2). The amount-in-key assertion actually lived
+      in test_operation_router.py:282 (test_operation_commit_key_normalizes_equivalent_money_amounts,
+      which passed approved_amount= into the key derivation). BOTH were inverted. See the Phase-1
+      review, finding P1-F1.
+    fact: eval/tests/test_lane_graduation.py encodes the amount-in-key defect as expected behaviour
+    reason: a test asserting the defect will fight the fix
+    risk_id: R-02
+    acceptance: AC-SAFE-012
+    removed_by_phase: P1
+    accountable_unit: U1.4
+    deletion_condition: the assertion is inverted and cannot be restored without failing AC-SAFE-012
+
+  # --- Defects found BY Phase 0, in the frozen corpus itself. These block G1/G2, not P1. ---
+  - id: DEF-4
+    fact: >-
+      The frozen corpus declares 141 machine transitions. The 13 machine files enumerate 134, and
+      the acceptance spec's OWN per-machine table sums to 134.
+    reason: >-
+      An arithmetic error propagated to six places, including release gate G1 ("141/141") and
+      AC-MACH-000 ("a bijection with the 141 spec rows"). A correct implementation of all 134 spec
+      transitions would FAIL that bijection forever. Both tempting fixes are bad: invent 7
+      transitions, or weaken the bijection to an inequality.
+    risk_id: P0-F2
+    acceptance: AC-MACH-000
+    status: CORRECTED 2026-07-16 by the Canonical Corpus Errata Pass
+    removed_by_phase: P0 (errata) - CLOSED
+    accountable_unit: U0.8
+    deletion_condition: >-
+      CLOSED: the corpus was amended to its own enumeration (134). The transitions were NOT invented
+      and the bijection was NOT weakened. The probe now asserts EXACT SET EQUALITY, not a count.
+
+  - id: DEF-5
+    fact: >-
+      The frozen corpus declares 92 emitted events. The canonical event list (events/registry.md
+      section 3) enumerates 98 across F1..F13.
+    reason: >-
+      Same class as DEF-4. F14 (13 security events) is correct. F15 is a lens and declares no
+      contracts. AC-EVT-003 asserts a "141 to 92 map" - both numbers are wrong.
+    risk_id: P0-F2
+    acceptance: AC-EVT-003
+    status: CORRECTED 2026-07-16 by the Canonical Corpus Errata Pass
+    removed_by_phase: P0 (errata) - CLOSED
+    accountable_unit: U0.8
+    deletion_condition: >-
+      CLOSED: the corpus was amended to its own enumeration (98). No events were invented to preserve
+      the old total. The probe now asserts EXACT SET EQUALITY over event names.
+
+  - id: DEF-6
+    fact: >-
+      The frozen plan states "6 of 8 tables are not tenant-first" in seven places. Exactly one table
+      (autonomous_run_counters) is tenant-first, so the true count is 7 of 8.
+    reason: >-
+      Not a harmless typo. U2.1 is scoped to "the 6 offending tables". Executed literally, Phase 2
+      would migrate 6, leave 1 non-tenant-first, and AC-SEC-001 would stay red with the phase marked
+      done.
+    risk_id: R-06
+    acceptance: AC-SEC-001
+    removed_by_phase: P2
+    accountable_unit: U2.1
+    scope_corrected: >-
+      2026-07-16 errata: every normative statement now says 7 of 8, and U2.1 is scoped by the EXACT
+      SET of seven tables enumerated in migration-plan.md PART 7 - never by count. The SCHEMA itself
+      is unchanged and still non-canonical; only the scope statement was wrong and is now right.
+    deletion_condition: all 8 tables are tenant-first and AC-SEC-001 is green
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_NONCANONICAL_SCHEMA - recorded, not migrated. Phase 0 changes no schema.
+# ---------------------------------------------------------------------------------------------
+expected_noncanonical_schema:
+  reason: >-
+    CLOSED by U2.6BC (Phase 2). Tenant is now FIRST in the key of every tenant-owned table, so the
+    uniqueness domain is per-tenant. The stated deletion condition was "this list must reach empty";
+    it has. The entry is KEPT, empty, rather than deleted: an absent section would read as "nobody
+    checked", and the empty list is what the guard asserts against.
+  risk_id: R-06
+  acceptance: AC-SEC-001
+  removed_by_phase: P2
+  accountable_unit: U2.1 / U2.6BC
+  deletion_condition: every table below is tenant-first; this list must reach empty
+  status: >-
+    MET at U2.6BC. operation_commit_claims - the table that HAD a tenant column and was still unsafe
+    because its PRIMARY KEY was commit_key alone - is gone: it became the canonical effect_grants
+    ledger, keyed (tenant, grant_id) with UNIQUE (tenant, commit_key).
+  tables_not_tenant_first: []
+  tables_tenant_first:
+    - autonomous_run_counters
+    - workflow_runs
+    - audit_events
+    - security_events
+    - operation_action_claims
+    - delivery_action_claims
+    - effect_grants
+    - operation_token_amounts
+    # Phase 3 (checkpoint kernel) - born tenant-first; never migrated because never legacy:
+    - checkpoint_witnesses
+    - brakes
+  # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
+  # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
+  # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
+  # names no number; the exact membership is guarded in test_bootstrap_hermeticity.)
+  # and a table added here without a reason fails the guard.
+  tables_tenant_exempt:
+    - table: migration_quarantine
+      reason: >-
+        It holds rows whose tenant is BY DEFINITION unknown - it is the table that exists BECAUSE
+        ownership could not be established without inference. A tenant column here would force the
+        exact guess Phase 2 refuses, at the one moment we have already proven we cannot make it.
+      removed_by_phase: never (structural)
+      accountable_unit: U2.6BC
+      deletion_condition: >-
+        none. If this table ever becomes tenant-first, quarantine has started inferring ownership.
+    - table: schema_migrations
+      reason: >-
+        It records what ran against the DATABASE. A database is not a tenant, and stamping migration
+        steps per-tenant would imply a tenant can be migrated independently, which is false.
+      removed_by_phase: never (structural)
+      accountable_unit: U2.6BC
+      deletion_condition: none
+    - table: owner_assertions
+      reason: >-
+        Blocker 2's owner-assertion audit record. It is migration BOOKKEEPING, not tenant-owned
+        business data: a row records WHO asserted that some tenant owns historical rows, so the
+        tenant is the subject of the record rather than its owner. Tenant-first keying would make
+        the audit of a disputed ownership claim itself owned by one of the disputing tenants.
+      removed_by_phase: not removed - permanent audit surface
+      accountable_unit: U2.6BC Blocker 2
+      deletion_condition: >-
+        None. This is a durable audit table. Its exemption is bounded instead by a guard: it may
+        never carry commit_key + state (that would make it a second effect ledger), and readiness
+        asserts the canonical table set exactly, so it cannot quietly become business data.
+    - table: platform_brake
+      reason: >-
+        The ONE global admission brake (M13 section 17, SD-12) - a single row, id constrained to
+        1, engaged by a human or a Sev-0 detector when the failure is bigger than any tenant
+        (tenant-isolation breach). It is BY DEFINITION nobody's tenant data: a tenant column here
+        would make the platform stop a per-tenant fact, and "which tenant owns the platform
+        brake" is a question with no honest answer. Its version is bound into every witness and
+        grant and re-validated by the claim CAS, so it denies admission for EVERY tenant at once.
+      removed_by_phase: never (structural)
+      accountable_unit: P3
+      deletion_condition: >-
+        none. If this table ever grows a tenant column, the global brake has become a per-tenant
+        brake and a tenant-isolation breach can no longer stop the platform.
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.
+# ---------------------------------------------------------------------------------------------
+expected_legacy_paths:
+  reason: >-
+    These paths can execute real external effects with no checkpoint, no witness, and no grant.
+    Phase 0 makes them visible. It does not make them safe.
+  risk_id: R-07
+  status: OPEN - NOT CONTAINED
+  removed_by_phase: P4
+  accountable_unit: U4.6 (delete), U4.7 (de-actuate), U4.8 (convert)
+  deletion_condition: >-
+    EP-6/7/9/10 are physically deleted, orient_tms loses its actuator import, EP-1/EP-3 are pipeline
+    clients, and the U4.9 import gate is ON.
+  containment_mechanism: >-
+    NONE. Until P4 the only mitigation is the operator's one-writer-at-a-time discipline, which is
+    discipline, not a mechanism. This entry may never be read as containment.
+  # P4 UPDATE: EP-6/7/9/10 (enter_truckingoffice_invoice, enter_invoice_discovered,
+  # run_operate_request, run_operator_agent) were PHYSICALLY DELETED this session, executing their
+  # frozen REMOVE_BEFORE_ENABLE disposition, so they are gone from this by-import list. The
+  # entrypoint probe no longer finds them; test_effect_capable_entry_points_match_the_manifest
+  # holds found == known against the shrunk list. Their adjudication record (now REMOVED_AT_P4)
+  # is preserved in EFFECT-PATH-INVENTORY.yaml. Six effect-capable-by-import scripts remain; R-07
+  # stays OPEN because EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) are not yet cut.
+  effect_capable_by_import:
+    - script: scripts/enter_tms_payable.py
+      ep: EP-12
+      cutover: test-only (mock-guarded)
+    - script: scripts/orient_tms.py
+      ep: EP-8
+      cutover: MAKE_READ_ONLY (remove the cdp_actuator import)
+      note: read-only by convention, actuator-capable by import
+    - script: scripts/propose_ar_from_tms.py
+      ep: EP-3
+      cutover: CONVERT_TO_PIPELINE_CLIENT
+    - script: scripts/read_tms_browser_use.py
+      ep: EP-14
+      cutover: MAKE_READ_ONLY (with S15b; import edge cut at P4)
+      note: >-
+        Was UNLISTED in the frozen EP-1..EP-13 inventory (finding P0-F4). ADJUDICATED by
+        U-HANDOFF-1B as EP-14: reads the MOCK TMS behind an optional dependency, initiates no
+        write flow, actuator-capable by transitive import - read-by-convention class with EP-8,
+        NOT a production-reachable live-write path. Exact adjudication:
+        docs/implementation/EFFECT-PATH-INVENTORY.yaml. P0-F4 CLOSED.
+    - script: scripts/run_action_callback_server.py
+      ep: EP-1
+      cutover: CONVERT_TO_PIPELINE_CLIENT
+    - script: scripts/run_dogfood_pilot.py
+      ep: EP-13
+      cutover: test-only (mock-guarded)
+  references_to_effect_capable:
+    - script: scripts/run_teammate.py
+      references:
+        - scripts/propose_ar_from_tms.py
+        - scripts/run_action_callback_server.py
+      classification: SPAWNS
+      note: >-
+        EP-2, the supervisor. Effect-capable ONLY by spawn, which an import-only guard cannot see.
+    - script: scripts/run_sunday_readiness.py
+      references:
+        - scripts/run_action_callback_server.py
+      classification: DOCUMENTS
+      note: >-
+        Emits the command as a runbook STRING for a human to copy. Launches nothing. Adjudicated as
+        not effect-capable. A first version of this probe guessed SPAWNS here and was wrong.
+    - script: scripts/mutate_phase4_boundary.py
+      references:
+        - scripts/enter_tms_payable.py
+      classification: DOCUMENTS
+      note: >-
+        The P4 boundary MUTATION HARNESS. It names enter_tms_payable.py (EP-12) as a mutation TARGET
+        - it reads the file, applies an in-memory text mutation, runs a pytest guard, and restores
+        the exact bytes (CLAUDE.md sec 9 save/restore, never git). It NEVER launches the script and
+        never produces an effect; the reference is a file-path string for the F1 quarantine mutants
+        (B17/B18). Adjudicated DOCUMENTS: names it, spawns nothing.
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_DEPRECATED_TERM - recorded and frozen at these counts. Phase 0 renames nothing.
+# ---------------------------------------------------------------------------------------------
+expected_deprecated_terms:
+  reason: >-
+    Names follow behaviour. Each rename is the LAST commit of the phase that made the name true.
+    Renaming earlier produces code that reads canonical and behaves legacy.
+  counting_rule: >-
+    PRODUCTION occurrences only: word-boundary matches in src/ and scripts/ (.py). This is the
+    surface P8's rename must migrate, and the only one the ratchet governs.
+
+    REVISED IN PHASE 1, because the previous rule (src + scripts + eval/tests, minus the phase guards)
+    measured the wrong thing and said so out loud: `commit_identity` reached ZERO in production - U1.6
+    complete, the whole point of the unit - while the combined total read 2, both inside a guard whose
+    job is to assert `"def _commit_identity(" not in source`. Naming a deleted symbol in order to
+    forbid it is the opposite of a regression, and a rule that scores it as one only teaches people to
+    silence the rule.
+
+    Tests are counted separately (test_counts) and TRACKED, not ratcheted: a test's vocabulary is
+    derivative of the API it exercises, it entrenches nothing, and P8 sweeps it along with the code.
+  deletion_condition: each count must reach 0 at its phase; counts may only DECREASE
+  # The files that already use deprecated vocabulary. CONTAINMENT, not counting: a term may keep
+  # breathing where it already lives, but reaching a NEW file is prohibited. Recorded because the
+  # Phase-1 rewrite proved a raw count ratchet mislabels legitimate work as a regression - and a
+  # guard that cries wolf gets re-baselined into meaninglessness.
+  owning_files:
+    - scripts/enter_tms_payable.py
+    - scripts/propose_ar_from_tms.py
+    - scripts/propose_operation_to_slack.py
+    - scripts/report_legacy_commit_identities.py
+    - scripts/run_action_callback_server.py
+    - scripts/run_dogfood_pilot.py
+    - scripts/run_gmail_to_slack_dogfood.py
+    - scripts/run_mailbox_workflow.py
+    - scripts/run_operate_request.py
+    - src/freight_recon/action_callback.py
+    - src/freight_recon/activity_log.py
+    - src/freight_recon/brain_operator.py
+    - src/freight_recon/browser_use_adapter.py
+    - src/freight_recon/cdp_actuator.py
+    - src/freight_recon/cdp_session.py
+    - src/freight_recon/commit_key.py
+    - src/freight_recon/email_triage.py
+    - src/freight_recon/inbox_brain.py
+    - src/freight_recon/lane_graduation.py
+    - src/freight_recon/mailbox_workflow.py
+    - src/freight_recon/migrations/phase2_tenant_first.py
+    - src/freight_recon/mock_tms_write_server.py
+    - src/freight_recon/operation_proposal.py
+    - src/freight_recon/operation_router.py
+    - src/freight_recon/operator_agent.py
+    - src/freight_recon/ops_control.py
+    - src/freight_recon/roi_ledger.py
+    - src/freight_recon/schema.py
+    - src/freight_recon/slack_delegate.py
+    - src/freight_recon/thread_reply.py
+    - src/freight_recon/tms_write.py
+    - src/freight_recon/truckingoffice_write.py
+    - src/freight_recon/workflow.py
+  terms:
+    - term: lane
+      count: 228   # P4 cutover: was 234; deleting EP-6/7/9/10 removed 6 `lane` occurrences
+      canonical: action_class | workflow_id | policy scope
+      removed_by_phase: P8
+      accountable_unit: U8.5
+      note: >-
+        ADJUDICATED 2026-07-17 (U2.6A): +7, all inside migrations/phase2_tenant_first.py, which
+        must NAME the legacy tables and columns it migrates - a migration that cannot say
+        `workflow_runs` cannot migrate workflow_runs. The terms did not spread to any other file.
+        Three meanings in one word. The largest mechanical change in the plan, deliberately last.
+        PRODUCTION baseline @ d33f251 was 257; Phase 1 brought it to 227 - DOWN 30, because deleting
+        the amount-keyed derivation took its lane-shaped parameters with it. The new module
+        commit_key.py is lane-free apart from one comment naming the concept it will replace.
+    - term: CommandIntent
+      count: 57
+      canonical: Proposal / Effect Request
+      removed_by_phase: P8
+      accountable_unit: U8.6
+      note: >-
+        PRODUCTION baseline @ d33f251 was 56; Phase 1 made it 57 (+1, in operation_router.py, whose
+        types ARE CommandIntent-based until P8 renames them - out of Phase-1 scope). ADJUDICATED.
+    - term: MockTmsWriteLedger
+      count: 14
+      canonical: spec-derived contract simulator
+      removed_by_phase: P3
+      accountable_unit: U3.5
+    - term: workflow_runs
+      count: 29
+      note: >-
+        ADJUDICATED 2026-07-17 (U2.6BC): the Phase-2 migration, the schema-readiness oracle and
+        their guards must NAME the tables they migrate and validate - a migration that cannot say
+        `workflow_runs` cannot migrate workflow_runs. The rename itself remains P6 (U6.4).
+      canonical: Work Item + Pipeline Instance (SPLIT, never merged back)
+      removed_by_phase: P6
+      accountable_unit: U6.4
+    - term: commit_identity
+      count: 0
+      canonical: Commit Key
+      removed_by_phase: P1
+      accountable_unit: U1.6
+      note: >-
+        PRODUCTION: 14 at baseline @ d33f251 -> 0. U1.6 is COMPLETE. Phase 1 replaced the producer
+        and every consumer with the canonical Commit Key. The term survives in production only inside
+        the compound "historical_commit_identity", an escalation payload field NAMING the legacy
+        concept it reports on - a substring, not a word-boundary use.
+    - term: operation_action_claims
+      count: 5
+      canonical: approval consumption
+      removed_by_phase: P3
+      accountable_unit: U3.2
+
+# ---------------------------------------------------------------------------------------------
+# EXPECTED_ACCEPTANCE_FAILURE - red on purpose. Not skipped, not xfailed into silence.
+# ---------------------------------------------------------------------------------------------
+expected_acceptance_failures:
+  - case: AC-SAFE-012
+    status: GREEN_AT_P1
+    reason: >-
+      WAS red by design (the amount was in the commit identity, DEF-1). Phase 1 removed it: the key
+      is derived from LogicalEffect, which has no amount field. Now an ordinary passing test, proved
+      end-to-end against the real router by actuator call count - not by a stub.
+    green_at_phase: P1
+    accountable_unit: U1.2
+  - case: AC-SAFE-013
+    status: GREEN_AT_P1
+    reason: >-
+      WAS red by design (non-money effects got no commit identity, DEF-2). Phase 1 gives every
+      consequential effect a key AND makes will_commit cover non-money effects, so the reservation
+      path actually engages. Proved by filing the same POD twice and counting uploads.
+    green_at_phase: P1
+    accountable_unit: U1.3
+  - case: AC-SEC-001
+    status: RED_BY_DESIGN
+    reason: 7 of 8 tables are not tenant-first (DEF-6)
+    green_at_phase: P2
+    accountable_unit: U2.1
+  - case: AC-CKPT-6-missing
+    status: DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8
+    reason: >-
+      The case asserts that an action class with a NULL policy gate causes the system to FAIL TO
+      START. It remains DEFERRED, but its GROUND WAS CORRECTED at P3 (independent-review finding
+      F-G / F-2 adjudication) and the original wording is superseded.
+
+      SUPERSEDED GROUND: "typed policy and action classes do not exist until P8". That is no
+      longer true and must not be repeated. P3 legitimately contains the MINIMAL STRUCTURAL
+      contract checkpoint step 5 (policy_evaluation) cannot be written without: the GateDecision
+      vocabulary and a fail-closed GateRegistry lookup. A checkpoint step that evaluates policy
+      needs a typed gate to evaluate, and a gate expressible as an absence is not a gate.
+
+      THE CORRECTED, CURRENT GROUND: the case is about STARTUP over a REGISTERED PRODUCTION
+      POPULATION, and that population is still EMPTY. P3 ships dark - no production module
+      constructs a GateRegistry or registers an action class; every registry in the tree is built
+      by a test or by a caller that does not exist yet. So running the probe today would still
+      evaluate ZERO gates and report green: the exact false-green M-9 pattern, and the same error
+      as PL-6 (a gate enabled before the thing it gates exists). Proven mechanically, not
+      asserted, by test_phase0_null_gate.py::test_the_production_gate_registration_population_is_
+      still_empty - which is what keeps this deferral honest instead of habitual.
+
+      WHAT P8 STILL OWNS, and what therefore still gates this case: rule authoring, compilation,
+      versioning, activation, precedence and conflict resolution, richer action-class descriptors,
+      the autonomy runtime, and the expectation/exception/compensation systems. Startup-time
+      registration of action classes arrives with those, and the case becomes executable then.
+
+      It is therefore declared not-yet-executable rather than passed. See finding P0-F1: the
+      frozen plan lists U0.3 as a Phase-0 unit, which is not achievable.
+    green_at_phase: P8
+    accountable_unit: U8.1
+
+# ---------------------------------------------------------------------------------------------
+# PROHIBITED_NEW_REGRESSION - the shrinking-only rules. These are the point of Phase 0.
+# ---------------------------------------------------------------------------------------------
+prohibited_new_regressions:
+  - id: REG-1
+    rule: no new persisted table without tenant first in its key
+    detected_by: test_phase0_tenant_posture
+  - id: REG-2
+    rule: no new direct adapter import site; the allowlist is shrinking-only
+    detected_by: test_phase0_adapter_imports
+  - id: REG-3
+    rule: no new effect-capable entry point without a classification in this manifest
+    detected_by: test_phase0_entry_points
+  - id: REG-4
+    rule: no new use of a deprecated term; counts may only decrease
+    detected_by: test_phase0_deprecated_semantics
+  - id: REG-5
+    rule: no invented acceptance identifier may be used as a completion oracle
+    detected_by: test_phase0_identifiers
+  - id: REG-6
+    rule: G4 may not be reduced to P2-P4 or omit any AC-SAFE case
+    detected_by: test_phase0_planning_graph
+  - id: REG-7
+    rule: no checker may report green after evaluating zero records
+    detected_by: test_phase0_evaluation_contract
+  - id: REG-8
+    rule: a module classified read-only may not import an actuator
+    detected_by: test_phase0_entry_points
+
+# ---------------------------------------------------------------------------------------------
+# The direct adapter import allowlist. SHRINKING-ONLY. Adding an entry is prohibited.
+#
+# P4 UPDATE (boundary-aware, U4.9): this is the full DETECTION surface - every (importer,
+# adapter-module) edge, including the `cdp_session` READ SUBSTRATE and intra-adapter composition,
+# which are architecturally legitimate and remain. The R-07 ENFORCEMENT surface is the smaller
+# `effect_adapter_import_gate.violation_edges` below: effect-capable imports by a module that is
+# not the containment boundary, another adapter, or a recorded quarantine. The gate's violation
+# list is what goes to EMPTY at P4; this detection list shrinks toward the legitimate residue
+# (substrate + composition). test_phase0_adapter_imports.py keeps this shrinking-only; the
+# boundary-aware gate is test_import_gate.py.
+# ---------------------------------------------------------------------------------------------
+adapter_import_allowlist:
+  counting_rule: >-
+    An (importer_module, imported_adapter_module) EDGE from the AST import graph, where the importer
+    is not the adapter itself. This rule is stated because the frozen plan's "13 direct adapter
+    import sites" is not reproducible: several defensible rules give 13, 16, 18 or 31. An unstated
+    counting rule is the M-4 pattern - a number nobody can adjudicate. See finding P0-F3.
+  recomputed_edges: 18   # P4: 31 -> EP-6/7/9/10 delete (-11) -> F1 removed EP-12's browser edge (-1) -> brain_runtime rewire (-1)
+  recomputed_importer_modules: 13   # 18 -> four EP scripts deleted -> brain_runtime no longer imports an adapter
+  frozen_plan_claimed: 13
+  removed_by_phase: P4
+  accountable_unit: U4.1-U4.9
+  deletion_condition: >-
+    the U4.9 CI import gate is ON and effect_adapter_import_gate.violation_edges is empty; this
+    detection list shrinks to the legitimate substrate/composition residue (never below it)
+  edges:
+    - src/freight_recon/browser_use_adapter.py -> tms_write
+    - src/freight_recon/cdp_actuator.py -> cdp_session
+    - src/freight_recon/discovered_write.py -> tms_write
+    - src/freight_recon/discovered_write.py -> truckingoffice_write
+    - src/freight_recon/mock_tms_write_server.py -> tms_write
+    - src/freight_recon/multistep_write.py -> tms_write
+    - src/freight_recon/multistep_write.py -> truckingoffice_write
+    - src/freight_recon/truckingoffice_write.py -> tms_write
+    - scripts/discover_tms_screen.py -> cdp_session
+    - scripts/enter_tms_payable.py -> tms_write
+    - scripts/orient_tms.py -> cdp_actuator
+    - scripts/orient_tms.py -> cdp_session
+    - scripts/propose_ar_from_tms.py -> cdp_actuator
+    - scripts/propose_ar_from_tms.py -> cdp_session
+    - scripts/read_tms_browser_use.py -> browser_use_adapter
+    - scripts/run_action_callback_server.py -> cdp_actuator
+    - scripts/run_action_callback_server.py -> cdp_session
+    - scripts/run_dogfood_pilot.py -> tms_write
+
+# ---------------------------------------------------------------------------------------------
+# THE U4.9 IMPORT GATE - boundary-aware ENFORCEMENT surface (P4). SHRINKING-ONLY -> EMPTY.
+#
+# A VIOLATION is an import of an EFFECT-CAPABLE adapter (a module that produces an external
+# effect - NOT the `cdp_session` read substrate) by a module that is not the containment boundary
+# (`effect_boundary`), another adapter (intra-layer composition), or a recorded, mock-guarded
+# quarantine. This is the R-07 surface: when it is empty and the gate is ON, an external effect
+# without a grant is structurally impossible. Enforced by test_import_gate.py (boundary-aware,
+# mutation-proven). The residual edges below are what THIS staged session did NOT yet cut - the
+# two ADAPT pipeline-client conversions (EP-1, EP-3), the two READ_ONLY import cuts that require
+# building untestable read-only surfaces (EP-8, EP-14), and the brain_runtime effect-routing
+# rewire - and they keep R-07 OPEN until a subsequent session removes them and flips the gate to
+# assert EMPTY. This session DELETED EP-6/7/9/10, taking the surface from 12 edges to 5.
+# ---------------------------------------------------------------------------------------------
+effect_adapter_import_gate:
+  counting_rule: >-
+    An (importer, effect_capable_adapter) edge where the importer is not in
+    {effect_boundary} U {the adapter layer} U {the recorded quarantine importers}. Computed by
+    eval/phase0/import_probe.effect_adapter_violation_edges().
+  effect_capable_adapters:
+    [cdp_actuator, browser_use_adapter, browser_tms_adapter, truckingoffice_write, multistep_write,
+     discovered_write, tms_write, browser_agent, browser_use_write]
+  containment_boundary: [effect_boundary]
+  read_substrate: [cdp_session]
+  quarantine_importers: [enter_tms_payable, run_dogfood_pilot]
+  removed_by_phase: P4
+  accountable_unit: U4.1-U4.9
+  deletion_condition: >-
+    this violation list is EMPTY and the gate asserts empty (not merely shrinking); that is the
+    mechanical close condition for R-07
+  status: >-
+    OPEN - 4 residual violations. This list is the EXACT current effect-capable-bypass surface and
+    shrinks monotonically in lockstep with every cutover edit (test_import_gate.py asserts
+    live == recorded, both-sided, so a cut that is not recorded here fails, and a recorded edge that
+    is not really cut fails). A prior session DELETED the four REMOVE_BEFORE_ENABLE paths
+    (EP-6/7/9/10). THIS session (P4 containment checkpoint) cut ONE more edge (brain_runtime) and
+    fixed the mandated findings that are verifiable without a live browser:
+      * F4: a generic post-attempt adapter exception now becomes UNKNOWN_OUTCOME (never CLAIMED,
+        never FAILED) - hostile-tested and mutation-proven (B15/B16).
+      * F1: EP-12's live `--browser` write path was removed and the quarantine exemption is now
+        proved STRUCTURALLY (AST import graph + constructor AST), not by substring (B17/B18).
+      * brain_runtime -> tms_write cut by injection (the effect executor is injected, not imported).
+      * the orphan-effect detective sweep MECHANISM is implemented and mutation-proven (B20/B21);
+        run_detective_sweep is its per-cycle invocation surface, but NO production/runtime caller
+        exists yet - only tests invoke it, and its own docstring records that the scheduler/daemon
+        that ticks it lives in the production runtime (P11). Production scheduling is therefore
+        deferred to P11 and the boundary still ships dark.
+    The remaining FOUR keep R-07 OPEN until a subsequent session cuts them and flips the gate to
+    assert EMPTY. Each hinges on correctness-critical browser code with NO live-browser / live-TMS
+    runtime available in this environment to verify against, so per CLAUDE.md sec 9 (not done blind)
+    they are NOT attempted on faith:
+      * EP-1 (run_action_callback_server -> cdp_actuator): its cdp_actuator import feeds the
+        OperationRouter -> OperatorAgent autonomous browser WRITE path (the live R-07 write) plus
+        several read closures. Containing the write path is the P12-scale supervised-write
+        integration; unverifiable here.
+      * EP-3 (propose_ar_from_tms -> cdp_actuator): reads + one nav-click via the actuator; needs
+        the F2 read-only CDP surface (below).
+      * EP-8 (orient_tms -> cdp_actuator): READ_ONLY conversion needs a read-only navigator that
+        reimplements observe/click/navigate on the cdp_session read substrate; correctness-critical
+        (a click can hit a submit target) and untestable here (no CDP browser).
+      * EP-14 (read_tms_browser_use -> browser_use_adapter): READ_ONLY conversion. browser_use_adapter
+        carries the TESTED BrowserUseWriteLedger (14 test nodes) whose canonical future is a
+        boundary-routed write adapter (P12), so it may NOT be deleted; splitting its read surface from
+        its write surface into a new module would ADD an adapter-import edge, which the shrinking-only
+        allowlist forbids. The clean cut therefore waits on the same read-only browser work as EP-8.
+    Finding F2 (cdp_session.evaluate is an ungated actuation primitive) is coupled to EP-3/EP-8/EP-1:
+    a robust read-only cdp_session surface is the prerequisite for those three cuts and is itself
+    browser-untestable here, so F2's behavioural split is deferred with them (its structural intent
+    is recorded here and in the cutover plan).
+  violation_edges:
+    - scripts/orient_tms.py -> cdp_actuator
+    - scripts/propose_ar_from_tms.py -> cdp_actuator
+    - scripts/read_tms_browser_use.py -> browser_use_adapter
+    - scripts/run_action_callback_server.py -> cdp_actuator
+
+# ---------------------------------------------------------------------------------------------
+# Recomputed corpus counts. The guards assert these against the FILES, not against a headline.
+# ---------------------------------------------------------------------------------------------
+spec_counts:
+  # ERRATA 2026-07-16: the corpus was amended to its own enumeration. Declared == enumerated now.
+  # Counts here are DIAGNOSTICS. The primary oracle is exact set equality against the lists below.
+  transitions_enumerated: 134
+  transitions_declared: 134
+  transitions_exact_set_digest: de13ddea5a448a0b
+  emitted_events_enumerated: 98
+  emitted_events_declared: 98
+  emitted_events_exact_set_digest: 6deb2ccecdfa8b3f
+  security_events_enumerated: 13
+  domain_entities: 40
+  adapters: 18
+  loops: 11
+  safety_invariants: 28
+  false_closure_rules: 16
+  cross_loop_handoffs: 10
+  cross_domain_invariants: 20

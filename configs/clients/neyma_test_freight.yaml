@@ -1,0 +1,41 @@
+client_id: neyma_test_freight
+company_name: Neyma Test Freight LLC
+simulation_role: internal_dogfood
+operator:
+  name: Rasheed
+  role: owner/operator
+review:
+  primary_channel: local_simulator
+  follow_up_tone: short_and_direct
+  packet_base_url: http://localhost:8000/packets
+  evidence_base_url: http://localhost:8000/evidence
+  thresholds:
+    critical_variance_amount: 100.00
+    medium_variance_amount: 25.00
+tms:
+  mode: mock_first
+  browser_automation_allowed_against: mock_tms_only
+  live_write_enabled: false
+# Per-customer delivery channels. Secrets are referenced by environment-variable NAME only; the
+# values never live in this repo. Onboard a customer by copying this block, renaming the env vars,
+# setting them in the environment, and running `scripts/verify_channels.py`.
+delivery:
+  default_channel: slack
+  action_token_secret_env: NEYMA_DELIVERY_SECRET_NEYMA_TEST
+  slack:
+    enabled: true
+    outbound_enabled: false
+    signing_secret_env: NEYMA_SLACK_SIGNING_SECRET_NEYMA_TEST
+    bot_token_env: NEYMA_SLACK_BOT_TOKEN_NEYMA_TEST
+    default_channel_id: C0DOGFOOD
+    routing:
+      IMMEDIATE_PING: C0DOGFOOD
+      CHANNEL_POST: C0DOGFOOD
+      DIGEST_ONLY: C0DIGEST
+  email:
+    enabled: true
+    sender: neyma@neyma-test-freight.test
+    to:
+      - controller@neyma-test-freight.test
+    action_base_url: http://localhost:8000/email/action
+    outbound_enabled: false
