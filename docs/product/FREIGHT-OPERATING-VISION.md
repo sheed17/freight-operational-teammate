@@ -13,7 +13,8 @@
 >
 > **Companion documents:** [`FREIGHT-CAPABILITY-MAP.md`](FREIGHT-CAPABILITY-MAP.md) ·
 > [`QUOTE-TO-CASH-LIFECYCLE.md`](QUOTE-TO-CASH-LIFECYCLE.md) ·
-> [`OPERATIONAL-LOOPS.md`](OPERATIONAL-LOOPS.md) · [`AUTONOMY-MATRIX.md`](AUTONOMY-MATRIX.md).
+> [`OPERATIONAL-LOOPS.md`](OPERATIONAL-LOOPS.md) · [`AUTONOMY-MATRIX.md`](AUTONOMY-MATRIX.md) ·
+> [`NEYMA-OPERATOR.md`](NEYMA-OPERATOR.md) *(the top-level coordinating Operator role + customer-discovery lifecycle)*.
 
 ---
 

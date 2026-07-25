@@ -80,6 +80,7 @@ disagree on *product identity*, **`PRODUCT.md` wins.**
 | [`product/QUOTE-TO-CASH-LIFECYCLE.md`](product/QUOTE-TO-CASH-LIFECYCLE.md) | The end-to-end load lifecycle across the eleven loops, with work-items/evidence/policy/effects per stage | **CANONICAL (navigation)** | Defers loop boundaries/closure/handoffs to the workflow registry |
 | [`product/OPERATIONAL-LOOPS.md`](product/OPERATIONAL-LOOPS.md) | Capability→loop coverage for W1–W11 + the recorded loop-gap analysis | **CANONICAL (navigation)** | **Proposes no new loop, rename, split or merge**; records gaps as owning-phase debt |
 | [`product/AUTONOMY-MATRIX.md`](product/AUTONOMY-MATRIX.md) | Per-capability autonomy ceilings + high-risk classes, mapped onto the ADR-010 gate decisions | **CANONICAL (navigation)** | Defers enforcement to `ADR-010`/`ADR-003`; nothing is autonomous today |
+| [`product/NEYMA-OPERATOR.md`](product/NEYMA-OPERATOR.md) | The Neyma Operator (top-level coordinating + conversational + implementation-learning role), the four operator modes, the customer-discovery lifecycle, the workflow/policy-learning & change process, and the Operator→P5–P14 phase mapping | **CANONICAL (navigation)** | Consolidation/entry-point; **holds no authority independent of `PRODUCT.md`, `ADR-019`/`017`/`018`/`013`/`010` and its cited sources; creates no new product decision, no new loop, no new source of truth, no new effect authority.** States nothing as implemented; on conflict the source wins |
 
 ## 4. Architecture layer
 
