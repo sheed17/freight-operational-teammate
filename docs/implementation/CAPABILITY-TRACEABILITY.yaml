@@ -1,0 +1,876 @@
+# CAPABILITY TRACEABILITY — the promise-to-implementation-to-evidence spine
+#
+# CANONICAL / IMPLEMENTATION_CONTROL. Created by the roadmap-completeness control correction.
+#
+# WHY THIS FILE EXISTS. The repository could already answer "what is implemented?" (
+# IMPLEMENTATION-SURFACE.yaml, by architecture concept) and "what is in scope?" (
+# OPERATIONAL-USE-CASE-COVERAGE.yaml, by use case). It could NOT answer, mechanically:
+# which promised freight capability belongs to which loop and phase, WHICH IMPLEMENTATION UNIT
+# WILL BUILD IT, and WHICH ACCEPTANCE EVIDENCE WILL PROVE IT EXISTS. That gap is what let the
+# complete roadmap look completable while promised capabilities remained only documented.
+#
+# WHAT IT IS NOT:
+#   - NOT a product decision. Every row is DERIVED from an existing canonical source, named in
+#     product_authority_reference. It creates no capability, no loop, and no scope.
+#   - NOT a second status authority. Unit and phase state live in IMPLEMENTATION-REGISTRY.yaml;
+#     short-form repository status lives in CURRENT.md; code reality lives in
+#     IMPLEMENTATION-SURFACE.yaml. Every row names its current_truth_source and defers to it.
+#   - NOT a claim that anything is built. implementation_status is the honest per-capability
+#     state, and a guard checks every non-SPECIFIED claim against symbols that must exist in src/.
+#   - NOT prose duplication. Rows reference the product documents; they do not restate them.
+#
+# COVERAGE CONTRACT (mechanically enforced by eval/tests/test_roadmap_completeness_control.py):
+#   - CAP-01..CAP-18 are EXACTLY the eighteen capability areas of
+#     docs/product/FREIGHT-CAPABILITY-MAP.md, in its order, by its names. One disappearing fails.
+#   - CAP-19..CAP-26 cover the eight further promised subjects that are not freight capability
+#     areas: the Operator, customer discovery/onboarding, the tenant Operational System Map,
+#     cross-loop handoffs, workflow-authority migration, evidence/provenance, supervised effects,
+#     and bounded autonomy.
+#   - Every loop W1..W11 appears as an owning_loop_or_surface on at least one row AND has a P13
+#     sub-unit in the registry.
+#   - Every row names an owning loop or surface, an owning phase, an owning implementation unit,
+#     and acceptance contracts; a unit that names no acceptance contract fails the build.
+#
+# VOCABULARY (all borrowed, none invented):
+#   implementation_status : SPECIFIED | PARTIALLY_IMPLEMENTED | IMPLEMENTED |
+#                           LEGACY_IMPLEMENTATION_ONLY   (IMPLEMENTATION-SURFACE.yaml statuses)
+#   design_partner_evidence_status / historical_evaluation_status :
+#                           NOT_COLLECTED | IN_PROGRESS | RECORDED
+#   required_policy_classes : the ADR-010 sec 3 concepts (Principle, Permanent Product Truth,
+#                           Product Policy, Tenant Policy, Rule, Constraint, Organizational
+#                           Knowledge)
+#   allowed_effect_classes : the action classes declared per adapter op and per loop step
+#   permanent_human_boundaries : the ADR-010 gate decisions PERMANENT_HUMAN_ASSERTION_REQUIRED /
+#                           HUMAN_APPROVAL_REQUIRED that no autonomy level removes (ADR-003)
+#   release_gate_reference : G0..G10, docs/specifications/acceptance/release-gates.md
+
+meta:
+  unit: roadmap-completeness control correction
+  authority: IMPLEMENTATION_CONTROL — traceability and sequencing, never product definition
+  coverage_basis: docs/product/FREIGHT-CAPABILITY-MAP.md (the eighteen capability areas)
+  loop_index: docs/specifications/workflows/registry.md (the sole canonical index of W1–W11)
+  unit_authority: docs/implementation/IMPLEMENTATION-REGISTRY.yaml
+  code_reality_authority: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+  scope_classification_authority: docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml
+  status_authority: docs/implementation/CURRENT.md
+  honesty_rules: >-
+    No freight rule is invented here. No capability is marked implemented without a source symbol
+    that exists in src/ and an executable reference. A legacy pre-reset module is NEVER cited as
+    the target implementation of a canonical capability - where one exists it is recorded as
+    LEGACY_IMPLEMENTATION_ONLY with its disposition, because the canonical capability is the thing
+    that module will be replaced by, not evidence that it is built. A historical prototype is not
+    proof of canonical implementation.
+  completeness_rule: >-
+    THE ROADMAP IS COMPLETE IF AND ONLY IF every required phase is COMPLETE, every required P13
+    sub-unit is COMPLETE, every mandatory capability row below has satisfied its required
+    acceptance state, and no mandatory release gate remains open. This is not a slogan: it is
+    computed by roadmap_completeness_report() in
+    eval/tests/test_roadmap_completeness_control.py, and the guard fails if the equivalence can be
+    broken in either direction.
+
+capabilities:
+
+  # ===================================================================== the eighteen areas
+  - capability_id: CAP-01
+    capability_name: Sales & customer intake
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W1
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#1
+    workflow_spec_reference: docs/specifications/workflows/W1-quote.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W1
+    prerequisite_units: [P6, P7, P8, P9, P12]
+    required_entities: [Customer, Customer Order, Quote Version, Brokerage Load, Stop, Facility]
+    required_events: [01-work-item-events.md, 02-pipeline-instance-events.md, 05-observation-events.md]
+    required_state_machine_or_pipeline: "L-Quote and L-Order; a Pipeline Instance per consequential step"
+    required_evidence_types: [source demand with provenance, market rate as DECISION_SUPPORT, human-approved sell rate]
+    required_policy_classes: [Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A1, A5, A7, A16]
+    allowed_effect_classes: [SEND_QUOTE]
+    permanent_human_boundaries: ["the sell rate is a human decision - Neyma never prices"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W1-acceptance.md read-only paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W1-acceptance.md consequential steps (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W1-acceptance.md (specification-level; no executable suite exists yet)"
+    release_gate_reference: G9
+    unresolved_decisions: [V-W1 wedge validation, "customer pricing and approval rules require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-02
+    capability_name: Load creation & order entry
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W1
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#2
+    workflow_spec_reference: docs/specifications/workflows/W1-quote.md
+    owning_phase: P12
+    owning_implementation_unit: P13-W1
+    prerequisite_units: [P4, P6, P9]
+    required_entities: [Brokerage Load, Stop, Customer Order, Facility, External Entity Mapping]
+    required_events: [01-work-item-events.md, 02-pipeline-instance-events.md, 03-external-effect-grant-events.md]
+    required_state_machine_or_pipeline: "L-Load and L-Stop; a Pipeline Instance per write"
+    required_evidence_types: [source provenance per entered field, duplicate-detection basis]
+    required_policy_classes: [Product Policy, Rule, Constraint]
+    required_adapters_or_channels: [A4, A11]
+    allowed_effect_classes: [UPDATE_LOAD]
+    permanent_human_boundaries: ["writes to the system of record are gated effects; duplicate or unauthorized writes are structurally prevented"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W1-acceptance.md read-only entry paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W1-acceptance.md write steps (G8)"
+    bounded_autonomy_contract: "P14 only, and only for low-risk normalized fields under earned policy - no contract exists yet"
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W1-acceptance.md (specification-level)"
+    release_gate_reference: G8
+    unresolved_decisions: ["customer/branch assignment rules require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-03
+    capability_name: Carrier sourcing & tendering
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W2
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#3
+    workflow_spec_reference: docs/specifications/workflows/W2-procurement.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W2
+    prerequisite_units: [P4, P6, P7, P8, P9, P13-W3]
+    required_entities: [Carrier, Carrier Assignment, Carrier Movement, Rate Confirmation, Qualification Decision]
+    required_events: [01-work-item-events.md, 03-external-effect-grant-events.md, 04-approval-events.md]
+    required_state_machine_or_pipeline: "L-Offer, L-Tender, L-Assign, L-Move, L-RateCon; a Pipeline Instance per consequential step"
+    required_evidence_types: [current QUALIFIED decision at tender time (freshness read), recorded selection rationale]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Rule, Constraint]
+    required_adapters_or_channels: [A5, A6, A1, A10, A4]
+    allowed_effect_classes: [POST_LOAD, SEND_TENDER, ISSUE_RATECON]
+    permanent_human_boundaries: ["the human commits the carrier and the rate - autonomous carrier booking does not exist"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W2-acceptance.md sourcing/ranking paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W2-acceptance.md tender steps with the W3 gate proven live (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W2-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["approved negotiation ranges and margin floors require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-04
+    capability_name: Dispatch & driver communication
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: "W4 (+ W5 check-calls, W10 sends)"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#4
+    workflow_spec_reference: docs/specifications/workflows/W4-dispatch.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W4
+    prerequisite_units: [P4, P9, P12]
+    required_entities: [Brokerage Load, Stop, Driver, Equipment, Appointment, Message]
+    required_events: [01-work-item-events.md, 05-observation-events.md, 08-expectation-events.md]
+    required_state_machine_or_pipeline: "L-Stop and L-Appt; a Pipeline Instance per send"
+    required_evidence_types: [message-delivery receipt, driver assertion as MODEL_EXTRACTED, readiness confirmation]
+    required_policy_classes: [Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A8, A1, A18, A6, A4, A15, "A2 (planned)", "A3 (planned)"]
+    allowed_effect_classes: [REQUEST_APPOINTMENT, SEND_OUTBOUND, UPDATE_LOAD]
+    permanent_human_boundaries: ["bad-news and money communications keep permanent human gates (ADR-015, ADR-003)"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W4-acceptance.md draft-only paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W4-acceptance.md sends and bookings (G8)"
+    bounded_autonomy_contract: "P14 only, per approved low-risk template, capped and revocable - no contract exists yet"
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W4-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["driver-directed SMS/voice ops are recorded elaboration debt (A2/A3 planned, unused)"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-05
+    capability_name: Track & trace
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W5
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#5
+    workflow_spec_reference: docs/specifications/workflows/W5-tracking.md
+    owning_phase: P10
+    owning_implementation_unit: P13-W5
+    prerequisite_units: [P9, P12]
+    required_entities: [Brokerage Load, Stop, Shipment Event, Expectation, Exception]
+    required_events: [05-observation-events.md, 08-expectation-events.md, 09-exception-events.md]
+    required_state_machine_or_pipeline: "L-Track; the Expectation machine owns the missing-event detection"
+    required_evidence_types: [positions as SYSTEM_IMPORTED, driver status as MODEL_EXTRACTED, "ETA as MODEL_INFERRED which never gates"]
+    required_policy_classes: [Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A9, A1, A18, "A2 (planned)"]
+    allowed_effect_classes: [SEND_OUTBOUND, UPDATE_LOAD]
+    permanent_human_boundaries: ["what the customer is told when the news is bad is human-owned"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W5-acceptance.md read-only paths; the P10 Delivered Load Closure shadow slice covers part of this loop (G5/G6)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W5-acceptance.md notifications (G8)"
+    bounded_autonomy_contract: "P14 only, routine on-time updates per approved template - no contract exists yet"
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W5-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["per-customer notification rules require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-06
+    capability_name: Appointment scheduling
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W4
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#6
+    workflow_spec_reference: docs/specifications/workflows/W4-dispatch.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W4
+    prerequisite_units: [P4, P9]
+    required_entities: [Appointment, Stop, Facility, Brokerage Load]
+    required_events: [01-work-item-events.md, 03-external-effect-grant-events.md, 08-expectation-events.md]
+    required_state_machine_or_pipeline: "L-Appt; REQUESTED is not CONFIRMED"
+    required_evidence_types: ["confirmed-window readback as a consequential freshness read in facility-local time"]
+    required_policy_classes: [Product Policy, Rule, Constraint]
+    required_adapters_or_channels: [A8, A1, A4]
+    allowed_effect_classes: [REQUEST_APPOINTMENT]
+    permanent_human_boundaries: ["the human confirms binding appointments"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W4-acceptance.md appointment comparison paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W4-acceptance.md booking steps (G8)"
+    bounded_autonomy_contract: "P14 only, booking within caps on earned evidence - no contract exists yet"
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W4-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["port/rail/warehouse portal specificity is recorded elaboration debt tied to UC-30"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-07
+    capability_name: Exception management
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: "W7 (cross-cutting)"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#7
+    workflow_spec_reference: docs/specifications/workflows/W7-exceptions.md
+    owning_phase: P8
+    owning_implementation_unit: P13-W7
+    prerequisite_units: [P6, P7, P8]
+    required_entities: [Exception, Conflict, Compensation, Obligation, Approval]
+    required_events: [09-exception-events.md, 07-conflict-events.md, 10-compensation-events.md]
+    required_state_machine_or_pipeline: "the Exception, Conflict and Compensation machines"
+    required_evidence_types: ["a decision reference for closure", "an owner and permitted terminal handling for every UNKNOWN_OUTCOME"]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Rule, Constraint]
+    required_adapters_or_channels: ["reads for assembly; the compensation path uses the full effect boundary"]
+    allowed_effect_classes: ["the compensating effect of the originating action class"]
+    permanent_human_boundaries: ["the resolution decision is human; AutoClose and closure by inactivity are illegal"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W7-acceptance.md detection/assembly paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/recovery-and-compensation-acceptance.md (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W7-acceptance.md and recovery-and-compensation-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["the partner's real exception taxonomy requires design-partner evidence (E-12)"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-08
+    capability_name: Document operations
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W6
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#8
+    workflow_spec_reference: docs/specifications/workflows/W6-documentation.md
+    owning_phase: P10
+    owning_implementation_unit: P13-W6
+    prerequisite_units: [P7, P9, P12]
+    required_entities: [Document, Document Packet, Evidence, Identity Binding Claim, Expectation]
+    required_events: [05-observation-events.md, 06-identity-binding-claim-events.md, 08-expectation-events.md]
+    required_state_machine_or_pipeline: "L-Doc and L-Packet; the Observation and Identity Binding Claim machines"
+    required_evidence_types: [content digest per document, deterministic binding within (tenant customer), "a MODEL_INFERRED classification is never a validated POD"]
+    required_policy_classes: [Product Policy, Rule, Constraint]
+    required_adapters_or_channels: [A1, A11, A4]
+    allowed_effect_classes: [FILE_DOCUMENT, SEND_OUTBOUND]
+    permanent_human_boundaries: ["illegible, ambiguous or unconfirmable bindings route to a human"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W6-acceptance.md read-only paths; the P10 Delivered Load Closure shadow slice covers part of this loop (G5/G6)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W6-acceptance.md filing and requests (G8)"
+    bounded_autonomy_contract: "P14 only, request-missing-document as a low-risk class - no contract exists yet"
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W6-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["per-customer document requirements require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-09
+    capability_name: Delivered Load Closure
+    capability_area: WEDGE_OUTCOME
+    owning_loop_or_surface: "W5/W6/W7/W8/W10 (one outcome, no single loop)"
+    product_authority_reference: PRODUCT.md#15
+    workflow_spec_reference: docs/specifications/workflows/registry.md
+    owning_phase: P10
+    owning_implementation_unit: P10
+    prerequisite_units: [P4, P5, P6, P7, P8, P9]
+    required_entities: [Brokerage Load, Document Packet, Carrier Invoice, Customer Invoice, Exception]
+    required_events: [01-work-item-events.md, 05-observation-events.md, 08-expectation-events.md, 09-exception-events.md]
+    required_state_machine_or_pipeline: "the contributing loops' lifecycles - L-Track, L-Doc, L-Packet, L-Invoice, L-Payable"
+    required_evidence_types: [POD and required documents, accessorial support, reconciliation against approved records]
+    required_policy_classes: [Product Policy, Tenant Policy, Rule, Constraint]
+    required_adapters_or_channels: [A1, A4, A11, A12]
+    allowed_effect_classes: ["none at P10 - reads only, communications DRAFTED and never sent"]
+    permanent_human_boundaries: ["money and bad news stay human; the model never chooses an amount; the closure decision is human-accountable"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W6-acceptance.md and W8-acceptance.md under gate G5, no writes and no sends"
+    supervised_acceptance_contract: "the P12 supervised effects and sends (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W6-acceptance.md, W8-acceptance.md (specification-level)"
+    release_gate_reference: G5
+    unresolved_decisions: ["IT IS A HYPOTHESIS - V-W1 asks whether Delivered Load Closure is the right wedge at all; it may not be promoted to validated without recorded design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-10
+    capability_name: Carrier invoice audit & accounts payable
+    capability_area: FREIGHT_FINANCIAL
+    owning_loop_or_surface: W9
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#10
+    workflow_spec_reference: docs/specifications/workflows/W9-settlement.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W9
+    prerequisite_units: [P4, P5, P6, P7, P8, P9, P12]
+    required_entities: [Carrier Invoice, Payable, Rate Confirmation, Accessorial Charge, Payment Application, Factoring Company]
+    required_events: [03-external-effect-grant-events.md, 04-approval-events.md, 07-conflict-events.md]
+    required_state_machine_or_pipeline: "L-Payable, L-PayApp, L-Recon; a Pipeline Instance per money-out effect"
+    required_evidence_types: ["the rate con and authorized accessorials as Material Facts", "a bank observation - a local PAID is never proof"]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Tenant Policy, Rule, Constraint]
+    required_adapters_or_channels: [A1, A4, A11, A12, A13]
+    allowed_effect_classes: [RECORD_PAYABLE, PAY_CARRIER, SEND_OUTBOUND]
+    permanent_human_boundaries: ["money leaving the business requires human approval, permanently; UNKNOWN_OUTCOME on pay never auto-resolves and never becomes FAILED on timeout"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W9-acceptance.md reconciliation paths, zero money movement (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W9-acceptance.md with G4 re-run LIVE (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W9-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["accessorial authorization rules are a WORKFLOW_BLOCKER against P13 W9 in OPEN-VALIDATION-ITEMS.md and may never be guessed"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-11
+    capability_name: Customer billing & accounts receivable
+    capability_area: FREIGHT_FINANCIAL
+    owning_loop_or_surface: W8
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#11
+    workflow_spec_reference: docs/specifications/workflows/W8-billing.md
+    owning_phase: P10
+    owning_implementation_unit: P13-W8
+    prerequisite_units: [P4, P5, P6, P7, P8, P9, P12]
+    required_entities: [Customer Invoice, Payment Application, Document Packet, Accessorial Charge, Bill-To Party]
+    required_events: [03-external-effect-grant-events.md, 04-approval-events.md, 08-expectation-events.md]
+    required_state_machine_or_pipeline: "L-Invoice and L-PayApp; a Pipeline Instance per release"
+    required_evidence_types: ["the amount from deterministic validation - the model never chooses an amount", POD-gated eligibility, a bank observation for PAID]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A4, A12, A13, A1, A7]
+    allowed_effect_classes: [RAISE_INVOICE, REISSUE_INVOICE, SEND_OUTBOUND]
+    permanent_human_boundaries: ["releasing the invoice, and any credit or write-off, require human approval"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W8-acceptance.md billing-readiness paths; the P10 Delivered Load Closure shadow slice covers part of this loop"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W8-acceptance.md release steps (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W8-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["per-customer billing rules require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-12
+    capability_name: Claims & cargo exceptions (OS&D)
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W11
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#12
+    workflow_spec_reference: docs/specifications/workflows/W11-claims.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W11
+    prerequisite_units: [P6, P7, P8, P9, P12]
+    required_entities: [Claim, Evidence, Compensation, Expectation]
+    required_events: [09-exception-events.md, 10-compensation-events.md, 08-expectation-events.md]
+    required_state_machine_or_pipeline: "L-Claim; the Compensation machine for the financial adjustment"
+    required_evidence_types: [the assembled packet and timeline, deadlines tracked as Expectations]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Rule]
+    required_adapters_or_channels: [A1, A11, "reads for assembly"]
+    allowed_effect_classes: [SEND_OUTBOUND, "the gated compensating financial adjustment"]
+    permanent_human_boundaries: ["legal, liability and settlement decisions require human authority - Neyma does not file claims"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W11-acceptance.md assembly paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W11-acceptance.md adjustments (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W11-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["claim filing deadlines and liability rules require design-partner evidence"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-13
+    capability_name: Carrier compliance & onboarding
+    capability_area: FREIGHT_OPERATIONS
+    owning_loop_or_surface: W3
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#13
+    workflow_spec_reference: docs/specifications/workflows/W3-compliance.md
+    owning_phase: P13
+    owning_implementation_unit: P13-W3
+    prerequisite_units: [P7, P8, P9, P12]
+    required_entities: [Carrier, Qualification Decision, Document, Expectation]
+    required_events: [05-observation-events.md, 08-expectation-events.md, 14-audit-security-events.md]
+    required_state_machine_or_pipeline: "L-Qual and L-Compliance; durable timers on expires_at"
+    required_evidence_types: ["authority, insurance and safety pulled at qualification time (freshness read)", "a counterparty authorization claim is a fraud signal, never authorization"]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A10, A11]
+    allowed_effect_classes: [SEND_OUTBOUND, FILE_DOCUMENT]
+    permanent_human_boundaries: ["the final trust decision is human; identity, banking and credential changes are approval-controlled"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/W3-acceptance.md monitoring paths (G6-class)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/W3-acceptance.md document requests (G8)"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/W3-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["the W-9 / signed-agreement onboarding packet is recorded elaboration debt inside W3"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-14
+    capability_name: Customer service
+    capability_area: PLATFORM_SURFACE
+    owning_loop_or_surface: "CROSS-CUTTING PLATFORM SURFACE over W10 + the conversational layer - deliberately NOT a loop"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#14
+    workflow_spec_reference: docs/specifications/workflows/W10-customer-comms.md
+    owning_phase: P11
+    owning_implementation_unit: P13-O1
+    prerequisite_units: [P9, P11]
+    required_entities: [Work Item, Evidence, Obligation, Message]
+    required_events: [15-coordination-events.md, 01-work-item-events.md]
+    required_state_machine_or_pipeline: "no machine of its own - it reads the underlying loops' state and routes requests through their pipelines"
+    required_evidence_types: ["answers grounded in canonical operational state - conversation is never a second source of truth"]
+    required_policy_classes: [Product Policy, Tenant Policy, Rule]
+    required_adapters_or_channels: [A14, A1, "the web control plane (ADR-017)", "one identity across every channel (ADR-019)"]
+    allowed_effect_classes: ["none of its own - a consequential request inherits the owning capability's effect classes and gates"]
+    permanent_human_boundaries: ["a request beyond authority stops; a prompt-injection attempt is never relayed; the surface never claims completion without verification"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "the SHADOW OPERATOR mode of docs/product/NEYMA-OPERATOR.md sec 4 (G6-class)"
+    supervised_acceptance_contract: "the SUPERVISED OPERATOR mode (G8), every effect keeping its owning loop's approval"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/observability-and-audit-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["it is a SURFACE, not a twelfth loop - modelling it as a loop would violate the loop definition (OPERATIONAL-LOOPS.md sec 4-6)"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-15
+    capability_name: Internal operations & management
+    capability_area: PLATFORM_SURFACE
+    owning_loop_or_surface: "CROSS-CUTTING PLATFORM SURFACE - oversight and reporting, deliberately NOT a loop"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#15
+    workflow_spec_reference: docs/specifications/workflows/registry.md
+    owning_phase: P11
+    owning_implementation_unit: P13-O1
+    prerequisite_units: [P5, P6, P7, P8, P9, P11]
+    required_entities: [Work Item, Obligation, Exception, Evidence]
+    required_events: [14-audit-security-events.md, 15-coordination-events.md]
+    required_state_machine_or_pipeline: "no machine of its own - it aggregates the same events and evidence as the operational state"
+    required_evidence_types: ["every management metric backed by the same evidence and events as the operational state - no vanity metrics"]
+    required_policy_classes: [Product Policy, Organizational Knowledge]
+    required_adapters_or_channels: [A14, "the web control plane (ADR-017)", "the conversational layer (ADR-019)"]
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["read and report only - the owner remains accountable"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/observability-and-audit-acceptance.md reporting cases (G6-class)"
+    supervised_acceptance_contract: "not applicable - this surface performs no consequential action; its supervised coverage is P13-O1's"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/observability-and-audit-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["it is a SURFACE, not a twelfth loop (OPERATIONAL-LOOPS.md sec 4-6)"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-16
+    capability_name: Safety, policy, approvals & control
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - the mechanism that enforces every other capability's ceiling"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#16
+    workflow_spec_reference: docs/specifications/acceptance/platform-safety-acceptance.md
+    owning_phase: P8
+    owning_implementation_unit: P8
+    prerequisite_units: [P3, P4]
+    required_entities: [Checkpoint Witness, Effect Grant, Brake, Policy, Rule, Approval]
+    required_events: [03-external-effect-grant-events.md, 04-approval-events.md, 11-policy-events.md, 12-rule-events.md, 13-brake-events.md]
+    required_state_machine_or_pipeline: "the Pipeline Instance, External Effect Grant, Approval, Policy, Rule and Brake machines"
+    required_evidence_types: [Material Facts bound to an approval, "a fresh Checkpoint Witness proving the seven checks passed"]
+    required_policy_classes: [Principle, Permanent Product Truth, Product Policy, Tenant Policy, Rule, Constraint]
+    required_adapters_or_channels: ["the adapter boundary itself"]
+    allowed_effect_classes: ["none - it authorizes effects, it does not perform them"]
+    permanent_human_boundaries: ["the authorization assertion is PERMANENT_HUMAN_ASSERTION_REQUIRED and no autonomy level removes it (ADR-003)"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/platform-safety-acceptance.md - the 105-case AC-CKPT matrix (already GREEN at P3)"
+    supervised_acceptance_contract: "gate G4 re-run LIVE at G8 (docs/specifications/acceptance/release-gates.md)"
+    bounded_autonomy_contract: "docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md sec 7 - the graduation dossier, at P14 only"
+    implementation_status: PARTIALLY_IMPLEMENTED
+    source_implementation_reference:
+      - path: src/freight_recon/checkpoint.py
+        symbol: seven_step_checkpoint
+        note: "the P3 kernel - COMPLETE and adjudicated, and it SHIPS DARK: no production path routes through it"
+      - path: src/freight_recon/effect_boundary.py
+        symbol: execute_effect
+        note: "the P4 containment boundary - PARTIALLY implemented and ships dark; R-07 is OPEN, NOT CONTAINED"
+    test_or_eval_reference: "eval/tests/test_phase3_checkpoint_matrix.py (105/105 GREEN); eval/tests/test_adapter_boundary_acceptance.py; eval/tests/test_import_gate.py"
+    release_gate_reference: G4
+    unresolved_decisions: ["typed policy authoring, compilation, versioning and the autonomy runtime remain P8; P3 holds only the minimal structural gate contract checkpoint step 5 requires"]
+    current_truth_source: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+
+  - capability_id: CAP-17
+    capability_name: Shared memory & learning
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - the tenant-safe organizational knowledge base"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#17
+    workflow_spec_reference: docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+    owning_phase: P7
+    owning_implementation_unit: P7
+    prerequisite_units: [P2, P7]
+    required_entities: [Evidence, Observation, "Organizational Knowledge (ADR-010 sec 3)"]
+    required_events: [05-observation-events.md, 14-audit-security-events.md]
+    required_state_machine_or_pipeline: "the Observation machine; knowledge is a projection, never an authority"
+    required_evidence_types: ["every correction preserved with provenance", "MODEL_INFERRED never gates", "OWNER_ASSERTED is never silently overwritten"]
+    required_policy_classes: [Organizational Knowledge]
+    required_adapters_or_channels: []
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["learning informs; it never creates authority - memory is decision-support only"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/domain-model-acceptance.md provenance cases"
+    supervised_acceptance_contract: "docs/specifications/acceptance/security-and-tenancy-acceptance.md - AC-SEC-001 at the mappings surface (deferred to P9)"
+    bounded_autonomy_contract: null
+    implementation_status: LEGACY_IMPLEMENTATION_ONLY
+    source_implementation_reference:
+      - path: src/freight_recon/knowledge.py
+        symbol: KnowledgeBase
+        note: >-
+          PRE-RESET MODULE, NOT THE CANONICAL CAPABILITY. It is cited here only so the legacy is
+          visible, and it is the thing the canonical capability replaces. It still hardcodes
+          tenant="default" - a recorded OPEN finding in CURRENT.md - so it is not tenant-safe and
+          may never be read as this capability being built.
+    legacy_disposition_reference: "docs/implementation/LEGACY-DISPOSITION.md - the knowledge-base disposition; the hardcoded default tenant closes at the phase that makes the KB tenant-safe"
+    test_or_eval_reference: "eval/tests/test_knowledge.py (exercises the LEGACY module, not the canonical capability)"
+    release_gate_reference: G1
+    unresolved_decisions: ["the hardcoded tenant=default sites (ops_control.py x5, action_callback.py::_learn_correction) are an OPEN finding"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-18
+    capability_name: Channels & systems
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - the adapter boundary"
+    product_authority_reference: docs/product/FREIGHT-CAPABILITY-MAP.md#18
+    workflow_spec_reference: docs/specifications/adapters/registry.md
+    owning_phase: P9
+    owning_implementation_unit: P11
+    prerequisite_units: [P4, P9, P11]
+    required_entities: [External Entity Mapping, "Adapter operation contracts (18 adapters)"]
+    required_events: [03-external-effect-grant-events.md, 05-observation-events.md]
+    required_state_machine_or_pipeline: "the External Effect Grant machine; every effect through the ADR-004 boundary"
+    required_evidence_types: ["reads classified as informational / decision-support / consequential-freshness", "a successful write into one node is never proof the workflow is complete"]
+    required_policy_classes: [Product Policy, Constraint]
+    required_adapters_or_channels: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A18]
+    allowed_effect_classes: ["every action class - but the boundary itself never grants authority"]
+    permanent_human_boundaries: ["credentials resolve only inside the adapter on a claimed grant (ADR-014); authentication never creates action authority"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/adapter-boundary-acceptance.md and degraded-mode-acceptance.md (G3)"
+    supervised_acceptance_contract: "gate G8 - the first grant-backed witness-gated live write and outbound send"
+    bounded_autonomy_contract: null
+    implementation_status: LEGACY_IMPLEMENTATION_ONLY
+    source_implementation_reference:
+      - path: src/freight_recon/effect_boundary.py
+        symbol: ExecutionCapability
+        note: >-
+          The CANONICAL boundary exists and is PARTIALLY implemented at P4 (see CAP-25); the
+          eighteen canonical ADAPTER CONTRACTS themselves do not. The live/partial adapters in the
+          tree (A1 email, A4 TMS, A14 Slack, A15 browser) are PRE-RESET modules under disposition,
+          never the canonical adapters, and their existence is not evidence of this capability.
+    legacy_disposition_reference: "docs/implementation/LEGACY-DISPOSITION.md - browser_write_path, tms_write, cdp_actuator, entry_point_scripts; several are deleted or converted by P4"
+    test_or_eval_reference: "eval/tests/test_import_gate.py; eval/tests/test_adapter_boundary_acceptance.py"
+    release_gate_reference: G3
+    unresolved_decisions: ["A2/A3/A5-A13/A16/A18 are planned adapters with no implementation; the per-tenant integration method requires design-partner evidence (E-02)"]
+    current_truth_source: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+
+  # ================================================= the further promised subjects (CAP-19..26)
+  - capability_id: CAP-19
+    capability_name: The Neyma Operator
+    capability_area: PLATFORM_SURFACE
+    owning_loop_or_surface: "CROSS-CUTTING PLATFORM SURFACE - the conversational and coordination persona"
+    product_authority_reference: docs/product/NEYMA-OPERATOR.md
+    workflow_spec_reference: docs/architecture/decisions/ADR-019-conversational-operations-layer.md
+    owning_phase: P11
+    owning_implementation_unit: P13-O1
+    prerequisite_units: [P9, P11, P12]
+    required_entities: [Work Item, Obligation, Evidence, Approval]
+    required_events: [15-coordination-events.md, 01-work-item-events.md]
+    required_state_machine_or_pipeline: >-
+      NONE OF ITS OWN. Pipeline Instances remain the durable workflow orchestrator; the Operator
+      proposes and coordinates and the spine disposes. Representing the Operator as a second
+      workflow source of truth is a guarded prohibition, not a style preference.
+    required_evidence_types: ["every response distinguishes known / inferred / completed / verified / failed / unknown / waiting / next / human-must-act"]
+    required_policy_classes: [Product Policy, Tenant Policy, Organizational Knowledge]
+    required_adapters_or_channels: [A14, A1, "web, Teams, mobile and voice - one identity, one conversation (ADR-019)"]
+    allowed_effect_classes: ["none of its own - a conversational instruction causing a consequential effect goes through the full kernel, voice included"]
+    permanent_human_boundaries: >-
+      The Operator cannot directly click, write, send, move money, or grant itself authority. It
+      never pretends to be human and never claims completion without verification. Customer
+      corrections become explicit tenant artifacts, never silent model memory.
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "the SHADOW OPERATOR mode (NEYMA-OPERATOR.md sec 4) - observes and proposes, zero consequential effects"
+    supervised_acceptance_contract: "the SUPERVISED OPERATOR mode at G8, then multi-loop at G9"
+    bounded_autonomy_contract: >-
+      NONE as a role. Autonomy is granted per action class to the OWNING LOOP at P14; the Operator
+      never holds an autonomy grant of its own.
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    legacy_disposition_reference: >-
+      docs/implementation/LEGACY-DISPOSITION.md - the pre-reset operator_*/brain_* modules are a
+      DIFFERENT thing that shares a word. They remain under their existing rewrite or retirement
+      disposition and are never the Operator's implementation.
+    test_or_eval_reference: "docs/specifications/acceptance/observability-and-audit-acceptance.md (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: ["nothing in NEYMA-OPERATOR.md is implemented; no Operator mode, artifact runtime or discovery lifecycle exists"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-20
+    capability_name: Customer discovery and onboarding
+    capability_area: PLATFORM_SURFACE
+    owning_loop_or_surface: "CROSS-CUTTING PLATFORM SURFACE - the tenant and integration lifecycle"
+    product_authority_reference: docs/product/NEYMA-OPERATOR.md
+    workflow_spec_reference: docs/architecture/decisions/ADR-017-tenant-and-integration-lifecycle.md
+    owning_phase: P11
+    owning_implementation_unit: P11
+    prerequisite_units: [P9, P11]
+    required_entities: [Tenant, Integration, Owner Assertion, "the tenant Operational System Map"]
+    required_events: [14-audit-security-events.md, 15-coordination-events.md]
+    required_state_machine_or_pipeline: "the tenant and integration lifecycle of ADR-017"
+    required_evidence_types: [recorded customer authorization, "the discovered workflow inventory and source-of-truth mapping"]
+    required_policy_classes: [Product Policy, Tenant Policy]
+    required_adapters_or_channels: ["the web control plane (ADR-017)", A1, A14]
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["onboarding without recorded customer authorization is a hostile case; credentials are governed under ADR-014 and authentication never creates action authority"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "the DISCOVERY mode of NEYMA-OPERATOR.md sec 4 - read and map only"
+    supervised_acceptance_contract: "gates G6 -> G7 at P11 - a real onboarding performed and reviewed"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/security-and-tenancy-acceptance.md (specification-level)"
+    release_gate_reference: G6
+    unresolved_decisions: ["never require replacing Sheets, email or the TMS before delivering value (ADR-018)"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-21
+    capability_name: Tenant Operational System Map
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - the per-tenant operational graph"
+    product_authority_reference: docs/architecture/decisions/ADR-018-customer-operational-graph.md
+    workflow_spec_reference: docs/specifications/operational-system-map.md
+    owning_phase: P11
+    owning_implementation_unit: P11
+    prerequisite_units: [P9, P11]
+    required_entities: ["the fifteen-field per-capability record", External Entity Mapping, Owner Assertion]
+    required_events: [05-observation-events.md, 14-audit-security-events.md]
+    required_state_machine_or_pipeline: "the ADR-018 sec 5 eight-level maturity ladder - observe, normalize, coordinate, execute, own, primary interface, authoritative, replace"
+    required_evidence_types: ["owner-asserted and auditable per capability", "a record missing any of the fifteen fields fails closed as NEEDS VALIDATION"]
+    required_policy_classes: [Tenant Policy, Product Policy]
+    required_adapters_or_channels: ["whatever the tenant actually uses - the TMS is ONE NODE, not the center"]
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["the map is owner-asserted; a write into one node is NEVER workflow completion"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "the discovery output reviewed with the customer before any coordination"
+    supervised_acceptance_contract: "gate G7 at P11 - the map drives real supervised work"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "eval/tests/test_rebaseline_invariants.py::test_the_operational_system_map_spec_is_complete (guards the SPEC, not an implementation)"
+    release_gate_reference: G7
+    unresolved_decisions: ["the spec records itself SPECIFICATION_ONLY - no runtime exists"]
+    current_truth_source: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+
+  - capability_id: CAP-22
+    capability_name: Cross-loop handoffs
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - all ten registry handoffs between W1-W11"
+    product_authority_reference: docs/specifications/workflows/registry.md
+    workflow_spec_reference: docs/specifications/acceptance/workflow-acceptance.md
+    owning_phase: P13
+    owning_implementation_unit: P13-H1
+    prerequisite_units: [P5, P6, P8, P12]
+    required_entities: [Work Item, Pipeline Instance]
+    required_events: [01-work-item-events.md, 02-pipeline-instance-events.md]
+    required_state_machine_or_pipeline: "the Work Item machine; the downstream Work Item is created in the SAME COMMIT as the source transition"
+    required_evidence_types: ["the source event id (handoffs deduplicate on it)", "the crash oracle - neither write may survive alone"]
+    required_policy_classes: [Constraint]
+    required_adapters_or_channels: []
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["a responsibility gap raises an Exception with a named human owner"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "AC-WF-H01..H10 replay - replay recreates the projection with ZERO effects"
+    supervised_acceptance_contract: "AC-FC-016 plus AC-WF-H01..H10 under gate G9 - zero tolerance on a responsibility gap"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/workflow-acceptance.md AC-FC-016 and AC-WF-H01..H10 (specification-level)"
+    release_gate_reference: G9
+    unresolved_decisions: []
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-23
+    capability_name: Workflow-authority migration
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - customer-authorized authority migration to the canonical spine"
+    product_authority_reference: docs/architecture/decisions/ADR-013-workflow-authority-migration.md
+    workflow_spec_reference: docs/specifications/operational-system-map.md
+    owning_phase: P13
+    owning_implementation_unit: P13-M1
+    prerequisite_units: [P9, P11, P12]
+    required_entities: ["Authority Migration Record (13 fields)", "the tenant Operational System Map", Owner Assertion]
+    required_events: [14-audit-security-events.md, 15-coordination-events.md]
+    required_state_machine_or_pipeline: "record, cutover, rollback, reconciliation - ADR-018 sec 5 levels 6-8"
+    required_evidence_types: ["recorded customer authorization - never inferred", "reconciliation result", "the rollback exercised"]
+    required_policy_classes: [Permanent Product Truth, Tenant Policy]
+    required_adapters_or_channels: ["the tenant's existing systems of record as mapped"]
+    allowed_effect_classes: [MIGRATION]
+    permanent_human_boundaries: ["no workflow's authority moves by drift; a migration missing any of the thirteen fields is NOT AUTHORIZED"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "a dry-run migration with reconciliation reporting and ZERO authority change"
+    supervised_acceptance_contract: "a complete migration record with reconciliation clean and rollback exercised, under gate G9"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "eval/tests/test_docs_control_system.py::test_specification_only_concepts_are_verifiably_absent_from_src (asserts authority_migration_record and authority_cutover are ABSENT from src/)"
+    release_gate_reference: G9
+    unresolved_decisions: ["no migration capability exists and none is offered before P13"]
+    current_truth_source: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+
+  - capability_id: CAP-24
+    capability_name: Evidence and provenance
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - content-addressed evidence and the six provenance classes"
+    product_authority_reference: docs/architecture/semantic-model.md
+    workflow_spec_reference: docs/specifications/entities/08-evidence.md
+    owning_phase: P7
+    owning_implementation_unit: P7
+    prerequisite_units: [P5, P6]
+    required_entities: [Evidence, Observation, Identity Binding Claim, Provenance]
+    required_events: [05-observation-events.md, 06-identity-binding-claim-events.md]
+    required_state_machine_or_pipeline: "the Observation and Identity Binding Claim machines; Evidence is immutable and has no state"
+    required_evidence_types: [SYSTEM_IMPORTED, OWNER_ASSERTED, LINKER_INFERRED, MODEL_EXTRACTED, MODEL_INFERRED, RECONCILED]
+    required_policy_classes: [Principle, Product Policy]
+    required_adapters_or_channels: []
+    allowed_effect_classes: []
+    permanent_human_boundaries: ["MODEL_INFERRED may never gate a consequential action at any confidence; OWNER_ASSERTED is never machine-recomputed"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "docs/specifications/acceptance/domain-model-acceptance.md provenance cases (G1)"
+    supervised_acceptance_contract: "docs/specifications/acceptance/observability-and-audit-acceptance.md - the event stream reconstructs the loop"
+    bounded_autonomy_contract: null
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/domain-model-acceptance.md (specification-level)"
+    release_gate_reference: G1
+    unresolved_decisions: []
+    current_truth_source: docs/implementation/IMPLEMENTATION-SURFACE.yaml
+
+  - capability_id: CAP-25
+    capability_name: Supervised external effects
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - the effect boundary under human supervision"
+    product_authority_reference: docs/architecture/decisions/ADR-004-effect-boundary.md
+    workflow_spec_reference: docs/specifications/acceptance/adapter-boundary-acceptance.md
+    owning_phase: P12
+    owning_implementation_unit: P12
+    prerequisite_units: [P3, P4, P5, P8, P11]
+    required_entities: [Effect Grant, Checkpoint Witness, Approval, Message]
+    required_events: [03-external-effect-grant-events.md, 04-approval-events.md]
+    required_state_machine_or_pipeline: "the External Effect Grant machine - the eight states, with UNKNOWN_OUTCOME non-terminal and human-owned"
+    required_evidence_types: ["a verified outcome determines completion", "UNKNOWN_OUTCOME is never silently treated as failure or success"]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Tenant Policy]
+    required_adapters_or_channels: [A4, A1, A15, A18]
+    allowed_effect_classes: ["the enabled action classes only, per (tenant, action_class) capability flag"]
+    permanent_human_boundaries: ["every effect is human-approved at G8; a timeout never becomes FAILED; the model never chooses an amount"]
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "gate G6 - live reads only, ZERO effects; then G7 - human-executed, and Neyma may never claim it executed"
+    supervised_acceptance_contract: "gate G8 - AC-SAFE-001..028 re-run LIVE; every effect HUMAN_APPROVAL_REQUIRED"
+    bounded_autonomy_contract: "deferred to CAP-26 - supervised operation is a prerequisite for any graduation"
+    implementation_status: PARTIALLY_IMPLEMENTED
+    source_implementation_reference:
+      - path: src/freight_recon/effect_boundary.py
+        symbol: execute_effect
+        note: >-
+          The single-door boundary algorithm exists and is acceptance- and mutation-proven, and it
+          SHIPS DARK - no production path routes through it, the CI import gate is not flipped to
+          EMPTY, and R-07 is OPEN - NOT CONTAINED. This is the P4 work in progress, not supervised
+          production operation, which does not exist.
+    test_or_eval_reference: "eval/tests/test_adapter_boundary_acceptance.py; eval/tests/test_import_gate.py"
+    release_gate_reference: G8
+    unresolved_decisions: ["P4 is not complete - EP-1/EP-3 conversions, the EP-8/EP-14 read-only cuts and finding F2 remain"]
+    current_truth_source: docs/implementation/CURRENT.md
+
+  - capability_id: CAP-26
+    capability_name: Bounded autonomy
+    capability_area: PLATFORM_FOUNDATION
+    owning_loop_or_surface: "CROSS-CUTTING - per action class, capped, time-boxed, revocable"
+    product_authority_reference: docs/product/AUTONOMY-MATRIX.md
+    workflow_spec_reference: docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md
+    owning_phase: P14
+    owning_implementation_unit: P14
+    prerequisite_units: [P12, P13]
+    required_entities: [Policy, Rule, Autonomy Grant, Brake]
+    required_events: [11-policy-events.md, 12-rule-events.md, 13-brake-events.md]
+    required_state_machine_or_pipeline: "the Policy and Rule machines; the one-way ratchet - automation may narrow, never broaden"
+    required_evidence_types: ["the graduation dossier from real P12-P13 operation", "zero wrong actions", "a near-zero UNKNOWN_OUTCOME rate"]
+    required_policy_classes: [Permanent Product Truth, Product Policy, Tenant Policy, Rule, Constraint]
+    required_adapters_or_channels: []
+    allowed_effect_classes: ["only classes carrying the gate decision AUTONOMOUS_WITHIN_CAPS - never a PERMANENT_HUMAN_ASSERTION_REQUIRED or FORBIDDEN class"]
+    permanent_human_boundaries: >-
+      The nine high-risk classes of AUTONOMY-MATRIX.md sec on permanent gates - pricing, carrier
+      selection and buy rate, claims settlement, banking and remittance changes, money out, safety
+      incidents, UNKNOWN_OUTCOME, customer-impacting bad news, and the authorization assertion
+      itself - are NEVER graduatable. A loop may be fully implemented at supervised operation with
+      every action class permanently approval-controlled.
+    design_partner_evidence_status: NOT_COLLECTED
+    historical_evaluation_status: NOT_COLLECTED
+    shadow_acceptance_contract: "not applicable - autonomy is never granted from shadow evidence"
+    supervised_acceptance_contract: "supervised history at G8/G9 is the ONLY admissible input to a graduation dossier"
+    bounded_autonomy_contract: >-
+      docs/architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md sec 7 - supervised
+      history, zero wrong actions, a value cap, a frequency cap, per-counterparty scope, and an
+      expiring window that reverts to HUMAN_APPROVAL_REQUIRED. A human always activates it.
+    implementation_status: SPECIFIED
+    source_implementation_reference: null
+    test_or_eval_reference: "docs/specifications/acceptance/release-gates.md G10 (specification-level)"
+    release_gate_reference: G10
+    unresolved_decisions: ["autonomy graduation thresholds are NEEDS VALIDATION; nothing consequential is autonomous today"]
+    current_truth_source: docs/implementation/CURRENT.md

@@ -18,7 +18,10 @@ model: opus
 > - **Product identity:** [`PRODUCT.md`](../../PRODUCT.md) — Neyma is an **operational execution
 >   layer** for freight brokerages across **eleven** loops. **Not** an invoice processor.
 > - **Current status:** [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) —
->   Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED**.
+>   ### **Do not read a phase state from this lens.** Task lenses have carried a frozen status
+>   line and gone stale before. The machine authority for unit state is
+>   [`IMPLEMENTATION-REGISTRY.yaml`](../../docs/implementation/IMPLEMENTATION-REGISTRY.yaml)
+>   (`status` · `execution_state` · `checkpoint_state`); the short-form authority is `CURRENT.md`.
 > - **Roadmap:** [`docs/implementation/PHASE-OUTPUTS.md`](../../docs/implementation/PHASE-OUTPUTS.md)
 >   — phases **P0–P14**, gates G0–G10.
 >
@@ -95,7 +98,7 @@ premature would attack working code. Its real disposition is **ADAPT at P4** —
 
 ### **The status block below is a snapshot from before the architectural reset. It is wrong.**
 ### **The authority is [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md).**
-It records: P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED, suite green (exact counts in its machine-maintained status block).
+It records the current phase states, the open findings and a suite figure — all of them there and not here. Read it; do not restate it in this lens.
 The text below claims Stage 1 is in progress and that only an extraction pipeline exists. Retained
 solely as a record of where the project once was.
 

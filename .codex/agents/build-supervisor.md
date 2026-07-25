@@ -12,7 +12,10 @@
 > - **Product identity:** [`PRODUCT.md`](../../PRODUCT.md) — Neyma is an **operational execution
 >   layer** for freight brokerages across **eleven** loops. **Not** an invoice processor.
 > - **Current status:** [`docs/implementation/CURRENT.md`](../../docs/implementation/CURRENT.md) —
->   Implementation **Phases P0/P1/P2 COMPLETE, P3 NOT STARTED, R-07 OPEN — NOT CONTAINED**.
+>   ### **Do not read a phase state from this lens.** Task lenses have carried a frozen status
+>   line and gone stale before. The machine authority for unit state is
+>   [`IMPLEMENTATION-REGISTRY.yaml`](../../docs/implementation/IMPLEMENTATION-REGISTRY.yaml)
+>   (`status` · `execution_state` · `checkpoint_state`); the short-form authority is `CURRENT.md`.
 > - **Roadmap:** [`docs/implementation/PHASE-OUTPUTS.md`](../../docs/implementation/PHASE-OUTPUTS.md)
 >   — phases **P0–P14**, gates G0–G10.
 >

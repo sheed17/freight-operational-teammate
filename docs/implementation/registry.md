@@ -32,7 +32,7 @@
 | [phase-0-baseline-manifest.yaml](phase-0-baseline-manifest.yaml) | ### **the adjudicated current-state facts** — every allowance carries a reason, a phase, an owner and a deletion condition |
 | [phase-0-implementation-review.md](phase-0-implementation-review.md) | ### **Phase 0 delivered + its findings + the verdict** |
 | [phase-1-implementation-review.md](phase-1-implementation-review.md) | ### **Phase 1 delivered — the Commit Key correction + its findings + the verdict** |
-| [phase-3-implementation-review.md](phase-3-implementation-review.md) | ### **The IMPLEMENTER'S record for Phase 3 — not a completion adjudication.** The checkpoint kernel (seven-step checkpoint, unconstructable witness, claim CAS, brake admission) is implemented with the 105-case matrix green and ships dark. ### **P3 is NOT COMPLETE:** its independent review and final adjudication are outstanding, and findings F-1 and F-2 await a verdict. |
+| [phase-3-implementation-review.md](phase-3-implementation-review.md) | ### **The IMPLEMENTER'S record for Phase 3 — not a completion adjudication.** The checkpoint kernel (seven-step checkpoint, unconstructable witness, claim CAS, brake admission) is implemented with the 105-case matrix green and ships dark. ### **As of that document's own moment P3 was NOT COMPLETE**; P3 has since been adjudicated COMPLETE. Current status: [`CURRENT.md`](CURRENT.md). |
 | [u-handoff-1c-false-green-and-discovery-correction-review.md](u-handoff-1c-false-green-and-discovery-correction-review.md) | ### **U-HANDOFF-1C — the hostile review's six HIGH findings closed: execution-not-attestation finalizer, isolated pytest config + exact node manifest, whole-suite skip enforcement, transitive safety wall, central dynamic inventory + anti-enumeration meta-guard. 44/44 battery. Next: the SECOND hostile review.** |
 | [u-handoff-1b-clean-clone-correction-review.md](u-handoff-1b-clean-clone-correction-review.md) | ### **U-HANDOFF-1B — clean-clone reproducibility: hermetic fixtures (the 46-failure false green closed), fail-fast bootstrap, artifact-backed status, registry.md demoted to index, exact inventories (effect paths, transition/event classes, table partition), graph consistency. Next: the SECOND independent rehearsal.** |
 | [u-handoff-1a-control-correction-review.md](u-handoff-1a-control-correction-review.md) | ### **U-HANDOFF-1A — the rehearsal's findings corrected: status-reality guard (two-commit convention), tool-access policy, implemented-vs-specified registry, executable rehearsal checklist. Next: the INDEPENDENT rehearsal.** |
@@ -110,14 +110,17 @@
 | **C-5** `orient_tms` actuator import (EP-8) | import removed + CI gate | P4 |
 | **C-6** mock ledger paths | the existing prod guard | done |
 
-## Risks: **R-01…R-20** · ### **the standing one is R-07** (the 6 live paths are reachable until P4, mitigated only by operator discipline).
+## Risks: **R-01…R-20** · ### **the standing one is R-07** (ungated live-write paths remain reachable until P4 COMPLETES, mitigated only by operator discipline; the exact residual is [`CURRENT.md`](CURRENT.md)'s).
 
 ## Status
 
 ### **Status lives in [`CURRENT.md`](CURRENT.md) — nowhere else, including not here.**
-As of the U-HANDOFF-1B correction the canonical record is: **P0, P1, P2 COMPLETE · P3 BLOCKED ·
-R-07 OPEN — NOT CONTAINED · next approved work: the independent zero-context rehearsal
-(U-HANDOFF-1).** If that sentence and `CURRENT.md` ever disagree, `CURRENT.md` is right.
+That sentence is not decoration: this index has been wrong about status before. **Do not read a
+phase state from this file.** The machine authority for unit state is
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) (`status`, `execution_state`,
+`checkpoint_state`); the short-form human authority is [`CURRENT.md`](CURRENT.md). A prior version
+of this paragraph froze the U-HANDOFF-1B-era record here and went stale unnoticed, which is the
+defect the roadmap-completeness drift guard now prevents.
 
 <details><summary>Historical status table (pre-Blocker snapshot — WRONG about Phase 2; retained as evidence)</summary>
 

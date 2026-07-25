@@ -52,7 +52,8 @@ suite_skipped: 1
 | **P1** — correct effect identity (Commit Key) | ### **COMPLETE** | [`phase-1-implementation-review.md`](phase-1-implementation-review.md) · `149c02a`, `da07936` |
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
 | **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark; only completing P4 closes R-07 |
-| **P4–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
+| **P4** — adapter containment | ### **SELECTED (`READY`) AND EXECUTING — NOT COMPLETE** | two implementation checkpoints landed; independent review + final adjudication PENDING. See the P4 unit block and its `landed_checkpoints` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) |
+| **P5–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
 
@@ -209,11 +210,14 @@ transport truncation disclosed, in
 
 ## ✅ The exact next approved work program
 
-### **P4 — ADAPTER CONTAINMENT. IT IS THE SOLE `READY` UNIT. IT HAS NOT BEGUN.**
+### **P4 — ADAPTER CONTAINMENT. IT IS THE SOLE `READY` UNIT, IT IS EXECUTING, AND IT IS NOT COMPLETE.**
 
-### **The next approved unit is `P4`.** The checkpoint-kernel phase (the unit just adjudicated) is
-COMPLETE — all 14 weighted criteria PASS on independent evidence — so P4's sole dependency is
-satisfied and it becomes READY.
+### **The next approved unit is `P4`.** The checkpoint-kernel phase is COMPLETE — all 14 weighted
+criteria PASS on independent evidence — so P4's sole dependency is satisfied and P4 is the selected
+unit. **`READY` is the SELECTION state, not a claim that nothing has happened:** P4's
+`execution_state` is `IN_PROGRESS` and its `checkpoint_state` is
+`CHECKPOINT_ACCEPTED_FOR_CONTINUATION`. The three fields are defined in `meta.status_model` of
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
 
 Unit `P4` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
 READY unit.** It routes every external effect through the adapter boundary and the two-key rule,
@@ -294,6 +298,15 @@ Retained only so the transitions are auditable.
 > inside this `<details>` block, where every control guard deliberately stops reading — which is
 > exactly why a false claim placed here is more dangerous than one in live text, not less.
 > **P3 remains the sole READY unit. No transition away from it has been recorded.**
+>
+> ### **SUBSEQUENT NOTE — the transition later happened, properly.** The paragraph above is
+> preserved verbatim as the record of a false claim and of the reasoning that caught it; it is
+> **historical, and its closing sentence is no longer current.** P3 was afterwards genuinely
+> reviewed by a fresh independent session and adjudicated COMPLETE by a separate adjudicating
+> session, and P4 became the selected unit — that evidence lives in the live tables above, never
+> here. The lesson is unchanged: **a false claim inside a quarantined block is more dangerous than
+> one in live text**, which is why the roadmap-completeness drift guard reads live text only and
+> requires historical blocks to be self-labelling rather than silently trusted.
 
 </details>
 

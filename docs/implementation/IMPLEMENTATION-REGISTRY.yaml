@@ -1,24 +1,50 @@
 # IMPLEMENTATION REGISTRY
 #
-# The single machine-readable control record of implementation work units.
+# The single machine-readable control record of implementation work units, and THE canonical
+# machine-readable authority for every unit's state. Navigation documents (CLAUDE.md sec 3,
+# README.md, ARCHITECTURE.md sec 28, PRODUCT.md sec 13, PHASE-OUTPUTS.md, the agent lenses)
+# RESTATE this record; they never establish it, and eval/tests/test_roadmap_completeness_control.py
+# fails the build when a restatement drifts from it.
 #
-# Statuses are EXACTLY: BLOCKED | READY | IN_PROGRESS | COMPLETE
+# THREE ORTHOGONAL STATE FIELDS PER UNIT (see meta.status_model below - read it before editing any
+# of them). They answer three different questions, and conflating them is what allowed one file to
+# say "P4 is READY" while another said "P4 has not begun" and a third recorded two landed P4
+# checkpoints - all three true of different questions, all three read as one contradiction:
+#
+#   status           - UNIT-SELECTION state:  may this unit be worked on, and is it the next one?
+#                      EXACTLY: BLOCKED | READY | IN_PROGRESS | COMPLETE
+#   execution_state  - PHASE-EXECUTION state: has work actually landed inside it?
+#                      EXACTLY: NOT_STARTED | IN_PROGRESS | COMPLETE
+#   checkpoint_state - CHECKPOINT/REVIEW state: how far up the review ladder has it climbed?
+#                      EXACTLY: NO_CHECKPOINT | CHECKPOINT_IMPLEMENTED |
+#                               CHECKPOINT_INDEPENDENTLY_REVIEWED |
+#                               CHECKPOINT_ACCEPTED_FOR_CONTINUATION |
+#                               FINAL_ADJUDICATION_PENDING | PHASE_ACCEPTANCE_COMPLETE
+#
 # There is deliberately no "mostly done", "nearly ready" or "in review". A unit that is not
-# COMPLETE is not done, and a unit that is not READY may not be started.
+# COMPLETE is not done, and a unit that is not READY may not be started. READY does NOT mean
+# "not begun" - that reading is exactly the contradiction this model removes.
 #
 # Guarded by eval/tests/test_docs_control_system.py:
 #   - exactly one unit may be READY at a time
 #   - no unit may be both BLOCKED and READY
 #   - every READY unit must name dependencies and an acceptance contract
 #   - every unit's dependencies must exist in this file
+# and by eval/tests/test_roadmap_completeness_control.py:
+#   - the three state fields are individually valid and mutually consistent
+#   - at most one unit is executing, and it is the mechanically derived active phase
+#   - a claimed independent checkpoint review must cite a report that exists on disk
+#   - P13 cannot be COMPLETE while any required sub-unit is incomplete
+#   - no navigation document may restate a phase state the registry does not hold
 #
 # Sequencing authority: implementation-roadmap.md (phases P0-P14, gates G0-G10).
-# Status authority: CURRENT.md.
+# Short-form status authority for humans: CURRENT.md. Machine authority for unit state: THIS FILE.
 
 meta:
-  version: 2
+  version: 3
   # The three fields below MIRROR the machine-maintained status block in CURRENT.md and are
-  # rewritten by the same script (scripts/update_current_status.py). test_status_reality.py fails
+  # rewritten by scripts/finalize_status.py::_write_status (scripts/update_current_status.py has
+  # been a refusing shim since U-HANDOFF-1C and writes nothing). test_status_reality.py fails
   # the build if they disagree with CURRENT.md or with the checked-out commit.
   baseline_commit: 2394743ca77baa25f8f2246bca4a51a31b832f28
   validated_tree: 905aa70101ed5c2121df8aafe7b9ee198dda1af6
@@ -45,6 +71,63 @@ meta:
     and refuses inflated numbers. Every session prints the NEYMA BUILD STATUS block and stops at
     the next approved control boundary.
 
+  # ---------------------------------------------------------------- the three-field status model
+  # Added by the roadmap-completeness control correction. It introduces NO new status system: it
+  # separates three questions that the single `status` field was being asked to answer at once.
+  status_model:
+    why: >-
+      One field was carrying three meanings, so every honest sentence about P4 contradicted
+      another honest sentence. "P4 is the sole READY unit" (selection), "P4 has not begun"
+      (execution) and "two P4 implementation checkpoints landed" (checkpoint) were all written as
+      status claims about the same word. They are now three fields with three vocabularies, and a
+      guard enforces the relationships between them.
+    status:
+      question: "May this unit be worked on, and is it the approved next one?"
+      values: [BLOCKED, READY, IN_PROGRESS, COMPLETE]
+      meaning: >-
+        The UNIT-SELECTION / eligibility state. It answers CLAUDE.md sec 6 step 2 - "identify
+        exactly ONE READY work unit". READY means SELECTED AND PERMITTED, never "untouched".
+      deliberately_unchanged: >-
+        P4 stays READY while it executes, and this is a decision, not an oversight. READY is the
+        field the whole control system selects on: scripts/progress_status.py::single_ready_unit
+        returns the unique READY unit, the finalizer refuses a BUILD-STATUS whose single_ready_unit
+        disagrees with it, and five guards assert `ready == ["P4"]`. Moving P4 to
+        status: IN_PROGRESS would leave ZERO READY units, so the repository could no longer name
+        its next approved unit - it would trade a prose contradiction for a control-system hole.
+        Execution is therefore recorded in execution_state, which is what actually changed.
+    execution_state:
+      question: "Has implementation work actually landed inside this unit?"
+      values: [NOT_STARTED, IN_PROGRESS, COMPLETE]
+      meaning: >-
+        The PHASE-EXECUTION state, and the field a navigation document must mirror when it says a
+        phase is "NOT STARTED", "IN PROGRESS" or "COMPLETE". IN_PROGRESS requires at least one
+        landed_checkpoints entry whose evidence exists on disk - a phase cannot claim execution
+        with nothing to show.
+      contributes_to_percentages: false   # only PASS acceptance criteria move a percentage
+    checkpoint_state:
+      question: "How far has the review ladder been climbed inside this unit?"
+      values:
+        - NO_CHECKPOINT                          # nothing landed
+        - CHECKPOINT_IMPLEMENTED                 # work landed; no independent review yet
+        - CHECKPOINT_INDEPENDENTLY_REVIEWED      # a session that did not implement it reviewed it
+        - CHECKPOINT_ACCEPTED_FOR_CONTINUATION   # reviewed, findings mandated, work may continue
+        - FINAL_ADJUDICATION_PENDING             # scope complete; awaiting the adjudicating session
+        - PHASE_ACCEPTANCE_COMPLETE              # all weighted criteria PASS; the unit is COMPLETE
+      meaning: >-
+        A checkpoint is a landed increment, NEVER an acceptance. Climbing this ladder moves no
+        percentage and completes no phase: only the weighted acceptance_criteria do that, and
+        independent_review + final_adjudication structurally cannot be self-supplied
+        (PROGRESS-PROTOCOL.md sec 3, CLAUDE.md sec 11).
+    invariants:
+      - "status COMPLETE <=> execution_state COMPLETE <=> checkpoint_state PHASE_ACCEPTANCE_COMPLETE"
+      - "status BLOCKED => execution_state NOT_STARTED and checkpoint_state NO_CHECKPOINT"
+      - "execution_state IN_PROGRESS => status in {READY, IN_PROGRESS} and >=1 landed checkpoint"
+      - "execution_state NOT_STARTED => no landed_checkpoints entries"
+      - "checkpoint_state INDEPENDENTLY_REVIEWED or ACCEPTED_FOR_CONTINUATION => the cited
+         independent review report exists on disk"
+      - "at most one unit may be execution_state IN_PROGRESS, and it must equal the derived
+         BUILD-STATUS active_phase"
+
 units:
 
   # ============================================================ COMPLETE
@@ -54,6 +137,8 @@ units:
       Establish a mechanically adjudicated record of what is true about the repository before
       anything changes, and the guard infrastructure that makes a false green detectable.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: []
     unlocked_by: []
     blocks: [P1]
@@ -87,6 +172,8 @@ units:
       invoice converge on ONE effect, and bind occurrence identity to a canonical business
       occurrence rather than a caller-supplied string.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [P0]
     unlocked_by: [P0]
     blocks: [P2]
@@ -121,6 +208,8 @@ units:
       against sentinels, first in every key, enforced by the database, with historical ownership
       assigned only by a recorded human assertion.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [P1]
     unlocked_by: [P1]
     blocks: [U-DOC-1, P3]
@@ -159,6 +248,8 @@ units:
       Convert the repository into a self-contained product, architecture and implementation control
       system so a zero-context agent can work correctly without conversation history.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [P2]
     unlocked_by: [P2]
     blocks: [U-HANDOFF-1]
@@ -209,6 +300,8 @@ units:
       conversation history, works correctly. This is a rehearsal and a hostile review. It is the
       gate in front of Phase 3.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [U-DOC-1]
     unlocked_by: [U-DOC-1]
     blocks: [P3, U-REBASELINE-1]
@@ -277,6 +370,8 @@ units:
       product-market-fit and design-partner evidence requirements. A documentation, architecture,
       specification and control unit ONLY.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [U-HANDOFF-1]
     unlocked_by: [U-HANDOFF-1]
     blocks: [P3]
@@ -336,6 +431,8 @@ units:
       Make the two-key rule real: a grant becomes necessary but not sufficient, and no external
       effect can occur without a fresh Checkpoint Witness proving the seven checks passed.
     status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     dependencies: [P2, U-HANDOFF-1, U-REBASELINE-1]
     unlocked_by: [P2, U-HANDOFF-1, U-REBASELINE-1]
     blocks: [P4]
@@ -497,7 +594,57 @@ units:
     # the checkpoint kernel in production, and the CI import gate is not yet EMPTY - so R-07 stays
     # OPEN - NOT CONTAINED and P4 is NOT COMPLETE. Exact live-write/edge counts are CURRENT.md's;
     # this note copies none.
+    #
+    # THE THREE STATE FIELDS, READ TOGETHER (meta.status_model): P4 is the SELECTED unit (READY),
+    # it IS EXECUTING (execution_state IN_PROGRESS - two checkpoints landed), and its review ladder
+    # stands at ACCEPTED_FOR_CONTINUATION (checkpoint 1 was reviewed and its findings mandated;
+    # checkpoint 2 fixed F1/F4 and awaits its own independent review). None of that is completion:
+    # P4 has no weighted acceptance_criteria block yet, so it contributes 0% and R-07 stays OPEN.
     status: READY
+    execution_state: IN_PROGRESS
+    checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    landed_checkpoints:
+      - id: P4-CP-1
+        summary: >-
+          The containment boundary, the boundary-aware CI import gate (detection), and the DELETE
+          cutover of EP-6/EP-7/EP-9/EP-10 - acceptance-proven (33 boundary cases) and
+          mutation-proven (14/14 mutants caught).
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        implementer_evidence: docs/implementation/effect-entry-point-cutover-plan.md
+        independent_review_report: null
+        independent_review_note: >-
+          NOT SELF-CERTIFIED AND NOT FULLY EVIDENCED IN-REPOSITORY. A review of this checkpoint
+          demonstrably occurred - it produced findings F1..F4, which checkpoint 2 was mandated to
+          correct and which are quoted with their severities in
+          p4-containment-cutover-checkpoint-review.md - but the review REPORT ITSELF was never
+          preserved as a repository document. This is a recorded gap, not an accepted review: the
+          P4 final adjudication may not draw on findings whose source report it cannot read, and
+          the adjudicating session must obtain or re-run an independent review of the full unit.
+      - id: P4-CP-2
+        summary: >-
+          Review findings F1 (EP-12's live --browser path removed, with an AST structural
+          quarantine proof) and F4 (a generic post-attempt adapter exception becomes
+          UNKNOWN_OUTCOME, never CLAIMED, never FAILED) fixed; the brain_runtime -> tms_write edge
+          cut by injection; the orphan-effect detective sweep mechanism implemented and
+          mutation-proven (run_detective_sweep has no production caller yet - scheduling is P11).
+          F2 (cdp_session.evaluate is an ungated actuation primitive) is recorded and DEFERRED,
+          not closed.
+        checkpoint_state: CHECKPOINT_IMPLEMENTED
+        implementer_evidence: docs/implementation/p4-containment-cutover-checkpoint-review.md
+        independent_review_report: null
+        independent_review_note: >-
+          AWAITING INDEPENDENT REVIEW. The implementing session wrote the evidence document and
+          says so in its own banner; it sets no acceptance criterion.
+    remaining_before_p4_completion:
+      - "EP-1 and EP-3 converted to ADAPT (EP-1 routes the OperationRouter -> OperatorAgent
+         autonomous browser write - the live R-07 write)"
+      - "EP-8 and EP-14 cut to read-only"
+      - "finding F2 - the cdp_session read-only split - closed rather than deferred"
+      - "the CI import gate flipped from DETECTING to asserting the violation surface is EMPTY"
+      - "a weighted acceptance_criteria block instantiated from the PROGRAM-WEIGHTS
+         acceptance_template, then independent_review and final_adjudication supplied by sessions
+         that did not implement P4"
+      - "R-07 recorded CONTAINED with the mechanism named - which only completing P4 permits"
     dependencies: [P3]
     unlocked_by: [P3]
     blocks: [P5]
@@ -553,6 +700,8 @@ units:
       PostgreSQL as the production transactional store with schema migrations and durable
       timers/scheduler (ADR-016). SQLite remains for local development and deterministic tests.
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     dependencies: [P4]
     unlocked_by: [P4]
     blocks: [P6]
@@ -593,6 +742,8 @@ units:
   - unit_id: P6
     name: Foundational entities and state machines
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -625,6 +776,8 @@ units:
   - unit_id: P7
     name: Provenance, Evidence, Observation, Claims, Identity Binding
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: "The 6 provenance classes, content-addressed Evidence, the deterministic linker, Conflict."
     dependencies: [P6]
     unlocked_by: [P6]
@@ -661,6 +814,8 @@ units:
   - unit_id: P8
     name: Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: "Typed policy, compile-or-refuse rules, the real brake. Gate G4 qualifies here."
     dependencies: [P7]
     unlocked_by: [P7]
@@ -697,6 +852,8 @@ units:
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: >-
       The 40 domain entities, External Entity Mapping, field-level authority — plus inbound
       communications ingestion (ADR-015): email/SMS as evidence with provenance, correlated to
@@ -734,6 +891,8 @@ units:
   - unit_id: P10
     name: Delivered Load Closure - shadow slice
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: >-
       The founder-selected wedge outcome (PRODUCT.md section 15, HYPOTHESIS): own a delivered or
       near-delivered load to billing readiness - delivery detection, required documents,
@@ -782,6 +941,8 @@ units:
   - unit_id: P11
     name: Production foundation, onboarding, control plane, and shadow operation
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: >-
       Deploy the ADR-016 production foundation (staging + pilot environments, PostgreSQL,
       object storage, workers, managed secrets, observability), implement tenant and
@@ -821,6 +982,8 @@ units:
   - unit_id: P12
     name: Supervised external effects and communications
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: >-
       The first live gated writes AND the first outbound email/SMS sends (ADR-015) through the
       full kernel, in production under supervision. A message is an external effect with
@@ -859,6 +1022,8 @@ units:
   - unit_id: P13
     name: Multi-loop expansion and workflow-authority migration
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: >-
       Additional operational loops plus atomic cross-loop handoffs - and the ADR-013
       workflow-authority migration model implemented: a customer may deliberately migrate a
@@ -880,6 +1045,681 @@ units:
     rollback_posture: "Per-loop capability flags."
     validation_blockers: ["each loop's freight rules require design-partner validation"]
     completion_evidence: ["the G9 gate record"]
+    # ------------------------------------------------------------------ P13 completion rule
+    # Added by the roadmap-completeness control correction. P13 was one atomic BLOCKED unit whose
+    # scope was "additional operational loops" - a phrase that could be declared finished with any
+    # number of loops built, including one. It now decomposes into sub-units that must each be
+    # completed on their own evidence. THE DECOMPOSITION DOES NOT BEGIN P13: every sub-unit is
+    # BLOCKED / NOT_STARTED / NO_CHECKPOINT, and specifying an obligation is not discharging it.
+    #
+    # W1-W11 are NOT redefined, renamed, split, merged or added to here. Each sub-unit is a BUILD
+    # obligation for an already-frozen loop; the loop definitions remain the Operating Model's,
+    # indexed solely by docs/specifications/workflows/registry.md. Customer service and
+    # operational management/reporting remain CROSS-CUTTING PLATFORM SURFACES, not loops
+    # (OPERATIONAL-LOOPS.md sec 4-6); their P13 coverage is carried by P13-O1, and their platform
+    # delivery by P11 - which is why they appear here as surfaces and never as a twelfth loop.
+    completion_rule: >-
+      P13 may reach status COMPLETE only when EVERY sub_unit with required: true is COMPLETE, the
+      cross-loop handoff acceptance is green (AC-FC-016 plus AC-WF-H01..H10 for all ten registry
+      handoffs), gate G9 is recorded, and P13's own weighted acceptance contract is fully PASS
+      including independent_review and final_adjudication. A sub-unit is COMPLETE only on its own
+      per-loop acceptance evidence - never by inheritance from a sibling loop, and never because
+      "the phase feels done". Mechanically enforced by
+      eval/tests/test_roadmap_completeness_control.py.
+    sub_units:
+      # ---------------------------------------------------------- the eleven operational loops
+      - sub_unit_id: P13-W1
+        name: Sales, quote, order and load intake
+        required: true
+        owning_loop_or_surface: "W1 - L1 Quote (incl. demand and order intake)"
+        operational_trigger: >-
+          Inbound customer demand arriving by email, portal, form, API, spreadsheet or
+          conversation; deduplicated on the source-natural key.
+        durable_work_item: "QUOTE_TO_COMMITMENT, executed by a Pipeline Instance per consequential step"
+        closure_condition: >-
+          An accepted Customer Order with the downstream COVER_LOAD obligation durably created -
+          NOT a sent quote.
+        required_freight_entities: [Customer, Customer Order, Quote Version, Brokerage Load, Stop, Facility]
+        required_evidence: >-
+          The source demand with provenance preserved; market-rate observation as
+          DECISION_SUPPORT only; a human-approved sell rate before any commitment.
+        policy_and_approval_boundary: >-
+          The sell rate is HUMAN_APPROVAL_REQUIRED - Neyma never prices. A model-recommended rate
+          is MODEL_INFERRED and can never gate or auto-send.
+        allowed_effect_classes: [SEND_QUOTE]
+        systems_and_adapters: [A1 email, A5 load board (decision-support read), A7 customer portal, A16 spreadsheet]
+        degraded_mode_behavior: >-
+          Spreadsheet or email-only source - ingest via A16/A1 and never promote semantics
+          silently; the human confirms. Observation and preparation survive with no write access.
+        human_escalation_boundary: >-
+          Ambiguous customer or facility binding, incomplete or contradictory demand, and any
+          below-floor price request route to the accountable human.
+        design_partner_evidence_required: [E-07, E-13, E-14, E-19]
+        historical_evaluation_requirement: >-
+          Replay the partner's historical quote-to-order records and compare Neyma's proposed
+          extraction and binding against the recorded outcome before any shadow run.
+        shadow_acceptance: "W1-acceptance.md read-only paths; G6-class - zero effects, proposals only"
+        supervised_acceptance: "W1-acceptance.md consequential steps under G8; sends human-approved"
+        bounded_autonomy_eligibility: >-
+          NONE for pricing or commitment - permanent human authority (ADR-003). Extraction and
+          clarification drafting may be considered for caps at P14 and never earlier.
+        rollback_or_compensation_requirement: >-
+          A quote sent in error is compensated by a superseding corrected quote version, never by
+          rewriting the sent one.
+        depends_on: [P6, P7, P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W1-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W2
+        name: Carrier sourcing and tendering
+        required: true
+        owning_loop_or_surface: "W2 - L2 Procurement (sourcing + tender + assignment + rate con)"
+        operational_trigger: "An uncovered Load (the W1 -> W2 handoff creating COVER_LOAD)"
+        durable_work_item: "COVER_LOAD, executed by a Pipeline Instance per consequential step"
+        closure_condition: >-
+          A confirmed Carrier Assignment at a committed buy rate with a signed Rate Confirmation
+          and verified remittance - NOT a search result or a verbal yes.
+        required_freight_entities: [Carrier, Carrier Assignment, Rate Confirmation, Brokerage Load, Qualification Decision]
+        required_evidence: >-
+          A current QUALIFIED carrier qualification decision at tender time (consequential
+          freshness read, never cached); a carrier-asserted rate is MODEL_EXTRACTED until a human
+          accepts it; the recorded selection rationale.
+        policy_and_approval_boundary: >-
+          The human commits the carrier and the rate. Autonomous carrier booking does not exist
+          and is not implied at any autonomy level.
+        allowed_effect_classes: [POST_LOAD, SEND_TENDER, ISSUE_RATECON]
+        systems_and_adapters: [A5 load board, A6 carrier portal, A1 email, A10 FMCSA, A4 TMS]
+        degraded_mode_behavior: >-
+          Without portal access, observe via email and documents and prepare the tender; the human
+          executes and Neyma captures the resulting evidence.
+        human_escalation_boundary: >-
+          Uncovered freight, a carrier lapsed on qualification, a below-margin buy rate, and any
+          carrier identity ambiguity are human decisions.
+        design_partner_evidence_required: [E-10, E-19, E-16]
+        historical_evaluation_requirement: >-
+          Replay historical coverage decisions and compare Neyma's ranking against the carrier
+          actually used and the rate actually committed.
+        shadow_acceptance: "W2-acceptance.md read-only paths; G6-class - ranking proposed, nothing sent"
+        supervised_acceptance: "W2-acceptance.md under G8; the W3 qualification gate proven live"
+        bounded_autonomy_eligibility: >-
+          NONE at carrier selection or rate commitment - permanent human authority. Sourcing,
+          ranking and outreach drafting stay at RECOMMEND/DRAFT.
+        rollback_or_compensation_requirement: >-
+          A mis-tendered load requires an explicit compensating retraction to the carrier plus an
+          Exception; a signed Rate Con is never silently rewritten.
+        depends_on: [P6, P7, P8, P9, P12, P13-W3]
+        acceptance_contract: "docs/specifications/acceptance/W2-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W3
+        name: Carrier compliance and onboarding
+        required: true
+        owning_loop_or_surface: "W3 - L3 Compliance (continuous carrier qualification)"
+        operational_trigger: "Onboarding, every load (the freshness gate), and document expiry timers"
+        durable_work_item: "QUALIFY_CARRIER, continuous - reopens on expiry or signal"
+        closure_condition: >-
+          A current Qualification Decision on file for the relevant movement - NOT a one-time
+          onboarding event.
+        required_freight_entities: [Carrier, Qualification Decision, Document, Expectation, Obligation]
+        required_evidence: >-
+          Authority, insurance and safety pulled at qualification time as a consequential
+          freshness read; a counterparty's own authorization claim is a fraud signal and never
+          authorization.
+        policy_and_approval_boundary: >-
+          Identity, banking, credentials and compliance changes are approval-controlled sensitive
+          workflows; the final trust decision is human-reserved.
+        allowed_effect_classes: [SEND_OUTBOUND, FILE_DOCUMENT]
+        systems_and_adapters: [A10 FMCSA/authority, A11 document storage and COI]
+        degraded_mode_behavior: >-
+          Without an authority feed, expectations go INDETERMINATE - never OVERDUE, and never a
+          silent pass - and qualification requires a human check.
+        human_escalation_boundary: >-
+          Lapsed authority or insurance, any impersonation or fraud signal, and a marginal safety
+          score stop consequential action and escalate.
+        design_partner_evidence_required: [E-10, E-18]
+        historical_evaluation_requirement: >-
+          Replay historical qualification decisions and expiry events; confirm Neyma would have
+          flagged every lapse the partner actually experienced.
+        shadow_acceptance: "W3-acceptance.md read-only paths; G6-class - monitoring and flagging only"
+        supervised_acceptance: "W3-acceptance.md under G8; document requests human-approved"
+        bounded_autonomy_eligibility: >-
+          NONE for the qualification and trust decision - permanent human authority. Collection,
+          verification and expiry monitoring stay at OBSERVE/RECOMMEND.
+        rollback_or_compensation_requirement: >-
+          A qualification granted on stale evidence is revoked forward with a new decision record;
+          prior decisions stay immutable and auditable.
+        depends_on: [P7, P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W3-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+        recorded_elaboration_debt: >-
+          The W-9 and signed-agreement onboarding-packet artifacts are named in the operating
+          model but not yet decomposed into W3 steps (OPERATIONAL-LOOPS.md sec 4). Decomposition
+          is part of this sub-unit and requires design-partner rules - it is NOT a new loop.
+
+      - sub_unit_id: P13-W4
+        name: Dispatch, driver communication and appointments
+        required: true
+        owning_loop_or_surface: "W4 - L4 Dispatch (readiness + appointment booking)"
+        operational_trigger: "An active Carrier Assignment (the W2 -> W4 handoff); then each required check-in"
+        durable_work_item: "DISPATCH_READY"
+        closure_condition: >-
+          Verified readiness evidence - driver, equipment, appointment, references and documents -
+          NOT a sent dispatch message.
+        required_freight_entities: [Brokerage Load, Stop, Appointment, Driver, Equipment, Carrier Assignment]
+        required_evidence: >-
+          Driver and equipment confirmation; the CONFIRMED appointment window read back in the
+          facility-local time zone (REQUESTED is not CONFIRMED); a message-delivery receipt, since
+          a send with no delivery evidence is UNKNOWN_OUTCOME.
+        policy_and_approval_boundary: >-
+          A binding appointment is human-confirmed; dispatch issuance is APPROVAL-REQUIRED;
+          bad-news and money communications keep permanent human gates (ADR-015, ADR-003).
+        allowed_effect_classes: [REQUEST_APPOINTMENT, SEND_OUTBOUND, UPDATE_LOAD]
+        systems_and_adapters: [A8 appointment portal, A1 email, A18 notification, A6 carrier portal, A4 TMS, A15 browser, "A2 SMS (planned)", "A3 voice (planned)"]
+        degraded_mode_behavior: >-
+          Portal unavailable or unknown temperature - fail closed and escalate; with no write
+          access Neyma prepares the exact action and the human executes it.
+        human_escalation_boundary: >-
+          Driver no-show or silence, no available window, and any conflict with a downstream stop
+          escalate to the accountable human.
+        design_partner_evidence_required: [E-03, E-04, E-05, E-17]
+        historical_evaluation_requirement: >-
+          Replay historical dispatch and appointment records; measure how often Neyma's proposed
+          check-in cadence would have caught a real delay before the partner did.
+        shadow_acceptance: "W4-acceptance.md read-only paths; G6-class - drafts only, no sends"
+        supervised_acceptance: "W4-acceptance.md under G8; every send and booking human-approved"
+        bounded_autonomy_eligibility: >-
+          Appointment booking MAY graduate within caps at P14 on earned evidence; dispatch
+          issuance stays APPROVAL-REQUIRED; bad-news communication is NEVER autonomous.
+        rollback_or_compensation_requirement: >-
+          A wrongly booked appointment requires a compensating cancel-and-rebook with the facility
+          notified; the original booking evidence is retained.
+        depends_on: [P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W4-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+        recorded_elaboration_debt: >-
+          Two thin spots inherited from OPERATIONAL-LOOPS.md sec 4 - driver-directed SMS/voice
+          operations (A2/A3 specified but unused) and port/rail/warehouse-specific appointment
+          portals (only a generic A8). Both are loop-internal elaboration, NOT new loops; the
+          portal specialization also depends on the mode-specific UC-30 validation.
+
+      - sub_unit_id: P13-W5
+        name: Track and trace
+        required: true
+        owning_loop_or_surface: "W5 - L5 Tracking (in-transit)"
+        operational_trigger: "Pickup - Stop DEPARTED (the W4 -> W5 handoff); then continuous monitoring"
+        durable_work_item: "TRACK_LOAD"
+        closure_condition: >-
+          Delivery reached AND handed to W6 with the status current - NOT a tracking provider's
+          'delivered' claim.
+        required_freight_entities: [Brokerage Load, Stop, Shipment Event, Expectation, Exception]
+        required_evidence: >-
+          Positions are SYSTEM_IMPORTED; a driver status assertion is MODEL_EXTRACTED; a derived
+          ETA is MODEL_INFERRED and NEVER gates anything.
+        policy_and_approval_boundary: >-
+          Reading and detecting are automatic; what the customer is told when the news is bad is
+          human-owned.
+        allowed_effect_classes: [SEND_OUTBOUND, UPDATE_LOAD]
+        systems_and_adapters: [A9 tracking/ELD, A1 email, A18 notification, "A2 SMS (planned)"]
+        degraded_mode_behavior: >-
+          No tracking provider or a blind window - Expectations go INDETERMINATE, never OVERDUE;
+          delay detection degrades honestly to human check calls.
+        human_escalation_boundary: >-
+          Late pickup or delivery, driver silence, tracking failure and appointment risk escalate;
+          conflicting location signals raise a Conflict rather than a chosen answer.
+        design_partner_evidence_required: [E-02, E-16, E-17]
+        historical_evaluation_requirement: >-
+          Replay historical in-transit records and measure detection lead time against the delays
+          the partner actually experienced.
+        shadow_acceptance: >-
+          W5-acceptance.md read-only paths; already inside the Delivered Load Closure shadow slice
+          at P10 (G5/G6) - this sub-unit completes the loop beyond the wedge's slice of it.
+        supervised_acceptance: "W5-acceptance.md under G8; customer notifications human-approved"
+        bounded_autonomy_eligibility: >-
+          Routine on-time status updates MAY graduate within caps at P14 per approved template;
+          monitoring stays OBSERVE; bad news is NEVER autonomous.
+        rollback_or_compensation_requirement: >-
+          An incorrect status notification is corrected by an explicit follow-up communication
+          bound to the same Work Item; the record of the wrong send is retained.
+        depends_on: [P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W5-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W6
+        name: Document operations
+        required: true
+        owning_loop_or_surface: "W6 - L6 Documentation"
+        operational_trigger: >-
+          Delivery reached (the W5 -> W6 handoff); and the tracked NON-event of a required
+          document that has not arrived.
+        durable_work_item: "COMPLETE_DOCS"
+        closure_condition: >-
+          The Document Packet COMPLETE on the correct load, with the delivery outcome and any OS&D
+          obligation created - NOT a delivered status.
+        required_freight_entities: [Document, Document Packet, Evidence, Identity Binding Claim, Expectation]
+        required_evidence: >-
+          A content digest per document; deterministic load binding within (tenant, customer); a
+          MODEL_INFERRED classification NEVER counts as a validated POD.
+        policy_and_approval_boundary: >-
+          Filing is a gated external effect; illegible, ambiguous or unconfirmable bindings route
+          to a human rather than resolving to a best guess.
+        allowed_effect_classes: [FILE_DOCUMENT, SEND_OUTBOUND]
+        systems_and_adapters: [A1 email, A11 document storage, A4 TMS, A15 browser]
+        degraded_mode_behavior: >-
+          Without document-store write access, Neyma ingests, classifies and reports what is
+          missing; the human files and Neyma captures the evidence.
+        human_escalation_boundary: >-
+          Illegible or unsigned documents, ambiguous binding and contradictory documents escalate.
+        design_partner_evidence_required: [E-07, E-08, E-09]
+        historical_evaluation_requirement: >-
+          Replay the partner's historical document corpus; measure classification and binding
+          accuracy against the recorded truth before any live filing.
+        shadow_acceptance: >-
+          W6-acceptance.md read-only paths; inside the Delivered Load Closure shadow slice at P10
+          (G5/G6) - this sub-unit completes the loop beyond the wedge's slice of it.
+        supervised_acceptance: "W6-acceptance.md under G8; document requests and filings human-approved"
+        bounded_autonomy_eligibility: >-
+          Requesting a missing document MAY graduate within caps at P14 as a low-risk class;
+          binding on ambiguity is APPROVAL-REQUIRED permanently.
+        rollback_or_compensation_requirement: >-
+          A misfiled document is corrected by a new versioned filing plus an unbinding record -
+          never by deleting the original evidence.
+        depends_on: [P7, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W6-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W7
+        name: Exception management
+        required: true
+        owning_loop_or_surface: "W7 - L7 Exceptions (cross-cutting)"
+        operational_trigger: >-
+          Any loop raising an unparseable observation, ambiguous binding, unknown outcome,
+          conflict, permanent failure, or a fraud/Sev-0 signal. An owner is assigned at creation.
+        durable_work_item: "RESOLVE_EXCEPTION"
+        closure_condition: >-
+          RESOLVED{decision_ref} with the downstream disposition created - AutoClose and closure
+          by inactivity are ILLEGAL.
+        required_freight_entities: [Exception, Conflict, Compensation, Obligation, Evidence, Approval]
+        required_evidence: >-
+          A decision reference for closure, and for any UNKNOWN_OUTCOME an accountable owner plus
+          permitted terminal handling - it never auto-resolves and never becomes FAILED on timeout.
+        policy_and_approval_boundary: >-
+          The resolution decision is nearly always human; only licensed resolution actions
+          execute; a Sev-0 signal auto-engages the brake.
+        allowed_effect_classes: ["the compensating effect of the originating action class, via the full pipeline"]
+        systems_and_adapters: ["reads for assembly; the compensation path uses the full effect boundary"]
+        degraded_mode_behavior: >-
+          With integrations degraded, exceptions still raise and route; only the compensating
+          effect waits for a human.
+        human_escalation_boundary: >-
+          Every unresolved or ambiguous case escalates with the full audit trail; ownership during
+          UNKNOWN_OUTCOME, Conflict or COMPENSATION_FAILED is a named human and the entity freezes.
+        design_partner_evidence_required: [E-12, E-17]
+        historical_evaluation_requirement: >-
+          Replay the partner's historical exception population against the canonical taxonomy and
+          confirm no class is silently unhandled.
+        shadow_acceptance: >-
+          W7-acceptance.md detection and assembly paths; inside the Delivered Load Closure shadow
+          slice at P10 - this sub-unit completes the loop beyond the wedge's slice of it.
+        supervised_acceptance: "W7-acceptance.md under G8; compensation executes only on approval"
+        bounded_autonomy_eligibility: >-
+          NONE for resolution - the decision is human. Detection, evidence assembly and
+          recommendation stay OBSERVE/RECOMMEND.
+        rollback_or_compensation_requirement: >-
+          THIS SUB-UNIT OWNS THE COMPENSATION PATH for every other loop; a failed compensation is
+          itself an Exception with a named human owner and a frozen entity.
+        depends_on: [P6, P7, P8, P12]
+        acceptance_contract: "docs/specifications/acceptance/W7-acceptance.md and recovery-and-compensation-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W8
+        name: Customer billing and accounts receivable
+        required: true
+        owning_loop_or_surface: "W8 - L8 Billing (customer AR + cash application)"
+        operational_trigger: "Document Packet COMPLETE (the W6 -> W8 handoff); POD-gated eligibility"
+        durable_work_item: "BILL_AND_COLLECT"
+        closure_condition: >-
+          PAID, or an authorized write-off, approved short-pay or credit-rebill settlement - NOT a
+          sent invoice.
+        required_freight_entities: [Customer Invoice, Payment Application, Document Packet, Accessorial Charge, Obligation]
+        required_evidence: >-
+          The amount from deterministic validation - the model NEVER chooses an amount; POD-gated
+          eligibility; a bank observation to confirm payment, since a local PAID is not proof.
+        policy_and_approval_boundary: >-
+          Releasing the invoice is HUMAN_APPROVAL_REQUIRED; any credit or write-off is human;
+          disputes are human.
+        allowed_effect_classes: [RAISE_INVOICE, REISSUE_INVOICE, SEND_OUTBOUND]
+        systems_and_adapters: [A4 TMS, A12 accounting/ERP, A13 payment/bank observation, A1 email, A7 customer portal]
+        degraded_mode_behavior: >-
+          Without accounting write access, Neyma prepares the invoice and the backup and the human
+          enters it; AR preparation, aging and audit value are retained.
+        human_escalation_boundary: >-
+          Short-pay, dispute, aging past terms and missing backup escalate to the accountable human.
+        design_partner_evidence_required: [E-06, E-14, E-16, E-20]
+        historical_evaluation_requirement: >-
+          Replay historical invoices and remittances; compare Neyma's prepared amounts against the
+          amounts actually billed and actually collected.
+        shadow_acceptance: >-
+          W8-acceptance.md billing-readiness paths; inside the Delivered Load Closure shadow slice
+          at P10 - this sub-unit completes AR and collections beyond the wedge's slice.
+        supervised_acceptance: "W8-acceptance.md under G8; every release human-approved"
+        bounded_autonomy_eligibility: >-
+          NONE for invoice release, credit or write-off - APPROVAL-REQUIRED permanently by
+          default. Aging views and drafted reminders stay RECOMMEND/DRAFT.
+        rollback_or_compensation_requirement: >-
+          A wrong invoice is corrected by credit-rebill - a durable new adjustment - never by
+          rewriting a released invoice.
+        depends_on: [P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W8-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W9
+        name: Carrier settlement and accounts payable
+        required: true
+        owning_loop_or_surface: "W9 - L9 Settlement (carrier invoice audit + AP + payment + reconciliation)"
+        operational_trigger: "A carrier invoice received (the carrier-invoice -> W9 handoff); deduplicated on invoice number"
+        durable_work_item: "AUDIT_AND_PAY"
+        closure_condition: >-
+          The payable SETTLED against a verified payment observation - NOT entered, NOT approved,
+          NOT initiated.
+        required_freight_entities: [Carrier Invoice, Payable, Rate Confirmation, Accessorial Charge, Payment Application, Remittance Party]
+        required_evidence: >-
+          The rate con plus authorized accessorials as Material Facts; an accessorial supported
+          only by a counterparty assertion BLOCKS the payable; a local PAID is never proof -
+          settlement requires a bank observation; a factoring change is drift and forces re-verify.
+        policy_and_approval_boundary: >-
+          Money leaving the business requires human approval, PERMANENTLY. UNKNOWN_OUTCOME on a
+          payment never auto-resolves and never becomes FAILED on timeout.
+        allowed_effect_classes: [RECORD_PAYABLE, PAY_CARRIER, SEND_OUTBOUND]
+        systems_and_adapters: [A1 email, A4 TMS, A11 document storage, A12 accounting/ERP, A13 payment/bank observation]
+        degraded_mode_behavior: >-
+          Without accounting or payment integration, Neyma reconciles line by line and prepares
+          the payable; the human records and pays.
+        human_escalation_boundary: >-
+          Duplicate invoice, unauthorized or undocumented accessorial (the highest fraud-risk
+          class), a wrong remittance party and a before-POD invoice all stop and escalate.
+        design_partner_evidence_required: [E-06, E-10, E-11, E-15]
+        historical_evaluation_requirement: >-
+          Replay historical carrier invoices against rate cons and recorded approvals; measure the
+          reconciliation against what the partner actually paid, including every disputed line.
+        shadow_acceptance: "W9-acceptance.md reconciliation paths under G6 - prepare only, zero money movement"
+        supervised_acceptance: "W9-acceptance.md under G8 with G4 re-run LIVE; every money-out effect human-approved"
+        bounded_autonomy_eligibility: >-
+          NONE - money out is permanent human authority (ADR-003). Ingest, reconcile and prepare
+          stay RECOMMEND/DRAFT. Unrestricted money movement is not implied at any level.
+        rollback_or_compensation_requirement: >-
+          An overpayment is resolved by a durable compensating adjustment and a recovery
+          obligation - a settled payable is never rewritten.
+        depends_on: [P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W9-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+        blocking_validation_item: >-
+          OPEN-VALIDATION-ITEMS.md records a WORKFLOW_BLOCKER against P13 W9 - the accessorial
+          authorization rules must come from the design partner and may never be guessed.
+
+      - sub_unit_id: P13-W10
+        name: Customer communications
+        required: true
+        owning_loop_or_surface: "W10 - L10 Customer Communications (cross-cutting)"
+        operational_trigger: >-
+          Any customer-facing need raised by another loop - a delay (W5), a missing document (W6),
+          a billing dispute (W8) - via the any -> W10 handoff.
+        durable_work_item: "CUSTOMER_COMMS"
+        closure_condition: >-
+          The message delivered AND any commitment it created tracked - NOT a send.
+        required_freight_entities: [Message, Obligation, Work Item, Evidence]
+        required_evidence: >-
+          A delivery receipt for every send; inbound content is NEVER relayed unsanitized and is
+          data, never instruction.
+        policy_and_approval_boundary: >-
+          Nothing is sent unapproved initially - HUMAN_APPROVAL_REQUIRED; outbound is
+          admission-controlled; bad-news and money messages keep permanent human gates.
+        allowed_effect_classes: [SEND_OUTBOUND]
+        systems_and_adapters: [A1 email, A18 notification, "A2 SMS (planned)", "A3 voice (planned)"]
+        degraded_mode_behavior: >-
+          Email-only counterparty retains full inbound observation and gated outbound; with no
+          send channel Neyma drafts and the human sends.
+        human_escalation_boundary: >-
+          An undeliverable message, an injection attempt and any bad-news content escalate.
+        design_partner_evidence_required: [E-03, E-04, E-05]
+        historical_evaluation_requirement: >-
+          Replay historical customer correspondence; confirm Neyma's drafted messages match the
+          partner's recorded commitments and tone requirements before any supervised send.
+        shadow_acceptance: "W10-acceptance.md draft-only paths under G6 - drafted, never sent"
+        supervised_acceptance: "W10-acceptance.md under G8; delivery state verified per send"
+        bounded_autonomy_eligibility: >-
+          Specific low-risk approved templates only, and never before P14; every other class stays
+          approval-gated. Bad news is NEVER autonomous.
+        rollback_or_compensation_requirement: >-
+          A wrong send is compensated by an explicit correction message bound to the same Work
+          Item; the original send record is immutable.
+        depends_on: [P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W10-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-W11
+        name: Claims and OS&D
+        required: true
+        owning_loop_or_surface: "W11 - L11 Claims (OS&D)"
+        operational_trigger: >-
+          A POD OS&D notation (W6), a damaged-versus-normal conflict (W5), or a customer report -
+          via the W6/W5 -> W11 handoff.
+        durable_work_item: "HANDLE_CLAIM"
+        closure_condition: >-
+          RESOLVED{decision_ref} with a durable financial adjustment created - never a rewrite of
+          a settled invoice or payable.
+        required_freight_entities: [Claim, Evidence, Compensation, Expectation, Obligation]
+        required_evidence: >-
+          The assembled claims packet and timeline; filing and response deadlines tracked as
+          Expectations.
+        policy_and_approval_boundary: >-
+          Legal, liability and settlement decisions require human authority - Neyma does not file
+          claims.
+        allowed_effect_classes: [SEND_OUTBOUND, "the gated compensating financial adjustment"]
+        systems_and_adapters: ["reads for assembly; the compensation path uses the full effect boundary", A1 email, A11 document storage]
+        degraded_mode_behavior: >-
+          Without integrations, packet assembly and deadline tracking still run; every filing and
+          settlement waits for the human regardless of integration state.
+        human_escalation_boundary: >-
+          Missing evidence, disputed liability and deadline risk escalate; the legal call is
+          always human.
+        design_partner_evidence_required: [E-12, E-18]
+        historical_evaluation_requirement: >-
+          Replay historical OS&D cases; confirm the assembled packet and deadline tracking match
+          what the partner actually needed to file.
+        shadow_acceptance: "W11-acceptance.md assembly paths under G6 - recommend only"
+        supervised_acceptance: "W11-acceptance.md under G8; adjustments human-approved"
+        bounded_autonomy_eligibility: >-
+          NONE - filing and settlement are PERMANENT HUMAN AUTHORITY. Assembly, timeline and
+          recommendation stay RECOMMEND/DRAFT.
+        rollback_or_compensation_requirement: >-
+          Adjustments are new credit/debit/compensation records; a settled invoice or payable is
+          never rewritten.
+        depends_on: [P6, P7, P8, P9, P12]
+        acceptance_contract: "docs/specifications/acceptance/W11-acceptance.md; gate G9"
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      # ---------------------------------------------------- the three cross-cutting obligations
+      - sub_unit_id: P13-H1
+        name: Atomic cross-loop handoffs
+        required: true
+        owning_loop_or_surface: >-
+          CROSS-CUTTING - all ten handoffs in docs/specifications/workflows/registry.md
+          (W1->W2, W2->W4, W3->W2 gate, W4->W5, W5->W6, W6->W8, carrier-invoice->W9, any->W7,
+          W6/W5->W11, any->W10)
+        operational_trigger: "Each source loop's handoff transition, as enumerated in the workflow registry"
+        durable_work_item: >-
+          The DOWNSTREAM Work Item itself - the handoff exists precisely to create it durably in
+          the same commit as the source transition.
+        closure_condition: >-
+          For every one of the ten handoffs - the downstream Work Item exists in the SAME COMMIT
+          as the source transition, and the source may NOT close until it durably exists.
+        required_freight_entities: [Work Item, Pipeline Instance, "the canonical event emitted by the source transition"]
+        required_evidence: >-
+          The source event id (handoffs deduplicate on it); the oracle is a crash injected between
+          the source transition and the downstream insert - NEITHER may have happened.
+        policy_and_approval_boundary: >-
+          A handoff creates an obligation, never an effect; it grants no authority and needs no
+          approval of its own - the downstream loop's gates apply unchanged.
+        allowed_effect_classes: []   # a handoff performs NO external effect
+        systems_and_adapters: ["none - handoffs are internal and transactional"]
+        degraded_mode_behavior: >-
+          A handoff is a database transaction, not an integration: it must remain atomic when
+          every external system is unavailable.
+        human_escalation_boundary: >-
+          A responsibility gap - a source loop closed with no downstream obligation - is a Sev-0
+          class defect that raises an Exception with a named human owner.
+        design_partner_evidence_required: [E-12, E-13]
+        historical_evaluation_requirement: >-
+          Replay historical multi-loop load histories and confirm no reconstructed handoff leaves
+          an ownerless obligation.
+        shadow_acceptance: "AC-WF-H01..H10 projection-only replay - replay recreates the projection with ZERO effects"
+        supervised_acceptance: >-
+          AC-FC-016 plus AC-WF-H01..H10 under gate G9 - the zero-tolerance case is 'no
+          responsibility gap between loops'.
+        bounded_autonomy_eligibility: "not an autonomy surface - a handoff performs no external effect"
+        rollback_or_compensation_requirement: >-
+          Atomicity IS the rollback contract - a crash between the two writes must leave neither.
+          A duplicate handoff deduplicates on the source event id.
+        depends_on: [P5, P6, P8, P12]
+        acceptance_contract: >-
+          docs/specifications/acceptance/workflow-acceptance.md - AC-FC-016 and the cross-loop
+          handoff family AC-WF-H01..H10; gate G9
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-O1
+        name: Multi-loop Neyma Operator coordination
+        required: true
+        owning_loop_or_surface: >-
+          CROSS-CUTTING PLATFORM SURFACE - the Neyma Operator coordinating across loops, and the
+          coverage path for the two surfaces that are deliberately NOT loops - customer service
+          and operational management/reporting (OPERATIONAL-LOOPS.md sec 4-6)
+        operational_trigger: >-
+          Work spanning more than one loop for one tenant - a customer question touching several
+          loops, an owner oversight request, or a cross-loop prioritization decision.
+        durable_work_item: >-
+          The EXISTING Work Items of the underlying loops. The Operator creates no parallel work
+          object and no second workflow record.
+        closure_condition: >-
+          Each underlying loop closes on ITS OWN closure condition. Operator coordination is never
+          itself a closure, and an Operator answer never closes a freight obligation.
+        required_freight_entities: [Work Item, Obligation, Evidence, Policy, Approval]
+        required_evidence: >-
+          Every Operator answer is grounded in canonical operational state and cites it; the
+          conversation is NEVER a second source of truth and NEVER independent authority.
+        policy_and_approval_boundary: >-
+          THE OPERATOR PROPOSES; THE SPINE DISPOSES. A conversational instruction that would cause
+          a consequential effect goes through the full kernel unchanged - authorization, policy,
+          evidence, approval, idempotency, grant, verification - voice included. The Operator
+          cannot click, write, send, move money, or grant itself authority (ADR-019).
+        allowed_effect_classes: ["none of its own - every effect belongs to the owning loop and keeps that loop's gates"]
+        systems_and_adapters: [A14 Slack, "the web control plane (ADR-017)", A1 email, "one identity across every channel (ADR-019)"]
+        degraded_mode_behavior: >-
+          With channels degraded the Operator states what is unknown and what a human must do; it
+          never fills a gap with an inference presented as fact.
+        human_escalation_boundary: >-
+          A request beyond authority, an ambiguous instruction and any prompt-injection attempt
+          stop and escalate; the Operator never pretends to be human and never claims completion
+          without verification.
+        design_partner_evidence_required: [E-10, E-17, E-21]
+        historical_evaluation_requirement: >-
+          Replay historical multi-loop situations and confirm the Operator's proposed coordination
+          matches what the accountable humans actually decided.
+        shadow_acceptance: >-
+          The SHADOW OPERATOR mode of NEYMA-OPERATOR.md sec 4 - observes real work and proposes,
+          with zero consequential effects (G6-class).
+        supervised_acceptance: >-
+          The SUPERVISED OPERATOR mode across more than one loop at gate G9, every effect still
+          carrying its owning loop's approval.
+        bounded_autonomy_eligibility: >-
+          NONE as a coordinator. Autonomy is granted per action class to the OWNING LOOP under
+          P14, never to the Operator as a role.
+        rollback_or_compensation_requirement: >-
+          A wrong Operator proposal is withdrawn before any effect; once an effect exists the
+          owning loop's compensation path applies. Customer corrections become explicit tenant
+          artifacts, never silent model memory.
+        depends_on: [P9, P11, P12]
+        acceptance_contract: >-
+          docs/specifications/acceptance/workflow-acceptance.md multi-loop cases and
+          observability-and-audit-acceptance.md; gate G9
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
+
+      - sub_unit_id: P13-M1
+        name: Workflow-authority migration from legacy or temporary authority to the canonical spine
+        required: true
+        owning_loop_or_surface: "CROSS-CUTTING - the ADR-013 workflow-authority migration model"
+        operational_trigger: >-
+          A customer's deliberate, recorded decision to move a specific workflow's authority -
+          never a drift, never an inference, never a default.
+        durable_work_item: >-
+          The Authority Migration Record - per tenant, per workflow, owner-asserted and auditable.
+        closure_condition: >-
+          Cutover completed with all THIRTEEN ADR-013 fields recorded, reconciliation clean, and
+          the rollback path proven - a migration missing any field is NOT AUTHORIZED.
+        required_freight_entities: ["Authority Migration Record (13 fields, ADR-013 sec 2)", "the tenant Operational System Map (15 fields, ADR-018)", Owner Assertion]
+        required_evidence: >-
+          Recorded customer authorization as an accountable human decision - never inferred; the
+          reconciliation result; the tenant's Operational System Map entry for the affected
+          capability.
+        policy_and_approval_boundary: >-
+          Customer-authorized and human-asserted per workflow. Authentication never creates action
+          authority; no migration is offered before P13; no workflow's authority moves by drift.
+        allowed_effect_classes: [MIGRATION]
+        systems_and_adapters: ["the tenant's existing systems of record as mapped in its Operational System Map - the TMS is one node, not the center"]
+        degraded_mode_behavior: >-
+          The operational fallback named in field 12 of the migration record must be exercisable
+          at every stage; a migration that cannot fall back is not authorized.
+        human_escalation_boundary: >-
+          Any sync conflict, any reconciliation divergence and any rollback need stop automation
+          and escalate to the accountable customer owner.
+        design_partner_evidence_required: [E-01, E-02, E-22]
+        historical_evaluation_requirement: >-
+          Reconcile the post-cutover projection against the pre-cutover system of record over a
+          recorded historical window before authority is considered moved.
+        shadow_acceptance: >-
+          A dry-run migration with reconciliation reporting and ZERO authority change - the record
+          exists, the cutover does not.
+        supervised_acceptance: >-
+          A complete migration record for any executed migration, reconciliation clean and
+          rollback exercised, under gate G9.
+        bounded_autonomy_eligibility: >-
+          NONE - a migration is a customer-authorized human decision permanently. ADR-003 is not
+          graduatable and ADR-018 levels 6-8 are each recorded and reversible.
+        rollback_or_compensation_requirement: >-
+          Field 7 of the record is a rollback plan that must restore the PRIOR authority; a
+          rollback that cannot restore it is a hostile-case failure.
+        depends_on: [P9, P11, P12]
+        acceptance_contract: >-
+          docs/architecture/decisions/ADR-013-workflow-authority-migration.md sec 2 (the thirteen
+          fields) with docs/specifications/operational-system-map.md; gate G9
+        status: BLOCKED
+        execution_state: NOT_STARTED
+        checkpoint_state: NO_CHECKPOINT
     rebaseline_contract:
       user_visible_capability: more of the back office carried; a customer may deliberately migrate a workflow's authority to Neyma
       platform_capability: additional loops, atomic cross-loop handoffs, the ADR-013 authority-migration model
@@ -894,6 +1734,8 @@ units:
   - unit_id: P14
     name: Bounded autonomy
     status: BLOCKED
+    execution_state: NOT_STARTED
+    checkpoint_state: NO_CHECKPOINT
     objective: "Per action class, capped, time-boxed, revocable autonomy."
     dependencies: [P13]
     unlocked_by: [P13]

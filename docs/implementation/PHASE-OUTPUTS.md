@@ -24,6 +24,24 @@
 > "Phase 1 demo", and the owner-readiness docs have their own phases. **When this repository says
 > Phase N without qualification, it means Implementation Phase PN below.**
 
+## The state token in each heading is RESTATED, never established here
+
+Every `## PN — …` heading below carries one of exactly three tokens — **✅ COMPLETE**,
+**🔄 IN PROGRESS — NOT COMPLETE**, **⛔ NOT STARTED**. They mirror the `execution_state` field of
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml), which is the machine authority for
+unit state, and
+[`eval/tests/test_roadmap_completeness_control.py`](../../eval/tests/test_roadmap_completeness_control.py)
+fails the build when a heading here disagrees with it. **This file establishes no status.** Its
+checkpoint-kernel heading was still asserting the un-started token long after that phase had been
+adjudicated complete, and nothing noticed — which is precisely why the tokens are now guarded
+rather than hand-maintained.
+
+> ### **`execution_state` is not the same question as `status`.** `status` answers *may this unit
+> be worked on, and is it the approved next one* (BLOCKED / READY / IN_PROGRESS / COMPLETE);
+> `execution_state` answers *has work actually landed inside it* (NOT_STARTED / IN_PROGRESS /
+> COMPLETE). **P4 is `READY` and `IN_PROGRESS` at the same time, and both are true**: it is the
+> selected unit AND it is executing. See `meta.status_model` in the registry.
+
 ---
 
 ## P0 — Baseline and anti-false-green infrastructure ✅ COMPLETE
@@ -78,7 +96,7 @@
 | **Acceptance gates** | The documentation acceptance suite; the rehearsal's own criteria |
 | **Next unlocked** | **P3** — but only after the rehearsal passes *and* an independent inspection agrees |
 
-## P3 — Checkpoint, Witness and claim CAS ⛔ NOT STARTED
+## P3 — Checkpoint, Witness and claim CAS ✅ COMPLETE
 
 | | |
 |---|---|
@@ -91,7 +109,7 @@
 | **Acceptance gates** | The AC-SAFE checkpoint cases |
 | **Next unlocked** | P4 |
 
-## P4 — Adapter containment ⛔ NOT STARTED — **THIS IS WHERE R-07 CLOSES**
+## P4 — Adapter containment 🔄 IN PROGRESS — NOT COMPLETE — **THIS IS WHERE R-07 CLOSES**
 
 | | |
 |---|---|
