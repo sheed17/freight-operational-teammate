@@ -20,8 +20,8 @@ meta:
   # The three fields below MIRROR the machine-maintained status block in CURRENT.md and are
   # rewritten by the same script (scripts/update_current_status.py). test_status_reality.py fails
   # the build if they disagree with CURRENT.md or with the checked-out commit.
-  baseline_commit: 36024cf03845b5cd306b460584d450867033bb78
-  validated_tree: f58f717e82450b481571ca044c7d6d5a704a6e40
+  baseline_commit: 2394743ca77baa25f8f2246bca4a51a31b832f28
+  validated_tree: 905aa70101ed5c2121df8aafe7b9ee198dda1af6
   suite: "1589 passed, 0 failed, 1 conditionally justified skip"
   status_convention: >-
     Two-commit convention: content commit first, then exactly one status-metadata commit that

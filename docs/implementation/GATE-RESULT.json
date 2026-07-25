@@ -5,13 +5,13 @@
     "passed": 1589,
     "skipped": 1
   },
-  "commit": "36024cf03845b5cd306b460584d450867033bb78",
-  "completed_at": "2026-07-25T08:18:03.778025+00:00",
+  "commit": "2394743ca77baa25f8f2246bca4a51a31b832f28",
+  "completed_at": "2026-07-25T08:32:32.334593+00:00",
   "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
   "gate": "clean_clone_gate",
   "node_manifest_sha256": "e4b88a5c6a8b2a30e46247103a226ecfd6ee328446bcf490275de7ea0394b577",
   "passed": true,
-  "payload_sha256": "3f50a845a30430bc18dd9810fddab82340f19507236a479eb0bcff0390ac59fe",
+  "payload_sha256": "af7437e499a67261c7eb1bfe14bdb80ff7c054dbb1eade6d5aee8a8fbafbb91e",
   "reason": "",
   "runner_sha256": "75b924e9f39821eaf4a9796ea81b24c8240ef4d228e781c95f627230586295eb",
   "steps": [
@@ -52,5 +52,5 @@
       "step": "clone tree still clean"
     }
   ],
-  "tree": "f58f717e82450b481571ca044c7d6d5a704a6e40"
+  "tree": "905aa70101ed5c2121df8aafe7b9ee198dda1af6"
 }
