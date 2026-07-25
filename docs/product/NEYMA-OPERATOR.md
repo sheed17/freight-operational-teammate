@@ -1,4 +1,4 @@
-# Neyma — The Operator and the Customer-Discovery Model
+# Neyma — The Neyma Operator and the Customer-Discovery Model
 
 > **CANONICAL (navigation) — product consolidation.** This document formalizes the **Neyma
 > Operator** as the single top-level coordinating and implementation-learning role, and the
@@ -33,7 +33,7 @@ The word *operator* is already overloaded in this repository, and conflating the
 |---|---|---|
 | **human operator** (the operator, the owner-operator) | the accountable **person** at the brokerage | the dominant meaning across [`operating-model.md`](operating-model.md), the ADRs and the owner-operator docs. The human stays in the operating seat ([`PRODUCT.md §5`](../../PRODUCT.md)). |
 | **the Neyma Operator** *(this document)* | the single top-level **AI coordinating + conversational + implementation-learning role** the human operator talks to | a **presentation/coordination surface over the canonical spine** — a persona, not a runtime orchestrator. It **proposes; it never disposes.** |
-| the legacy `operator_*` / `brain_*` code | the pre-reset `operator_brain.py` / `brain_operator.py` / `operator_agent.py` / `operation_router.py` cluster | ### **This is NOT the Neyma Operator.** It is the non-canonical "second orchestration system" scheduled for **REWRITE → P6** ([`LEGACY-DISPOSITION.md`](../implementation/LEGACY-DISPOSITION.md), Rule #16/#10). The Neyma Operator is the *canonical* role that presentation layer becomes — over the Pipeline Instance, never beside it. |
+| the legacy `operator_*` / `brain_*` code | the pre-reset `operator_brain.py` / `brain_operator.py` / `operator_agent.py` / `operation_router.py` cluster | ### **This is NOT the Neyma Operator.** It is the non-canonical "second orchestration system" scheduled for **REWRITE → P6** ([`LEGACY-DISPOSITION.md`](../implementation/LEGACY-DISPOSITION.md) S3 — target phase **P6**, with effect routing moved at **P4**; [`CLAUDE.md §5`](../../CLAUDE.md) rules #16 and #15). The Neyma Operator is the *canonical* role that presentation layer becomes — over the Pipeline Instance, never beside it. |
 
 Throughout this document, **"the Operator"** means the Neyma Operator; **"the human operator"** (or
 "the owner", "the accountable human") means the person.
@@ -41,15 +41,15 @@ Throughout this document, **"the Operator"** means the Neyma Operator; **"the hu
 ## 1. What the Neyma Operator is
 
 **The Neyma Operator is the one primary interface the freight company's team talks to** — an
-AI operations lead that understands requests, coordinates the specialized AI teammates, tracks
+AI operations lead that understands requests, coordinates the specialist AI teammates, tracks
 cross-workflow dependencies, surfaces exceptions, requests the decisions that belong to humans, and
 gives the human operator **one coherent view of the company's operations**. It is the top of the
 [`ADR-019`](../architecture/decisions/ADR-019-conversational-operations-layer.md) "one coherent
 Neyma identity" and the coordinating persona of **Layer C** in the three-layer model
 ([`OPERATIONAL-LOOPS.md §6`](OPERATIONAL-LOOPS.md): A spine · B loops W1–W11 · C teammates).
 
-It has a **second job**: it helps **deploy Neyma into a new customer** — interviewing operators,
-reading SOPs, observing systems read-only, reconstructing how the company actually operates, and
+It has a **second job**: it helps **deploy Neyma into a new customer** — interviewing the human
+operators, reading SOPs, observing systems read-only, reconstructing how the company actually operates, and
 turning what it learns into **explicit, inspectable, tenant-safe artifacts** that a human approves
 before anything becomes real.
 
@@ -86,7 +86,7 @@ The Operator decomposes onto the five canonical capability verbs
 and the four gate decisions
 ([`ADR-010`](../architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md)). It:
 
-- **understands requests** — interprets natural-language operator input as *proposed* intent, draft
+- **understands requests** — interprets the human operator's natural-language input as *proposed* intent, draft
   Work Items or structured constraints (never authority — [`ADR-019 §5`](../architecture/decisions/ADR-019-conversational-operations-layer.md));
 - **coordinates the AI teammates** across sales, planning, carrier sourcing, dispatch, driver
   communication, tracking, appointments, exceptions, documents, delivered-load closure, AP, AR,
@@ -134,7 +134,7 @@ The Operator is powerful precisely because it is **contained**. It **cannot**:
 |---|---|---|
 | **Shared spine (A)** | one work-item/load state, knowledge, evidence/provenance, policy/approvals, communications history, effect boundary, audit trail | the Operator **reads and proposes against** it; it is the source of truth, and the Operator adds no rival state |
 | **The eleven loops (B, W1–W11)** | the trigger→accountable-closure execution decomposition | the Operator **coordinates** loop work and **tracks handoffs**; it does not re-implement or bypass any loop |
-| **Specialist AI teammates (C)** | role personas (AI dispatcher, AP clerk, operations manager, …) operating loops/surfaces on the spine | the Operator is the **top-level coordinator** of Layer C; a teammate's completed work becomes the next teammate's context via the atomic handoff, and the Operator makes that legible to the human |
+| **Specialist AI teammates (C)** — canonically the **role-based AI teammates** of [`OPERATIONAL-LOOPS.md §6`](OPERATIONAL-LOOPS.md); "specialist teammate" in this document is that same layer, not a new concept | role personas (AI dispatcher, AP clerk, operations manager, …) operating loops/surfaces on the spine | the Operator is the **top-level coordinator** of Layer C; a teammate's completed work becomes the next teammate's context via the atomic handoff, and the Operator makes that legible to the human |
 | **Policy system** | typed, versioned, deterministic authority ([`ADR-010`](../architecture/decisions/ADR-010-policy-rules-constraints-autonomy.md)) | the policy system **decides authority**; the Operator may **propose** policy text but never authors or activates a policy |
 | **Evidence layer** | content-addressed Evidence + provenance ([`ADR-002`](../architecture/decisions/ADR-002-state-classes-and-lineage.md)/[`ADR-007`](../architecture/decisions/ADR-007-identity-claims-and-conflict.md)) | **supports every claim and decision** the Operator surfaces; the Operator never asserts without it |
 | **Effect boundary** | the structurally enforced single effect boundary ([`ADR-004`](../architecture/decisions/ADR-004-effect-boundary.md)) | **controls every consequential external action**; the Operator's requests reach the world only through it |
