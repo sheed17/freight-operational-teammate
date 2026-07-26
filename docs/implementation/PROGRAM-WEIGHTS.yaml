@@ -23,8 +23,10 @@ program_weights:
   - phase: P3
     title: Checkpoint Witness, seven-step atomic checkpoint, and claim CAS
     program_weight: 12
-    dependency_status: READY - all gates satisfied (U-REBASELINE-1A)
-    implementation_status: SPECIFIED
+    # dependency_status / implementation_status are NARRATIVE only and are NOT read by
+    # scripts/progress_status.py. Unit state is IMPLEMENTATION-REGISTRY.yaml's; these fields defer.
+    dependency_status: see IMPLEMENTATION-REGISTRY.yaml - the canonical unit-state authority
+    implementation_status: see IMPLEMENTATION-REGISTRY.yaml - the canonical unit-state authority
     readiness_tier: SPECIFIED
     user_visible_output: "none - safety kernel"
     production_output: "commit-once as a DB constraint at the effect boundary"
@@ -35,8 +37,8 @@ program_weights:
   - phase: P4
     title: Adapter containment (closes R-07)
     program_weight: 10
-    dependency_status: BLOCKED
-    implementation_status: SPECIFIED
+    dependency_status: see IMPLEMENTATION-REGISTRY.yaml - the canonical unit-state authority
+    implementation_status: see IMPLEMENTATION-REGISTRY.yaml - the canonical unit-state authority
     readiness_tier: SPECIFIED
     user_visible_output: "none"
     production_output: "an external effect without a grant becomes structurally impossible; R-07 closes"
@@ -211,7 +213,7 @@ cli_switch_gates:
   - gate: p3_weighted_acceptance_contract_instantiated
     weight: 15
     status: DONE
-    evidence: "P3.acceptance_criteria instantiated from the acceptance_template by U-REBASELINE-1A: 14 criteria, weights sum 100, every result PENDING (P3 is READY, not started)"
+    evidence: "P3.acceptance_criteria instantiated from the acceptance_template by U-REBASELINE-1A: 14 criteria, weights sum 100. At instantiation every result was PENDING; the gate records the instantiation, not the outcome. P3 has since been adjudicated COMPLETE - current unit state is IMPLEMENTATION-REGISTRY.yaml's"
 
 # ------------------------------------------------------------------ production readiness (Σ = 100)
 # Each item's readiness_tier gates its contribution: an item contributes its weight only at

@@ -258,7 +258,7 @@ it exists.** Autonomy ceiling uses the canonical gate decisions of
 - **Work performed:** capture observations and corrections **with provenance and governance**; make knowledge inspectable and tenant-scoped; feed decision-support (never gating) reads.
 - **Evidence required:** every correction preserved with provenance; **`MODEL_INFERRED` never gates a consequential action; `OWNER_ASSERTED` is never silently overwritten.**
 - **Approval boundary:** learning informs; it never creates authority.
-- **Current state:** SPECIFIED. **Open finding:** the current runtime's knowledge base still hardcodes `tenant="default"` — a recorded finding that closes when the KB is made tenant-safe (see [`CURRENT.md`](../implementation/CURRENT.md)). · **Target phase:** P7 (provenance/evidence) → P9 (domain). · **Dependencies:** P2, P7.
+- **Current state:** LEGACY_IMPLEMENTATION_ONLY — **the canonical capability is not built**; a pre-reset analogue exists under disposition and may never be read as this capability being done. **Open finding:** that runtime knowledge base still hardcodes `tenant="default"` — a recorded finding that closes when the KB is made tenant-safe (see [`CURRENT.md`](../implementation/CURRENT.md)). · **Target phase:** P7 (provenance/evidence) → P9 (domain). · **Dependencies:** P2, P7.
 - **Autonomy ceiling:** **OBSERVE / RECOMMEND** — memory is decision-support, never authority.
 
 ## 18. Channels & systems  — the adapter boundary · P9/P11/P12
@@ -266,7 +266,7 @@ it exists.** Autonomy ceiling uses the canonical gate decisions of
 - **Objective:** work across the systems freight teams already use — every external effect through the canonical effect boundary and authorization model.
 - **Channels & systems Neyma may eventually work across:** TMS systems (A4), accounting systems (A12), email (A1), SMS (A2), phone/voice transcripts (A3), Slack/internal collaboration (A14), customer portals (A7), carrier portals (A6), retailer/facility scheduling portals (A8), GPS/ELD/tracking providers (A9), browser-based legacy systems (A15 actuation), document stores (A11), payment/bank observation (A13), notification delivery (A18), file/spreadsheet (A16), FMCSA/authority (A10), APIs and databases.
 - **Rule:** **all external effects use the canonical effect boundary and authorization model** ([`ADR-004`](../architecture/decisions/ADR-004-effect-boundary.md)/ADR-009); reads are classified (informational / decision-support / consequential-freshness); a successful write into one node is never proof the workflow is complete.
-- **Current state:** SPECIFIED; adapters are live/partial/planned per [`adapters/registry.md`](../specifications/adapters/registry.md) (A1/A4/A14/A15 live or partial; A2/A3/A5–A13/A16/A18 planned). · **Target phase:** P9 (comms ingestion) → P11 (integration onboarding) → P12 (supervised effects). · **Dependencies:** P4 (containment), P9, P11, ADR-014.
+- **Current state:** LEGACY_IMPLEMENTATION_ONLY — **none of the eighteen canonical adapter contracts is built**; the live/partial adapters in the tree are pre-reset modules under disposition. Per [`adapters/registry.md`](../specifications/adapters/registry.md) (A1/A4/A14/A15 live or partial; A2/A3/A5–A13/A16/A18 planned). · **Target phase:** P9 (comms ingestion) → P11 (integration onboarding) → P12 (supervised effects). · **Dependencies:** P4 (containment), P9, P11, ADR-014.
 - **Autonomy ceiling:** per the effecting capability; the boundary itself never grants authority.
 
 ---

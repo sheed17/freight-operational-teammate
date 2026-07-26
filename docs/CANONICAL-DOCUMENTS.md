@@ -124,7 +124,8 @@ its names.
 | [`implementation/PROGRESS-PROTOCOL.md`](implementation/PROGRESS-PROTOCOL.md) | The founder build-status protocol: report format, evidence-based %, readiness tiers, session-end rule (U-REBASELINE-1) | **IMPLEMENTATION_CONTROL** |
 | [`implementation/PROGRAM-WEIGHTS.yaml`](implementation/PROGRAM-WEIGHTS.yaml) | Approved phase program weights + weighted acceptance template + readiness checklists | **IMPLEMENTATION_CONTROL** |
 | [`implementation/BUILD-STATUS.yaml`](implementation/BUILD-STATUS.yaml) | The finalizer-derived progress snapshot (percentages, tier, blockers) — defers to CURRENT.md for commit/tree/suite | **CURRENT_STATUS** |
-| [`implementation/IMPLEMENTATION-REGISTRY.yaml`](implementation/IMPLEMENTATION-REGISTRY.yaml) | Work units, status, dependencies, acceptance | **IMPLEMENTATION_CONTROL** |
+| [`implementation/IMPLEMENTATION-REGISTRY.yaml`](implementation/IMPLEMENTATION-REGISTRY.yaml) | Work units, their three state fields (`status` selection · `execution_state` execution · `checkpoint_state` review), dependencies, acceptance, and the P13 sub-unit decomposition | **IMPLEMENTATION_CONTROL** |
+| [`implementation/CAPABILITY-TRACEABILITY.yaml`](implementation/CAPABILITY-TRACEABILITY.yaml) | ### **The promise-to-implementation-to-evidence spine** — every promised capability traced to its owning loop/surface, phase, implementation unit, acceptance contracts and release gate, plus the mechanical full-roadmap completeness rule | **IMPLEMENTATION_CONTROL** — traceability and sequencing only; it creates no product decision and states nothing as implemented |
 | [`implementation/PHASE-OUTPUTS.md`](implementation/PHASE-OUTPUTS.md) | What each phase produces and unlocks | **IMPLEMENTATION_CONTROL** |
 | [`implementation/LEGACY-DISPOSITION.md`](implementation/LEGACY-DISPOSITION.md) | One disposition per subsystem | **IMPLEMENTATION_CONTROL** |
 | [`implementation/implementation-roadmap.md`](implementation/implementation-roadmap.md) | Phases P0–P14, principles, ordering | **IMPLEMENTATION_CONTROL** |
@@ -180,7 +181,11 @@ live work, and they also contain the product definition this program exists to r
   `phase-0-baseline-manifest.yaml` is the machine-checked *fact* record beneath it, not a rival.
   Any other file claiming to be "the where-are-we doc" is stale by definition.
 - **There is exactly ONE implementation registry:** `IMPLEMENTATION-REGISTRY.yaml`, indexed by
-  `implementation/registry.md` and sequenced by `implementation-roadmap.md`.
+  `implementation/registry.md` and sequenced by `implementation-roadmap.md`. It is also the
+  **machine authority for unit state** — `CURRENT.md` remains the short-form human status
+  authority, and the two are guarded against each other. `CAPABILITY-TRACEABILITY.yaml` traces
+  capabilities onto those units and is **not** a third status authority: every row names the
+  `current_truth_source` it defers to.
 - **There is exactly ONE product authority:** `PRODUCT.md`.
 - **The chain has a root:** `engineering-principles.md`. It is authorised by nothing above it, which
   is what makes it the constitution rather than a link in a cycle.

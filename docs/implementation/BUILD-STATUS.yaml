@@ -8,8 +8,8 @@
 
 # derived-block: maintained by scripts/finalize_status.py - do not edit by hand
 derived:
-  content_commit: 2394743ca77baa25f8f2246bca4a51a31b832f28
-  content_tree: 905aa70101ed5c2121df8aafe7b9ee198dda1af6
+  content_commit: 857cdc1cd40014c24cf262d4022d5b73701b5a0b
+  content_tree: df2509f52d434a5edc9116eb1a5bf42e4da6cc93
   active_phase: P4
   single_ready_unit: P4
   cli_switch_readiness_percent: 100.0
@@ -21,8 +21,8 @@ derived:
 # end-derived-block
 
 snapshot:
-  active_work_unit: "P4 — Adapter containment (READY, NOT begun). The checkpoint-kernel phase is adjudicated COMPLETE — all 14 weighted criteria PASS — and the active phase is now P4"
-  next_approved_unit: "P4 — the one and only READY unit; route every external effect through the checkpoint kernel and the two-key rule and close R-07. It has not begun; this adjudication session did not start it"
+  active_work_unit: "P4 — Adapter containment. SELECTED (status READY) and EXECUTING (execution_state IN_PROGRESS): two implementation checkpoints have landed and it is NOT COMPLETE; independent review and final adjudication are pending, and only completing it closes R-07"
+  next_approved_unit: "P4 — the one and only READY unit; route every external effect through the checkpoint kernel and the two-key rule and close R-07. It is under way and NOT complete: the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only cuts, finding F2, and flipping the import gate to EMPTY all remain"
   completed_criteria:
     # The FINAL ADJUDICATION is now recorded: a separate adjudicating session set all 14 weighted
     # P3 criteria to PASS from independent evidence, so P3 is COMPLETE (phase computes to 100/100).
@@ -40,9 +40,9 @@ snapshot:
     - "P4's acceptance contract: to be instantiated from the acceptance_template when P4 begins"
     - "every implementation phase P5-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P4)"
   blockers_to_p4:
-    - "none from P3 — P3 is COMPLETE (all 14 criteria PASS), so P4's sole dependency is satisfied and P4 is READY. P4 has NOT begun; a session picking it up must read the P4 onboarding set first, and beginning P4 is the payoff that closes R-07"
+    - "none from P3 — P3 is COMPLETE (all 14 criteria PASS), so P4's sole dependency is satisfied and P4 is the selected unit. P4 is EXECUTING and NOT COMPLETE; a session continuing it must read the P4 onboarding set first, and only COMPLETING P4 closes R-07"
   open_program_risks:
-    - "R-07 OPEN - NOT CONTAINED. Completing P3 does NOT close it: the kernel ships dark, the six live-write paths are untouched, and only completing P4 closes it."
+    - "R-07 OPEN - NOT CONTAINED. Completing P3 did NOT close it: the kernel ships dark, ungated live-write paths remain (the exact residual is CURRENT.md's - this file copies no count), and only completing P4 closes it."
     - "customer-specific freight rules remain NEEDS VALIDATION (OPEN-VALIDATION-ITEMS.md); Delivered Load Closure is a HYPOTHESIS with zero recorded firsthand design-partner observations"
     - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5"
     - "recorded debt: independent-review finding F-10 (trace-id namespaces / unpublished 61-point index) - auditability noise, blocks nothing"
@@ -59,7 +59,9 @@ snapshot:
     canonical suite is green on the finalized tree; the finalizer and clean-clone gate executed and
     passed; a FRESH independent review PASSED; and a separate final adjudication set all 14 weighted
     criteria PASS. Nothing looks different from the outside - deliberately. The kernel ships dark,
-    the customer-facing numbers stay zero on purpose, and the six ungated live-write paths still
-    exist, which is why R-07 stays OPEN - NOT CONTAINED. P4 is the payoff phase: it is now READY and
-    routes effects through the kernel to close R-07, but it has NOT begun. Expect no usable interface
-    until P10 (Delivered Load Closure in shadow); production progress becomes measurable from P11.
+    the customer-facing numbers stay zero on purpose, and ungated live-write paths still exist,
+    which is why R-07 stays OPEN - NOT CONTAINED. P4 is the payoff phase and it is UNDER WAY: two
+    checkpoints have landed, and because none of its weighted acceptance criteria has been
+    instantiated or awarded, the current-phase number is 0% and that is correct - landed code is not
+    completion. Expect no usable interface until P10 (Delivered Load Closure in shadow); production
+    progress becomes measurable from P11.

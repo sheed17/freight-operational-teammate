@@ -36,10 +36,11 @@ eleven canonical operational loops (W1–W11).
 **Do not read status from this file, and do not add it here.**
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) is the single authority.
 
-At the time of writing it records: Implementation **Phases P0/P1/P2/P3 COMPLETE, P4 the sole READY
-unit (adapter containment) — not begun, R-07 OPEN — NOT CONTAINED** (P3's checkpoint kernel is
-adjudicated COMPLETE and ships dark; only completing P4 closes R-07). If this line and `CURRENT.md`
-ever disagree, **`CURRENT.md` is right and this line is stale.**
+At the time of writing it records: Implementation **Phases P0/P1/P2/P3 COMPLETE; P4 (adapter
+containment) is the sole READY unit AND is executing — checkpoints landed, NOT COMPLETE; R-07 OPEN
+— NOT CONTAINED** (P3's checkpoint kernel is adjudicated COMPLETE and ships dark; only completing P4
+closes R-07). If this line and `CURRENT.md` ever disagree, **`CURRENT.md` is right and this line is
+stale.**
 
 ## Roadmap
 

@@ -49,7 +49,7 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **Implementation Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Implementation Phase 3** | ✅ COMPLETE — **ADJUDICATED.** The checkpoint kernel (seven-step checkpoint, Checkpoint Witness, claim CAS, brake admission) **ships dark**. A FRESH independent review PASSED and a separate final adjudication set all 14 weighted criteria PASS. Completing P3 did not close R-07. |
 | **Suite** | green — ### **exact counts live ONLY in [`CURRENT.md`](docs/implementation/CURRENT.md)'s machine-maintained status block** |
-| **Next approved work** | **`P4` — adapter containment** — now the sole `READY` unit, and it has **not begun**. It routes every external effect through the checkpoint kernel and the two-key rule and turns on the CI import gate; **it is the unit that closes R-07**, which stays OPEN — NOT CONTAINED until P4 completes. |
+| **Next approved work** | **`P4` — adapter containment** — the sole `READY` unit, and it is **executing: two implementation checkpoints have landed and it is NOT COMPLETE** (independent review + final adjudication pending). It routes every external effect through the checkpoint kernel and the two-key rule and turns on the CI import gate; **it is the unit that closes R-07**, which stays OPEN — NOT CONTAINED until P4 completes. |
 
 **Phases are `P0`–`P14` with gates `G0`–`G10`.** Older documents refer to an 8-stage roadmap
 ("Stage 1"…"Stage 8") — **that roadmap is superseded.** See

@@ -138,10 +138,12 @@ concepts:
       UNKNOWN_OUTCOME/FAILED outcome machine that never downgrades UNKNOWN to FAILED, orphan
       detection (Sev-0 + auto-brake), the cross-tenant GLOBAL-brake path, and the boundary-aware
       import gate (detection). PARTIALLY, not fully, IMPLEMENTED and SHIPS DARK: no production path
-      routes through it yet, EP-6/7/9/10 are deleted but EP-1/EP-3 (ADAPT), EP-8/EP-14 (READ_ONLY)
-      and brain_runtime remain as five effect-capable import edges, and the gate is not yet flipped
-      to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those five and turns the gate
-      ON.
+      routes through it yet, EP-6/7/9/10 are deleted and the brain_runtime edge has since been cut
+      by injection, so EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) remain as FOUR effect-capable
+      violation edges - the exact set recorded in phase-0-baseline-manifest.yaml
+      effect_adapter_import_gate.violation_edges and recomputed live by the import probe. The gate
+      is not yet flipped to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those four
+      and turns the gate ON.
 
   - name: Work Item
     status: SPECIFICATION_ONLY

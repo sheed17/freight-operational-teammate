@@ -250,7 +250,7 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
   it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
   how P3 was completed — reviewer and adjudicator were sessions separate from the implementer.
-- ⛔ Do not declare R-07 contained — **only COMPLETING P4 closes it**, and P4 has not begun.
+- ⛔ Do not declare R-07 contained — **only COMPLETING P4 closes it**, and P4 is not complete.
 - ⛔ Do not enable the checkpoint kernel on live traffic outside P4's own acceptance contract —
   it ships dark, and routing effects through it IS P4's content.
 - ⛔ Do not weaken the kernel: `CheckpointPassed` stays unconstructable, the witness table stays
@@ -261,8 +261,9 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ Do not promote the Delivered Load Closure wedge to validated.
 
 **The next approved program is
-[P4 — ADAPTER CONTAINMENT](docs/implementation/CURRENT.md)** — the one and only `READY` unit, and it
-has **not begun**. P3 (the checkpoint kernel) is now **adjudicated COMPLETE**: its first INDEPENDENT
+[P4 — ADAPTER CONTAINMENT](docs/implementation/CURRENT.md)** — the one and only `READY` unit. It is
+**executing**: two implementation checkpoints have landed and it is **NOT COMPLETE** (independent
+review and final adjudication pending). P3 (the checkpoint kernel) is now **adjudicated COMPLETE**: its first INDEPENDENT
 review failed it (9 findings, 60/100), all nine findings were remediated, a **FRESH** INDEPENDENT
 review of the remediated, finalized tree **PASSED**, and a **separate FINAL ADJUDICATION** set all 14
 weighted criteria `PASS` ([`p3-final-adjudication-review.md`](docs/implementation/p3-final-adjudication-review.md)).

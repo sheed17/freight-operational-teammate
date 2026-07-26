@@ -244,7 +244,7 @@ Neyma is **not**:
 
 ## 13. Current implemented state
 
-**Implementation Phases 0, 1 and 2 are COMPLETE. Phase 3 is IN PROGRESS — NOT COMPLETE.** What
+**Implementation Phases 0, 1, 2 and 3 are COMPLETE. Phase 4 is executing and NOT COMPLETE.** What
 that actually bought:
 
 | | |
@@ -252,7 +252,7 @@ that actually bought:
 | **P0** | A baseline manifest of adjudicated current-state facts, plus anti-false-green guard infrastructure |
 | **P1** | **Correct effect identity** — the Commit Key identifies the *effect*, and the amount is provably not in it |
 | **P2** | **Tenant-safe persistence** — tenant required at construction, first in every key, enforced by the database, with auditable human-asserted ownership of historical rows |
-| **P3** *(in progress)* | **The checkpoint kernel** — the seven-step atomic checkpoint, an unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark: no production path routes through it until P4 contains the adapters.** ### **Implemented but NOT COMPLETE** — independent review and final adjudication outstanding. |
+| **P3** | **The checkpoint kernel** — the seven-step atomic checkpoint, an unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark: no production path routes through it until P4 contains the adapters.** ### **ADJUDICATED COMPLETE** — a fresh independent review PASSED and a separate final adjudication set all 14 weighted criteria PASS. |
 
 The suite is green; ### **exact suite counts and the current commit/tree live ONLY in the
 machine-maintained status block of [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md)** —
@@ -262,9 +262,10 @@ this file deliberately does not copy them, because a copied figure is a stale fi
 
 **The safety kernel exists but nothing consequential is routed through it yet.** Specifically:
 
-- **P4** — adapter containment (**R-07 is OPEN — NOT CONTAINED**; six production-reachable
-  live-write paths remain physically capable of ungated external effects — the P3 kernel sits
-  dark beside them until this phase routes every effect through it)
+- **P4** — adapter containment, **executing and NOT COMPLETE** (**R-07 is OPEN — NOT
+  CONTAINED**; ungated live-write paths remain physically capable of external effects — the P3
+  kernel sits dark beside them until this phase routes every effect through it. The exact current
+  residual lives in [`CURRENT.md`](docs/implementation/CURRENT.md); this file copies no count)
 - **P5** — canonical events, outbox/inbox, replay isolation
 - **P6–P9** — entities and state machines, provenance and evidence, policy/brake/exceptions,
   freight-domain projections
