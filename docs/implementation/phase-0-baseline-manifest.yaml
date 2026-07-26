@@ -240,16 +240,15 @@ expected_legacy_paths:
   # frozen REMOVE_BEFORE_ENABLE disposition, so they are gone from this by-import list. The
   # entrypoint probe no longer finds them; test_effect_capable_entry_points_match_the_manifest
   # holds found == known against the shrunk list. Their adjudication record (now REMOVED_AT_P4)
-  # is preserved in EFFECT-PATH-INVENTORY.yaml. Six effect-capable-by-import scripts remain; R-07
-  # stays OPEN because EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) are not yet cut.
+  # is preserved in EFFECT-PATH-INVENTORY.yaml. EP-8 (orient_tms) left this list the same way at P4:
+  # it now holds a ReadOnlyCdpObserver and imports no adapter at all, so the probe no longer finds
+  # it effect-capable; its adjudication record is likewise preserved in EFFECT-PATH-INVENTORY.yaml.
+  # FIVE effect-capable-by-import scripts remain; R-07 stays OPEN because EP-1/EP-3 (ADAPT) and
+  # EP-14 (READ_ONLY) are not yet cut.
   effect_capable_by_import:
     - script: scripts/enter_tms_payable.py
       ep: EP-12
       cutover: test-only (mock-guarded)
-    - script: scripts/orient_tms.py
-      ep: EP-8
-      cutover: MAKE_READ_ONLY (remove the cdp_actuator import)
-      note: read-only by convention, actuator-capable by import
     - script: scripts/propose_ar_from_tms.py
       ep: EP-3
       cutover: CONVERT_TO_PIPELINE_CLIENT
@@ -509,8 +508,8 @@ adapter_import_allowlist:
     is not the adapter itself. This rule is stated because the frozen plan's "13 direct adapter
     import sites" is not reproducible: several defensible rules give 13, 16, 18 or 31. An unstated
     counting rule is the M-4 pattern - a number nobody can adjudicate. See finding P0-F3.
-  recomputed_edges: 18   # P4: 31 -> EP-6/7/9/10 delete (-11) -> F1 removed EP-12's browser edge (-1) -> brain_runtime rewire (-1)
-  recomputed_importer_modules: 13   # 18 -> four EP scripts deleted -> brain_runtime no longer imports an adapter
+  recomputed_edges: 16   # P4: 31 -> EP-6/7/9/10 delete (-11) -> F1 removed EP-12's browser edge (-1) -> brain_runtime rewire (-1) -> EP-8 cut to the read-only observer (-2)
+  recomputed_importer_modules: 12   # 18 -> four EP scripts deleted -> brain_runtime no longer imports an adapter -> orient_tms imports no adapter at all (EP-8)
   frozen_plan_claimed: 13
   removed_by_phase: P4
   accountable_unit: U4.1-U4.9
@@ -528,8 +527,6 @@ adapter_import_allowlist:
     - src/freight_recon/truckingoffice_write.py -> tms_write
     - scripts/discover_tms_screen.py -> cdp_session
     - scripts/enter_tms_payable.py -> tms_write
-    - scripts/orient_tms.py -> cdp_actuator
-    - scripts/orient_tms.py -> cdp_session
     - scripts/propose_ar_from_tms.py -> cdp_actuator
     - scripts/propose_ar_from_tms.py -> cdp_session
     - scripts/read_tms_browser_use.py -> browser_use_adapter
@@ -584,30 +581,43 @@ effect_adapter_import_gate:
         exists yet - only tests invoke it, and its own docstring records that the scheduler/daemon
         that ticks it lives in the production runtime (P11). Production scheduling is therefore
         deferred to P11 and the boundary still ships dark.
-    The remaining FOUR keep R-07 OPEN until a subsequent session cuts them and flips the gate to
-    assert EMPTY. Each hinges on correctness-critical browser code with NO live-browser / live-TMS
-    runtime available in this environment to verify against, so per CLAUDE.md sec 9 (not done blind)
-    they are NOT attempted on faith:
+    F2 IS NOW BUILT AND VERIFIED (cdp_readonly.ReadOnlyCdpObserver): a genuinely read-only CDP
+    surface with three independent barriers - no mutation API exists on it, caller data travels as
+    Runtime.callFunctionOn arguments rather than source, and the channel allowlists CDP methods and
+    vetted scripts by exact value. Its premise for deferral ("no live browser here") did not hold:
+    Chrome for Testing launches in this environment and scripts/verify_readonly_cdp.py proves the
+    surface against a real browser. cdp_readonly is NOT an adapter module, so a tool that imports it
+    creates no adapter-import edge at all.
+    EP-8 IS NOW CUT on that surface: orient_tms.py holds a ReadOnlyCdpObserver and imports no adapter
+    whatsoever, so it is structurally read-only (U4.7 / gap-matrix row 34) rather than read-only by
+    convention. The per-section walk and the record action-menu expansion, which need clicks, are
+    RETAINED in system_orientation.orient_system / orient_record_actions for the authorized
+    actuator-capable caller behind the effect boundary - not deleted, just out of EP-8's reach.
+    The remaining THREE keep R-07 OPEN until a subsequent session cuts them and flips the gate to
+    assert EMPTY. Each hinges on correctness-critical browser code, so per CLAUDE.md sec 9 (not done
+    blind) they are NOT attempted on faith:
       * EP-1 (run_action_callback_server -> cdp_actuator): its cdp_actuator import feeds the
         OperationRouter -> OperatorAgent autonomous browser WRITE path (the live R-07 write) plus
         several read closures. Containing the write path is the P12-scale supervised-write
         integration; unverifiable here.
       * EP-3 (propose_ar_from_tms -> cdp_actuator): reads + one nav-click via the actuator; needs
         the F2 read-only CDP surface (below).
-      * EP-8 (orient_tms -> cdp_actuator): READ_ONLY conversion needs a read-only navigator that
-        reimplements observe/click/navigate on the cdp_session read substrate; correctness-critical
-        (a click can hit a submit target) and untestable here (no CDP browser).
       * EP-14 (read_tms_browser_use -> browser_use_adapter): READ_ONLY conversion. browser_use_adapter
         carries the TESTED BrowserUseWriteLedger (14 test nodes) whose canonical future is a
         boundary-routed write adapter (P12), so it may NOT be deleted; splitting its read surface from
         its write surface into a new module would ADD an adapter-import edge, which the shrinking-only
-        allowlist forbids. The clean cut therefore waits on the same read-only browser work as EP-8.
-    Finding F2 (cdp_session.evaluate is an ungated actuation primitive) is coupled to EP-3/EP-8/EP-1:
-    a robust read-only cdp_session surface is the prerequisite for those three cuts and is itself
-    browser-untestable here, so F2's behavioural split is deferred with them (its structural intent
-    is recorded here and in the cutover plan).
+        allowlist forbids. See the P4 re-adjudication of that ground below.
+    EP-14 RE-ADJUDICATION (P4): the deferral rested on a false premise. `browser_use_write` is
+    ALREADY a registered effect-capable adapter name - in import_probe.ADAPTER_MODULES, in
+    import_probe.EFFECT_CAPABLE_ADAPTERS, in entrypoint_probe, and in this manifest's own frozen
+    effect_capable_adapters inventory - with no file behind it. It is a RESERVED SLOT, so relocating
+    BrowserUseWriteLedger into it is not a new module invented by a session; it occupies a
+    destination canonical authority already authorized. The relocation also does not GROW the
+    surface: browser_use_adapter.py -> tms_write is replaced by browser_use_write.py -> tms_write,
+    still intra-adapter composition, still inside the legitimate residue this list is documented to
+    shrink toward and never below. REG-2 forbids a new adapter import SITE (growth); the guard
+    implements that as a set difference, which cannot by itself distinguish growth from relocation.
   violation_edges:
-    - scripts/orient_tms.py -> cdp_actuator
     - scripts/propose_ar_from_tms.py -> cdp_actuator
     - scripts/read_tms_browser_use.py -> browser_use_adapter
     - scripts/run_action_callback_server.py -> cdp_actuator

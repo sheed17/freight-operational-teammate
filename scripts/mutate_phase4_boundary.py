@@ -29,10 +29,12 @@ EB = "src/freight_recon/effect_boundary.py"
 PROBE = "eval/phase0/import_probe.py"
 EP12 = "scripts/enter_tms_payable.py"
 BRAIN = "src/freight_recon/brain_runtime.py"
+EP8 = "scripts/orient_tms.py"
 
 AC = "eval/tests/test_adapter_boundary_acceptance.py"
 GATE = "eval/tests/test_import_gate.py"
 HERM = "eval/tests/test_bootstrap_hermeticity.py"
+IMPORTS = "eval/tests/test_phase0_adapter_imports.py"
 
 
 def purge_pycache() -> None:
@@ -202,6 +204,32 @@ TEXT_CASES = [
      "    orphans = detect_orphan_effect_attempts(kernel)\n"
      "    unknowns = []  # MUTANT: unknown outcomes never surface for human resolution",
      f"{AC}::test_detective_sweep_finds_orphans_brakes_and_surfaces_unknowns"),
+
+    # ---- U4.7 / EP-8: the read-only cut must be a mechanism, not a convention ----------------
+    # EP-8's original defect was precisely that nothing failed when a "read-only" script held an
+    # actuator. These three prove the cut is now load-bearing: re-import the actuator, re-import
+    # the mutation-capable session, or smuggle either in dynamically, and a guard fires.
+
+    ("B22 U4.7/EP-8: the read-only orientation tool re-imports the actuator (the exact regression)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_actuator import CdpActuator  # noqa: E402,F401  # MUTANT: actuator back\n"
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B23 U4.7/EP-8: it re-imports the mutation-capable session (F2's evaluate/command primitive)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402\n"
+     "from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402,F401  # MUTANT: session back",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B24 U4.7/EP-8: the actuator is smuggled in dynamically rather than by a static import",
+     EP8,
+     "    kb = KnowledgeBase(",
+     "    __import__('freight_recon.cdp_actuator')  # MUTANT: dynamic actuator acquisition\n"
+     "    kb = KnowledgeBase(",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
 ]
 
 # ---------------------------------------------------------------------------------------------

@@ -104,16 +104,27 @@ paths:
   - id: EP-8
     path: scripts/orient_tms.py
     external_system: any TMS (browser)
-    production_reachable: true   # reachable as a READ; carries an actuator import it does not use
-    enablement: enabled, read-only by convention
-    authority_bypass: none exercised; full if the convention is broken (one edit away)
-    classification: READ_BY_CONVENTION_ACTUATOR_CAPABLE
+    production_reachable: true   # reachable as a READ; no longer carries any actuator import
+    enablement: enabled, STRUCTURALLY read-only
+    authority_bypass: none exercised; none available - no mutation method exists on its surface
+    classification: READ_ONLY_STRUCTURAL   # was READ_BY_CONVENTION_ACTUATOR_CAPABLE until P4/U4.7
     containment_phase: P4
     disposition: MAKE_READ_ONLY (remove the cdp_actuator import)
+    p4_cut: >-
+      DONE at P4 (U4.7). orient_tms.py holds cdp_readonly.ReadOnlyCdpObserver and imports NO adapter
+      module at all - not the actuator, not the session - so the gap-matrix row-34 target state
+      "structurally read-only" is met by an absent API rather than by convention. cdp_readonly is
+      not an adapter module, so the cut adds no adapter-import edge anywhere: detection edges 18 ->
+      16, violation edges 4 -> 3. The per-section walk and record action-menu expansion, which
+      require clicks, are RETAINED in system_orientation.orient_system / orient_record_actions for
+      the authorized actuator-capable caller behind the effect boundary - a real capability with a
+      documented future, so it is put out of EP-8's reach rather than deleted. Proven by
+      test_phase0_adapter_imports.py::test_orient_tms_is_structurally_read_only_not_read_only_by_convention
+      (the former worked-example assertion, inverted rather than removed).
     excluded_from_the_six_because: >-
-      it initiates no write flow - "read-only by convention" - but the convention is not a
-      mechanism, so its import edge is IN the R-07 containment scope even though it is not a
-      live-write path today.
+      it initiates no write flow - it was "read-only by convention", and the convention was not a
+      mechanism, so its import edge was IN the R-07 containment scope even though it was never a
+      live-write path. That edge is now cut.
 
   - id: EP-14
     path: scripts/read_tms_browser_use.py
