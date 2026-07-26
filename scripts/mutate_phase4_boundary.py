@@ -29,10 +29,15 @@ EB = "src/freight_recon/effect_boundary.py"
 PROBE = "eval/phase0/import_probe.py"
 EP12 = "scripts/enter_tms_payable.py"
 BRAIN = "src/freight_recon/brain_runtime.py"
+EP8 = "scripts/orient_tms.py"
+EP3 = "scripts/propose_ar_from_tms.py"
+RO = "src/freight_recon/cdp_readonly.py"
 
 AC = "eval/tests/test_adapter_boundary_acceptance.py"
 GATE = "eval/tests/test_import_gate.py"
 HERM = "eval/tests/test_bootstrap_hermeticity.py"
+IMPORTS = "eval/tests/test_phase0_adapter_imports.py"
+NAV = "eval/tests/test_cdp_readonly_navigation.py"
 
 
 def purge_pycache() -> None:
@@ -202,6 +207,74 @@ TEXT_CASES = [
      "    orphans = detect_orphan_effect_attempts(kernel)\n"
      "    unknowns = []  # MUTANT: unknown outcomes never surface for human resolution",
      f"{AC}::test_detective_sweep_finds_orphans_brakes_and_surfaces_unknowns"),
+
+    # ---- U4.7 / EP-8: the read-only cut must be a mechanism, not a convention ----------------
+    # EP-8's original defect was precisely that nothing failed when a "read-only" script held an
+    # actuator. These three prove the cut is now load-bearing: re-import the actuator, re-import
+    # the mutation-capable session, or smuggle either in dynamically, and a guard fires.
+
+    ("B22 U4.7/EP-8: the read-only orientation tool re-imports the actuator (the exact regression)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_actuator import CdpActuator  # noqa: E402,F401  # MUTANT: actuator back\n"
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B23 U4.7/EP-8: it re-imports the mutation-capable session (F2's evaluate/command primitive)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402\n"
+     "from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402,F401  # MUTANT: session back",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B24 U4.7/EP-8: the actuator is smuggled in dynamically rather than by a static import",
+     EP8,
+     "    kb = KnowledgeBase(",
+     "    __import__('freight_recon.cdp_actuator')  # MUTANT: dynamic actuator acquisition\n"
+     "    kb = KnowledgeBase(",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    # ---- U4.8 / EP-3: the read-only navigation cut ------------------------------------------
+    # EP-3's defect was navigation by arbitrary JavaScript plus a click fallback. These prove the
+    # cut is load-bearing: bring back the actuator, the evaluate-navigation, or the click.
+
+    ("B25 U4.8/EP-3: the AR proposal tool re-imports the actuator",
+     EP3,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402",
+     "from freight_recon.cdp_actuator import CdpActuator  # noqa: E402,F401  # MUTANT: actuator back\n"
+     "from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    ("B26 U4.8/EP-3: evaluate-based navigation returns (caller data interpolated into JavaScript)",
+     EP3,
+     "    act.visit(loads_url)\n    observation = act.observe()",
+     "    act.session.evaluate(f\"location.href={loads_url!r}\")  # MUTANT: F2's defect restored\n"
+     "    observation = act.observe()",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    ("B27 U4.8/EP-3: the deleted click fallback comes back for the POD detail read",
+     EP3,
+     "        if not bool(act.follow(list_observation, target)):",
+     "        if not bool(act.click(load_ref)):  # MUTANT: a SPA onclick can POST an invoice",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    ("B28 U4.8/EP-3: follow() stops checking that the page published the target",
+     RO,
+     "        if url not in published or not str(url).strip():",
+     "        if False:  # MUTANT: any composed URL is now followable",
+     f"{NAV}::test_follow_refuses_a_target_the_page_never_published"),
+
+    ("B29 U4.8/EP-3: the navigation channel admits arbitrary JavaScript again",
+     RO,
+     "        if method not in NAVIGATION_CDP_METHODS:",
+     "        if method not in (NAVIGATION_CDP_METHODS | {'Runtime.evaluate'}):  # MUTANT",
+     f"{NAV}::test_the_navigation_channel_refuses_every_other_method"),
+
+    ("B30 U4.8/EP-3: the scheme allowlist stops refusing javascript: URLs",
+     RO,
+     "    if u.lower().startswith(_REFUSED_SCHEMES):",
+     "    if False:  # MUTANT: javascript:/data:/file: targets are navigable again",
+     f"{NAV}::test_code_bearing_schemes_are_refused"),
 ]
 
 # ---------------------------------------------------------------------------------------------

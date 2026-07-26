@@ -1,9 +1,21 @@
 """Read ready-to-bill loads from the LIVE TMS and post AR invoice Approve buttons to Slack.
 
-The AR trigger, real-TMS sourced (vs the synthetic corpus): navigate the human-logged-in TMS to its
-loads page, read which loads are delivered-but-not-invoiced and their Total, and post one signed
+The AR trigger, real-TMS sourced (vs the synthetic corpus): open the human-logged-in TMS's loads
+page, read which loads are delivered-but-not-invoiced and their Total, and post one signed
 "Invoice [Approve & run]" button per load at that Total. A tap then drives the PROVEN raise_invoice
 write — so the proposed load_ref always matches a writable record.
+
+THE BROWSER SURFACE HERE IS READ-ONLY (P4 EP-3, R-07 containment). This script holds a
+`ReadOnlyCdpNavigator` [[cdp_readonly]]: it can fetch a document and observe it, and it has no
+evaluate, command, click, type, select or upload method to call. It previously reached the TMS
+through `cdp_session.evaluate("location.href=...")` — caller data interpolated into JavaScript, the
+exact defect F2 exists to remove — with a `cdp_actuator.click()` fallback for opening a load's
+detail page. Both are gone. Detail pages are reached only by FOLLOWING a link the loads list itself
+published, which never runs the SPA's `onclick` handler.
+
+The invoice WRITE is unchanged and is not this script's browser surface: it runs through the
+money-fenced OperationRouter (graduation, commit-once, verify-by-readback), which is EP-1's path to
+the effect boundary.
 
 Runs once, or continuously with --interval-seconds. Coordinated + idempotent:
 - --lock-path: DEFER a cycle while the write-agent holds the shared browser (never navigate mid-write).
@@ -33,8 +45,7 @@ except Exception:  # pragma: no cover
 
 from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.browser_lock import BrowserLock  # noqa: E402
-from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
-from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
+from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402
 from freight_recon.channels import load_delivery_config, slack_channel_for_route  # noqa: E402
 from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.operation_proposal import (  # noqa: E402
@@ -139,8 +150,7 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
     if lock is not None and lock.is_busy():
         print("propose-ar-from-tms: browser busy (a write is in progress) — deferring this cycle.")
         return 0
-    act.session.evaluate(f"location.href={loads_url!r}")
-    time.sleep(2.5)
+    act.visit(loads_url)
     observation = act.observe()
     ready = ready_to_bill_from_loads_table(observation)
     if require_pod:
@@ -220,17 +230,22 @@ def _resolve_unknown_pods_from_detail(*, act, rows: list[dict], loads_url: str, 
 
 
 def _read_pod_from_detail(*, act, row: dict, loads_url: str, list_observation: dict | None) -> bool | None:
+    """Open a load's detail page and read whether a POD is attached. FAILS CLOSED to None.
+
+    The detail page is reached ONLY by following a link the loads list itself published (P4 EP-3).
+    There is deliberately no click fallback: a click dispatches the SPA's `onclick` handler, which
+    can POST an invoice while being no kind of form submit target, so no structural test on the
+    element could have made that fallback safe. A load whose detail page the list did not link to
+    simply stays POD-unknown, and an unknown POD blocks the money button — the safe direction.
+    """
     load_ref = str(row.get("load_ref") or "").strip()
     if not load_ref:
         return None
-    page_readable = False
     try:
         target = _detail_nav_target(list_observation, load_ref)
-        if target and hasattr(act, "navigate"):
-            page_readable = bool(act.navigate(target))
-        elif hasattr(act, "click"):
-            page_readable = bool(act.click(load_ref))
-        if not page_readable:
+        if not target:
+            return None  # no published link to follow; not a billing greenlight
+        if not bool(act.follow(list_observation, target)):
             return None
         labels = attachment_labels_from_detail_observation(act.observe())
         return has_pod_from_detail(labels, page_readable=True)
@@ -238,10 +253,7 @@ def _read_pod_from_detail(*, act, row: dict, loads_url: str, list_observation: d
         return None
     finally:
         try:
-            if hasattr(act, "navigate"):
-                act.navigate(loads_url)
-            else:
-                act.session.evaluate(f"location.href={loads_url!r}")
+            act.visit(loads_url)
         except Exception:  # noqa: BLE001
             pass
 
@@ -344,8 +356,7 @@ def main() -> int:
             workspace=_Path(args.db).parent, db_path=_Path(args.db),
         )
 
-    with CdpBrowserSession(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as session:
-        act = CdpActuator(session)
+    with ReadOnlyCdpNavigator(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as act:
         while True:
             store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="propose_ar_from_tms.py")) if args.db else None
             try:

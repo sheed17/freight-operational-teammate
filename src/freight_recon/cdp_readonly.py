@@ -465,3 +465,223 @@ class ReadOnlyCdpObserver:
             raise ReadOnlyCdpError("Page.captureScreenshot returned no data")
         target.write_bytes(base64.b64decode(data))
         return str(target)
+
+
+# =============================================================================================
+# DOCUMENT NAVIGATION — the read-only traversal surface (P4 EP-3, R-07 scope).
+#
+# EP-3 reads a TMS loads list, then must open each load's DETAIL page to learn whether a POD is
+# attached before any invoice button is posted. It previously did that with
+# `cdp_session.evaluate("location.href=...")` — F2's exact defect, caller data interpolated into
+# JavaScript source — with a `cdp_actuator.click(load_ref)` fallback.
+#
+# WHY NAVIGATION IS NOT A HOLE IN F2, stated as a reduction rather than a promise:
+#
+#   * A click DISPATCHES AN EVENT. On a SPA, an `onclick` handler can POST an invoice while being
+#     no kind of form submit target, so no structural test on the element (tag, type, label,
+#     selector, is_submit_target) can classify a click as safe. `Page.navigate` does not run that
+#     handler at all — it is a document GET. Replacing the click with a navigation strictly REMOVES
+#     reachable behaviour; it does not add any.
+#   * `follow()` accepts only a URL THE PAGE ITSELF PUBLISHED as an `<a href>` in the observation it
+#     is handed. A caller-composed target is refused, so the reachable set is exactly the links the
+#     TMS rendered — the same set a human reading the page could click.
+#   * Scheme and host are allowlisted. `javascript:`, `data:`, `file:` and `vbscript:` are refused
+#     outright (a `javascript:` URL would be arbitrary-JavaScript execution wearing a URL's
+#     clothing), and the target must stay on the configured TMS domain.
+#   * There is still NO evaluate, command, click, type, select, upload or set_file_input here.
+#
+# This class COMPOSES `ReadOnlyCdpObserver` rather than extending it. The observer stays exactly
+# what F2 certified — observation-only, with its own channel that cannot transmit `Page.navigate` —
+# so nothing here widens that surface or invalidates its mutation proofs. A caller typed as an
+# observer can never be a navigator.
+# =============================================================================================
+
+#: The only CDP methods the navigation transport will send. `Runtime.*` is absent entirely: this
+#: channel runs no script of any kind, vetted or otherwise.
+NAVIGATION_CDP_METHODS: frozenset[str] = frozenset({"Page.enable", "Page.navigate"})
+
+#: Schemes that are code or local-resource access rather than a document fetch.
+_REFUSED_SCHEMES: tuple[str, ...] = ("javascript:", "data:", "file:", "vbscript:", "blob:")
+
+
+class _NavigationChannel:
+    """Transport for document navigation ONLY — the navigator's barrier 3.
+
+    Separate from `_ReadOnlyChannel` and deliberately narrower: it allowlists two methods and has
+    no script-running path at all, so there is no script argument to smuggle a payload into.
+    """
+
+    __slots__ = ("__weakref__", "_ws", "_id", "_timeout")
+
+    def __init__(self, ws, timeout: int) -> None:
+        self._ws = ws
+        self._id = 0
+        self._timeout = timeout
+
+    def send(self, method: str, params: dict | None = None) -> dict:
+        if method not in NAVIGATION_CDP_METHODS:
+            raise ReadOnlyCdpError(
+                f"refused: {method!r} is not a navigation method. This surface transmits only "
+                f"{sorted(NAVIGATION_CDP_METHODS)}. Actuation lives behind the adapter and effect "
+                "boundary (cdp_session/cdp_actuator), never here."
+            )
+        if self._ws is None:
+            raise ReadOnlyCdpError("navigation session is not connected")
+        self._id += 1
+        mid = self._id
+        self._ws.send(json.dumps({"id": mid, "method": method, "params": params or {}}))
+        while True:
+            msg = json.loads(self._ws.recv())
+            if msg.get("id") == mid:
+                if "error" in msg:
+                    raise ReadOnlyCdpError(f"{method} failed: {msg['error']}")
+                return msg
+
+    def close(self) -> None:
+        if self._ws is not None:
+            try:
+                self._ws.close()
+            finally:
+                self._ws = None
+
+
+def navigation_target_is_allowed(url: str, url_filter: str | None) -> tuple[bool, str]:
+    """Is `url` a document this surface may fetch? Returns (allowed, reason).
+
+    Pure and total, so the decision is unit-testable without a browser and the refusal reason is
+    part of the contract rather than a log line.
+    """
+    u = (url or "").strip()
+    if not u:
+        return False, "empty navigation target"
+    if u.lower().startswith(_REFUSED_SCHEMES):
+        return False, f"refused scheme in {u[:60]!r} — that is code or local-resource access, not a document"
+    if u[0] in "/?#":
+        return True, "relative target stays on the current, already-allowed origin"
+    if not url_matches_filter(u, url_filter):
+        return False, f"{u[:80]!r} is not on the configured TMS domain ({url_filter!r})"
+    return True, "on the TMS domain allowlist"
+
+
+class ReadOnlyCdpNavigator:
+    """Observation plus DOCUMENT NAVIGATION — and nothing else.
+
+    Reading is delegated in full to a contained `ReadOnlyCdpObserver`, so every observation still
+    runs a vetted script over that observer's own channel. This class adds exactly one capability:
+    fetching a document. See the module section above for why that is a reduction in reachable
+    behaviour rather than a widening of F2.
+    """
+
+    __slots__ = ("__weakref__", "cdp_url", "url_filter", "timeout", "settle_seconds",
+                 "observer", "__channel")
+
+    def __init__(
+        self,
+        *,
+        cdp_url: str = "http://localhost:9222",
+        url_filter: str | None = None,
+        timeout: int = 20,
+        settle_seconds: float = 2.5,
+    ) -> None:
+        self.cdp_url = cdp_url.rstrip("/")
+        self.url_filter = url_filter
+        self.timeout = timeout
+        self.settle_seconds = settle_seconds
+        self.observer = ReadOnlyCdpObserver(cdp_url=cdp_url, url_filter=url_filter, timeout=timeout)
+        self.__channel: _NavigationChannel | None = None
+
+    # -- lifecycle ---------------------------------------------------------------------------
+
+    def __enter__(self) -> "ReadOnlyCdpNavigator":
+        self.connect()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def connect(self, *, attempts: int = 3) -> None:
+        self.observer.connect(attempts=attempts)
+        last: Exception | None = None
+        for i in range(max(1, attempts)):
+            try:
+                self._connect_once()
+                return
+            except (websocket.WebSocketException, OSError, urllib.error.URLError) as exc:
+                last = exc
+                time.sleep(0.6 * (i + 1))
+        self.close()
+        raise ReadOnlyCdpError(
+            f"could not open a navigation channel to CDP at {self.cdp_url}: {last}"
+        )
+
+    def _connect_once(self) -> None:
+        tabs = json.load(urllib.request.urlopen(f"{self.cdp_url}/json", timeout=self.timeout))
+        pages = [t for t in tabs if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+        if self.url_filter:
+            pages = [t for t in pages if url_matches_filter(t.get("url") or "", self.url_filter)]
+        if not pages:
+            raise ReadOnlyCdpError(f"no attachable page tab at {self.cdp_url}")
+        ws = websocket.create_connection(
+            pages[0]["webSocketDebuggerUrl"], timeout=self.timeout, max_size=None,
+            suppress_origin=True,
+        )
+        self.__channel = _NavigationChannel(ws, self.timeout)
+        self.__channel.send("Page.enable")
+
+    def close(self) -> None:
+        try:
+            if self.__channel is not None:
+                self.__channel.close()
+        finally:
+            self.__channel = None
+            self.observer.close()
+
+    # -- observation (delegated, unchanged) ---------------------------------------------------
+
+    def observe(self) -> dict:
+        return self.observer.observe()
+
+    def read(self, target: str) -> str:
+        return self.observer.read(target)
+
+    def current_url(self) -> str:
+        return self.observer.current_url()
+
+    def page_signature(self) -> str:
+        return self.observer.page_signature()
+
+    # -- the one added capability -------------------------------------------------------------
+
+    def visit(self, url: str) -> bool:
+        """Fetch an OPERATOR-CONFIGURED entry document (e.g. the loads page from `--loads-url`).
+
+        Scheme- and host-checked. This is the only entry by a target the page did not itself
+        publish, because a run has to start somewhere; it is configuration, never model output.
+        """
+        return self._navigate(url, origin="operator-configured entry URL")
+
+    def follow(self, observation: dict | None, url: str) -> bool:
+        """Fetch a document THE PAGE ITSELF published as an `<a href>` in `observation`.
+
+        The target is checked for membership in the observation's own `nav` set, so a caller cannot
+        compose a URL the TMS never rendered. This is the traversal EP-3 needs, and it is strictly
+        narrower than clicking: no `onclick` handler runs.
+        """
+        published = {str(n.get("url") or "") for n in ((observation or {}).get("nav") or [])
+                     if isinstance(n, dict)}
+        if url not in published or not str(url).strip():
+            raise ReadOnlyCdpError(
+                f"refused: {str(url)[:80]!r} was not published as a link by the observed page. This "
+                "surface follows only links the page rendered; it does not accept a composed target."
+            )
+        return self._navigate(url, origin="page-published link")
+
+    def _navigate(self, url: str, *, origin: str) -> bool:
+        allowed, reason = navigation_target_is_allowed(url, self.url_filter)
+        if not allowed:
+            raise ReadOnlyCdpError(f"refused navigation ({origin}): {reason}")
+        if self.__channel is None:
+            raise ReadOnlyCdpError("navigation session is not connected")
+        self.__channel.send("Page.navigate", {"url": url})
+        time.sleep(self.settle_seconds)
+        return True

@@ -236,13 +236,44 @@ sessions have advanced it, both **awaiting independent review**:
    mutation battery is now **21/21** (added F4 B15/B16, F1
    B17/B18, brain_runtime B19, detective B20/B21). Gate violations fell **5 → 4**; edges **20 → 18**.
    The remaining four violations (**EP-1, EP-3, EP-8, EP-14**) and finding **F2** (cdp_session.evaluate
-   is an ungated actuation primitive) are DEFERRED: each hinges on correctness-critical browser code
-   with no live-browser/live-TMS runtime available to verify against, so per CLAUDE.md §9 they were
-   NOT done blind. EP-1 in particular routes the OperationRouter→OperatorAgent autonomous browser
-   write (the live R-07 write), whose containment is the P12-scale supervised-write integration.
+   is an ungated actuation primitive) were DEFERRED at that checkpoint: each hinges on
+   correctness-critical browser code with no live-browser/live-TMS runtime available to verify
+   against, so per CLAUDE.md §9 they were NOT done blind. EP-1 in particular routes the
+   OperationRouter→OperatorAgent autonomous browser write (the live R-07 write), whose containment
+   is the P12-scale supervised-write integration.
 
-So the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only cuts, F2's cdp_session split, and
-flipping the gate to assert EMPTY remain — **R-07 stays OPEN** under P4's own acceptance contract.
+4. **F2 built and verified, EP-8 cut (this session).** **F2 is no longer deferred**:
+   `cdp_readonly.ReadOnlyCdpObserver` is a genuinely read-only CDP surface with three independent
+   barriers — no mutation API exists on it; caller data travels as `Runtime.callFunctionOn`
+   `arguments`, never as source; the channel allowlists CDP methods and vetted scripts by exact
+   value. The deferral's premise ("no live browser here") did not hold: Chrome for Testing launches
+   in this environment and `scripts/verify_readonly_cdp.py` proves the surface against a real
+   browser. **EP-8 is now CUT** on it (U4.7): `scripts/orient_tms.py` imports **no adapter module at
+   all**, so it is structurally read-only rather than read-only by convention — the gap-matrix
+   row-34 target state, reached by an absent API rather than a promise. Gate violations **4 → 3**;
+   edges **18 → 16**; boundary mutation battery **24/24** (added EP-8 B22/B23/B24: re-import the
+   actuator, re-import the mutation-capable session, smuggle the actuator in dynamically — all
+   caught). The click-driven deep walk is **RETAINED, not deleted**, in
+   `system_orientation.orient_system`/`orient_record_actions` for the authorized actuator-capable
+   caller behind the effect boundary; what EP-8 loses is reach to it, not the capability itself.
+
+5. **EP-3 cut (this session).** `propose_ar_from_tms.py` holds a `ReadOnlyCdpNavigator` and imports
+   no adapter module. Its browser surface was the worst remaining instance of F2's defect: it
+   navigated via `cdp_session.evaluate("location.href=…")` — caller data interpolated into
+   JavaScript source — with a `cdp_actuator.click(load_ref)` fallback to open a load's detail page
+   for the POD check. Both are gone. The navigator adds exactly **one** capability over the
+   observer, a document fetch, and that is a **reduction** in reachable behaviour: a click
+   dispatches the SPA's `onclick` handler, which can POST an invoice while being no kind of form
+   submit target, whereas `Page.navigate` never runs it. `follow()` accepts only a URL the observed
+   page itself published as an `<a href>`; schemes `javascript:/data:/file:/vbscript:/blob:` are
+   refused; the transport carries exactly `{Page.enable, Page.navigate}` and has no script path.
+   The click fallback was **deleted, not guarded** — no structural test on an element can classify
+   a SPA click as safe — so a load the list did not link to stays POD-unknown, which blocks the
+   money button. `ReadOnlyCdpObserver` is **untouched**: the navigator composes it. Gate violations
+   **3 → 2**; edges **16 → 14**; boundary mutation battery **30/30** (added EP-3 B25–B30).
+
+So the EP-1 ADAPT conversion, the EP-14 read-only cut, and flipping the gate to assert EMPTY
+remain — **R-07 stays OPEN** under P4's own acceptance contract.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
 green final-tree validation via [`scripts/finalize_status.py`](../../scripts/finalize_status.py),
