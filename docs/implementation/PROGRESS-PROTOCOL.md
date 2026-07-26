@@ -192,3 +192,26 @@ progress artifacts; (3) reporting evidence honestly; (4) running the canonical f
 block; (7) **stopping at the next approved control boundary.** A session must **never** roll into
 the next implementation unit merely because the current one finished — the next unit must be
 `READY` in the canonical registry.
+
+## 10. Integration topology — how a finalized pair reaches `main`
+
+The two-commit convention permits `HEAD` to be **only** the certified content commit or the single
+finalizer-generated metadata commit directly above it, and
+[`test_status_reality.py`](../../eval/tests/test_status_reality.py) resolves both through
+**first-parent** lookups (`HEAD^`, `HEAD^^`). A standard GitHub pull-request merge commit appends a
+commit whose first parent is the base branch, which puts the repository into the state that guard
+names *"stale beyond every legal state."* This is not hypothetical: `main` reached `152574e` this
+way and fails the guard there today.
+
+> ### **The invariant: no merge commit may sit above a certified content commit. `main` advances by
+> FAST-FORWARD ONLY.**
+
+The full procedure — replay the unit onto `main`'s tip as one content commit *before* review,
+finalize on top, then advance `main` with a fast-forward push — is recorded in
+[`integration-topology-procedure.md`](integration-topology-procedure.md) and enforced by
+[`test_integration_topology.py`](../../eval/tests/test_integration_topology.py). It is registered
+as ### **R-21** in [`implementation-risk-register.md`](implementation-risk-register.md).
+
+This obligation blocks **integration**, not implementation: a unit may be built, reviewed,
+remediated and finalized locally without discharging it. It is discharged per unit, at the push —
+which is itself a founder-authorized act.
