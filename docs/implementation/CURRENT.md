@@ -22,10 +22,10 @@ version of this block goes stale within one commit and nothing notices.
 
 ```yaml
 # status-block: maintained by scripts/finalize_status.py - do not edit by hand
-recorded_authoring_branch: p3/checkpoint-witness   # advisory; not verified across bundles/clones
-content_commit: 857cdc1cd40014c24cf262d4022d5b73701b5a0b
-content_tree: df2509f52d434a5edc9116eb1a5bf42e4da6cc93
-suite_passed: 1619
+recorded_authoring_branch: p4/adapter-containment-completion   # advisory; not verified across bundles/clones
+content_commit: 3d231731b8b0984b3decded34177907f8d3898d1
+content_tree: 50cd012079cb48eaaf59e8e5e5406270ba5bd154
+suite_passed: 1630
 suite_failed: 0
 suite_skipped: 1
 ```
