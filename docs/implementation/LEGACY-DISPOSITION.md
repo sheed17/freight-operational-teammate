@@ -119,7 +119,20 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 
 ## S4c — Phase-4 adapter-containment boundary *(canonical, not legacy — recorded here so coverage stays total)*
 
-**Modules:** `effect_boundary.py`
+**Modules:** `effect_boundary.py` · `cdp_readonly.py`
+
+> ### **`cdp_readonly.py` is the F2 read substrate — canonical, and deliberately NOT in S1.** S1 is
+> the effect-bearing surface; this module is its opposite and was created to end the conflation.
+> It exposes no mutation primitive, never lets caller data become JavaScript (targets travel as
+> `Runtime.callFunctionOn` arguments), and its channel refuses any CDP method or script outside the
+> vetted read-only sets — `Runtime.evaluate` is not admitted at all. Write-capable CDP stays
+> untouched in `cdp_session.py`/`cdp_actuator.py` (S1), behind the adapter and effect boundary. The
+> dependency runs write→read (the actuator imports these vetted scripts, so the two surfaces cannot
+> drift); the reverse is forbidden and guarded. Proven by
+> `eval/tests/test_cdp_readonly_surface.py` (29 nodes: structural, hostile, behavioural) and, on a
+> live browser against the real mock TMS, by `scripts/verify_readonly_cdp.py`.
+> ### **Delivering the substrate does not by itself discharge F2:** F2 closes when EP-1/EP-3/EP-8
+> consume this module and the import gate stops exempting `cdp_session` as a read substrate.
 
 | | |
 |---|---|
@@ -314,6 +327,10 @@ Deletion condition: EP-6/7/9/10 physically deleted (**done**), the import gate O
 ### S15b — Browser/TMS discovery and drive tooling — **ADAPT at P4**
 `scripts/discover_tms_screen.py` · `scripts/drive_real_tms.py` · `scripts/validate_screen_map.py` · `scripts/record_tms_observation.py` · `scripts/read_mock_tms.py`
 Operator tooling over the browser/TMS surface (S1). Adapted behind the adapter boundary with it; no independent deletion condition.
+
+### S15c — Containment evidence producers — **RETAIN (canonical)**
+`scripts/verify_readonly_cdp.py`
+The F2 live-browser proof: drives `cdp_readonly.ReadOnlyCdpObserver` against a headless Chrome showing the repository's own generated mock TMS, confirms real observation works, and confirms every actuation method and every unvetted script is refused **against a real browser** rather than a fake transport. It is an EVIDENCE PRODUCER, deliberately outside the canonical suite: the clean-clone gate has no Chrome, and a guard that must be skipped there is silence, not a pass. It performs no external writes — it launches its own browser in a throwaway profile against a local file server. Retained for as long as the read-only surface exists; no deletion condition.
 
 ### S15c — Mailbox, Slack and channel runners — **ADAPT at P4 (outbound gating) → P13**
 `scripts/pull_imap_mailbox.py` · `scripts/run_mailbox_intake.py` · `scripts/run_mailbox_workflow.py` · `scripts/run_gmail_to_slack_dogfood.py` · `scripts/run_gmail_to_slack_loop.py` · `scripts/discover_gmail_freight.py` · `scripts/propose_operation_to_slack.py` · `scripts/deliver_review.py` · `scripts/dispatch_review.py` · `scripts/apply_review_action.py` · `scripts/submit_signed_action.py` · `scripts/slack_probe.py` · `scripts/verify_channels.py` · `scripts/generate_follow_up_draft.py`
