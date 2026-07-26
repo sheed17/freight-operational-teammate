@@ -44,10 +44,41 @@ paths:
     external_system: TruckingOffice (browser)
     production_reachable: true
     enablement: enabled - the AR proposal path
-    authority_bypass: full
-    classification: PRODUCTION_LIVE_WRITE
+    authority_bypass: none through its own browser surface; the invoice write runs the money-fenced
+      OperationRouter, whose containment is EP-1
+    classification: READ_ONLY_STRUCTURAL   # was PRODUCTION_LIVE_WRITE until P4
     containment_phase: P4
-    disposition: ADAPT (convert to pipeline client)
+    disposition: CONVERT_TO_PIPELINE_ENTRY_READ_ONLY
+    p4_cut: >-
+      DONE at P4. propose_ar_from_tms.py holds cdp_readonly.ReadOnlyCdpNavigator and imports NO
+      adapter module - not cdp_actuator, not cdp_session. Its browser surface was the worst
+      remaining instance of F2's defect: it navigated with
+      cdp_session.evaluate("location.href=...") - caller data interpolated into JavaScript source -
+      and fell back to cdp_actuator.click(load_ref) to open a load's detail page for the POD check.
+      Both are removed. Detection edges 16 -> 14, violation edges 3 -> 2, no new edge anywhere
+      (cdp_readonly is not an adapter module).
+      WHY NAVIGATION IS NOT A NEW HOLE: the navigator adds exactly one capability over the observer,
+      document fetch, and it strictly REDUCES reachable behaviour. A click dispatches the SPA's
+      onclick handler, which can POST an invoice while being no kind of form submit target;
+      Page.navigate never runs that handler. follow() accepts only a URL the observed page itself
+      published as an <a href>, so a caller-composed target is refused; visit() takes only the
+      operator-configured entry URL; both are scheme-allowlisted (javascript:/data:/file:/vbscript:/
+      blob: refused) and host-allowlisted to the TMS domain. The channel transmits exactly
+      {Page.enable, Page.navigate} and has no script path at all.
+      The click fallback was DELETED, not guarded - no structural test on an element (tag, type,
+      label, selector, is_submit_target) can classify a SPA click as safe. A load whose detail page
+      the list did not link to now stays POD-unknown, and an unknown POD blocks the money button:
+      the safe degradation direction.
+      ReadOnlyCdpObserver is UNTOUCHED. ReadOnlyCdpNavigator COMPOSES it rather than extending it,
+      so F2's certified observation-only surface, its own channel and its mutation proofs all still
+      stand, and a caller typed as an observer can never be a navigator.
+    excluded_from_the_six_because: >-
+      it WAS one of the six production-reachable live-write paths and is no longer one: its own
+      browser surface is now read-only and imports no adapter, so this script initiates no external
+      effect. The invoice WRITE it can still trigger does not belong to this path - it runs through
+      the money-fenced OperationRouter, whose containment is EP-1's ADAPT conversion. EP-3 is
+      therefore counted as cut here and the residual write risk is counted once, against EP-1,
+      rather than twice.
 
   - id: EP-6
     path: scripts/enter_truckingoffice_invoice.py
@@ -104,16 +135,27 @@ paths:
   - id: EP-8
     path: scripts/orient_tms.py
     external_system: any TMS (browser)
-    production_reachable: true   # reachable as a READ; carries an actuator import it does not use
-    enablement: enabled, read-only by convention
-    authority_bypass: none exercised; full if the convention is broken (one edit away)
-    classification: READ_BY_CONVENTION_ACTUATOR_CAPABLE
+    production_reachable: true   # reachable as a READ; no longer carries any actuator import
+    enablement: enabled, STRUCTURALLY read-only
+    authority_bypass: none exercised; none available - no mutation method exists on its surface
+    classification: READ_ONLY_STRUCTURAL   # was READ_BY_CONVENTION_ACTUATOR_CAPABLE until P4/U4.7
     containment_phase: P4
     disposition: MAKE_READ_ONLY (remove the cdp_actuator import)
+    p4_cut: >-
+      DONE at P4 (U4.7). orient_tms.py holds cdp_readonly.ReadOnlyCdpObserver and imports NO adapter
+      module at all - not the actuator, not the session - so the gap-matrix row-34 target state
+      "structurally read-only" is met by an absent API rather than by convention. cdp_readonly is
+      not an adapter module, so the cut adds no adapter-import edge anywhere: detection edges 18 ->
+      16, violation edges 4 -> 3. The per-section walk and record action-menu expansion, which
+      require clicks, are RETAINED in system_orientation.orient_system / orient_record_actions for
+      the authorized actuator-capable caller behind the effect boundary - a real capability with a
+      documented future, so it is put out of EP-8's reach rather than deleted. Proven by
+      test_phase0_adapter_imports.py::test_orient_tms_is_structurally_read_only_not_read_only_by_convention
+      (the former worked-example assertion, inverted rather than removed).
     excluded_from_the_six_because: >-
-      it initiates no write flow - "read-only by convention" - but the convention is not a
-      mechanism, so its import edge is IN the R-07 containment scope even though it is not a
-      live-write path today.
+      it initiates no write flow - it was "read-only by convention", and the convention was not a
+      mechanism, so its import edge was IN the R-07 containment scope even though it was never a
+      live-write path. That edge is now cut.
 
   - id: EP-14
     path: scripts/read_tms_browser_use.py

@@ -41,33 +41,46 @@ class _Poster:
 
 
 class _LoadsActuator:
+    """List-view-only `ReadOnlyCdpNavigator` fake: observe + visit, no mutation primitive at all."""
+
     def __init__(self, observation):
         self._observation = observation
-        self.session = self
-        self.evaluated = []
+        self.visited = []
 
-    def evaluate(self, expression):
-        self.evaluated.append(expression)
+    def visit(self, url):
+        self.visited.append(url)
+        return True
 
     def observe(self):
         return self._observation
 
 
 class _DetailActuator:
+    """A `ReadOnlyCdpNavigator`-shaped fake (P4 EP-3): observe + visit + follow, and NOTHING else.
+
+    It deliberately has no `evaluate`, `session`, `click` or `navigate` attribute, so a regression
+    that reaches for a mutation primitive raises AttributeError here rather than passing quietly.
+    `follow` enforces the real rule: the target must be a link the observed page itself published.
+    """
+
     def __init__(self, list_observation, detail_observation):
         self._list_observation = list_observation
         self._detail_observation = detail_observation
         self._on_detail = False
-        self.session = self
-        self.evaluated = []
-        self.navigated = []
+        self.visited = []
+        self.followed = []
 
-    def evaluate(self, expression):
-        self.evaluated.append(expression)
+    def visit(self, url):
+        self.visited.append(url)
         self._on_detail = False
+        return True
 
-    def navigate(self, url):
-        self.navigated.append(url)
+    def follow(self, observation, url):
+        published = {str(n.get("url") or "") for n in ((observation or {}).get("nav") or [])
+                     if isinstance(n, dict)}
+        if url not in published:
+            raise AssertionError(f"follow() accepted {url!r}, which the page never published")
+        self.followed.append(url)
         self._on_detail = True
         return True
 
