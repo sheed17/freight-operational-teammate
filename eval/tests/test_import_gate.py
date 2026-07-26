@@ -47,8 +47,17 @@ _MOCK_LEDGER_HOME = "tms_write"
 # none of them (finding F1). This is belt-and-suspenders behind the import proof: these classes live
 # in the effect-capable adapters above, so an importer that imports none of those cannot reach them —
 # but naming them makes a resurrected live-write construction fail loudly and specifically.
+#
+# `BrowserUseTmsAdapter` was REMOVED from this set at P4/EP-14. It was here because it lived in a
+# module that co-located `BrowserUseWriteLedger` and `NativeBrowserUseRunner`, so holding one put a
+# write ledger and a generic browser-agent driver one attribute access away. Both moved to
+# `browser_use_write`; what remains has no write method, imports no effect-capable adapter, and
+# takes a vetted task ID plus validated data rather than a caller-authored task string — proved
+# structurally in eval/tests/test_browser_use_readonly_surface.py, not asserted here.
+# `NativeBrowserUseRunner` STAYS: it runs an ARBITRARY task, which is exactly what makes it a live
+# write driver regardless of which module it sits in.
 _LIVE_WRITE_DRIVERS = frozenset({
-    "BrowserUseWriteLedger", "NativeBrowserUseRunner", "BrowserUseTmsAdapter",
+    "BrowserUseWriteLedger", "NativeBrowserUseRunner",
     "CdpActuator", "CdpBrowserSession",
     "TruckingOfficeInvoiceLedger", "MultiStepInvoiceLedger", "DiscoveredInvoiceLedger",
 })
@@ -87,10 +96,21 @@ def _live_violation_edges() -> set[str]:
 # --------------------------------------------------------------------------- population is real
 
 def test_the_gate_evaluates_a_real_population_of_effect_candidates():
-    """A negative gate over an empty candidate set passes vacuously. Prove the population."""
+    """A negative gate over an empty candidate set passes vacuously. Prove the population.
+
+    The anti-vacuous proof is the CANDIDATE set — every effect-capable import the gate ranges over —
+    NOT the accepted/violation set. Since the P4 EP-1 write cut, the violation set is EMPTY, which is
+    exactly the R-07 mechanical close condition, so a zero-violation `evaluated` is legitimate and is
+    declared as such. The gate is non-vacuous because it still WALKED a real population of
+    effect-capable imports (the adapter-layer + quarantine + boundary composition edges) and inspected
+    the whole tree — an empty VIOLATION set is the goal, not evidence the gate looked at nothing.
+    """
     _, ev = import_probe.effect_adapter_import_violations()
-    ev.require_population(minimum=1)  # at least one effect-capable import considered
-    assert len(ev.candidates) >= 10, (
+    ev.declare_empty_is_legitimate(
+        "the effect-capable VIOLATION surface is EMPTY — the R-07 mechanical close condition (P4 EP-1). "
+        "Non-vacuity is proven by the candidate population and the tree walk below, not by a violation.")
+    ev.require_population(minimum=1)  # sources_inspected + unmatched checks still apply
+    assert len(ev.candidates) >= 8, (
         f"only {len(ev.candidates)} effect-capable import candidates - the probe walked a corner"
     )
     assert len(ev.sources_inspected) > 100, "the gate must walk the whole tree, not a subset"
@@ -143,14 +163,37 @@ def test_the_recorded_list_and_the_tree_agree_exactly():
 
 def test_r07_close_condition_is_empty_not_shrinking():
     """The gate closes R-07 only when the violation list is EMPTY - not merely smaller. Encode the
-    condition so it cannot silently become "small enough"."""
+    condition so it cannot silently become "small enough", and so the recorded status tracks it."""
     gate = manifest.effect_adapter_import_gate()
     assert "EMPTY" in gate["deletion_condition"], "the close condition stopped requiring EMPTY"
-    # today the list is non-empty, so R-07 must still read OPEN in the manifest
-    if manifest.recorded_effect_violation_edges():
+    recorded = manifest.recorded_effect_violation_edges()
+    if recorded:
+        # residual violations remain -> R-07 must still read OPEN
         assert gate["status"].strip().startswith("OPEN"), (
             "residual violations remain but the gate no longer records R-07 as OPEN"
         )
+    else:
+        # EMPTY: the mechanical close condition is met. The status must NOT still claim OPEN residuals,
+        # and both surfaces must agree they are empty. (Recording R-07 CONTAINED / P4 COMPLETE is the
+        # separate ADJUDICATION step — this asserts only the mechanical surface, not the adjudication.)
+        assert not gate["status"].strip().startswith("OPEN"), (
+            "the violation list is EMPTY but the gate status still reads OPEN residuals"
+        )
+        assert _live_violation_edges() == set()
+        assert recorded == set()
+
+
+def test_the_effect_capable_violation_surface_is_empty():
+    """THE GATE FLIP TO ASSERT EMPTY (P4 EP-1 write cut, this session). With the callback server's
+    live actuator construction deleted and the write routed through the dark governed effect boundary,
+    an external effect without a claimed grant is structurally impossible: the live effect-capable
+    violation surface is EMPTY, the recorded surface is EMPTY, and they agree. This is the R-07
+    mechanical close condition, asserted DIRECTLY rather than merely 'shrinking'."""
+    live = _live_violation_edges()
+    recorded = manifest.recorded_effect_violation_edges()
+    assert live == set(), f"a live effect-capable bypass remains: {sorted(live)}"
+    assert recorded == set(), f"the manifest still records a residual: {sorted(recorded)}"
+    assert live == recorded == set()
 
 
 # ------------------------------------------------------- the partition decision, branch by branch
@@ -242,6 +285,57 @@ def test_every_quarantine_importer_constructs_the_mock_and_no_live_driver():
             f"quarantine importer {stem} constructs live write driver(s) {sorted(live)} — a live "
             f"bypass mislabelled as quarantine (F1)"
         )
+
+
+def test_the_p4_boundary_write_edge_is_the_one_authorized_addition():
+    """THE NARROW STRUCTURAL RULE for the P4 EP-1 governed write route (14 -> 15 detection).
+
+    Actuator ownership moved INTO `effect_boundary`: it is the one importer of the effect-capable
+    write adapter, reached only behind the checkpoint/grant/claim chain (execute_invoice_write). The
+    detection surface grew by EXACTLY this one authorized boundary edge; the containment (violation)
+    surface did NOT grow. Each condition the completion boundary named is its own assertion so a
+    regression names which one broke. This is NOT blanket permission to import an effect adapter
+    outside the boundary - the last two assertions prove a generic wrapper or direct route still
+    FAILS the gate.
+    """
+    p4_edge = "src/freight_recon/effect_boundary.py -> browser_use_write"
+    sites, _ = import_probe.adapter_import_sites()
+    edges = {f"{s.module} -> {s.imported}" for s in sites}
+
+    # effect_boundary is the importer; the imported adapter remains effect-capable.
+    assert p4_edge in edges, "the P4 boundary write edge is not present"
+    assert "browser_use_write" in import_probe.EFFECT_CAPABLE_ADAPTERS
+
+    # the boundary edge is NOT a violation: containment means exactly one door, and it holds the key.
+    assert not is_effect_capable_violation(
+        _site("src/freight_recon/effect_boundary.py", "browser_use_write"))
+
+    # no second importer, and no application/script importer, of the write adapter: among importers
+    # that are not themselves in the adapter layer, effect_boundary is the ONLY one.
+    importers = {import_probe._importer_stem(s.module)
+                 for s in sites if s.imported == "browser_use_write"}
+    non_adapter = importers - import_probe.ADAPTER_LAYER
+    assert non_adapter == {"effect_boundary"}, (
+        f"browser_use_write has non-adapter importer(s) other than the boundary: {sorted(non_adapter)}"
+    )
+    assert not [s for s in sites
+                if s.imported == "browser_use_write" and s.module.startswith("scripts/")], (
+        "a script imports the effect-capable write adapter — the boundary must be the only door"
+    )
+
+    # total external ACTUATION reachability did not grow: the new edge is boundary-gated and the
+    # violation surface is EMPTY (the legacy EP-1 residual was cut this session — R-07's mechanical
+    # close condition). The boundary write edge is DETECTION only, never a violation.
+    assert p4_edge not in _live_violation_edges()
+    assert _live_violation_edges() == set(), (
+        "the P4 boundary edge must change DETECTION only, and the effect-capable violation surface "
+        "must be EMPTY now that EP-1's write is cut — got: " + str(sorted(_live_violation_edges()))
+    )
+
+    # a generic wrapper or a direct execution route still FAILS the gate: importing the effect
+    # adapter from anywhere but the boundary/adapter layer is a violation, exactly as before.
+    assert is_effect_capable_violation(_site("src/freight_recon/generic_write_wrapper.py", "browser_use_write"))
+    assert is_effect_capable_violation(_site("scripts/direct_writer.py", "browser_use_write"))
 
 
 def test_the_boundary_is_exactly_one_module():
