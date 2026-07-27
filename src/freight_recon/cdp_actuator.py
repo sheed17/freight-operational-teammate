@@ -15,6 +15,21 @@ import time
 
 from freight_recon.cdp_session import CdpBrowserSession, CdpError
 
+# F2: the READ scripts have ONE source of truth, and it is the read-only surface. This module is
+# write-capable and may import from the read-only one; the reverse is forbidden and guarded, so the
+# two surfaces cannot observe the page differently and drift apart.
+from freight_recon.cdp_readonly import (
+    IS_SUBMIT_FN,
+    MONEY_FIELDS_FN,
+    OBSERVE_FN,
+    READ_FN,
+)
+
+_OBSERVE_JS = "(" + OBSERVE_FN + ")()"
+_MONEY_FIELDS_JS = "(" + MONEY_FIELDS_FN + ")()"
+_IS_SUBMIT_JS = "(" + IS_SUBMIT_FN + ")"
+_READ_JS = "(" + READ_FN + ")"
+
 # Shared JS: resolve an input/select/textarea by selector, label, placeholder, name, or aria-label.
 _FIND_INPUT = r"""
 function __findInput(t){
@@ -116,52 +131,11 @@ _CLICK_ROW_ACTION_JS = r"""
 # reports whether it is a submit control. This is the label-independent commit signal: a row action
 # like an <a> "Create Invoice" that OPENS a form is not a submit, while the form's "Create Invoice"
 # submit button is — so the same visible text is gated in one place and not the other, correctly.
-_IS_SUBMIT_JS = r"""
-(function(t){
-  function vis(e){ return e && e.offsetParent!==null; }
-  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).toLowerCase(); }
-  function text(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
-  function isSubmit(e){
-    if(!e) return false;
-    var tag=e.tagName, type=(e.getAttribute('type')||'').toLowerCase();
-    if((tag==='INPUT'||tag==='BUTTON') && (type==='submit'||type==='image')) return true;
-    if(tag==='BUTTON' && !type && e.closest('form')) return true;  // a <button> with no type in a form defaults to submit
-    return false;
-  }
-  var el=null;
-  try{ el=document.querySelector(t); }catch(e){}
-  if(!el){
-    var tl=clean(t);
-    var CLICKABLE='a,button,[role=button],input[type=submit],input[type=button],[onclick]';
-    var cs=[...document.querySelectorAll(CLICKABLE)].filter(vis);
-    el=cs.find(function(e){return text(e)===tl;}) || cs.find(function(e){return text(e).indexOf(tl)>=0;});
-  }
-  return isSubmit(el);
-})
-"""
 
 
 # Money-labelled visible text inputs and their current values — so the runtime can reconcile a
 # DEFAULTED amount (a TMS that pre-fills the payment/invoice amount) against the human-approved amount
 # before committing. Returns the field NAME as ``target`` (which __findInput resolves).
-_MONEY_FIELDS_JS = r"""
-(function(){
-  function vis(e){ return e.offsetParent!==null && !e.disabled; }
-  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()); }
-  var moneyRe=/(amount|price|total|charge|\brate\b|linehaul|line.haul|freight|settlement|balance|cost|payment|\bpay\b)/i;
-  var out=[];
-  document.querySelectorAll('input').forEach(function(e){
-    if(['hidden','checkbox','radio','submit','button','image'].indexOf(e.type)>=0||!vis(e)) return;
-    var lab='';
-    if(e.id){var l=document.querySelector('label[for="'+e.id+'"]'); if(l) lab=l.innerText;}
-    if(!lab){var p=e.closest('.form-group,.field,td,tr,div'); if(p){var ll=p.querySelector('label'); if(ll) lab=ll.innerText;}}
-    var hay=(e.name||'')+' '+lab+' '+(e.getAttribute('placeholder')||'');
-    if(!moneyRe.test(hay)) return;
-    out.push({target:(e.name||clean(lab)||e.getAttribute('placeholder')||''), value:clean(e.value)});
-  });
-  return out;
-})()
-"""
 
 
 class CdpActuator:
@@ -299,85 +273,7 @@ class CdpActuator:
         empty there — so the agent couldn't confirm a write it had actually made. This resolves, in
         order: the input value, then the smallest visible element mentioning the target that also
         carries a number, then the target's table row / adjacent value."""
-        val = self.session.evaluate(
-            _FIND_INPUT + r"""(function(t){
-  function vis(e){return e && e.offsetParent!==null;}
-  function clean(s){return ((s||'').replace(/\s+/g,' ').trim());}
-  var needle=clean(t).toLowerCase();
-  if(!needle) return '';
-  try{ var inp=__findInput(t); if(inp){ var v=clean(inp.value!==undefined?inp.value:inp.innerText); if(v) return v; } }catch(e){}
-  var cands=[...document.querySelectorAll('td,th,dd,dt,label,span,div,p,li,strong,b,h1,h2,h3')].filter(vis)
-    .map(function(e){return {e:e, txt:clean(e.innerText)};})
-    .filter(function(o){return o.txt && o.txt.length<=200 && o.txt.toLowerCase().indexOf(needle)>=0;})
-    .sort(function(a,b){return a.txt.length-b.txt.length;});
-  for(var i=0;i<cands.length;i++){
-    var o=cands[i];
-    if(/\d/.test(o.txt)) return o.txt.slice(0,160);
-    var row=o.e.closest('tr'); if(row){var c=[...row.children].map(x=>clean(x.innerText)).filter(Boolean); if(c.length>1) return c.join(' | ').slice(0,160);}
-    var sib=o.e.nextElementSibling; if(sib&&vis(sib)){var sv=clean(sib.innerText); if(sv) return (o.txt+': '+sv).slice(0,160);}
-  }
-  return '';
-})(""" + json.dumps(target) + ")"
-        )
+        val = self.session.evaluate(_READ_JS + "(" + json.dumps(target) + ")")
         return val or ""
 
 
-_OBSERVE_JS = r"""
-(function(){
-  function vis(e){ return e && e.offsetParent!==null; }
-  function clean(s){ return ((s||'').replace(/\s+/g,' ').trim()).trim(); }
-  function txt(e){ return clean(e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||''); }
-  function lbl(el){
-    if(el.id){var l=document.querySelector('label[for="'+el.id+'"]'); if(l) return l.innerText.trim();}
-    var p=el.closest('.form-group,.field,td,tr,div'); if(p){var ll=p.querySelector('label'); if(ll) return ll.innerText.trim();}
-    return el.getAttribute('placeholder')||el.getAttribute('aria-label')||el.name||'';
-  }
-  var inputs=[...document.querySelectorAll('input,select,textarea')].filter(e=>e.type!=='hidden').slice(0,40)
-    .map(e=>({kind:e.tagName.toLowerCase(), type:e.type||'', label:lbl(e).slice(0,40), name:e.name||'', value:(e.value||'').slice(0,40)}));
-  var actionEls=[...document.querySelectorAll('button,a[href],[role=button],input[type=submit],input[type=button],[onclick]')].filter(vis);
-  var actions=actionEls.map(e=>txt(e)).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,40);
-  var interactive=inputs.map(function(i){ return {kind:i.kind, label:i.label, name:i.name, value:i.value}; })
-    .concat(actions.map(function(a){ return {kind:'action', label:a}; })).slice(0,80);
-  // Navigation targets (text -> url) so the agent can NAVIGATE directly instead of fumbling clicks.
-  var navSeen={}, nav=[];
-  [...document.querySelectorAll('a[href]')].forEach(function(a){
-    var t=(a.innerText||'').trim(), h=a.getAttribute('href')||'';
-    if(t && h && h.indexOf('#')!==0 && h.indexOf('javascript:')!==0 && !navSeen[h]){ navSeen[h]=1; nav.push({text:t.slice(0,40), url:h}); }
-  });
-  var errors=[...document.querySelectorAll('.alert-danger,.error,.invalid-feedback,.is-invalid,.field_with_errors')]
-    .map(e=>e.innerText.trim()).filter(Boolean).slice(0,6);
-  function rowActions(row){
-    return [...row.querySelectorAll('a,button,[role=button],input[type=submit],input[type=button],[onclick]')]
-      .filter(vis).map(e=>txt(e)).filter(Boolean).slice(0,8);
-  }
-  var tables=[...document.querySelectorAll('table')].filter(vis).slice(0,8).map(function(table){
-    var headers=[...table.querySelectorAll('thead th, thead td, tr:first-child th')]
-      .map(e=>clean(e.innerText)).filter(Boolean).slice(0,12);
-    var rows=[...table.querySelectorAll('tbody tr, tr')].filter(vis).slice(0,20).map(function(row){
-      var cells=[...row.children].map(e=>clean(e.innerText)).filter(Boolean).slice(0,12);
-      return {text:clean(row.innerText).slice(0,240), cells:cells, actions:rowActions(row)};
-    }).filter(r=>r.text);
-    return {caption:clean((table.caption&&table.caption.innerText)||''), headers:headers, rows:rows};
-  }).filter(t=>t.rows.length);
-  var rowLike=[...document.querySelectorAll('[role=row],li,[class*=row],[class*=Row]')].filter(vis).slice(0,30)
-    .map(function(row){ return {text:clean(row.innerText).slice(0,240), actions:rowActions(row)}; })
-    .filter(r=>r.text && r.actions.length);
-  var frames=[...document.querySelectorAll('iframe')].slice(0,10).map(function(f,i){
-    var info={index:i, src:(f.getAttribute('src')||'').slice(0,120), accessible:false, actions:[], text:''};
-    try{
-      var d=f.contentDocument;
-      if(d){
-        info.accessible=true;
-        info.actions=[...d.querySelectorAll('a,button,[role=button],input[type=submit],input[type=button]')]
-          .map(e=>clean(e.innerText||e.value||'')).filter(Boolean).slice(0,20);
-        info.text=clean(d.body ? d.body.innerText : '').slice(0,300);
-      }
-    }catch(e){ info.error=String(e).slice(0,80); }
-    return info;
-  });
-  return {url:location.href, headings:[...document.querySelectorAll('h1,h2,h3')].map(e=>e.innerText.trim()).filter(Boolean).slice(0,6),
-          inputs:inputs, actions:actions, interactive:interactive, nav:nav.slice(0,30), tables:tables,
-          rows:rowLike, iframes:frames, body_text:clean(document.body ? document.body.innerText : '').slice(0,900),
-          errors:errors};
-})()
-"""
