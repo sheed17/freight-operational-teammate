@@ -81,10 +81,20 @@ def test_the_formerly_unlisted_read_path_is_now_adjudicated_ep14():
     REPLACED (not deleted) with the post-adjudication truth: EP-14, read-by-convention,
     MAKE_READ_ONLY at P4, still inside the R-07 containment scope. The exact adjudication lives
     in docs/implementation/EFFECT-PATH-INVENTORY.yaml and is exact-set guarded there."""
+    paths = manifest.load()["expected_legacy_paths"]
+    # P4/U4.10 CONTAINED it, so it is no longer effect-capable by import and no longer belongs in
+    # that list - `entrypoint_probe` would disagree with a manifest that still claimed it was. The
+    # adjudication and closure record MOVED to the contained list rather than being deleted: a
+    # finding whose closure record vanishes when the finding is fixed is one nobody can audit.
+    assert not any(e["script"] == "scripts/read_tms_browser_use.py"
+                   for e in paths["effect_capable_by_import"]), (
+        "EP-14 is contained but the manifest still lists it as effect-capable by import"
+    )
     entry = next(
-        e for e in manifest.load()["expected_legacy_paths"]["effect_capable_by_import"]
+        e for e in paths["contained_formerly_effect_capable_by_import"]
         if e["script"] == "scripts/read_tms_browser_use.py"
     )
     assert entry["ep"] == "EP-14", "the P0-F4 adjudication was reverted without a decision"
     assert "MAKE_READ_ONLY" in entry["cutover"], "EP-14 lost its read-only containment disposition"
     assert "P0-F4 CLOSED" in entry.get("note", ""), "the closure record left the manifest"
+    assert "U4.10" in entry.get("contained_at", ""), "the containment is unattributed"

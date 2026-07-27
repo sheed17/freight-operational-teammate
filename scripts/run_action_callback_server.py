@@ -381,13 +381,20 @@ def _build_document_resolver(*, workspace: "Path | None"):
 
 def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
     """A reader so "what's outstanding / who owes us" answers with a live aged-AR digest. Reads the TMS
-    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy."""
+    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy.
+
+    P4 EP-1: this closure used to hold a `CdpActuator` over a `CdpBrowserSession` and navigate with
+    `session.evaluate("location.href=...")` — caller data interpolated into JavaScript source, F2's
+    exact defect, in a closure that only ever wanted to LOOK at a page. It now holds a
+    `ReadOnlyCdpNavigator`, which has no evaluate, command, click, type, select or upload method to
+    call. The observation shape is unchanged: the actuator sourced its read scripts from this same
+    read-only surface, so the parsers above see exactly what they saw before.
+    """
     import time as _time
 
     from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
 
     lock = BrowserLock(lock_path) if lock_path else None
 
@@ -395,10 +402,8 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
-                act = CdpActuator(session)
-                session.evaluate(f"location.href={invoices_url!r}")
-                _time.sleep(2.5)
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter) as act:
+                act.visit(invoices_url)
                 obs = act.observe()
                 if not invoices_table_present(obs):      # unrendered/logged-out page: retry once, then
                     _time.sleep(3.0)                      # honest "couldn't read" — NEVER "all paid"
@@ -417,11 +422,9 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
     pass. Returns None when the shared browser is busy or unreachable (never a fake all-clear)."""
     import time as _time
 
-    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
-    from freight_recon.ar_collections import invoices_table_present
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
     from freight_recon.operation_proposal import loads_status_counts, ready_to_bill_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
@@ -430,17 +433,17 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
-                act = CdpActuator(session)
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(2.5)
+            # P4 EP-1: read-only navigator, and the retry now happens INSIDE the session. The old
+            # code re-observed through `act` after the `with` block had closed the session, so the
+            # retry could only ever fail — a latent bug the actuator-shaped API hid.
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter) as act:
+                act.visit(loads_url)
                 loads_obs = act.observe()
-                session.evaluate(f"location.href={invoices_url!r}")
-                _time.sleep(2.5)
+                act.visit(invoices_url)
                 invoices_obs = act.observe()
-            if not invoices_table_present(invoices_obs):
-                _time.sleep(3.0)
-                invoices_obs = act.observe()
+                if not invoices_table_present(invoices_obs):
+                    _time.sleep(3.0)
+                    invoices_obs = act.observe()
             if not invoices_table_present(invoices_obs):
                 return None                               # blind on AR -> honest miss, not a fake brief
             return {
@@ -458,11 +461,8 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
     """A resolver so "bill load 105" can fetch the load's Total from the TMS itself. Reads /loads and
     returns the billable amount for that load ref (deterministic — the model never supplies it). Defers
     if the shared browser is busy, and fails soft (None -> the assistant just asks for the amount)."""
-    import time as _time
-
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
     from freight_recon.operation_proposal import ready_to_bill_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
@@ -471,10 +471,9 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.2)
-                rows = ready_to_bill_from_loads_table(CdpActuator(session).observe())
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as act:
+                act.visit(loads_url)
+                rows = ready_to_bill_from_loads_table(act.observe())
             for row in rows:
                 if str(row.get("load_ref")) == str(load_ref):
                     return row.get("amount")
@@ -488,52 +487,29 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
 def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
     """Given a load ref, read its live row from the TMS /loads list: {load_ref, status, customer, total}.
     Header-based column mapping (robust to column drift, like the AR reader). Returns None if the browser
-    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth."""
-    import time as _time
+    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth.
 
+    P4 EP-1: the column mapping used to be a JavaScript blob evaluated as
+    `session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")` — the load ref spliced into JavaScript
+    SOURCE, which is F2's exact defect. It is now `operation_proposal.load_row_from_loads_table`,
+    the same header-driven mapping done in Python over a vetted observation. The JavaScript is gone
+    rather than escaped more carefully, and the match is exact on a delimited token instead of a
+    string comparison inside a script the caller composed.
+    """
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
+    from freight_recon.operation_proposal import load_row_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
-    _JS = r"""(function(ref){
-      ref=String(ref);
-      var tables=[].slice.call(document.querySelectorAll('table'));
-      for(var ti=0;ti<tables.length;ti++){
-        var t=tables[ti];
-        var hs=[].slice.call(t.querySelectorAll('tr')[0].querySelectorAll('th,td')).map(function(h){return (h.innerText||'').trim().toLowerCase();});
-        function idx(n){for(var i=0;i<hs.length;i++){if(hs[i].indexOf(n)>=0)return i;}return -1;}
-        var iL=idx('load'), iS=idx('status'), iC=idx('customer'), iT=idx('total');
-        if(iS<0) continue;
-        var rows=[].slice.call(t.querySelectorAll('tr'));
-        for(var ri=1;ri<rows.length;ri++){
-          var cells=[].slice.call(rows[ri].querySelectorAll('td')).map(function(c){return (c.innerText||'').replace(/\s+/g,' ').trim();});
-          if(!cells.length) continue;
-          var lc=(iL>=0?cells[iL]:cells[0])||'';
-          var first=lc.split(' ')[0];
-          if(first===ref || lc.replace(/[^0-9]/g,'')===ref.replace(/[^0-9]/g,'')){
-            return JSON.stringify({load_ref:ref, status:(iS>=0?cells[iS]:''), customer:(iC>=0?cells[iC]:''), total:(iT>=0?cells[iT]:'')});
-          }
-        }
-      }
-      return null;
-    })"""
 
     def _read(load_ref: str) -> "dict | None":
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.3)
-                raw = session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as act:
+                act.visit(loads_url)
+                return load_row_from_loads_table(act.observe(), load_ref)
         except Exception:  # noqa: BLE001 — a read is best-effort; None means "unreadable", never "not found as truth"
-            return None
-        if not raw:
-            return None
-        import json as _json
-        try:
-            return _json.loads(raw)
-        except Exception:  # noqa: BLE001
             return None
 
     return _read
@@ -541,44 +517,40 @@ def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
 
 def _build_load_docs_reader(*, cdp_url, url_filter, loads_url, lock_path):
     """Given a load ref, return the list of document filenames on that load (its FileSafe attachments).
-    Finds the load's detail link on /loads, opens its /attachments page, reads the .pdf names. Returns
-    None if unreadable (browser busy / not found) — never an empty list as a false 'no docs'."""
-    import time as _time
+    Opens the load's detail document from /loads and reads the document names. Returns None if
+    unreadable (browser busy / not bindable) — never an empty list as a false 'no docs'.
 
+    P4 EP-1, and the worst of the five read closures. It used to:
+      * splice the load ref into JavaScript source to find a detail link (`_HREF_JS + repr(ref)`),
+      * COMPOSE a target the page never published (`href.rstrip('/') + '/attachments'`) and navigate
+        to it with `location.href=`, and
+      * evaluate a second script to scrape document names.
+    The composed `/attachments` URL is exactly the generic-traversal shape EP-3 removed: a
+    same-origin URL nobody observed, assembled by the caller. It is now a `ReadOnlyCdpNavigator`
+    provenance record — the anchor inside the one observed row whose cells carry this load's
+    identifier, bound to it by exact link text or path segment, on an observational route, shaped
+    like a plain document link, and re-derived from the live page before it is followed. A load
+    whose detail document cannot be bound reads as None (unreadable), never as "no documents".
+    """
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
+    from freight_recon.operation_proposal import document_labels_from_observation
 
     lock = BrowserLock(lock_path) if lock_path else None
-    _HREF_JS = r"""(function(ref){ref=String(ref);
-      var links=[].slice.call(document.querySelectorAll('table a'));
-      for(var i=0;i<links.length;i++){var txt=(links[i].innerText||'').trim().split(' ')[0];
-        if(txt===ref){return links[i].getAttribute('href');}}
-      return null;})"""
-    _DOCS_JS = r"""(function(){return JSON.stringify([].slice.call(document.querySelectorAll('a'))
-      .map(function(a){return (a.innerText||'').trim();}).filter(function(t){return /\.[a-z]{3,4}$/i.test(t) && /pdf|jpg|jpeg|png|tiff?/i.test(t);}));})()"""
 
     def _read(load_ref: str) -> "list | None":
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=8) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.3)
-                href = session.evaluate(_HREF_JS + "(" + repr(str(load_ref)) + ")")
-                if not href:
-                    return None  # load not found on the list -> unreadable, not "no docs"
-                if href.startswith("/"):
-                    base = loads_url.split("/loads")[0]
-                    href = base + href
-                session.evaluate(f"location.href={(href.rstrip('/') + '/attachments')!r}")
-                _time.sleep(1.3)
-                raw = session.evaluate(_DOCS_JS)
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=8) as act:
+                act.visit(loads_url)
+                link = act.detail_link_for_load(str(load_ref))
+                if link is None:
+                    return None  # nothing provenance-bound to follow -> unreadable, not "no docs"
+                if not bool(act.follow(link)):
+                    return None
+                return document_labels_from_observation(act.observe())
         except Exception:  # noqa: BLE001 — best-effort read
-            return None
-        import json as _json
-        try:
-            return _json.loads(raw) if raw else []
-        except Exception:  # noqa: BLE001
             return None
 
     return _read

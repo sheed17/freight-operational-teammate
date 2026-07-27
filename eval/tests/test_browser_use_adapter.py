@@ -7,21 +7,37 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from freight_recon.browser_use_adapter import BrowserUseConfig, BrowserUseTmsAdapter  # noqa: E402
+from freight_recon.browser_use_adapter import (  # noqa: E402
+    BrowserUseConfig,
+    BrowserUseTmsAdapter,
+    render_vetted_task,
+)
 from freight_recon.tms_adapter import TmsAdapterError  # noqa: E402
 from freight_recon.tool_permissions import ToolContext  # noqa: E402
 from freight_recon.workflow import WorkflowState  # noqa: E402
 
 
 class FakeBrowserUseRunner:
+    """A read transport double on the POST-EP-14 seam: `run_vetted(task_id, data)`, not `run(task)`.
+
+    The signature is the containment. A double that accepted a task STRING would be a transport the
+    caller can author a task for, which is exactly the shape EP-14 removed - so it would no longer
+    be a faithful stand-in for the real `ReadOnlyBrowserUseRunner`. The task text this fake records
+    is the one PRODUCTION rendered from the vetted registry, not one the test supplied.
+    """
+
     def __init__(self, result: str) -> None:
         self.result = result
         self.calls: list[dict] = []
 
-    async def run(self, task: str, *, allowed_domains: list[str], headless: bool) -> str:
+    async def run_vetted(
+        self, task_id: str, *, base_url: str, load_id: str,
+        allowed_domains: list[str] | None = None, headless: bool = False,
+    ) -> str:
         self.calls.append(
             {
-                "task": task,
+                "task_id": task_id,
+                "task": render_vetted_task(task_id, base_url=base_url, load_id=load_id),
                 "allowed_domains": allowed_domains,
                 "headless": headless,
             }
