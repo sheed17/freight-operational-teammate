@@ -1,8 +1,50 @@
-"""Production browser-use adapter boundary.
+"""EP-14 — THE STRUCTURALLY READ-ONLY BROWSER-USE SURFACE (P4 adapter containment, R-07 scope).
 
-The production browser agent is Browser Use (`browser-use/browser-use`). This module keeps that
-optional dependency behind Neyma's adapter contract so the core workflow, tests, and deterministic
-mock-TMS reads do not depend on a browser runtime.
+This module used to be read-only by NAMING. Its class docstring said "Read-only Browser Use TMS
+adapter", and in the same file sat `BrowserUseWriteLedger` (a payable write) and
+`NativeBrowserUseRunner` (a driver that runs an ARBITRARY natural-language task). The repository's
+own import gate did not believe the docstring: `BrowserUseTmsAdapter` was listed in
+`test_import_gate._LIVE_WRITE_DRIVERS` alongside `CdpActuator`, because a read caller holding it
+could reach a generic browser agent and a write ledger. That is the same defect F2 found in
+`cdp_session`, and the same answer applies — a mechanism, not a promise.
+
+The write half now lives in `browser_use_write` [[browser_use_write]], the effect-capable slot the
+frozen phase-0 inventory had already reserved. What is left here can express a READ and nothing else.
+
+THREE BARRIERS, mirroring the F2 CDP split:
+
+  1. NO WRITE API EXISTS HERE. There is no `write_payable`, no `get_payable`, no `submit`, no
+     `enter_*`, and no generic `run`. A caller holding a `BrowserUseTmsAdapter` cannot express a
+     write — not "must not", CANNOT. The module imports no effect-capable adapter at all, so there
+     is nothing here to hand one out either.
+
+  2. THE TASK IS NEVER CALLER-AUTHORED. This is the browser-agent analogue of "caller data is never
+     code". A browser-use agent does whatever its TASK STRING says, so the task string is the
+     actuation primitive. `ReadOnlyBrowserUseRunner` does not accept one. It accepts a TASK ID from
+     the frozen `VETTED_READ_TASKS` registry plus DATA, renders the task from the registry itself,
+     and validates the data (`load_id` against `LOAD_ID_RE`, the base URL against the domain
+     allowlist). Nothing in this module concatenates caller input into a task the caller chose.
+
+  3. THE RUNNER REFUSES ANYTHING ELSE. `ReadOnlyBrowserUseRunner.run_vetted` rejects an unknown task
+     id before a browser is launched, and the browser profile is pinned to the configured domain
+     allowlist. A caller that reaches the runner directly still cannot issue an arbitrary task.
+
+HONEST SCOPE — this claim is deliberately narrower than F2's. CDP containment is protocol-level: the
+read channel allowlists CDP METHODS, so `Input.dispatchMouseEvent` is refused by the transport and
+the browser never sees it. A browser-use agent has no such chokepoint: it is an LLM driving a real
+browser, and an LLM handed a read task could in principle still click something. The read tasks below
+therefore also SAY "do not click submit, approve, send, upload, or write anything" — and a sentence
+in a prompt is not a mechanism, which is exactly why it is not what this module rests on.
+
+What IS mechanically true here, and is what the P4 containment claim relies on:
+  * a read-side caller cannot express a write on this surface (no method exists),
+  * a read-side caller cannot author the agent's task (barrier 2),
+  * a read-side caller cannot reach `BrowserUseWriteLedger` or `NativeBrowserUseRunner` through this
+    module (barrier 1 — proved by the import graph, not by inspection), and
+  * the agent is confined to the configured domain allowlist.
+The residual risk — an LLM misbehaving inside a read task on an allowlisted domain — is real,
+belongs to the browser-agent execution class rather than to the import boundary, and is contained by
+the effect boundary at the point where a write is ATTEMPTED, not by this module pretending otherwise.
 """
 
 from __future__ import annotations
@@ -11,20 +53,34 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
-from urllib.parse import urlparse
+from typing import Any, Protocol
 
 from .tms_adapter import TmsAdapterError, TmsLoadReadback, TmsPayableReadback
-from .tms_write import PayableWriteResult, PayableWriteStatus
 from .tool_permissions import ToolContext, evaluate_tool_permission, record_tool_permission_decision
 from .workflow import WorkflowStore
 
 
 LOAD_ID_RE = re.compile(r"^[A-Z]{2}-\d{6}$")
 
+#: Method names that would make this surface effect-capable again. Named so a guard can assert they
+#: never appear here, the way `cdp_readonly.FORBIDDEN_PRIMITIVES` does for the CDP surface.
+FORBIDDEN_WRITE_PRIMITIVES: tuple[str, ...] = (
+    "write_payable", "get_payable", "submit", "enter_payable", "run", "click", "type", "upload",
+)
 
-class BrowserUseRunner(Protocol):
-    async def run(self, task: str, *, allowed_domains: list[str], headless: bool) -> str:
+
+class BrowserUseTaskTransport(Protocol):
+    """What the read adapter needs from a transport: run a VETTED task id with DATA.
+
+    Deliberately NOT `run(task: str)`. A transport that accepts a task string is an actuation
+    primitive, and typing the seam this way means an effect-capable runner is not even
+    substitutable here.
+    """
+
+    async def run_vetted(
+        self, task_id: str, *, base_url: str, load_id: str,
+        allowed_domains: list[str] | None = None, headless: bool = False,
+    ) -> str:
         ...
 
 
@@ -35,24 +91,140 @@ class BrowserUseConfig:
     headless: bool = False
 
 
-class BrowserUseTmsAdapter:
-    """Read-only Browser Use TMS adapter.
+# ---------------------------------------------------------------------------------------------
+# The vetted read tasks. Each is a FIXED template rendered by this module from validated data —
+# never a string a caller supplied. Membership is by TASK ID, and the registry is the only source
+# of task text, so a caller cannot pass a lookalike, a superset, or a task with an appended payload.
+# ---------------------------------------------------------------------------------------------
 
-    V0 only reads mock TMS. Write/submit paths must be separate methods gated by the tool
-    permission registry, explicit approval, and verify-by-readback.
+READ_LOAD_TASK = "read_tms_load"
+READ_PAYABLE_TASK = "read_tms_payable"
+
+
+def _read_load_task(base_url: str, load_id: str) -> str:
+    return f"""
+Open {base_url}/loads/{load_id}.html.
+Read the mock TMS load detail page.
+Return ONLY valid JSON with these keys:
+pro_number, invoice_number, carrier, customer, pickup_date, delivery_date, equipment, commodity,
+rate_total, invoice_total, payable_status, workflow_state, workflow_reason, charges, documents.
+Money values must not include dollar signs. charges must include name, rate_amount, invoice_amount,
+authorized, backup_document. documents must include doc_type, label, href.
+Do not click submit, approve, send, upload, or write anything.
+"""
+
+
+def _read_payable_task(base_url: str, load_id: str) -> str:
+    return f"""
+Open {base_url}/payables.html.
+Find the carrier payable row with load id {load_id}.
+Return ONLY valid JSON with these keys:
+invoice_number, carrier, expected_amount, billed_amount, payable_status.
+Money values must not include dollar signs.
+Do not click submit, approve, send, upload, or write anything.
+"""
+
+
+#: Exactly the tasks this surface may ever issue. A task id outside this map is refused before a
+#: browser is launched.
+VETTED_READ_TASKS: dict[str, Any] = {
+    READ_LOAD_TASK: _read_load_task,
+    READ_PAYABLE_TASK: _read_payable_task,
+}
+
+
+def render_vetted_task(task_id: str, *, base_url: str, load_id: str) -> str:
+    """Render a vetted read task from validated DATA, or refuse.
+
+    Pure and total, so every refusal is unit-testable without a browser. This is the ONLY function
+    in the read half that produces a task string, and it can only produce one of the vetted two.
+    """
+    template = VETTED_READ_TASKS.get(str(task_id))
+    if template is None:
+        raise TmsAdapterError(
+            f"refused: {task_id!r} is not a vetted read task. This surface issues only "
+            f"{sorted(VETTED_READ_TASKS)}. Caller-authored browser-agent tasks cannot be run here; "
+            "the write path is browser_use_write, behind the effect boundary."
+        )
+    if not LOAD_ID_RE.match(str(load_id)):
+        raise TmsAdapterError(f"invalid load id for browser-use TMS adapter: {load_id}")
+    return template(str(base_url).rstrip("/"), str(load_id))
+
+
+class ReadOnlyBrowserUseRunner:
+    """The read transport — barrier 3.
+
+    It launches browser-use with a task RENDERED HERE from the vetted registry. It has no method
+    that accepts a task string, so even a caller that reaches this object cannot issue an arbitrary
+    task: the refusal happens before a browser exists.
+
+    It deliberately does NOT import or wrap `browser_use_write.NativeBrowserUseRunner`. Reusing the
+    unrestricted driver would put an effect-capable object one attribute access away from every read
+    caller, and would create an import edge from the read module to the effect-capable module —
+    the exact reachability EP-14 exists to remove.
+    """
+
+    def __init__(self, *, model: str | None = None, max_steps: int = 12) -> None:
+        self.model = model
+        self.max_steps = max_steps
+
+    def _llm(self):
+        import os
+
+        if os.getenv("BROWSER_USE_API_KEY"):
+            from browser_use.beta import ChatBrowserUse
+
+            return ChatBrowserUse()
+        from browser_use import ChatOpenAI
+
+        return ChatOpenAI(model=self.model or os.getenv("NEYMA_BROWSER_USE_MODEL", "gpt-4.1-mini"))
+
+    async def run_vetted(
+        self, task_id: str, *, base_url: str, load_id: str,
+        allowed_domains: list[str] | None = None, headless: bool = False,
+    ) -> str:
+        task = render_vetted_task(task_id, base_url=base_url, load_id=load_id)
+        try:
+            from browser_use.beta import Agent, BrowserProfile
+        except ModuleNotFoundError as exc:
+            raise TmsAdapterError(
+                "browser-use is not installed. Install with: "
+                ".venv/bin/python -m pip install '.[browser-agent]'"
+            ) from exc
+
+        agent = Agent(
+            task=task,
+            llm=self._llm(),
+            browser_profile=BrowserProfile(
+                headless=headless,
+                allowed_domains=list(allowed_domains or []),
+            ),
+        )
+        history = await agent.run(max_steps=self.max_steps)
+        result = history.final_result()
+        if result is None:
+            raise TmsAdapterError("browser-use returned no final result")
+        return str(result)
+
+
+class BrowserUseTmsAdapter:
+    """A browser-use TMS surface that can READ a load or a payable, and nothing else.
+
+    Every method here is a read. There is no write method to call, no way to hand a caller a write
+    ledger, and no path by which caller input becomes the agent's task.
     """
 
     def __init__(
         self,
         *,
-        runner: BrowserUseRunner | None = None,
+        runner: BrowserUseTaskTransport | None = None,
         config: BrowserUseConfig | None = None,
         tool_context: ToolContext,
         store: WorkflowStore | None = None,
         run_id: int | None = None,
     ) -> None:
         self.config = config or BrowserUseConfig()
-        self.runner = runner or NativeBrowserUseRunner()
+        self.runner = runner or ReadOnlyBrowserUseRunner()
         self.tool_context = tool_context
         self.store = store
         self.run_id = run_id
@@ -61,11 +233,7 @@ class BrowserUseTmsAdapter:
     async def read_load(self, load_id: str) -> TmsLoadReadback:
         self._validate_load_id(load_id)
         self._require_tool("read_tms_load")
-        payload = await self.runner.run(
-            _read_load_task(self.config.base_url.rstrip("/"), load_id),
-            allowed_domains=list(self.config.allowed_domains),
-            headless=self.config.headless,
-        )
+        payload = await self._observe(READ_LOAD_TASK, load_id)
         data = _parse_json_result(payload)
         readback = TmsLoadReadback.model_validate(
             {
@@ -81,11 +249,7 @@ class BrowserUseTmsAdapter:
     async def read_payable(self, load_id: str) -> TmsPayableReadback:
         self._validate_load_id(load_id)
         self._require_tool("read_tms_payable")
-        payload = await self.runner.run(
-            _read_payable_task(self.config.base_url.rstrip("/"), load_id),
-            allowed_domains=list(self.config.allowed_domains),
-            headless=self.config.headless,
-        )
+        payload = await self._observe(READ_PAYABLE_TASK, load_id)
         data = _parse_json_result(payload)
         readback = TmsPayableReadback.model_validate(
             {
@@ -97,6 +261,20 @@ class BrowserUseTmsAdapter:
         )
         self._audit_readback("browser_use_tms_payable_read", readback.model_dump(mode="json"))
         return readback
+
+    async def _observe(self, task_id: str, load_id: str) -> str:
+        """The ONLY way anything runs here: a vetted task id plus validated data.
+
+        There is no string in this method into which caller input is spliced, and no branch that
+        forwards a caller-supplied task.
+        """
+        return await self.runner.run_vetted(
+            task_id,
+            base_url=self.config.base_url.rstrip("/"),
+            load_id=load_id,
+            allowed_domains=list(self.config.allowed_domains),
+            headless=self.config.headless,
+        )
 
     def _require_tool(self, tool_name: str) -> None:
         decision = evaluate_tool_permission(tool_name, self.tool_context)
@@ -125,260 +303,12 @@ class BrowserUseTmsAdapter:
             raise TmsAdapterError(f"browser-use base URL is not allowlisted: {self.config.base_url}")
 
 
-class NativeBrowserUseRunner:
-    """Thin lazy wrapper around `browser-use[core]`.
-
-    Kept out of tests unless the optional dependency is installed and explicitly used. The agent LLM
-    is browser-use's hosted model when ``BROWSER_USE_API_KEY`` is set, otherwise OpenAI (`ChatOpenAI`)
-    using ``OPENAI_API_KEY`` — so the execution agent runs without a separate browser-use account.
-    """
-
-    def __init__(self, *, model: str | None = None, max_steps: int = 12) -> None:
-        self.model = model
-        self.max_steps = max_steps
-
-    def _llm(self):
-        import os
-
-        if os.getenv("BROWSER_USE_API_KEY"):
-            from browser_use.beta import ChatBrowserUse
-
-            return ChatBrowserUse()
-        from browser_use import ChatOpenAI
-
-        # gpt-4.1-mini is the validated default for the native browser-use wrapper here. Keep it
-        # configurable so live evals can route known-screen runs cheaper without touching code.
-        return ChatOpenAI(model=self.model or os.getenv("NEYMA_BROWSER_USE_MODEL", "gpt-4.1-mini"))
-
-    async def run(self, task: str, *, allowed_domains: list[str], headless: bool) -> str:
-        try:
-            from browser_use.beta import Agent, BrowserProfile
-        except ModuleNotFoundError as exc:
-            raise TmsAdapterError(
-                "browser-use is not installed. Install with: "
-                ".venv/bin/python -m pip install '.[browser-agent]'"
-            ) from exc
-
-        agent = Agent(
-            task=task,
-            llm=self._llm(),
-            browser_profile=BrowserProfile(
-                headless=headless,
-                allowed_domains=allowed_domains,
-            ),
-        )
-        history = await agent.run(max_steps=self.max_steps)
-        result = history.final_result()
-        if result is None:
-            raise TmsAdapterError("browser-use returned no final result")
-        return str(result)
-
-
-class BrowserUseWriteLedger:
-    """Drive browser-use to ENTER a payable in the writable mock TMS and read it back.
-
-    This is the execution layer realized through the real browser. It implements the same
-    ``write_payable`` / ``get_payable`` seam as :class:`~freight_recon.tms_write.MockTmsWriteLedger`,
-    so the gated ``enter_approved_payable`` path (confirm-before-submit → submit → verify-by-readback
-    → idempotency) drives a real browser **unchanged**. The TMS server owns idempotency/duplicate
-    logic; this ledger only operates the screen and reports back what the TMS displays. It never
-    decides an amount.
-    """
-
-    def __init__(
-        self,
-        *,
-        runner: BrowserUseRunner,
-        base_url: str,
-        allowed_domains: tuple[str, ...] = ("localhost", "127.0.0.1"),
-        headless: bool = True,
-        readback_fn: "Callable[[str], dict | None] | None" = None,
-    ) -> None:
-        self.runner = runner
-        self.base_url = base_url.rstrip("/")
-        self.allowed_domains = list(allowed_domains)
-        self.headless = headless
-        self._validate_write_target()
-        # Verify-by-readback is a SAFETY gate, so it should be deterministic — not an LLM reading a
-        # screen. When a readback_fn is supplied (e.g. an HTTP/API/DOM-scrape read of the system of
-        # record), get_payable uses it; otherwise it falls back to the agent (used by unit tests).
-        self.readback_fn = readback_fn
-
-    def write_payable(
-        self, *, run_id: int, load_id: str, carrier: str, amount: str, charges, key: str
-    ) -> PayableWriteResult:
-        from urllib.parse import quote
-
-        url = (
-            f"{self.base_url}/payables/new?load_id={quote(load_id)}&run_id={run_id}"
-            f"&carrier={quote(carrier)}&key={quote(key)}"
-        )
-        data = _parse_json_result(self._run(_enter_payable_task(url, amount)))
-        raw_status = str(data.get("status", "")).upper()
-        external_ref = data.get("external_ref") or None
-        note = str(data.get("note") or "entered via browser-use")
-        try:
-            status = PayableWriteStatus(raw_status)
-        except ValueError:
-            # The agent's free-text status read was fuzzy. Fall back to the deterministic table
-            # readback — but only call it WRITTEN if the row carries THIS submit's idempotency key.
-            # A row with a different key means a prior/duplicate payable, NOT that our write landed,
-            # so it must fail closed (never mask a DUPLICATE_BLOCKED as WRITTEN). verify-by-readback
-            # still independently re-checks the amount before the run can reach DONE.
-            readback = self.get_payable(load_id)
-            if readback is not None and readback.get("idempotency_key") == key:
-                status = PayableWriteStatus.WRITTEN
-                external_ref = external_ref or readback.get("external_ref")
-                note = f"submit confirmed by readback key match (agent status text was {raw_status!r})"
-            else:
-                raise TmsAdapterError(
-                    f"browser-use returned an unrecognized TMS write status {raw_status!r} and the "
-                    f"readback row for {load_id} did not carry this submit's idempotency key"
-                )
-        return PayableWriteResult(
-            run_id=run_id,
-            load_id=load_id,
-            idempotency_key=key,
-            status=status,
-            external_ref=external_ref,
-            note=note,
-        )
-
-    def get_payable(self, load_id: str) -> dict | None:
-        # Deterministic verify path (preferred): an independent, non-LLM read of the system of record.
-        if self.readback_fn is not None:
-            return self.readback_fn(load_id)
-        try:
-            data = _parse_json_result(self._run(_read_payables_task(f"{self.base_url}/payables.html", load_id)))
-        except TmsAdapterError:
-            return None  # unreadable readback fails closed → verify mismatch → FAILED, never DONE
-        amount = data.get("amount")
-        if amount in (None, "", "null"):
-            return None
-        # Defensive: only trust a row the agent confirms is for THIS load (it must not return a
-        # neighbouring row from a multi-row table). If the read-back load id disagrees, treat as absent.
-        read_load = data.get("load_id")
-        if read_load not in (None, "", "null") and str(read_load).strip().upper() != str(load_id).strip().upper():
-            return None
-        return {
-            "amount": str(amount),
-            "carrier": data.get("carrier"),
-            "external_ref": data.get("external_ref"),
-            "idempotency_key": data.get("idempotency_key"),
-        }
-
-    def _run(self, task: str) -> str:
-        return asyncio.run(self.runner.run(task, allowed_domains=self.allowed_domains, headless=self.headless))
-
-    def _validate_write_target(self) -> None:
-        host = (urlparse(self.base_url).hostname or "").lower()
-        allowed = {"localhost", "127.0.0.1"}
-        if host not in allowed:
-            raise TmsAdapterError(
-                "browser-use write ledger is mock/local only; real TMS hosts require a separate approved sandbox gate"
-            )
-
-
-def _enter_payable_task(form_url: str, amount: str) -> str:
-    return f"""
-Open {form_url}
-This is a TMS carrier-payable entry form. Type exactly {amount} into the amount input (element id "amount").
-Then click the button with id "submit-payable" (labeled "Enter payable").
-On the resulting confirmation page, read the text of elements id "write-status", id "external-ref",
-id "idempotency-key", and id "note".
-Return ONLY valid JSON with keys: status, external_ref, idempotency_key, note.
-Do not navigate anywhere else and do not change any other field.
-"""
-
-
-def http_payable_readback(base_url: str, load_id: str) -> dict | None:
-    """Deterministic verify-by-readback for the mock TMS: read the payables page over HTTP and parse
-    the exact row. The verify gate must not depend on an LLM interpreting a screen.
-
-    For a real, authenticated TMS the deterministic read would instead use the TMS API or a precise
-    in-session DOM extraction (selector-based), not an LLM free-read — same principle, same contract.
-    """
-    import urllib.request
-
-    try:
-        raw = urllib.request.urlopen(f"{base_url.rstrip('/')}/payables.html", timeout=10).read().decode("utf-8")
-    except Exception:  # noqa: BLE001 - unreadable readback fails closed → verify mismatch → FAILED
-        return None
-    return parse_payables_row(raw, load_id)
-
-
-def parse_payables_row(html_text: str, load_id: str) -> dict | None:
-    """Deterministically parse the exact payables-table row for ``load_id`` from rendered HTML."""
-    import re
-
-    target = str(load_id).strip().upper()
-    matches = [
-        chunk
-        for chunk in html_text.split('<tr class="payable-row"')[1:]
-        if (m := re.search(r'data-load-id="([^"]*)"', chunk)) and m.group(1).strip().upper() == target
-    ]
-    # Absent OR ambiguous (more than one row for this load) → fail closed: verify-by-readback must
-    # never guess which duplicate row is authoritative; mismatch → FAILED, never DONE.
-    if len(matches) != 1:
-        return None
-    chunk = matches[0]
-
-    def _cell(cls: str) -> str | None:
-        cell = re.search(rf'class="{cls}">([^<]*)<', chunk)
-        return cell.group(1).strip() if cell else None
-
-    amount = _cell("amount")
-    if not amount:
-        return None
-    return {
-        "amount": amount,
-        "carrier": _cell("carrier"),
-        "external_ref": _cell("external-ref"),
-        "idempotency_key": _cell("idempotency-key"),
-    }
-
-
-def _read_payables_task(url: str, load_id: str) -> str:
-    return f"""
-Open {url}
-The payables table has columns: Load, Carrier, Amount, Reference, Key.
-Find the EXACT row whose Load cell equals {load_id} (not any other load).
-Return ONLY valid JSON with keys read from THAT row's cells: load_id, amount, carrier, external_ref, idempotency_key.
-If there is no row whose Load equals {load_id}, return {{"load_id": null, "amount": null}}.
-Money values must not include dollar signs.
-"""
-
-
 def read_load_sync(adapter: BrowserUseTmsAdapter, load_id: str) -> TmsLoadReadback:
     return asyncio.run(adapter.read_load(load_id))
 
 
 def read_payable_sync(adapter: BrowserUseTmsAdapter, load_id: str) -> TmsPayableReadback:
     return asyncio.run(adapter.read_payable(load_id))
-
-
-def _read_load_task(base_url: str, load_id: str) -> str:
-    return f"""
-Open {base_url}/loads/{load_id}.html.
-Read the mock TMS load detail page.
-Return ONLY valid JSON with these keys:
-pro_number, invoice_number, carrier, customer, pickup_date, delivery_date, equipment, commodity,
-rate_total, invoice_total, payable_status, workflow_state, workflow_reason, charges, documents.
-Money values must not include dollar signs. charges must include name, rate_amount, invoice_amount,
-authorized, backup_document. documents must include doc_type, label, href.
-Do not click submit, approve, send, upload, or write anything.
-"""
-
-
-def _read_payable_task(base_url: str, load_id: str) -> str:
-    return f"""
-Open {base_url}/payables.html.
-Find the carrier payable row with load id {load_id}.
-Return ONLY valid JSON with these keys:
-invoice_number, carrier, expected_amount, billed_amount, payable_status.
-Money values must not include dollar signs.
-Do not click submit, approve, send, upload, or write anything.
-"""
 
 
 def _parse_json_result(raw: str) -> dict[str, Any]:

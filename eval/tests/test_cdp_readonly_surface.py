@@ -109,6 +109,11 @@ def test_the_forbidden_list_actually_names_the_real_actuation_primitives():
 def test_every_public_method_on_the_observer_is_an_observation():
     allowed = {
         "observe", "read", "money_field_values", "is_submit_target", "page_signature",
+        # `load_row_links` reports which rows carry a load identifier and what anchors those rows
+        # contain. It is EP-3's provenance OBSERVATION: it runs a vetted script like every other
+        # read, returns structure, and can act on nothing it found. Reporting that a link exists is
+        # not the authority to follow it - that decision lives on the navigator.
+        "load_row_links",
         "current_url", "capture_screenshot", "connect", "close",
     }
     public = {
