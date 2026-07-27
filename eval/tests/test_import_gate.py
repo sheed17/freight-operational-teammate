@@ -47,8 +47,17 @@ _MOCK_LEDGER_HOME = "tms_write"
 # none of them (finding F1). This is belt-and-suspenders behind the import proof: these classes live
 # in the effect-capable adapters above, so an importer that imports none of those cannot reach them —
 # but naming them makes a resurrected live-write construction fail loudly and specifically.
+#
+# `BrowserUseTmsAdapter` was REMOVED from this set at P4/EP-14. It was here because it lived in a
+# module that co-located `BrowserUseWriteLedger` and `NativeBrowserUseRunner`, so holding one put a
+# write ledger and a generic browser-agent driver one attribute access away. Both moved to
+# `browser_use_write`; what remains has no write method, imports no effect-capable adapter, and
+# takes a vetted task ID plus validated data rather than a caller-authored task string — proved
+# structurally in eval/tests/test_browser_use_readonly_surface.py, not asserted here.
+# `NativeBrowserUseRunner` STAYS: it runs an ARBITRARY task, which is exactly what makes it a live
+# write driver regardless of which module it sits in.
 _LIVE_WRITE_DRIVERS = frozenset({
-    "BrowserUseWriteLedger", "NativeBrowserUseRunner", "BrowserUseTmsAdapter",
+    "BrowserUseWriteLedger", "NativeBrowserUseRunner",
     "CdpActuator", "CdpBrowserSession",
     "TruckingOfficeInvoiceLedger", "MultiStepInvoiceLedger", "DiscoveredInvoiceLedger",
 })

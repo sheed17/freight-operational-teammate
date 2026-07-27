@@ -329,7 +329,10 @@ def test_the_effect_path_inventory_is_exact_and_fully_classified():
     assert len(ids) == len(set(ids)), "duplicate effect-path IDs"
 
     REMOVED = {"EP-6", "EP-7", "EP-9", "EP-10"}
-    LIVE = {"EP-1", "EP-3"}
+    # EP-3 left this set at P4: its browser surface is now the read-only navigator and it imports no
+    # adapter, so it is no longer a production-reachable live-write path. EP-1 alone remains, and it
+    # is the one whose containment is the P12-scale supervised-write integration.
+    LIVE = {"EP-1"}
     for p in paths:
         for field in ("path", "external_system", "production_reachable", "enablement",
                       "authority_bypass", "classification", "containment_phase", "disposition"):

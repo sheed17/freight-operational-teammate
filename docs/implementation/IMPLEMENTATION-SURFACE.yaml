@@ -85,8 +85,9 @@ concepts:
       the seven checks in ONE transaction with the witness insert and the mint, canonical order,
       short-circuit-first-failure (SD-7). SHIPS DARK - no production path routes through it
       until P4 contains the adapters; R-07 stays OPEN - NOT CONTAINED. (P3 touched no live-write
-      path; subsequent P4 checkpoints have since deleted EP-6/EP-7/EP-9/EP-10, while EP-1/EP-3/
-      EP-8/EP-14 remain and nothing routes through the kernel yet - see CURRENT.md.)
+      path; subsequent P4 checkpoints have since deleted EP-6/EP-7/EP-9/EP-10, cut EP-8 to the
+      read-only observer, EP-3 to the read-only navigator and EP-14 to the split browser-use read
+      surface, while EP-1 remains and nothing routes through the kernel yet - see CURRENT.md.)
 
   - name: Checkpoint Witness
     status: IMPLEMENTED
@@ -138,11 +139,18 @@ concepts:
       UNKNOWN_OUTCOME/FAILED outcome machine that never downgrades UNKNOWN to FAILED, orphan
       detection (Sev-0 + auto-brake), the cross-tenant GLOBAL-brake path, and the boundary-aware
       import gate (detection). PARTIALLY, not fully, IMPLEMENTED and SHIPS DARK: no production path
-      routes through it yet, EP-6/7/9/10 are deleted and the brain_runtime edge has since been cut
-      by injection, so EP-1/EP-3 (ADAPT) and EP-8/EP-14 (READ_ONLY) remain as FOUR effect-capable
-      violation edges - the exact set recorded in phase-0-baseline-manifest.yaml
+      routes through it yet, EP-6/7/9/10 are deleted, the brain_runtime edge has since been cut by
+      injection, EP-8 has been cut to the structurally read-only observer (U4.7) and EP-3 to the
+      read-only navigator (U4.8) - whose traversal was then bound at U4.8b to a re-derived,
+      row-and-identity PROVENANCE RECORD, because a same-origin page-published href is not
+      inherently read-only and the earlier "any published link" rule would have followed a
+      state-changing GET. EP-14 was then cut at U4.10 by splitting the browser-use adapter: the
+      write ledger AND the arbitrary-task browser-agent runner moved into the pre-registered
+      browser_use_write slot, so the read half can no longer express a write. So EP-1 (ADAPT)
+      remains as the ONE effect-capable
+      violation edge - the exact set recorded in phase-0-baseline-manifest.yaml
       effect_adapter_import_gate.violation_edges and recomputed live by the import probe. The gate
-      is not yet flipped to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those four
+      is not yet flipped to assert EMPTY. R-07 stays OPEN until a subsequent session cuts those two
       and turns the gate ON.
 
   - name: Work Item
