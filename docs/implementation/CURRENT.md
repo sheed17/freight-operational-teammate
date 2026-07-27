@@ -236,13 +236,82 @@ sessions have advanced it, both **awaiting independent review**:
    mutation battery is now **21/21** (added F4 B15/B16, F1
    B17/B18, brain_runtime B19, detective B20/B21). Gate violations fell **5 → 4**; edges **20 → 18**.
    The remaining four violations (**EP-1, EP-3, EP-8, EP-14**) and finding **F2** (cdp_session.evaluate
-   is an ungated actuation primitive) are DEFERRED: each hinges on correctness-critical browser code
-   with no live-browser/live-TMS runtime available to verify against, so per CLAUDE.md §9 they were
-   NOT done blind. EP-1 in particular routes the OperationRouter→OperatorAgent autonomous browser
-   write (the live R-07 write), whose containment is the P12-scale supervised-write integration.
+   is an ungated actuation primitive) were DEFERRED at that checkpoint: each hinges on
+   correctness-critical browser code with no live-browser/live-TMS runtime available to verify
+   against, so per CLAUDE.md §9 they were NOT done blind. EP-1 in particular routes the
+   OperationRouter→OperatorAgent autonomous browser write (the live R-07 write), whose containment
+   is the P12-scale supervised-write integration.
 
-So the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only cuts, F2's cdp_session split, and
-flipping the gate to assert EMPTY remain — **R-07 stays OPEN** under P4's own acceptance contract.
+4. **F2 built and verified, EP-8 cut (this session).** **F2 is no longer deferred**:
+   `cdp_readonly.ReadOnlyCdpObserver` is a genuinely read-only CDP surface with three independent
+   barriers — no mutation API exists on it; caller data travels as `Runtime.callFunctionOn`
+   `arguments`, never as source; the channel allowlists CDP methods and vetted scripts by exact
+   value. The deferral's premise ("no live browser here") did not hold: Chrome for Testing launches
+   in this environment and `scripts/verify_readonly_cdp.py` proves the surface against a real
+   browser. **EP-8 is now CUT** on it (U4.7): `scripts/orient_tms.py` imports **no adapter module at
+   all**, so it is structurally read-only rather than read-only by convention — the gap-matrix
+   row-34 target state, reached by an absent API rather than a promise. Gate violations **4 → 3**;
+   edges **18 → 16**; boundary mutation battery **24/24** (added EP-8 B22/B23/B24: re-import the
+   actuator, re-import the mutation-capable session, smuggle the actuator in dynamically — all
+   caught). The click-driven deep walk is **RETAINED, not deleted**, in
+   `system_orientation.orient_system`/`orient_record_actions` for the authorized actuator-capable
+   caller behind the effect boundary; what EP-8 loses is reach to it, not the capability itself.
+
+5. **EP-3 cut (this session).** `propose_ar_from_tms.py` holds a `ReadOnlyCdpNavigator` and imports
+   no adapter module. Its browser surface was the worst remaining instance of F2's defect: it
+   navigated via `cdp_session.evaluate("location.href=…")` — caller data interpolated into
+   JavaScript source — with a `cdp_actuator.click(load_ref)` fallback to open a load's detail page
+   for the POD check. Both are gone. The navigator adds exactly **one** capability over the
+   observer, a document fetch, and that is a **reduction** in reachable behaviour: a click
+   dispatches the SPA's `onclick` handler, which can POST an invoice while being no kind of form
+   submit target, whereas `Page.navigate` never runs it. Schemes
+   `javascript:/data:/file:/vbscript:/blob:` are refused; the transport carries exactly
+   `{Page.enable, Page.navigate}` and has no script path. The click fallback was **deleted, not
+   guarded** — no structural test on an element can classify a SPA click as safe — so a load whose
+   detail document cannot be bound stays POD-unknown, which blocks the money button.
+   `ReadOnlyCdpObserver` is **untouched**: the navigator composes it. Gate violations **3 → 2**;
+   edges **16 → 14**.
+
+6. **EP-3 provenance hardening (this session), against the recorded hostile-review obligation.**
+   The cut above accepted any URL the observed page published as an `<a href>`. The obligation says
+   that is not enough, and it is right:
+
+   > A same-origin, page-published href is not inherently read-only. Legacy systems may expose
+   > state-changing GET routes.
+
+   `/loads/101/delete`, `/invoices/9/approve`, `/logout` and Rails-style
+   `<a href="/loads/101" data-method="delete">` are all same-origin anchors a real TMS renders, and
+   the caller selected among them by **substring matching** a load ref against the document-wide
+   `nav` list — so `<a href="/loads/9/purge_all">Delete L-101</a>` would have been followed. That
+   was a live defect, not a theoretical one.
+
+   `follow()` no longer takes a URL. It takes a **provenance record**
+   (`cdp_readonly.ObservedLoadLink`) binding the observed ROW, the observed LOAD IDENTITY, the exact
+   href and the observation CONTEXT, and it **re-derives that record from the live page** and
+   demands an exact match before fetching anything. Four independent barriers decide membership:
+   row containment (the anchor must be inside the one row whose own cells carry the identifier);
+   identity binding (exact link text or exact whole path segment — never a substring); route family
+   (no consequential action token in the path, no destructive token or method-override key in the
+   query, applied to both the raw attribute and the browser-resolved URL, so a `<base>` tag cannot
+   redirect it); and anchor shape (no `data-method`/`data-turbo-method` other than GET, no
+   `data-confirm`, no `onclick`, no `download`, no `role=button`/`menuitem`, no `aria-haspopup`, not
+   inside an action menu). Ambiguity is a refusal, never a pick. After the fetch the landed URL is
+   re-checked, so a redirect out of the observational route family fails closed. A forged, composed,
+   lookalike or stale record is refused even when well-formed, and every successful fetch advances
+   the observation context so a record cannot be replayed.
+
+   No part of F2 is reopened: there is still no evaluate, no command, no click, no caller-authored
+   JavaScript and no generic traversal method on the surface. The provenance observation
+   (`LOAD_ROW_LINKS_FN`) is a **vetted read script** like every other, taking the load identifier as
+   protocol DATA. Violation and detection edges are **unchanged at 2 and 14** — this is a
+   correctness hardening of an already-cut entry point, not a new cut. Boundary mutation battery
+   **37/37** (added B28/B28a–B28f/B30a; the earlier B28 anchor and B30's now-ambiguous anchor were
+   re-aimed). One case, B30a, was first reported as a MISS and the report was correct: it disabled
+   only one of two deliberately redundant scheme rules, so it reintroduced no defect. The two rules
+   now live in one function (`scheme_refusal_reason`) and the mutant removes the whole decision.
+
+So the EP-1 ADAPT conversion, the EP-14 read-only cut, and flipping the gate to assert EMPTY
+remain — **R-07 stays OPEN** under P4's own acceptance contract.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
 green final-tree validation via [`scripts/finalize_status.py`](../../scripts/finalize_status.py),

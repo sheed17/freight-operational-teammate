@@ -29,10 +29,15 @@ EB = "src/freight_recon/effect_boundary.py"
 PROBE = "eval/phase0/import_probe.py"
 EP12 = "scripts/enter_tms_payable.py"
 BRAIN = "src/freight_recon/brain_runtime.py"
+EP8 = "scripts/orient_tms.py"
+EP3 = "scripts/propose_ar_from_tms.py"
+RO = "src/freight_recon/cdp_readonly.py"
 
 AC = "eval/tests/test_adapter_boundary_acceptance.py"
 GATE = "eval/tests/test_import_gate.py"
 HERM = "eval/tests/test_bootstrap_hermeticity.py"
+IMPORTS = "eval/tests/test_phase0_adapter_imports.py"
+NAV = "eval/tests/test_cdp_readonly_navigation.py"
 
 
 def purge_pycache() -> None:
@@ -202,6 +207,144 @@ TEXT_CASES = [
      "    orphans = detect_orphan_effect_attempts(kernel)\n"
      "    unknowns = []  # MUTANT: unknown outcomes never surface for human resolution",
      f"{AC}::test_detective_sweep_finds_orphans_brakes_and_surfaces_unknowns"),
+
+    # ---- U4.7 / EP-8: the read-only cut must be a mechanism, not a convention ----------------
+    # EP-8's original defect was precisely that nothing failed when a "read-only" script held an
+    # actuator. These three prove the cut is now load-bearing: re-import the actuator, re-import
+    # the mutation-capable session, or smuggle either in dynamically, and a guard fires.
+
+    ("B22 U4.7/EP-8: the read-only orientation tool re-imports the actuator (the exact regression)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_actuator import CdpActuator  # noqa: E402,F401  # MUTANT: actuator back\n"
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B23 U4.7/EP-8: it re-imports the mutation-capable session (F2's evaluate/command primitive)",
+     EP8,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402",
+     "from freight_recon.cdp_readonly import ReadOnlyCdpObserver  # noqa: E402\n"
+     "from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402,F401  # MUTANT: session back",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    ("B24 U4.7/EP-8: the actuator is smuggled in dynamically rather than by a static import",
+     EP8,
+     "    kb = KnowledgeBase(",
+     "    __import__('freight_recon.cdp_actuator')  # MUTANT: dynamic actuator acquisition\n"
+     "    kb = KnowledgeBase(",
+     f"{IMPORTS}::test_orient_tms_is_structurally_read_only_not_read_only_by_convention"),
+
+    # ---- U4.8 / EP-3: the read-only navigation cut ------------------------------------------
+    # EP-3's defect was navigation by arbitrary JavaScript plus a click fallback. These prove the
+    # cut is load-bearing: bring back the actuator, the evaluate-navigation, or the click.
+
+    ("B25 U4.8/EP-3: the AR proposal tool re-imports the actuator",
+     EP3,
+     "from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402",
+     "from freight_recon.cdp_actuator import CdpActuator  # noqa: E402,F401  # MUTANT: actuator back\n"
+     "from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    ("B26 U4.8/EP-3: evaluate-based navigation returns (caller data interpolated into JavaScript)",
+     EP3,
+     "    act.visit(loads_url)\n    observation = act.observe()",
+     "    act.session.evaluate(f\"location.href={loads_url!r}\")  # MUTANT: F2's defect restored\n"
+     "    observation = act.observe()",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    ("B27 U4.8/EP-3: the deleted click fallback comes back for the POD detail read",
+     EP3,
+     "        if not bool(act.follow(link)):",
+     "        if not bool(act.click(load_ref)):  # MUTANT: a SPA onclick can POST an invoice",
+     f"{IMPORTS}::test_propose_ar_from_tms_reaches_the_browser_read_only"),
+
+    # ---- EP-3 HOSTILE REVIEW OBLIGATION: a same-origin page-published href is NOT read-only -----
+    # The reviewer premise these five defend: legacy systems expose state-changing GET routes, so
+    # "the page published this link" is provenance, never authority. Each mutant reopens exactly
+    # one of the four provenance barriers and must be caught.
+
+    ("B28 U4.8/EP-3: follow() becomes a generic follower of any observed same-origin anchor",
+     RO,
+     "        if not (text_bound or path_bound):",
+     "        if False:  # MUTANT: row containment alone is treated as authority",
+     f"{NAV}::test_no_hostile_shape_in_the_loads_own_row_is_ever_followed"),
+
+    ("B28a U4.8/EP-3: the route-family check stops refusing consequential action routes "
+     "(/loads/101/delete, /approve, /pay, /logout become followable)",
+     RO,
+     "    hits = sorted(t for t in path_tokens if _is_action_token(t, ACTION_ROUTE_TOKENS))\n"
+     "    if hits:",
+     "    hits = sorted(t for t in path_tokens if _is_action_token(t, ACTION_ROUTE_TOKENS))\n"
+     "    if False:  # MUTANT: action routes classify as observational",
+     f"{NAV}::test_no_hostile_shape_in_the_loads_own_row_is_ever_followed"),
+
+    ("B28b U4.8/EP-3: the anchor-shape check stops refusing data-method=delete "
+     "(a link by tag, a DELETE by behaviour)",
+     RO,
+     "        if name in attrs and _norm(attrs[name]) not in (\"\", \"get\"):",
+     "        if False:  # MUTANT: verb-smuggling anchors are plain links again",
+     f"{NAV}::test_no_hostile_shape_in_the_loads_own_row_is_ever_followed"),
+
+    ("B28c U4.8/EP-3: identity binding degrades to substring matching (L-101 selects L-1010, "
+     "and 'Delete L-101' selects by containment)",
+     RO,
+     "        text_bound = _norm(link.get(\"text\")) == lid",
+     "        text_bound = lid in _norm(link.get(\"text\"))  # MUTANT: brittle substring match",
+     f"{NAV}::test_identity_binding_never_decides_by_substring"),
+
+    ("B28d U4.8/EP-3: follow() trusts the caller's record instead of re-deriving it from the live "
+     "page (a forged, well-formed provenance record is accepted)",
+     RO,
+     "        if current != link:",
+     "        if False:  # MUTANT: a forged provenance record is accepted",
+     f"{NAV}::test_follow_re_derives_the_record_from_the_live_page"),
+
+    ("B28e U4.8/EP-3: stale provenance is accepted (a record minted against an earlier document is "
+     "replayable after the page changed underneath it)",
+     RO,
+     "        if link.context_seq != self.__context_seq:",
+     "        if False:  # MUTANT: stale records replay",
+     f"{NAV}::test_a_record_minted_before_a_navigation_is_stale"),
+
+    ("B28f U4.8/EP-3: the caller bills a load whose POD it could not prove, because an unbindable "
+     "detail link stops blocking the money button",
+     EP3,
+     "        if link is None:\n            return None",
+     "        if link is None:\n            return True  # MUTANT: unproven POD becomes a greenlight",
+     "eval/tests/test_operation_proposal.py"
+     "::test_an_unbindable_detail_link_leaves_the_pod_unknown_and_posts_no_money_button"),
+
+    ("B29 U4.8/EP-3: the navigation channel admits arbitrary JavaScript again",
+     RO,
+     "        if method not in NAVIGATION_CDP_METHODS:",
+     "        if method not in (NAVIGATION_CDP_METHODS | {'Runtime.evaluate'}):  # MUTANT",
+     f"{NAV}::test_the_navigation_channel_refuses_every_other_method"),
+
+    # Two functions carry a scheme allowlist (the navigation target check and the route-family
+    # classifier). Each is anchored separately, because a mutant that reopened only one of them
+    # while the other stayed shut would otherwise be reported as caught by the wrong guard.
+    ("B30 U4.8/EP-3: the navigation scheme allowlist stops refusing javascript: URLs",
+     RO,
+     '        return False, "empty navigation target"\n'
+     "    if u.lower().startswith(_REFUSED_SCHEMES):",
+     '        return False, "empty navigation target"\n'
+     "    if False:  # MUTANT: javascript:/data:/file: targets are navigable again",
+     f"{NAV}::test_code_bearing_schemes_are_refused"),
+
+    # B30a removes the route classifier's scheme containment ENTIRELY (denylist AND http/https
+    # allowlist together). An earlier cut of this case disabled only the denylist and was reported
+    # as a MISS - correctly, because the allowlist still refused `javascript:`, so the mutant
+    # reintroduced no defect. The two rules are redundant on purpose; the mutant that proves they
+    # are load-bearing has to remove both, which is why they live in one function.
+    ("B30a U4.8/EP-3: the route classifier's scheme containment is removed, so a javascript: anchor "
+     "in the load's row classifies as an observational document",
+     RO,
+     '    u = str(href or "").strip()\n'
+     "    if u.lower().startswith(_REFUSED_SCHEMES):",
+     '    u = str(href or "").strip()\n'
+     '    return ""  # MUTANT: every scheme is an ordinary document fetch\n'
+     "    if u.lower().startswith(_REFUSED_SCHEMES):",
+     f"{NAV}::test_the_classifier_fails_closed_on_non_documents"),
 ]
 
 # ---------------------------------------------------------------------------------------------
