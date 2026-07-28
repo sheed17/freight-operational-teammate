@@ -54,6 +54,7 @@ from suite_result import (  # noqa: E402
 )
 import run_canonical_suite as runner  # noqa: E402
 import progress_status as progress  # noqa: E402
+from finalizer_lock import FinalizerLockHeld, finalizer_lock  # noqa: E402
 
 CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
 REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
@@ -297,7 +298,19 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="End-to-end status finalization. No options: "
                                              "everything runs, every time.")
     ap.parse_args()
-    return finalize()
+
+    # Exactly one finalizer per repository, enforced before finalize() runs a
+    # suite, deletes a receipt or writes any status file. Two concurrent
+    # finalizers delete each other's receipts and certify a tree that is moving
+    # underneath them; the losing one must exit non-zero having modified
+    # nothing. See scripts/finalizer_lock.py for why the lock — and never the
+    # presence or absence of a log file — decides whether one is already running.
+    try:
+        with finalizer_lock(ROOT, target_commit=git("rev-parse", "HEAD")):
+            return finalize()
+    except FinalizerLockHeld as exc:
+        print(f"REFUSED: {exc}")
+        return 2
 
 
 if __name__ == "__main__":
