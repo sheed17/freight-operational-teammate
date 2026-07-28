@@ -45,6 +45,16 @@ def effect_adapter_import_gate() -> dict:
     return load()["effect_adapter_import_gate"]
 
 
+def frozen_effect_capable_adapters() -> set[str]:
+    """The manifest's own frozen inventory of effect-capable adapter NAMES.
+
+    Read separately from `import_probe.EFFECT_CAPABLE_ADAPTERS` on purpose: the EP-14 relocation
+    guard has to check that the destination was pre-registered in CANONICAL AUTHORITY, and reading
+    the probe's own set to prove that would be circular — the probe is the thing under test.
+    """
+    return set(effect_adapter_import_gate()["effect_capable_adapters"])
+
+
 def recorded_effect_violation_edges() -> set[str]:
     """The residual effect-capable import edges the gate still tolerates, as adjudicated in the
     manifest. The live probe's violation set must be a SUBSET of this: the detection surface may

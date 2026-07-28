@@ -9,6 +9,24 @@ very first real task starts from understanding, not from the deep end.
 It's read-only reconnaissance (navigate + observe + summarize) — it never fills a form, never commits,
 never touches money. The facts it learns feed the shared KnowledgeBase [[knowledge]] and are recalled
 into every later task, so orientation happens once per system and pays off on every run after.
+
+TWO ORIENTATION SURFACES, because "read-only" meant two different things here (P4 EP-8, R-07 scope):
+
+  * ``orient_observed`` — OBSERVATION ONLY. It takes a ``ReadOnlyCdpObserver`` [[cdp_readonly]] and
+    calls nothing but ``observe()``. It cannot click and cannot navigate, because that surface has
+    no such method to call. This is what `scripts/orient_tms.py` uses, and it is why that script is
+    now STRUCTURALLY read-only rather than read-only by convention.
+
+  * ``orient_system`` / ``orient_record_actions`` — the DEEPER walk, which clicks nav labels and
+    expands a record's action menus. Clicking is how a SPA is traversed, so this genuinely learns
+    more (it is how the agent finds where invoicing lives). But a click is actuation: the menu
+    labels are chosen by a MODEL, and on an unfamiliar TMS a label like "Raise invoice" is a money
+    action, not a tour stop. ``is_submit_target`` cannot make that safe — an ``onclick`` handler
+    that POSTs is not a submit target by any structural test.
+
+    So this path is RETAINED, not deleted: it is a real capability with a documented future behind
+    the effect boundary. It requires an actuator-capable driver, which no read-only entry point may
+    import (the U4.9 import gate enforces that mechanically, not by comment).
 """
 
 from __future__ import annotations
@@ -26,28 +44,62 @@ def _is_operational(text: str) -> bool:
     return bool(t) and len(t) > 2 and not t.isdigit() and t not in _CHROME and "search" not in t
 
 
+def _operational_nav(observation: dict) -> list[dict]:
+    """The deduped OPERATIONAL nav entries of one observation — Orders/Customers/Finance, minus the
+    account/AI/search chrome and minus repeats. One definition, so both orientation surfaces agree
+    on what a "section" is."""
+    nav, seen = [], set()
+    for n in (observation.get("nav") or []):
+        if not (isinstance(n, dict) and _is_operational(n.get("text"))):
+            continue
+        key = n["text"].strip().lower()
+        if key not in seen:
+            seen.add(key)
+            nav.append(n)
+    return nav
+
+
+def _layout_facts(nav: list[dict], sections_limit: int) -> list[str]:
+    sections = [n["text"] for n in nav][:sections_limit]
+    if not sections:
+        return []
+    return [
+        "Main navigation sections: " + ", ".join(sections) + ".",
+        "Navigation is click-driven (a SPA); open a record by clicking its row/reference, "
+        "not by guessing a URL.",
+    ]
+
+
+def orient_observed(observer, complete, *, sections_limit: int = 8) -> list[str]:
+    """Orient from OBSERVATION ALONE — the structurally read-only surface (P4 EP-8, R-07 scope).
+
+    ``observer`` need only offer ``observe()``. Handed a ``ReadOnlyCdpObserver`` [[cdp_readonly]]
+    there is no click or navigate method to call, so this cannot traverse the system even by
+    mistake — the containment is the absent API, not a promise in this docstring.
+
+    It learns the operational layout and what the landing screen is for. That is deliberately
+    shallower than ``orient_system``: walking into each section requires clicks, and a click on an
+    unfamiliar TMS can be a money action. See the module docstring for why that path is retained
+    behind the effect boundary instead of being made "safe" with a submit-target check.
+    """
+    home = observer.observe() or {}
+    facts = _layout_facts(_operational_nav(home), sections_limit)
+    landing = next((h for h in (home.get("headings") or []) if h), "Landing screen")
+    summary = _summarize_section(landing, home, complete)
+    if summary:
+        facts.append(summary)
+    return facts
+
+
 def orient_system(actuator, complete, *, sections_limit: int = 8, record_url: str | None = None) -> list[str]:
     """Walk the TMS's main OPERATIONAL navigation, learn what each section is for, and return reusable
     SYSTEM facts. When ``record_url`` is given, ALSO go a level deeper — open a real record and expand
     its action menus (an order's Billing/Transport/etc.) — which is where money actions like invoicing
     live. ``actuator`` drives the browser (observe/click); ``complete`` summarizes/identifies menus.
     Pure/injectable so it is unit-tested with fakes; read-only (no typing, no commits)."""
-    facts: list[str] = []
     home = actuator.observe() or {}
-    # Keep the operational sections (Orders/Customers/Finance/...), drop account/AI/search chrome + dupes.
-    nav, seen_nav = [], set()
-    for n in (home.get("nav") or []):
-        if not (isinstance(n, dict) and _is_operational(n.get("text"))):
-            continue
-        key = n["text"].strip().lower()
-        if key not in seen_nav:
-            seen_nav.add(key)
-            nav.append(n)
-    sections = [n["text"] for n in nav][:sections_limit]
-    if sections:
-        facts.append("Main navigation sections: " + ", ".join(sections) + ".")
-        facts.append("Navigation is click-driven (a SPA); open a record by clicking its row/reference, "
-                     "not by guessing a URL.")
+    nav = _operational_nav(home)
+    facts = _layout_facts(nav, sections_limit)
 
     seen: set[str] = set()
     for n in nav[:sections_limit]:

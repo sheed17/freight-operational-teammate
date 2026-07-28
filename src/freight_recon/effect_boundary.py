@@ -53,6 +53,7 @@ from .checkpoint import (
     EffectGrantHandle,
     claim_grant_cas,
 )
+from .freight_operations import InvoiceWriteOperation
 
 # The claimed-or-committed states: a grant in any of these HELD the world's attention — a matching
 # claimed grant, in the sense ADR-004 §4.5 means when it demands one behind every EffectAttempted.
@@ -587,6 +588,141 @@ def _verify_and_record(
         claimed=True, grant_id=grant_id, state=VERIFIED, cause="VERIFIED_SUCCESS",
         verification_outcome=VerificationOutcome.VERIFIED_SUCCESS,
         external_ref=result.external_ref, touched_world=True)
+
+
+# ---------------------------------------------------------- the typed EP-1 invoice write (dark)
+
+# THE ONE effect-capable adapter import in this module. `effect_boundary` is the containment
+# boundary, so this edge is exempt from the violation gate (import_probe.CONTAINMENT_BOUNDARY); it is
+# the ONLY non-adapter module permitted to hold an effect-capable adapter. It is lazy, so the boundary
+# module still imports no adapter at module-load time, and the AST import gate detects it regardless
+# (it walks every import node). This is "actuator ownership moved into effect_boundary": the write
+# adapter has exactly one importer, and it is the door.
+
+
+def _default_invoice_writer():
+    """The default bounded invoice writer — the reserved effect-capable adapter. Ships DARK: with no
+    sandbox runner wired it performs no real write (SandboxOnlyWriteRefused -> proven non-occurrence).
+    """
+    from .browser_use_write import SandboxInvoiceWriteAdapter  # the ONE boundary->adapter edge (P4)
+
+    return SandboxInvoiceWriteAdapter()
+
+
+def _op_exposure(op: InvoiceWriteOperation) -> str:
+    """A money-free exposure string for a typed invoice operation, stated to the escalated human when
+    an outcome is unknown. Memory and logs never store a money value (CLAUDE.md §10): this says an
+    amount was approved, never what it was."""
+    return (f"operation={op.operation_class.value} target={op.target_integration}:{op.load_id} "
+            f"amount_approved={'yes' if op.approved_amount else 'no'}")
+
+
+def _params_from_operation(op: InvoiceWriteOperation) -> ClaimParams:
+    """Derive the adapter's OWN claim parameters from the typed operation's canonical effect. They
+    match the grant row minted from the SAME LogicalEffect, so the confusion check passes for a
+    genuine operation and fails closed for a substituted one."""
+    effect = op.logical_effect()
+    return ClaimParams(
+        tenant=effect.tenant, action_class=effect.action_class,
+        target_system=effect.target_system, target_resource_id=effect.target_resource_id,
+        target_operation=effect.target_operation)
+
+
+def build_invoice_write_operation(op: InvoiceWriteOperation, *, writer=None) -> AdapterOperation:
+    """Map a validated typed `InvoiceWriteOperation` onto a bounded `AdapterOperation`.
+
+    The caller supplies DATA (the typed operation); this binds the adapter's bounded write/readback.
+    `perform` consumes the single-use capability FIRST, then calls the bounded writer with the typed
+    data — never a caller-authored task. The writer returns plain evidence; the boundary translates
+    it into the canonical outcome types and decides VERIFIED/UNKNOWN/FAILED. A dark refusal (no real
+    write) is a PROVEN non-occurrence (AdapterPreflightRejected), never a laundered success.
+    """
+    if not isinstance(op, InvoiceWriteOperation):
+        raise BoundaryError("build_invoice_write_operation requires an InvoiceWriteOperation")
+    the_writer = writer if writer is not None else _default_invoice_writer()
+    op_id = op.capability_id
+
+    def perform(cap: ExecutionCapability, params: ClaimParams) -> AttemptResult:
+        consume_capability(cap, op_id=op_id)                       # prove authority or raise
+        try:
+            result = the_writer.write(op)
+        except AdapterPreflightRejected:
+            raise
+        except AdapterOutcomeUnknown:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            # A dark refusal (SandboxOnlyWriteRefused) is a PROVABLE non-occurrence: nothing was
+            # written -> the ONE path to FAILED. ANY OTHER exception from a browser-driven write that
+            # has already begun cannot prove non-occurrence: the submit may have landed. That is the
+            # canonical lost-acknowledgement ambiguity (a successful external write followed by a lost
+            # ack), so it becomes UNKNOWN_OUTCOME (never FAILED, never a blind retry) — classified HERE
+            # by the adapter that knows its own actuation, rather than falling through to
+            # execute_effect's F4 backstop as an unclassified surprise. We convert to FAILED only the
+            # refusal we can PROVE means nothing happened.
+            if type(exc).__name__ == "SandboxOnlyWriteRefused":
+                raise AdapterPreflightRejected(
+                    f"dark invoice write performed nothing: {exc}") from exc
+            raise AdapterOutcomeUnknown(
+                f"invoice write raised after the attempt began; outcome unknowable "
+                f"({type(exc).__name__}: {exc})",
+                exposure=_op_exposure(op)) from exc
+        outcome = str(getattr(result, "outcome", "")).upper()
+        if outcome == "PREFLIGHT_REJECTED":
+            raise AdapterPreflightRejected(str(getattr(result, "proof", "")) or "non-occurrence proven")
+        if outcome == "OUTCOME_UNKNOWN":
+            raise AdapterOutcomeUnknown(str(getattr(result, "detail", "") or "outcome unknown"),
+                                        exposure=str(getattr(result, "exposure", "")))
+        if outcome != "ATTEMPTED":
+            raise BoundaryError(f"bounded writer returned an unrecognized outcome {outcome!r}")
+        return AttemptResult(external_ref=str(getattr(result, "external_ref", "") or ""),
+                             detail=str(getattr(result, "detail", "") or ""))
+
+    def readback(params: ClaimParams) -> ReadbackObservation:
+        rb = the_writer.readback(op)
+        return ReadbackObservation(
+            health_signal=bool(getattr(rb, "health_signal", False)),
+            observed_fingerprint=getattr(rb, "observed_fingerprint", None),
+            detail=str(getattr(rb, "detail", "") or ""))
+
+    return AdapterOperation(
+        op_id=op_id, adapter="A4",
+        operation_class=OperationClass.CONSEQUENTIAL_EFFECT,
+        verification_mode=VerificationMode.READBACK_VERIFIABLE,
+        perform=perform, readback=readback)
+
+
+def execute_invoice_write(
+    kernel: CheckpointKernel,
+    handle: EffectGrantHandle,
+    op: InvoiceWriteOperation,
+    *,
+    writer=None,
+    now: datetime | None = None,
+) -> EffectExecution:
+    """THE governed EP-1 write route (dark). It is the boundary's typed entry point: given a claimable
+    grant handle and a validated typed operation, it derives the adapter's own claim parameters from
+    the operation's canonical effect, builds the bounded operation, and runs the full adapter
+    algorithm through `execute_effect` (claim CAS -> attempt -> readback -> outcome).
+
+    DARKNESS. A non-sandbox operation is refused BEFORE any claim: no grant is claimed and nothing is
+    attempted, so no real external write can occur. There is deliberately NO production caller of this
+    function — like the detective sweep, it is built and proven now so the governed route is real,
+    while the live supervised write is enabled and validated at P12.
+    """
+    if not isinstance(op, InvoiceWriteOperation):
+        raise BoundaryError("execute_invoice_write requires an InvoiceWriteOperation")
+    if not op.sandbox:
+        # Fail closed before any claim. The capability is dark: a real target is refused here, so a
+        # real effect cannot be reached even by a caller holding a valid grant.
+        kernel.store.add_security_event(
+            "InvoiceWriteRefusedNotSandbox", actor="effect-boundary",
+            payload={"tenant": op.tenant, "work_item_id": op.work_item_id,
+                     "commit_key": op.commit_key(), "capability_id": op.capability_id})
+        raise BoundaryError(
+            "the invoice write capability is DARK: a non-sandbox operation is refused before any "
+            "claim. Live supervised external writes are enabled at P12, not here.")
+    operation = build_invoice_write_operation(op, writer=writer)
+    return execute_effect(kernel, handle, _params_from_operation(op), operation, now=now)
 
 
 # ---------------------------------------------------------- the grant-outcome transitions

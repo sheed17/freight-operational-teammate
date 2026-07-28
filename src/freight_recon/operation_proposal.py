@@ -240,6 +240,81 @@ def ready_to_bill_from_loads_table(observation: dict | None) -> list[dict]:
     return out
 
 
+def load_row_from_loads_table(observation: dict | None, load_ref: str) -> dict | None:
+    """One load's live row from a loads-table observation: {load_ref, status, customer, total}.
+
+    Header-driven like `ready_to_bill_from_loads_table`, and returns None when the load is not on
+    the page — None means UNREADABLE/absent, never "no such load" as a fact a caller may act on.
+
+    This replaces a `cdp_session.evaluate(_JS + "(" + repr(load_ref) + ")")` closure in the callback
+    server (P4 EP-1): caller data spliced into JavaScript source, which is F2's exact defect. Doing
+    the column mapping in Python over an already-vetted observation removes the JavaScript entirely
+    rather than escaping it more carefully.
+
+    Matching is EXACT on a delimited token, not a substring: the load cell's first whitespace token
+    must equal `load_ref`, or their digit-only reductions must be equal (TMS list views render
+    "1043" for load "L-1043"). `L-10` must never select `L-104`.
+    """
+    needle = str(load_ref or "").strip()
+    if not needle:
+        return None
+    needle_digits = re.sub(r"\D", "", needle)
+    for table in (observation or {}).get("tables") or []:
+        headers = [str(h).strip().lower() for h in (table.get("headers") or [])]
+        if not headers:
+            continue
+
+        def col(opts, hs=headers):
+            for i, h in enumerate(hs):
+                if any(o in h for o in opts):
+                    return i
+            return None
+
+        i_load, i_status = col(["load #", "load#", "load"]), col(["status"])
+        i_cust, i_total = col(["customer"]), col(["total", "amount"])
+        if i_load is None or i_status is None:
+            continue
+        for row in table.get("rows") or []:
+            cells = row.get("cells") or []
+            if len(cells) <= i_load:
+                continue
+            cell = str(cells[i_load]).strip()
+            first = cell.split(" ")[0] if cell else ""
+            cell_digits = re.sub(r"\D", "", cell)
+            if not (first == needle or (needle_digits and cell_digits == needle_digits)):
+                continue
+
+            def at(index):
+                return str(cells[index]).strip() if index is not None and len(cells) > index else ""
+
+            return {"load_ref": needle, "status": at(i_status),
+                    "customer": at(i_cust), "total": at(i_total)}
+    return None
+
+
+def document_labels_from_observation(observation: dict | None) -> list[str]:
+    """Filename-looking document labels on an observed page (its attachments/FileSafe list).
+
+    Replaces a `session.evaluate(_DOCS_JS)` closure in the callback server (P4 EP-1). Same rule the
+    JavaScript used - a label that ends in a document extension - applied to an observation instead
+    of to a script the caller composed.
+    """
+    labels: list[str] = []
+    seen: set[str] = set()
+    for text in attachment_labels_from_detail_observation(observation):
+        label = str(text).strip()
+        if not _DOCUMENT_NAME.search(label) or label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+    return labels
+
+
+#: A label that names a document file, by extension. Mirrors the extension test the replaced
+#: JavaScript used, so the two surfaces cannot drift apart in what counts as a document.
+_DOCUMENT_NAME = re.compile(r"\.(pdf|jpe?g|png|tiff?)$", re.I)
+
+
 def loads_missing_pod(observation: dict | None) -> list[dict]:
     """Delivered-but-not-invoiced loads whose delivery paperwork (POD/BOL) is NOT attached — the ones a
     POD-gated biller must NOT invoice yet. Enforces the owner SOP 'always attach the POD before billing a

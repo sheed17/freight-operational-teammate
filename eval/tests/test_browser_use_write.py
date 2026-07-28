@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from generate_realistic_corpus import generate  # noqa: E402
-from freight_recon.browser_use_adapter import BrowserUseWriteLedger, TmsAdapterError  # noqa: E402
+from freight_recon.browser_use_write import BrowserUseWriteLedger  # noqa: E402
+from freight_recon.tms_adapter import TmsAdapterError  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
 from freight_recon.review_actions import ReviewActionRequest, ReviewDecision, apply_review_action  # noqa: E402
@@ -189,7 +190,7 @@ def test_browser_session_expired_routes_to_waiting(tmp_path):
 
 def test_deterministic_readback_parses_exact_row_from_multirow_table(tmp_path):
     # The verify gate must read the RIGHT row deterministically, even with multiple rows present.
-    from freight_recon.browser_use_adapter import parse_payables_row
+    from freight_recon.browser_use_write import parse_payables_row
     from freight_recon.mock_tms_write_server import render_payables_table
     from freight_recon.tms_write import MockTmsWriteLedger
 
@@ -205,7 +206,7 @@ def test_deterministic_readback_parses_exact_row_from_multirow_table(tmp_path):
 
 
 def test_deterministic_readback_fails_closed_on_duplicate_rows():
-    from freight_recon.browser_use_adapter import parse_payables_row
+    from freight_recon.browser_use_write import parse_payables_row
 
     html = (
         '<table>'
