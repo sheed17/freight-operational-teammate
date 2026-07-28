@@ -361,9 +361,13 @@ def test_the_recorded_effect_violation_surface_is_the_mechanically_recomputed_on
     words = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
              "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
     surface = read(IMPL / "IMPLEMENTATION-SURFACE.yaml")
+    # `edges?` - the SINGULAR counts too. When the surface fell to one residual edge at P4/U4.10 the
+    # honest sentence became "the ONE effect-capable violation edge", and a plural-only pattern
+    # silently stopped checking anything: the guard would pass because it found NO claim, which is
+    # precisely the drift it exists to catch. Accepting the singular strictly widens coverage.
     claims = re.findall(
         r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
-        r"effect-capable\s+\S+\s+edges\b",
+        r"effect-capable\s+\S+\s+edges?\b",
         re.sub(r"\s+", " ", surface), re.I,
     )
     assert claims, "IMPLEMENTATION-SURFACE.yaml states no effect-capable edge count to check"
