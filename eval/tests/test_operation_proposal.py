@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from freight_recon.action_callback import _verify_operation_approval_value  # noqa: E402
+from freight_recon.cdp_readonly import ObservedLoadLink, select_load_detail_link  # noqa: E402
 from freight_recon.delivery import DeliverySigner  # noqa: E402
 from freight_recon.inbox_brain import InboxAssessment, ThreadState  # noqa: E402
 from freight_recon.operation_proposal import (  # noqa: E402
@@ -41,34 +42,86 @@ class _Poster:
 
 
 class _LoadsActuator:
+    """List-view-only `ReadOnlyCdpNavigator` fake: observe + visit, no mutation primitive at all."""
+
     def __init__(self, observation):
         self._observation = observation
-        self.session = self
-        self.evaluated = []
+        self.visited = []
 
-    def evaluate(self, expression):
-        self.evaluated.append(expression)
+    def visit(self, url):
+        self.visited.append(url)
+        return True
 
     def observe(self):
         return self._observation
 
 
+def _row_links(load_id, links, cells=None):
+    """A `LOAD_ROW_LINKS_FN` payload: the one matched row, carrying `links`."""
+    return {"load_id": load_id,
+            "rows": [{"index": 0, "match": "cell-exact",
+                      "cells": cells or [load_id, "Delivered", "Echo Global", "$2,500.00"],
+                      "links": list(links)}]}
+
+
+def _anchor(text, href, **attrs):
+    return {"text": text, "href": href, "resolved": "https://tms.test" + href,
+            "attrs": dict(attrs), "in_menu": False}
+
+
 class _DetailActuator:
-    def __init__(self, list_observation, detail_observation):
+    """A `ReadOnlyCdpNavigator`-shaped fake (P4 EP-3): observe + visit + detail_link_for_load +
+    follow, and NOTHING else.
+
+    It deliberately has no `evaluate`, `session`, `click` or `navigate` attribute, so a regression
+    that reaches for a mutation primitive raises AttributeError here rather than passing quietly.
+
+    The provenance decision DELEGATES TO PRODUCTION (`select_load_detail_link`), so this double can
+    never be more permissive than the real surface. A fake that reimplemented the rule more loosely
+    would let the caller's POD path pass a test the real navigator would have refused - which is
+    exactly how a containment claim goes green while the product stays reachable.
+    """
+
+    def __init__(self, list_observation, detail_observation, row_links=None,
+                 established_origin="https://tms.test:443"):
         self._list_observation = list_observation
         self._detail_observation = detail_observation
+        self._row_links = row_links if row_links is not None else {"rows": []}
         self._on_detail = False
-        self.session = self
-        self.evaluated = []
-        self.navigated = []
+        self.context_seq = 0
+        self.visited = []
+        self.followed = []
+        # F-02: the double carries an ESTABLISHED ORIGIN exactly as the real navigator does, and
+        # passes it to the same production decision. A double that omitted it would be testing a
+        # fail-open surface the product no longer has.
+        self.established_origin = established_origin
+        self.url_filter = None
 
-    def evaluate(self, expression):
-        self.evaluated.append(expression)
+    def visit(self, url):
+        self.visited.append(url)
         self._on_detail = False
+        self.context_seq += 1
+        return True
 
-    def navigate(self, url):
-        self.navigated.append(url)
+    def detail_link_for_load(self, load_id):
+        link, _reason = select_load_detail_link(
+            self._row_links, load_id, context_seq=self.context_seq,
+            established_origin=self.established_origin, url_filter=self.url_filter)
+        return link
+
+    def follow(self, link):
+        if not isinstance(link, ObservedLoadLink):
+            raise AssertionError(f"follow() took a {type(link).__name__}, not a provenance record")
+        if link.context_seq != self.context_seq:
+            raise AssertionError("follow() accepted a STALE provenance record")
+        current, _ = select_load_detail_link(
+            self._row_links, link.load_id, context_seq=self.context_seq,
+            established_origin=self.established_origin, url_filter=self.url_filter)
+        if current != link:
+            raise AssertionError(f"follow() accepted {link.href!r}, which the page does not publish")
+        self.followed.append(link.href)
         self._on_detail = True
+        self.context_seq += 1
         return True
 
     def observe(self):
@@ -394,9 +447,11 @@ def test_live_ar_cycle_resolves_unknown_pod_from_detail_page():
         "rows": [{"cells": ["Signed BOL - LD 101.pdf"], "text": "Signed BOL - LD 101.pdf"}],
     }]}
     poster = _Poster()
+    act = _DetailActuator(list_obs, detail_obs,
+                          row_links=_row_links("101", [_anchor("101", "/loads/101")]))
 
     posted = _cycle(
-        act=_DetailActuator(list_obs, detail_obs),
+        act=act,
         signer=_SIGNER,
         channel="C",
         loads_url="https://tms.test/loads",
@@ -407,6 +462,7 @@ def test_live_ar_cycle_resolves_unknown_pod_from_detail_page():
     )
 
     assert posted == 1
+    assert act.followed == ["/loads/101"], "the POD read did not go through the load's own link"
     assert len(poster.messages) == 1
     assert "ready to bill" in poster.messages[0]["text"]
     assert "Approve" in json.dumps(poster.messages[0]["blocks"])      # the per-load button
@@ -426,7 +482,8 @@ def test_live_ar_cycle_blocks_when_detail_page_has_rate_con_but_no_pod():
     poster = _Poster()
 
     posted = _cycle(
-        act=_DetailActuator(list_obs, detail_obs),
+        act=_DetailActuator(list_obs, detail_obs,
+                            row_links=_row_links("101", [_anchor("101", "/loads/101")])),
         signer=_SIGNER,
         channel="C",
         loads_url="https://tms.test/loads",
@@ -441,6 +498,60 @@ def test_live_ar_cycle_blocks_when_detail_page_has_rate_con_but_no_pod():
     assert "blocked on POD" in poster.messages[0]["text"]
     assert "missing POD" in json.dumps(poster.messages[0])
     assert "Approve" not in json.dumps(poster.messages[0]["blocks"])
+
+
+# --------------------------------------------------------------------------------------------
+# EP-3 at the CALLER level: the money path's behaviour when provenance cannot be established.
+#
+# The surface tests prove the navigator refuses a hostile link. These prove what that refusal
+# COSTS: the POD stays unknown, so no Approve button is posted. A containment that refused the
+# navigation but then billed the load anyway would be worthless.
+# --------------------------------------------------------------------------------------------
+
+_LOADS_LIST = {"nav": [{"text": "Load 101", "url": "/loads/101"}], "tables": [{
+    "headers": ["Load #", "Status", "Customer", "Total"],
+    "rows": [{"cells": ["101", "Delivered", "Echo Global", "$2,500.00"]}],
+}]}
+_POD_DETAIL = {"tables": [{
+    "headers": ["FileSafe Documents"],
+    "rows": [{"cells": ["Signed BOL - LD 101.pdf"], "text": "Signed BOL - LD 101.pdf"}],
+}]}
+
+
+def _ar_cycle_with(row_links):
+    from propose_ar_from_tms import _cycle
+
+    poster = _Poster()
+    act = _DetailActuator(_LOADS_LIST, _POD_DETAIL, row_links=row_links)
+    posted = _cycle(act=act, signer=_SIGNER, channel="C", loads_url="https://tms.test/loads",
+                    store=None, lock=None, live=True, poster=poster)
+    return posted, act, poster
+
+
+def test_an_unbindable_detail_link_leaves_the_pod_unknown_and_posts_no_money_button():
+    """Every hostile row shape ends the same way: nothing is followed, the POD is unproven, and the
+    load gets an exception line instead of an Approve button. The POD detail page here DOES contain
+    a signed BOL, so a leak would show up as a posted button."""
+    hostile = {
+        "delete route":      [_anchor("101", "/loads/101/delete")],
+        "approve route":     [_anchor("101", "/loads/101/approve")],
+        "logout":            [_anchor("101", "/logout")],
+        "rails data-method": [_anchor("101", "/loads/101", **{"data-method": "delete"})],
+        "another load":      [_anchor("104", "/loads/104")],
+        "no published link": [],
+    }
+    for label, links in hostile.items():
+        posted, act, poster = _ar_cycle_with(_row_links("101", links))
+        assert posted == 0, f"{label}: a money button was posted for a load with an unproven POD"
+        assert act.followed == [], f"{label}: {act.followed} was followed"
+        assert "blocked on POD" in poster.messages[0]["text"], label
+
+
+def test_the_unbindable_case_is_not_vacuous():
+    """The positive control: with the genuine row link, the same POD detail page DOES bill."""
+    posted, act, _ = _ar_cycle_with(_row_links("101", [_anchor("101", "/loads/101")]))
+    assert posted == 1
+    assert act.followed == ["/loads/101"]
 
 
 def test_live_ar_cycle_can_disable_pod_gate_for_dev_only():

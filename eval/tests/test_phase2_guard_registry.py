@@ -83,6 +83,9 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     "test_phase3_ledger_compatibility.py": (RETAIN, "F-C: the live-hold index broke the P2 ledger consumers - both reviewer failures reproduced, wrong-row selection and the witness foreign-key error"),
     "test_phase3_step_order.py": (RETAIN, "F-D: the canonical seven-step order under MULTI-FAULT inputs - the 105-case matrix cannot observe order, because one fault means one failing step"),
     "test_phase3_observability.py": (RETAIN, "F-F: the unit's observability contract proven with a REAL observer, including that an observer which fails cannot corrupt checkpoint state"),
+    # Added by the P4 F-01 remediation: it reads the deployed entry point, so the central inventory
+    # discovers it as a control guard.
+    "test_p4_deployed_governed_route.py": (RETAIN, "the deployed entry point's governed-write wiring: the lookup boundary is wired, the callback cannot construct an operation, and the execution kernel seam stays blocked pending adjudication of AC-CKPT-6-missing"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_",

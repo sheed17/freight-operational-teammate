@@ -18,7 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable, Literal
+from typing import Any, Callable, Literal
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, Field
@@ -40,6 +40,7 @@ from .reconciliation import FreightLoadForReconciliation
 from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
 from .slack_delegate import CommandIntent, CommandKind, authorize_command
 from .thread_reply import find_resumable_operation, intent_from_resumable
+from .governed_approval import GovernedApprovalError
 from .tenant import require_tenant
 from .workflow import WorkflowError, WorkflowStore
 
@@ -113,6 +114,18 @@ class CallbackAppConfig:
     # attachments), or None if unreadable. Powers "did the POD get attached to 101?" (answer the question
     # instead of re-proposing the attach) and document-audit reads.
     load_docs_reader: Callable[[str], "list | None"] | None = None
+    # ---- P4 EP-1 / F-01: THE GOVERNED WRITE ROUTE -------------------------------------------------
+    # The authenticated Slack tap that authorizes a bounded invoice write. This is NOT the deleted
+    # live-write path: nothing here constructs or reaches an actuator, an OperationRouter or an
+    # OperatorAgent. The tap is verified, bound to ONE typed operation, recorded once, and consumed
+    # by `governed_write_route`, which drives checkpoint -> witness -> grant -> claim -> adapter.
+    #
+    # `governed_write_provider` resolves the PENDING typed operation by approval id — the callback
+    # never builds one, so it can never choose an amount, carrier, counterparty or target.
+    # `governed_write_kernel` builds the checkpoint kernel for a store. With either left None the
+    # route is unreachable and the handler fails closed, exactly like the operation-router gates.
+    governed_write_provider: Callable[[str], "Any"] | None = None
+    governed_write_kernel: Callable[[WorkflowStore], Any] | None = None
 
     def __post_init__(self) -> None:
         # Validated here so an invalid tenant cannot reach a query later wearing a valid tenant's
@@ -331,6 +344,19 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             timestamp = self.headers.get("X-Slack-Request-Timestamp", "")
             signature = self.headers.get("X-Slack-Signature", "")
             body_str = body.decode("utf-8", errors="replace")
+            # P4 EP-1 / F-01. The governed write route is tried FIRST, because it is the only
+            # authenticated tap that may authorize an external effect at all, and it must not be
+            # able to fall through into any legacy execution path. It returns None ONLY when the tap
+            # is not a governed approval at all; the ordinary review-action handler then continues.
+            #
+            # Deliberately NOT gated on the seams being configured. A governed token arriving at a
+            # server whose route is disabled must produce an EXPLICIT governed refusal; gating here
+            # would instead drop it into a handler that cannot parse it, which is a silent failure
+            # wearing an unrelated error's clothes.
+            governed_response = self._maybe_handle_governed_write_approval(
+                body_str, timestamp=timestamp, signature=signature)
+            if governed_response is not None:
+                return
             if config.operation_router is not None:
                 operation_response = self._maybe_handle_slack_operation_approval(
                     body_str,
@@ -564,6 +590,176 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     },
                 },
             )
+            return True
+
+        def _refuse_governed(self, approval_id: str, reason: str, detail: str) -> None:
+            """Record an EXPLICIT governed refusal and answer the tap. Every fail-closed path on the
+            governed route ends here, so a refusal is always a recorded outcome with a named cause
+            rather than a silence or an unrelated error."""
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
+            try:
+                store.add_security_event(
+                    "GovernedWriteRefused", actor="system",
+                    payload={"approval_id": approval_id, "reason": reason, "detail": detail[:400]})
+            finally:
+                store.close()
+            self._write_json(200, {
+                "replace_original": False,
+                "text": "That approval could not be applied. Re-open the latest proposal.",
+                "metadata": {"approval_id": approval_id, "state": "REFUSED", "reason": reason},
+            })
+
+        def _maybe_handle_governed_write_approval(self, body: str, *, timestamp: str, signature: str):
+            """THE AUTHENTICATED GOVERNED-WRITE TAP (P4 EP-1, F-01). Returns True when handled.
+
+            This is the production caller of `governed_write_route.handle_governed_write_callback`,
+            and therefore — transitively but really — of `build_checkpoint_approval`. The whole
+            order runs from here: verified Slack request -> governed approval token -> typed
+            operation -> checkpoint -> witness -> grant -> claim -> bounded adapter -> readback ->
+            outcome -> evidence.
+
+            IT REACHES NO ACTUATOR. There is no OperationRouter, OperatorAgent, CdpActuator or
+            CdpBrowserSession on this path and no fallback to one. The only effect-capable adapter
+            is the one the effect boundary owns behind a claimed grant, and it is DARK by default.
+
+            Fails closed at every step: an unverifiable Slack signature, an unroutable token, an
+            unknown approval id, an unauthorized actor, any binding mismatch and a duplicate tap all
+            return without an external attempt.
+            """
+            from . import governed_write_route as gwr  # the governed route; still no adapter import
+
+            try:
+                verify_slack_signature(
+                    config.slack_signing_secret or b"",
+                    timestamp=timestamp, body=body, signature=signature,
+                )
+            except SlackSignatureError:
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
+                try:
+                    store.add_security_event(
+                        "slack_request_rejected", actor="system",
+                        payload={"failure": "signature", "route": "governed_write"})
+                finally:
+                    store.close()
+                self._write_json(401, {"error": "invalid Slack signature"})
+                return True
+
+            try:
+                payload = _parse_slack_payload(body)
+            except SlackError:
+                return None
+            token = _first_slack_action_value(payload) or ""
+            # ROUTING ONLY — nothing is trusted from the unverified token. If it names no pending
+            # governed write, this is not our tap and the ordinary handler continues.
+            approval_id = gwr.peek_approval_id(token)
+            if not approval_id:
+                return None                     # not a governed tap at all — fall through
+
+            # FAIL CLOSED, EXPLICITLY. From here on this IS a governed tap, so it is answered here
+            # and never handed to another execution path. A missing provider or kernel is a
+            # governed refusal with a recorded reason, not a fall-through.
+            if config.governed_write_provider is None or config.governed_write_kernel is None:
+                self._refuse_governed(approval_id, "ROUTE_NOT_CONFIGURED",
+                                      "the governed write route is not configured on this server")
+                return True
+            pending = config.governed_write_provider(approval_id)
+            if pending is None:
+                # No stored proposal, an expired one, or one that failed its integrity check.
+                self._refuse_governed(approval_id, "NO_PENDING_OPERATION",
+                                      "no already-authorized pending operation for this approval")
+                return True
+
+            user_id = ((payload.get("user") or {}).get("id")
+                       or (payload.get("user") or {}).get("username"))
+            channel_id = ((payload.get("channel") or {}).get("id")
+                          or (payload.get("container") or {}).get("channel_id")
+                          or payload.get("channel_id"))
+            ok, reason = authorize_command(
+                user_id, channel_id,
+                allowed_users=config.allowed_slack_users,
+                allowed_channel=config.allowed_slack_channel,
+            )
+            if not ok:
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
+                try:
+                    store.add_security_event(
+                        "slack_operation_rejected", actor=str(user_id or "unknown"),
+                        payload={"failure": "authorization", "reason": reason,
+                                 "route": "governed_write", "approval_id": approval_id})
+                finally:
+                    store.close()
+                self._write_json(200, {"replace_original": False,
+                                       "text": f"Not authorized: {reason}."})
+                return True
+
+            # THE CHANNEL RECEIPT COMES FROM THE STORED PROPOSAL, NEVER FROM THE TAP. An empty
+            # stored receipt would otherwise fall back to whatever channel the request claimed —
+            # a caller-supplied binding wearing an authenticated one's clothes. Fail closed instead.
+            receipt_failure = ""
+            if not str(pending.expected_channel_id or "").strip():
+                receipt_failure = "NO_STORED_CHANNEL_RECEIPT"
+            elif _norm_id(channel_id) != _norm_id(pending.expected_channel_id):
+                # ...and the channel the tap ACTUALLY arrived in must be that channel, so a
+                # correctly-signed approval replayed into another channel is refused.
+                receipt_failure = "CHANNEL_RECEIPT_MISMATCH"
+            if receipt_failure:
+                store = WorkflowStore(config.db_path, tenant=config.tenant)
+                try:
+                    store.add_security_event(
+                        "GovernedWriteRefused", actor=str(user_id or "unknown"),
+                        payload={"approval_id": approval_id, "reason": receipt_failure,
+                                 "expected_channel_id": pending.expected_channel_id})
+                finally:
+                    store.close()
+                self._write_json(200, {
+                    "replace_original": False,
+                    "text": "That approval button does not belong to this Slack message context. "
+                            "Use the latest proposal."})
+                return True
+
+            store = WorkflowStore(config.db_path, tenant=config.tenant)
+            try:
+                kernel = config.governed_write_kernel(store)
+                outcome = gwr.handle_governed_write_callback(
+                    kernel,
+                    token=token,
+                    op=pending.op,
+                    secret=pending.secret,
+                    allowed_actors=pending.allowed_actors,
+                    expected_channel_id=pending.expected_channel_id,
+                    expected_workspace_id=pending.expected_workspace_id,
+                    expected_message_ts=pending.expected_message_ts,
+                    facts=pending.facts,
+                    accountable_owner=pending.accountable_owner,
+                    now=datetime.now(timezone.utc),
+                    writer=pending.writer,          # None => the DARK default bounded writer
+                )
+            except (gwr.GovernedWriteRouteError, GovernedApprovalError) as exc:
+                store.add_security_event(
+                    "GovernedWriteRefused", actor=str(user_id or "unknown"),
+                    payload={"approval_id": approval_id, "reason": type(exc).__name__,
+                             "detail": str(exc)[:400]})
+                self._write_json(200, {"replace_original": False,
+                                       "text": "That approval could not be applied. "
+                                               "Re-open the latest proposal."})
+                return True
+            finally:
+                store.close()
+
+            self._write_json(200, {
+                "replace_original": False,
+                "response_type": "ephemeral",
+                # No money value is ever echoed back (CLAUDE.md §10).
+                "text": ("Recorded. The approved write is governed: "
+                         f"{outcome.state}." if outcome.consumed else
+                         "That approval was already used. Re-open the latest proposal."),
+                "metadata": {
+                    "approval_id": outcome.approval_id,
+                    "state": outcome.state,
+                    "grant_id": outcome.grant_id,
+                    "requires_reconciliation": outcome.escalated,
+                },
+            })
             return True
 
         def _handle_operation_batch_approval(self, payload: dict, batch: dict, action_value: str) -> bool:
@@ -844,6 +1040,10 @@ def run_callback_server(
     load_docs_reader: Callable[[str], "list | None"] | None = None,
     operation_cdp_url: str | None = None,
     operation_url_filter: str | None = None,
+    # P4 EP-1 / F-01: the governed write route. Both must be supplied for the route to be
+    # reachable; either left None keeps it unreachable and the handler fails closed.
+    governed_write_provider: Callable[[str], "Any"] | None = None,
+    governed_write_kernel: Callable[[WorkflowStore], Any] | None = None,
 ) -> ThreadingHTTPServer:
     """Create a local callback server. Caller owns ``serve_forever`` / shutdown."""
     secret = (
@@ -871,6 +1071,8 @@ def run_callback_server(
             tms_brief_reader=tms_brief_reader,
             load_state_reader=load_state_reader,
             load_docs_reader=load_docs_reader,
+            governed_write_provider=governed_write_provider,
+            governed_write_kernel=governed_write_kernel,
         )
     )
     return ThreadingHTTPServer((host, port), handler)
@@ -1902,6 +2104,12 @@ def _single_consequential_approval() -> Callable[[object], bool]:
         return True
 
     return approve
+
+
+def _norm_id(value: object) -> str:
+    """Normalize a Slack workspace/channel/user id for comparison. Whitespace and case only — never
+    a substring or prefix rule, so one id can never match a longer one."""
+    return str(value or "").strip().lower()
 
 
 def _token_fingerprint(token: str) -> str:

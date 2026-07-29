@@ -18,9 +18,14 @@ from .import_probe import ADAPTER_MODULES, adapter_import_sites
 from .sources import SCRIPTS, rel
 
 # Modules that can actuate or write to an external system (as opposed to holding a session/config).
+#
+# `browser_use_adapter` left this set at P4/EP-14, in lockstep with `import_probe`: its write ledger
+# and its arbitrary-task browser-agent driver both moved to `browser_use_write`. Keeping the two
+# probes' notions of "effect-capable" in agreement matters — a script classified effect-capable by
+# one probe and read-only by the other is exactly the kind of disagreement a false green hides in.
 EFFECT_CAPABLE = {
     "cdp_actuator", "truckingoffice_write", "multistep_write", "discovered_write",
-    "tms_write", "browser_use_adapter", "browser_tms_adapter", "browser_use_write",
+    "tms_write", "browser_tms_adapter", "browser_use_write",
 }
 
 

@@ -38,8 +38,19 @@ ADAPTER_MODULES = {
 # read substrate (navigate + evaluate; ADR/repository authority keeps it importable by read-only
 # tooling — EP-8's disposition removes only the `cdp_actuator` import), so it is deliberately NOT
 # in this set. The deterministic money-path actuation lives in `cdp_actuator`, which IS here.
+#
+# `browser_use_adapter` WAS in this set and is not any more (EP-14). That is a RECLASSIFICATION on
+# structural grounds, not a relaxation: it held `BrowserUseWriteLedger` (a payable write) and
+# `NativeBrowserUseRunner` (a driver that runs an ARBITRARY task), and both now live in
+# `browser_use_write`. What remains cannot express a write — no write method exists on it, it
+# imports no effect-capable adapter, and its transport takes a vetted task ID plus data rather than
+# a caller-authored task string. The proof is `test_browser_use_readonly_surface.py` (structural,
+# call-closure and behavioural) plus the boundary mutation battery, which is the same standard the
+# F2 CDP split had to meet before `cdp_readonly` was trusted as the read substrate. Reclassifying
+# it on the strength of its docstring — which already said "Read-only Browser Use TMS adapter"
+# while the write ledger sat in the same file — is exactly what this set exists to prevent.
 EFFECT_CAPABLE_ADAPTERS = {
-    "cdp_actuator", "browser_use_adapter", "browser_tms_adapter",
+    "cdp_actuator", "browser_tms_adapter",
     "truckingoffice_write", "multistep_write", "discovered_write", "tms_write",
     "browser_agent", "browser_use_write",
 }

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import os
-import re
 import sys
 import threading
 import time
@@ -17,14 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.action_callback import run_callback_server  # noqa: E402
 from freight_recon.channels import build_signer, load_delivery_config  # noqa: E402
-from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
-from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
 from freight_recon.delivery import DeliverySigner  # noqa: E402
-from freight_recon.delivery_dispatch import SlackApiPoster, slack_thread_status_poster  # noqa: E402
-from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
-from freight_recon.operator_agent import OperatorAgent  # noqa: E402
-from freight_recon.ops_control import OpsControl  # noqa: E402
+from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.screen_discovery import openai_completer  # noqa: E402
+# P4 EP-1 ADAPTER CONTAINMENT (R-07): this entry point deliberately imports NO effect-capable
+# adapter. It used to import `cdp_actuator.CdpActuator`, `cdp_session.CdpBrowserSession`,
+# `operation_router.OperationRouter`/`freight_lanes` and `operator_agent.OperatorAgent` to build a
+# live browser-write agent (the OperationRouter -> OperatorAgent autonomous write, the live R-07
+# write). That construction site is DELETED, not disabled. The only remaining external-write
+# construction and execution path in the whole system is the canonical effect-capable adapter reached
+# through `effect_boundary.execute_invoice_write` behind a claimed grant, and it ships DARK.
 from run_dogfood_pilot import DEFAULT_WORKSPACE  # noqa: E402
 from run_workflow import load_synthetic_loads  # noqa: E402
 
@@ -65,7 +66,10 @@ def main() -> int:
     parser.add_argument(
         "--enable-operation-router",
         action="store_true",
-        help="Enable Slack operation approvals -> OperationRouter. Requires --client-config and owner/channel allowlist.",
+        help="Enable the live READ-ONLY TMS surface (aged-AR, brief, load state/docs, billable amount) "
+        "for the allowed Slack user/channel. Requires --client-config and owner/channel allowlist. "
+        "The autonomous browser WRITE is contained (P4/R-07): it runs only through the dark governed "
+        "effect boundary, and live supervised writes are enabled at P12 — this flag performs none.",
     )
     parser.add_argument("--operation-cdp-url", default=os.getenv("NEYMA_OPERATION_CDP_URL", "http://localhost:9222"))
     parser.add_argument("--operation-url-filter", default=os.getenv("NEYMA_OPERATION_URL_FILTER", ""))
@@ -118,11 +122,56 @@ def main() -> int:
     # externally-completed state without a real, verified effect. Fail closed.
     post_action_executor = None
 
+    # P4 EP-1 ADAPTER CONTAINMENT (R-07). `operation_router` is ALWAYS None here: the callback server
+    # no longer constructs a live browser actuator or an OperationRouter that drives one. A Slack
+    # approval RECORDS the human decision and ADVANCES the governed pipeline; it MUST NOT directly
+    # invoke the browser actuator. With no effect engine wired, action_callback's operation-approval
+    # handlers fail closed (their `is None` gates skip the execution path). The consequential write
+    # runs ONLY through the checkpoint/witness/grant/claim boundary
+    # (effect_boundary.execute_invoice_write), and a non-sandbox operation is refused before any
+    # claim. Live supervised external writes are enabled and validated at P12, not here.
     operation_router = None
     operation_result_poster = None
+
+    # P4 EP-1 / F-01 — THE GOVERNED WRITE ROUTE, WIRED, DARK AND FAIL-CLOSED.
+    #
+    # The chain is: authenticated Slack tap -> action_callback._maybe_handle_governed_write_approval
+    # -> governed_write_route.handle_governed_write_callback -> build_checkpoint_approval ->
+    # checkpoint -> witness -> Effect Grant -> atomic claim -> typed AdapterOperation -> bounded
+    # adapter -> readback -> explicit outcome. This entry point now supplies the two seams that make
+    # it reachable in the DEPLOYED server.
+    #
+    # THE CALLBACK NEVER BUILDS THE OPERATION. `governed_write_provider` is a LOOKUP: given an
+    # approval id it returns an already-authorized, already-typed operation that was written down at
+    # PROPOSAL time, or None. There is no method on that boundary that creates, edits or completes an
+    # operation from caller input, so the tap cannot choose an amount, counterparty, invoice, load,
+    # destination system, target URL, adapter, capability or any operation field. It contributes only
+    # authenticated identity, and every part of that identity is re-verified against both the stored
+    # record and the human's signed envelope.
+    #
+    # IT STAYS DARK. No credentialed real-write adapter is registered here and no writer is injected:
+    # `WorkflowStorePendingWrites(writer=None)` leaves the effect boundary using its own bounded
+    # default, which performs no real external write (a PROVEN non-occurrence), and a non-sandbox
+    # operation is refused before any claim. There is no OperatorAgent, CdpActuator, arbitrary
+    # browser task, generic natural-language execution or direct callback write on this path, and no
+    # fallback to one.
+    #
+    # IT FAILS CLOSED. Without a delivery secret the provider is None and the route is unreachable;
+    # with no stored proposal the lookup returns None; a stored record that cannot be rebuilt to its
+    # recorded payload hash returns None; and every one of those becomes an explicit governed refusal
+    # rather than a write.
+    governed_write_provider, governed_write_kernel = _build_governed_write_route(
+        db_path=str(db_path), tenant=tenant, signer=signer)
     allowed_slack_users = tuple(
         args.allowed_slack_user
         or [u.strip() for u in os.getenv("NEYMA_ALLOWED_SLACK_USERS", "").split(",") if u.strip()]
+    )
+    # The canonical tenant, resolved ONCE at the entry point (never defaulted, never inferred). The
+    # callback store and every recorded decision are tenant-first, so the server needs it regardless
+    # of whether the read surface is enabled.
+    tenant = resolve_cli_tenant(
+        tenant=args.tenant, client_config=args.client_config,
+        context="run_action_callback_server",
     )
     if args.enable_operation_router:
         if not args.client_config:
@@ -131,22 +180,10 @@ def main() -> int:
             parser.error("--enable-operation-router requires a Slack signing secret from --client-config")
         if not allowed_slack_users or not args.allowed_slack_channel:
             parser.error("--enable-operation-router requires --allowed-slack-user and --allowed-slack-channel")
-        # The canonical tenant, resolved ONCE at the entry point from the client config's
-        # client_id. --enable-operation-router already requires --client-config above, so the
-        # source is guaranteed present here; resolve_cli_tenant still refuses a blank or sentinel.
-        tenant = resolve_cli_tenant(
-            tenant=args.tenant, client_config=args.client_config,
-            context="run_action_callback_server --enable-operation-router",
-        )
-        operation_router = _build_live_operation_router(
-            tenant=tenant,
-            cdp_url=args.operation_cdp_url,
-            url_filter=args.operation_url_filter or None,
-            model=args.operation_model,
-            max_steps=args.operation_max_steps,
-            workspace=workspace,
-            db_path=db_path,
-        )
+        # READ-ONLY TMS surface only (P4/R-07): each reader below holds a cdp_readonly
+        # ReadOnlyCdpNavigator — no actuator, no write. The live-write OperationRouter is gone; the
+        # invoice write is the DARK governed route (execute_invoice_write), enabled and validated at
+        # P12. The owner/channel allowlist is still enforced so the live read surface is scoped.
         operation_result_poster = _build_operation_result_poster(args.client_config)
         load_amount_resolver = _build_load_amount_resolver(
             cdp_url=args.operation_cdp_url,
@@ -209,6 +246,7 @@ def main() -> int:
         print(f"Liveness watchdog: alerting Slack if the loop heartbeat goes stale (every {args.watchdog_interval_seconds}s)")
 
     server = run_callback_server(
+        tenant=tenant,
         host=args.host,
         port=args.port,
         db_path=str(db_path),
@@ -221,8 +259,9 @@ def main() -> int:
         operation_result_poster=operation_result_poster,
         allowed_slack_users=allowed_slack_users,
         allowed_slack_channel=args.allowed_slack_channel,
-        # Natural-language routing for /neyma (cheap model — it only picks which read/operate, never money).
-        nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if operation_router else None,
+        # Natural-language routing for /neyma (cheap model — it only picks which READ to run, never
+        # money). Gated on the read surface being enabled, not on a live-write router (there is none).
+        nl_completer=openai_completer(model=os.getenv("NEYMA_NL_MODEL", "gpt-4.1-mini")) if args.enable_operation_router else None,
         load_amount_resolver=load_amount_resolver,
         receivables_reader=receivables_reader,
         tms_brief_reader=tms_brief_reader,
@@ -230,6 +269,9 @@ def main() -> int:
         load_docs_reader=load_docs_reader,
         operation_cdp_url=args.operation_cdp_url if args.operation_url_filter else None,
         operation_url_filter=args.operation_url_filter or None,
+        # Both None: the governed write route stays unreachable from this entry point (see above).
+        governed_write_provider=governed_write_provider,
+        governed_write_kernel=governed_write_kernel,
     )
     print(f"Neyma action callback server listening on http://{args.host}:{args.port}")
     print("Email actions: /email/action?token=<signed-token>")
@@ -238,8 +280,10 @@ def main() -> int:
         print("Slack interactivity: POST /slack/actions (Slack-signed)")
     if post_action_executor is not None:
         print("Post-approval execution: mock TMS auto-entry enabled")
-    if operation_router is not None:
-        print("Operation router approvals: enabled for allowed Slack user/channel only")
+    if args.enable_operation_router:
+        print("Live TMS reads: enabled (read-only) for the allowed Slack user/channel")
+        print("External writes: CONTAINED — the governed effect boundary ships dark (P12); "
+              "this server performs no browser write")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -247,6 +291,84 @@ def main() -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _build_governed_write_route(*, db_path: str, tenant: str, signer):
+    """Build the DEPLOYED governed write route's two seams: (provider, kernel_factory).
+
+    Returns `(None, None)` — the route unreachable, the handler fail-closed — whenever the
+    preconditions for a governed decision do not hold. That is the only "off" state; there is no
+    degraded mode in which a tap performs a write with weaker authority.
+
+    THE PROVIDER IS A LOOKUP, NOT A BUILDER. It resolves an approval id to an operation that was
+    typed and written down at PROPOSAL time (`governed_write_registry.record_proposed_governed_write`).
+    The tap supplies identity; the repository supplies the operation. Nothing the callback sends can
+    add, replace or edit an operation field, so it can never choose an amount, counterparty, invoice,
+    load, destination system, target URL, adapter or capability.
+
+    THE KERNEL IS PER-REQUEST AND TENANT-BOUND. Each call gets a CheckpointKernel over the request's
+    own tenant-bound store, so the seven reads, the witness insert and the grant mint share one
+    transaction on one connection. The handle key is per-kernel and in memory: a restart loses it,
+    unclaimed grants expire, nothing happened — the fail-closed direction (ADR-004 §3.3).
+
+    DARK BY CONSTRUCTION. `writer=None` leaves the effect boundary's own bounded default in place,
+    which performs no real external write. This function registers no adapter, constructs no browser
+    session, and imports no actuator.
+    """
+    from freight_recon.governed_write_registry import WorkflowStorePendingWrites
+
+    secret = getattr(signer, "secret", None)
+    if not secret:
+        # FAIL CLOSED: without the signing secret a governed approval cannot be authenticated at
+        # all, so the route must not exist rather than exist unauthenticated.
+        print("NOTE: governed write route DISABLED — no delivery signing secret; "
+              "the callback's governed handler fails closed.")
+        return None, None
+    if not str(tenant or "").strip():
+        print("NOTE: governed write route DISABLED — no canonical tenant.")
+        return None, None
+
+    def _store_factory():
+        """A FRESH tenant-bound store per read. The server is threaded and SQLite connections are
+        not shareable across threads; the material-fact readers also read LIVE at checkpoint time,
+        long after the lookup returned."""
+        from freight_recon.workflow import WorkflowStore
+
+        return WorkflowStore(db_path, tenant=tenant)
+
+    def provider(approval_id: str):
+        """Look up an ALREADY-AUTHORIZED pending write. Never constructs one."""
+        try:
+            # writer=None => the effect boundary's DARK default bounded writer. No credentialed
+            # real-write adapter is registered by this entry point.
+            return WorkflowStorePendingWrites(
+                _store_factory, secret=secret, writer=None).pending_for(str(approval_id or ""))
+        except Exception:  # noqa: BLE001 — a lookup failure must fail CLOSED, never write
+            return None
+
+    # THE KERNEL SEAM IS BLOCKED BY REPOSITORY AUTHORITY, NOT BY OVERSIGHT.
+    #
+    # A CheckpointKernel requires a GateRegistry and cannot be constructed without one (F-20). But
+    # ACTION CLASS GATE REGISTRATION IS U8.1 / PHASE 8 WORK, and the frozen acceptance case
+    # AC-CKPT-6-missing is recorded "DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8" on the explicit
+    # ground that the production registration population is ZERO. `test_phase0_null_gate.py` proves
+    # that ground mechanically and states that if it ever stops holding, the case must be
+    # RE-ADJUDICATED rather than quietly inherited; PROGRESS-PROTOCOL.md sec 3 requires founder
+    # approval and a committed acceptance-contract revision for exactly that.
+    #
+    # So this entry point wires the LOOKUP BOUNDARY (legal, and the part that makes the callback
+    # unable to choose an operation) and returns NO kernel. The governed handler then fails closed
+    # with an explicit ROUTE_NOT_CONFIGURED refusal — dark, recorded, and honest about why.
+    #
+    # THIS IS A NAMED GOVERNANCE BLOCKER AWAITING FOUNDER/ADJUDICATOR DECISION, not a missing line.
+    # Once adjudicated, pass a GateRegistry in here and the deployed route is complete; nothing else
+    # on this boundary changes.
+    kernel_factory = None
+
+    print("Governed write route: lookup boundary WIRED and DARK; execution kernel BLOCKED pending "
+          "adjudication of AC-CKPT-6-missing (Action Class gate registration is U8.1/P8). "
+          "The governed handler fails closed.")
+    return provider, kernel_factory
 
 
 def _build_digest_poster(client_config: str | None):
@@ -278,116 +400,22 @@ def _build_digest_poster(client_config: str | None):
     return _post
 
 
-def _build_live_operation_router(
-    *,
-    tenant: str,
-    cdp_url: str,
-    url_filter: str | None,
-    model: str,
-    max_steps: int,
-    workspace: "Path | None" = None,
-    db_path: "Path | None" = None,
-) -> OperationRouter:
-    """Build the real browser-agent router for Slack-approved operation runs.
-
-    Supervised lanes PREPARE (fill + stop before Save; the human commits); a graduated lane runs
-    unattended. The graduation policy is persisted per workspace so `/neyma graduate <lane>` sticks.
-    """
-    completer = openai_completer(model=model)
-
-    from freight_recon.agent_memory import AgentMemory
-    from freight_recon.browser_session_health import read_browser_session_health
-    from freight_recon.lane_graduation import LaneGraduation
-    from freight_recon.workflow import WorkflowStore
-
-    mem_path = (Path(workspace) / "agent_memory.json") if workspace else Path("agent_memory.json")
-    memory = AgentMemory(mem_path)  # recall learned facts + crystallize what works, per client
-
-    def _build_agent(*, approved_amount=None, approve=None, prepare_only=False):
-        session = CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter)
-        session.__enter__()
-        actuator = CdpActuator(session)
-
-        class _ClosingOperatorAgent(OperatorAgent):
-            def run(self, goal):
-                try:
-                    return super().run(goal)
-                finally:
-                    session.__exit__(None, None, None)
-
-        return _ClosingOperatorAgent(
-            actuator=actuator,
-            complete=completer,
-            approved_amount=approved_amount,
-            approve=approve,
-            max_steps=max_steps,
-            prepare_only=prepare_only,
-            memory=memory,
-        )
-
-    grad_path = (Path(workspace) / "lane_graduation.json") if workspace else Path("lane_graduation.json")
-    from freight_recon.browser_lock import BrowserLock
-    lock_path = (Path(workspace) / "browser.busy") if workspace else Path("browser.busy")
-    return OperationRouter(
-        lanes=freight_lanes(),
-        build_agent=_build_agent,
-        approved_amount_for=lambda intent: intent.params.get("approved_amount"),
-        document_for=_build_document_resolver(workspace=workspace),
-        graduation=LaneGraduation(grad_path),
-        # The router mints the Commit Key and the store owns the row: they must name ONE tenant.
-        # This site passed `tenant` to the store and let the router default to "default".
-        tenant=tenant,
-        commit_store=WorkflowStore(db_path, tenant=tenant) if db_path is not None else None,
-        browser_lock=BrowserLock(lock_path),  # marks the shared browser busy during a write
-        browser_health_check=lambda: read_browser_session_health(cdp_url=cdp_url, url_filter=url_filter),
-    )
-
-
-def _build_document_resolver(*, workspace: "Path | None"):
-    """Resolve the local file a ``file_document`` lane should attach — the RUNTIME picks it, never the
-    model. It looks in the workspace ``documents/`` dir for a file matching the bound load ref AND the
-    document type (POD/BOL/rate con). Returns None when nothing matches, so the router fails CLOSED
-    (refuses to "attach" nothing) rather than filing the wrong paperwork on a load."""
-    docs_dir = (Path(workspace) / "documents") if workspace else Path("documents")
-
-    def resolve(intent):
-        params = intent.params or {}
-        ref = str(params.get("load_ref") or params.get("record") or params.get("load") or "").strip()
-        text = f"{intent.summary or ''} {' '.join(str(v) for v in params.values())}"
-        if not ref:
-            m = re.search(r"\b(\d{2,6})\b", text)   # a load/order ref in free text, never a money token
-            ref = m.group(1) if m else ""
-        if not ref or not docs_dir.is_dir():
-            return None
-        low = text.lower()
-        dtype = ("pod" if ("pod" in low or "proof of delivery" in low)
-                 else "bol" if ("bol" in low or "bill of lading" in low)
-                 else "rate" if ("rate con" in low or "rate confirmation" in low)
-                 else "")
-        files = sorted(p for p in docs_dir.glob("*") if p.is_file())
-        for f in files:  # a file naming BOTH the requested type and the ref
-            n = f.name.lower()
-            if ref in n and (not dtype or dtype in n):
-                return str(f)
-        if dtype:
-            return None  # a specific doc type was asked for but no file matches -> fail closed
-        for f in files:  # no type specified: any file naming this ref
-            if ref in f.name.lower():
-                return str(f)
-        return None
-
-    return resolve
-
-
 def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
     """A reader so "what's outstanding / who owes us" answers with a live aged-AR digest. Reads the TMS
-    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy."""
+    /invoices list into unpaid receivables. Read-only; defers if the shared browser is busy.
+
+    P4 EP-1: this closure used to hold a `CdpActuator` over a `CdpBrowserSession` and navigate with
+    `session.evaluate("location.href=...")` — caller data interpolated into JavaScript source, F2's
+    exact defect, in a closure that only ever wanted to LOOK at a page. It now holds a
+    `ReadOnlyCdpNavigator`, which has no evaluate, command, click, type, select or upload method to
+    call. The observation shape is unchanged: the actuator sourced its read scripts from this same
+    read-only surface, so the parsers above see exactly what they saw before.
+    """
     import time as _time
 
     from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
 
     lock = BrowserLock(lock_path) if lock_path else None
 
@@ -395,10 +423,9 @@ def _build_receivables_reader(*, cdp_url, url_filter, invoices_url, lock_path):
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
-                act = CdpActuator(session)
-                session.evaluate(f"location.href={invoices_url!r}")
-                _time.sleep(2.5)
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter,
+                                      allowed_origin=invoices_url) as act:
+                act.visit(invoices_url)
                 obs = act.observe()
                 if not invoices_table_present(obs):      # unrendered/logged-out page: retry once, then
                     _time.sleep(3.0)                      # honest "couldn't read" — NEVER "all paid"
@@ -417,11 +444,9 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
     pass. Returns None when the shared browser is busy or unreachable (never a fake all-clear)."""
     import time as _time
 
-    from freight_recon.ar_collections import receivables_from_invoices_table
+    from freight_recon.ar_collections import invoices_table_present, receivables_from_invoices_table
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
-    from freight_recon.ar_collections import invoices_table_present
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
     from freight_recon.operation_proposal import loads_status_counts, ready_to_bill_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
@@ -430,17 +455,18 @@ def _build_tms_brief_reader(*, cdp_url, url_filter, loads_url, invoices_url, loc
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter) as session:
-                act = CdpActuator(session)
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(2.5)
+            # P4 EP-1: read-only navigator, and the retry now happens INSIDE the session. The old
+            # code re-observed through `act` after the `with` block had closed the session, so the
+            # retry could only ever fail — a latent bug the actuator-shaped API hid.
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter,
+                                      allowed_origin=loads_url) as act:
+                act.visit(loads_url)
                 loads_obs = act.observe()
-                session.evaluate(f"location.href={invoices_url!r}")
-                _time.sleep(2.5)
+                act.visit(invoices_url)
                 invoices_obs = act.observe()
-            if not invoices_table_present(invoices_obs):
-                _time.sleep(3.0)
-                invoices_obs = act.observe()
+                if not invoices_table_present(invoices_obs):
+                    _time.sleep(3.0)
+                    invoices_obs = act.observe()
             if not invoices_table_present(invoices_obs):
                 return None                               # blind on AR -> honest miss, not a fake brief
             return {
@@ -458,11 +484,8 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
     """A resolver so "bill load 105" can fetch the load's Total from the TMS itself. Reads /loads and
     returns the billable amount for that load ref (deterministic — the model never supplies it). Defers
     if the shared browser is busy, and fails soft (None -> the assistant just asks for the amount)."""
-    import time as _time
-
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_actuator import CdpActuator
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
     from freight_recon.operation_proposal import ready_to_bill_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
@@ -471,10 +494,10 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.2)
-                rows = ready_to_bill_from_loads_table(CdpActuator(session).observe())
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=6,
+                                      allowed_origin=loads_url) as act:
+                act.visit(loads_url)
+                rows = ready_to_bill_from_loads_table(act.observe())
             for row in rows:
                 if str(row.get("load_ref")) == str(load_ref):
                     return row.get("amount")
@@ -488,52 +511,30 @@ def _build_load_amount_resolver(*, cdp_url, url_filter, loads_url, lock_path):
 def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
     """Given a load ref, read its live row from the TMS /loads list: {load_ref, status, customer, total}.
     Header-based column mapping (robust to column drift, like the AR reader). Returns None if the browser
-    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth."""
-    import time as _time
+    is busy, the read fails, or the ref isn't found — callers treat None as unreadable, never as truth.
 
+    P4 EP-1: the column mapping used to be a JavaScript blob evaluated as
+    `session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")` — the load ref spliced into JavaScript
+    SOURCE, which is F2's exact defect. It is now `operation_proposal.load_row_from_loads_table`,
+    the same header-driven mapping done in Python over a vetted observation. The JavaScript is gone
+    rather than escaped more carefully, and the match is exact on a delimited token instead of a
+    string comparison inside a script the caller composed.
+    """
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
+    from freight_recon.operation_proposal import load_row_from_loads_table
 
     lock = BrowserLock(lock_path) if lock_path else None
-    _JS = r"""(function(ref){
-      ref=String(ref);
-      var tables=[].slice.call(document.querySelectorAll('table'));
-      for(var ti=0;ti<tables.length;ti++){
-        var t=tables[ti];
-        var hs=[].slice.call(t.querySelectorAll('tr')[0].querySelectorAll('th,td')).map(function(h){return (h.innerText||'').trim().toLowerCase();});
-        function idx(n){for(var i=0;i<hs.length;i++){if(hs[i].indexOf(n)>=0)return i;}return -1;}
-        var iL=idx('load'), iS=idx('status'), iC=idx('customer'), iT=idx('total');
-        if(iS<0) continue;
-        var rows=[].slice.call(t.querySelectorAll('tr'));
-        for(var ri=1;ri<rows.length;ri++){
-          var cells=[].slice.call(rows[ri].querySelectorAll('td')).map(function(c){return (c.innerText||'').replace(/\s+/g,' ').trim();});
-          if(!cells.length) continue;
-          var lc=(iL>=0?cells[iL]:cells[0])||'';
-          var first=lc.split(' ')[0];
-          if(first===ref || lc.replace(/[^0-9]/g,'')===ref.replace(/[^0-9]/g,'')){
-            return JSON.stringify({load_ref:ref, status:(iS>=0?cells[iS]:''), customer:(iC>=0?cells[iC]:''), total:(iT>=0?cells[iT]:'')});
-          }
-        }
-      }
-      return null;
-    })"""
 
     def _read(load_ref: str) -> "dict | None":
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=6) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.3)
-                raw = session.evaluate(_JS + "(" + repr(str(load_ref)) + ")")
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=6,
+                                      allowed_origin=loads_url) as act:
+                act.visit(loads_url)
+                return load_row_from_loads_table(act.observe(), load_ref)
         except Exception:  # noqa: BLE001 — a read is best-effort; None means "unreadable", never "not found as truth"
-            return None
-        if not raw:
-            return None
-        import json as _json
-        try:
-            return _json.loads(raw)
-        except Exception:  # noqa: BLE001
             return None
 
     return _read
@@ -541,44 +542,41 @@ def _build_load_state_reader(*, cdp_url, url_filter, loads_url, lock_path):
 
 def _build_load_docs_reader(*, cdp_url, url_filter, loads_url, lock_path):
     """Given a load ref, return the list of document filenames on that load (its FileSafe attachments).
-    Finds the load's detail link on /loads, opens its /attachments page, reads the .pdf names. Returns
-    None if unreadable (browser busy / not found) — never an empty list as a false 'no docs'."""
-    import time as _time
+    Opens the load's detail document from /loads and reads the document names. Returns None if
+    unreadable (browser busy / not bindable) — never an empty list as a false 'no docs'.
 
+    P4 EP-1, and the worst of the five read closures. It used to:
+      * splice the load ref into JavaScript source to find a detail link (`_HREF_JS + repr(ref)`),
+      * COMPOSE a target the page never published (`href.rstrip('/') + '/attachments'`) and navigate
+        to it with `location.href=`, and
+      * evaluate a second script to scrape document names.
+    The composed `/attachments` URL is exactly the generic-traversal shape EP-3 removed: a
+    same-origin URL nobody observed, assembled by the caller. It is now a `ReadOnlyCdpNavigator`
+    provenance record — the anchor inside the one observed row whose cells carry this load's
+    identifier, bound to it by exact link text or path segment, on an observational route, shaped
+    like a plain document link, and re-derived from the live page before it is followed. A load
+    whose detail document cannot be bound reads as None (unreadable), never as "no documents".
+    """
     from freight_recon.browser_lock import BrowserLock
-    from freight_recon.cdp_session import CdpBrowserSession
+    from freight_recon.cdp_readonly import ReadOnlyCdpNavigator
+    from freight_recon.operation_proposal import document_labels_from_observation
 
     lock = BrowserLock(lock_path) if lock_path else None
-    _HREF_JS = r"""(function(ref){ref=String(ref);
-      var links=[].slice.call(document.querySelectorAll('table a'));
-      for(var i=0;i<links.length;i++){var txt=(links[i].innerText||'').trim().split(' ')[0];
-        if(txt===ref){return links[i].getAttribute('href');}}
-      return null;})"""
-    _DOCS_JS = r"""(function(){return JSON.stringify([].slice.call(document.querySelectorAll('a'))
-      .map(function(a){return (a.innerText||'').trim();}).filter(function(t){return /\.[a-z]{3,4}$/i.test(t) && /pdf|jpg|jpeg|png|tiff?/i.test(t);}));})()"""
 
     def _read(load_ref: str) -> "list | None":
         if lock is not None and lock.is_busy():
             return None
         try:
-            with CdpBrowserSession(cdp_url=cdp_url, url_filter=url_filter, timeout=8) as session:
-                session.evaluate(f"location.href={loads_url!r}")
-                _time.sleep(1.3)
-                href = session.evaluate(_HREF_JS + "(" + repr(str(load_ref)) + ")")
-                if not href:
-                    return None  # load not found on the list -> unreadable, not "no docs"
-                if href.startswith("/"):
-                    base = loads_url.split("/loads")[0]
-                    href = base + href
-                session.evaluate(f"location.href={(href.rstrip('/') + '/attachments')!r}")
-                _time.sleep(1.3)
-                raw = session.evaluate(_DOCS_JS)
+            with ReadOnlyCdpNavigator(cdp_url=cdp_url, url_filter=url_filter, timeout=8,
+                                      allowed_origin=loads_url) as act:
+                act.visit(loads_url)
+                link = act.detail_link_for_load(str(load_ref))
+                if link is None:
+                    return None  # nothing provenance-bound to follow -> unreadable, not "no docs"
+                if not bool(act.follow(link)):
+                    return None
+                return document_labels_from_observation(act.observe())
         except Exception:  # noqa: BLE001 — best-effort read
-            return None
-        import json as _json
-        try:
-            return _json.loads(raw) if raw else []
-        except Exception:  # noqa: BLE001
             return None
 
     return _read

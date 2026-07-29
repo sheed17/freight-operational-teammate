@@ -1,9 +1,23 @@
 """Read ready-to-bill loads from the LIVE TMS and post AR invoice Approve buttons to Slack.
 
-The AR trigger, real-TMS sourced (vs the synthetic corpus): navigate the human-logged-in TMS to its
-loads page, read which loads are delivered-but-not-invoiced and their Total, and post one signed
+The AR trigger, real-TMS sourced (vs the synthetic corpus): open the human-logged-in TMS's loads
+page, read which loads are delivered-but-not-invoiced and their Total, and post one signed
 "Invoice [Approve & run]" button per load at that Total. A tap then drives the PROVEN raise_invoice
 write — so the proposed load_ref always matches a writable record.
+
+THE BROWSER SURFACE HERE IS READ-ONLY (P4 EP-3, R-07 containment). This script holds a
+`ReadOnlyCdpNavigator` [[cdp_readonly]]: it can fetch a document and observe it, and it has no
+evaluate, command, click, type, select or upload method to call. It previously reached the TMS
+through `cdp_session.evaluate("location.href=...")` — caller data interpolated into JavaScript, the
+exact defect F2 exists to remove — with a `cdp_actuator.click()` fallback for opening a load's
+detail page. Both are gone. Detail pages are reached only by FOLLOWING a link the loads list itself
+published, which never runs the SPA's `onclick` handler.
+
+The invoice WRITE is not this script's browser surface. Under P4/R-07 the live browser-write router
+is removed: this script only READS the loads page and posts supervised Approve buttons. The tap's
+effect (the raise_invoice write) runs through the DARK governed effect boundary
+(effect_boundary.execute_invoice_write, checkpoint/witness/grant/claim), and live supervised writes
+are enabled and validated at P12. `--autonomous` (unattended live writes) is therefore refused here.
 
 Runs once, or continuously with --interval-seconds. Coordinated + idempotent:
 - --lock-path: DEFER a cycle while the write-agent holds the shared browser (never navigate mid-write).
@@ -33,8 +47,7 @@ except Exception:  # pragma: no cover
 
 from freight_recon.cli_tenant import resolve_cli_tenant
 from freight_recon.browser_lock import BrowserLock  # noqa: E402
-from freight_recon.cdp_actuator import CdpActuator  # noqa: E402
-from freight_recon.cdp_session import CdpBrowserSession  # noqa: E402
+from freight_recon.cdp_readonly import ReadOnlyCdpNavigator  # noqa: E402
 from freight_recon.channels import load_delivery_config, slack_channel_for_route  # noqa: E402
 from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.operation_proposal import (  # noqa: E402
@@ -49,7 +62,6 @@ from freight_recon.review import ReviewRoute  # noqa: E402
 from freight_recon.roi_ledger import receipt_from_result, render_operation_receipt  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
-from run_action_callback_server import _build_live_operation_router  # noqa: E402
 from run_gmail_to_slack_dogfood import _delivery_signer  # noqa: E402
 
 _INVOICE_PROPOSED_EVENT = "invoice_proposal_posted"
@@ -139,8 +151,7 @@ def _cycle(*, act, signer, channel, loads_url, store, lock, live, poster, requir
     if lock is not None and lock.is_busy():
         print("propose-ar-from-tms: browser busy (a write is in progress) — deferring this cycle.")
         return 0
-    act.session.evaluate(f"location.href={loads_url!r}")
-    time.sleep(2.5)
+    act.visit(loads_url)
     observation = act.observe()
     ready = ready_to_bill_from_loads_table(observation)
     if require_pod:
@@ -220,17 +231,32 @@ def _resolve_unknown_pods_from_detail(*, act, rows: list[dict], loads_url: str, 
 
 
 def _read_pod_from_detail(*, act, row: dict, loads_url: str, list_observation: dict | None) -> bool | None:
+    """Open a load's detail page and read whether a POD is attached. FAILS CLOSED to None.
+
+    The detail page is reached ONLY through a PROVENANCE RECORD the loads list itself supports
+    (P4 EP-3): the anchor contained by the one row whose cells carry this load's identifier, bound
+    to that load by exact link text or an exact path segment, on an observational route, shaped like
+    a plain document link — and re-derived from the live page at follow time. See
+    `cdp_readonly.select_load_detail_link`.
+
+    That is deliberately stricter than "a same-origin link the page published", which is NOT
+    inherently read-only: legacy TMS systems expose state-changing GET routes, and Rails-style
+    `<a href="/loads/101" data-method="delete">` is a link by tag and a DELETE by behaviour. A
+    generic follower of any observed anchor would reach logout, delete, approve and pay routes.
+
+    There is also no click fallback: a click dispatches the SPA's `onclick` handler, which can POST
+    an invoice while being no kind of form submit target, so no structural test on the element could
+    have made that fallback safe. A load whose detail document cannot be bound simply stays
+    POD-unknown, and an unknown POD blocks the money button — the safe direction.
+    """
     load_ref = str(row.get("load_ref") or "").strip()
     if not load_ref:
         return None
-    page_readable = False
     try:
-        target = _detail_nav_target(list_observation, load_ref)
-        if target and hasattr(act, "navigate"):
-            page_readable = bool(act.navigate(target))
-        elif hasattr(act, "click"):
-            page_readable = bool(act.click(load_ref))
-        if not page_readable:
+        link = act.detail_link_for_load(load_ref)
+        if link is None:
+            return None  # nothing provenance-bound to follow; not a billing greenlight
+        if not bool(act.follow(link)):
             return None
         labels = attachment_labels_from_detail_observation(act.observe())
         return has_pod_from_detail(labels, page_readable=True)
@@ -238,22 +264,9 @@ def _read_pod_from_detail(*, act, row: dict, loads_url: str, list_observation: d
         return None
     finally:
         try:
-            if hasattr(act, "navigate"):
-                act.navigate(loads_url)
-            else:
-                act.session.evaluate(f"location.href={loads_url!r}")
+            act.visit(loads_url)
         except Exception:  # noqa: BLE001
             pass
-
-
-def _detail_nav_target(observation: dict | None, load_ref: str) -> str | None:
-    for nav in (observation or {}).get("nav") or []:
-        text = str(nav.get("text") or "")
-        url = str(nav.get("url") or "")
-        hay = f"{text} {url}"
-        if load_ref and load_ref in hay:
-            return url
-    return None
 
 
 def _pod_block_messages(observation: dict | None, *, channel: str) -> list[dict]:
@@ -312,12 +325,21 @@ def main() -> int:
     p.add_argument("--db", default=None, help="WorkflowStore path for dedup (don't re-propose a load)")
     p.add_argument("--lock-path", default=None, help="browser-busy marker to defer to an in-progress write")
     p.add_argument("--interval-seconds", type=int, default=0, help="0 = run once; >0 = loop on this interval")
-    p.add_argument("--autonomous", action="store_true", help="run GRADUATED loads unattended (money-fenced + capped) instead of only posting a button; ungraduated/over-cap loads still get a button")
+    p.add_argument("--autonomous", action="store_true", help="CONTAINED under P4/R-07: the live browser-write router is removed, so this is refused. Supervised Approve buttons are still posted; the write runs through the dark governed effect boundary (live supervised writes are P12).")
     p.add_argument("--operation-model", default=os.getenv("NEYMA_OPERATION_MODEL", "gpt-5.5"), help="model for the autonomous write agent")
     p.add_argument("--operation-max-steps", type=int, default=int(os.getenv("NEYMA_OPERATION_MAX_STEPS", "40")))
     args = p.parse_args()
-    if args.autonomous and not args.db:
-        p.error("--autonomous requires --db (graduation policy + commit-once + autonomous-run cap live in the workspace DB)")
+    if args.autonomous:
+        # P4 EP-1 ADAPTER CONTAINMENT (R-07). The unattended invoice write used to run through the same
+        # live browser-agent OperationRouter the callback used (build_agent -> CdpActuator). That
+        # construction site is DELETED, not disabled: the only external-write path in the system is now
+        # the DARK governed effect boundary (effect_boundary.execute_invoice_write), and live supervised
+        # writes are enabled and validated at P12. This script's READ + supervised-proposal surface is
+        # unaffected; only the unattended live write is refused.
+        p.error(
+            "--autonomous is contained under P4/R-07: the live browser-write router is removed. This "
+            "script now only READS the TMS and posts supervised Approve buttons; the invoice write runs "
+            "through the dark governed effect boundary, and live supervised writes are enabled at P12.")
 
     config = load_delivery_config(args.client_config)
     if config is None or config.slack is None:
@@ -333,19 +355,17 @@ def main() -> int:
         poster = SlackApiPoster(token)
     lock = BrowserLock(args.lock_path) if args.lock_path else None
 
-    from pathlib import Path as _Path
+    # P4 EP-1 ADAPTER CONTAINMENT (R-07): no live-write router is constructed here. `--autonomous` is
+    # refused above, so this always runs router-free — READ the loads page and post supervised Approve
+    # buttons. The invoice WRITE (the tap's effect) is the dark governed route; live writes are P12.
     router = None
-    if args.autonomous:
-        # The SAME money-fenced router the Slack callback uses — graduation, commit-once, verify-by-
-        # readback, browser-lock, all identical. Autonomy just means we call it with approve=None.
-        router = _build_live_operation_router(
-            cdp_url=args.cdp_url, url_filter=args.url_filter or None,
-            model=args.operation_model, max_steps=args.operation_max_steps,
-            workspace=_Path(args.db).parent, db_path=_Path(args.db),
-        )
 
-    with CdpBrowserSession(cdp_url=args.cdp_url, url_filter=args.url_filter or None) as session:
-        act = CdpActuator(session)
+    # F-02: the navigation origin is pinned from the OPERATOR-CONFIGURED --loads-url, not inferred
+    # from anything the TMS page publishes and not left to the optional --url-filter (which defaults
+    # to empty). A page that publishes a cross-origin row link is refused by the parsed-origin
+    # policy even when no filter is configured at all.
+    with ReadOnlyCdpNavigator(cdp_url=args.cdp_url, url_filter=args.url_filter or None,
+                              allowed_origin=args.loads_url) as act:
         while True:
             store = WorkflowStore(args.db, tenant=resolve_cli_tenant(tenant=getattr(args, "tenant", None), client_config=getattr(args, "client_config", None), context="propose_ar_from_tms.py")) if args.db else None
             try:
