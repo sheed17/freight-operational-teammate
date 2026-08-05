@@ -39,13 +39,13 @@ snapshot:
   pending_criteria:
     - "P4 acceptance: nothing remains — all 14 weighted criteria are PASS in the registry and P4 is COMPLETE (phase 100/100). The twelve implementer-supplyable criteria plus the two that require a different session (independent_review weight 5, final_adjudication weight 4) are all recorded PASS from independent evidence"
     - "P5's acceptance contract: to be instantiated from the acceptance_template when P5 begins. It has not been instantiated, so P5 contributes 0% and the current-phase number is 0% — which is correct, because P5 has not started"
-    - "the R-07 CONTAINED record in phase-0-baseline-manifest.yaml: NOT DONE. It is not a status-metadata file, so it needs its own content commit after the P4 closure content commit is independently reviewed, adjudicated and finalized"
+    - "the R-07 CONTAINED record in phase-0-baseline-manifest.yaml: DONE. It was written by a separate content commit after the P4 closure content commit had been independently reviewed, adjudicated and finalized twice - the sequence repository authority required. That commit closed R-07; P4's completion did not. It owes its own targeted independent review, its own targeted adjudication and a third finalizer"
     - "every implementation phase P6-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P5)"
   blockers_to_p5:
     - "none from P4 — P4 is COMPLETE (all 14 criteria PASS), so P5's sole dependency is satisfied and P5 is the selected unit. P5 has NOT started; a session picking it up must read the P5 onboarding set first"
     - "P5's OWN blocker is undischarged: the transition/event completeness finding (13 of 134 transitions name no event) carries COUNT NEEDS ADJUDICATION and must be adjudicated at G2 before P5's event content is written. P4's completion did not discharge it and the P4 adjudication says so explicitly"
   open_program_risks:
-    - "R-07 OPEN - NOT CONTAINED. P4 built and independently verified the MECHANICAL close condition (the effect-capable violation surface is EMPTY with the gate asserting empty), but the CONTAINED RECORD belongs in phase-0-baseline-manifest.yaml, which is not a status-metadata file. Until a separate content commit writes it, R-07 is not closed. Exact residual detail is CURRENT.md's - this file copies no count."
+    - "R-07 CONTAINED. P4 built and independently verified the MECHANICAL close condition (the effect-capable violation surface is EMPTY with the gate asserting empty), and the CONTAINED RECORD has since been written into phase-0-baseline-manifest.yaml by its own content commit - that file is not a status-metadata file, so it could ride in neither finalizer. CONTAINED means external-effect paths are structurally forced through the governed boundary or fail closed; it does NOT mean any production write is enabled, and no autonomy was granted. Exact residual detail is CURRENT.md's - this file copies no count."
     - "RR-01 is a BINDING P12 PRECONDITION, not discharged: base_url sits outside payload_hash's canonical set and outside approval_operation_mismatch, so a tampered stored proposal row can carry a foreign target URL past the integrity anchor; two docstrings overclaim that every consequential value is hash-bound. Compounded by F-09 (an empty base_url skips the loopback refusal) and F-08 (approved-field values unconstrained and interpolated into an LLM task). Must be discharged before any live writer is injected."
     - "AD-01 recorded and carried: EFFECT-PATH-INVENTORY.yaml and LEGACY-DISPOSITION.md describe the deployed callback server's governed_write_provider as None; it is actually WIRED (a bounded lookup, writer=None) with the kernel None. The fail-closed conclusion is unaffected. Prose fix only."
     - "AD-02 recorded and carried: scripts/finalizer_lock.py is a safety-critical module with ZERO committed test coverage - no eval/ references, no TEST-NODE-MANIFEST.json nodes, no mutant - and it is directly load-bearing for the next finalizer run. A committed hostile battery plus a manifest regeneration is owed."
@@ -71,10 +71,14 @@ snapshot:
     Nothing looks different from the outside - deliberately. The capability ships DARK: the deployed
     server leaves the execution kernel unset and answers a recorded refusal, the production gate
     registry is empty by founder decision until Phase 8, and no production write is enabled. Two
-    honest caveats, stated plainly. First, R-07 is STILL OPEN - NOT CONTAINED. The mechanism that
-    closes it is built and independently verified, but the repository has not yet WRITTEN the record
-    that says so, and that record is a separate commit that has not been made; a phase completing is
-    not the same act as a risk being recorded closed. Second, P5 is now the approved next unit but
+    honest caveats, stated plainly. First, R-07 is now CONTAINED - and completing P4 is NOT what
+    closed it. The mechanism was built and independently verified during P4, but the repository had
+    not yet WRITTEN the record that says so, and that record could only be a separate content commit
+    made after both finalization passes. It has now been made, and it is the act that closed R-07: a
+    phase completing is not the same act as a risk being recorded closed, which is exactly why this
+    took four separate sessions. CONTAINED also does not mean ENABLED - no production write is
+    turned on, the production gate registry stays empty until Phase 8, and no autonomy was granted.
+    Second, P5 is now the approved next unit but
     HAS NOT STARTED, so the current-phase number is 0% and that is correct - a selected phase with
     no code is 0%, and landed code is not completion either. Expect no usable interface until P10
     (Delivered Load Closure in shadow); production progress becomes measurable from P11.

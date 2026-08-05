@@ -219,22 +219,128 @@ expected_noncanonical_schema:
         brake and a tenant-isolation breach can no longer stop the platform.
 
 # ---------------------------------------------------------------------------------------------
-# EXPECTED_LEGACY_PATH - the ungated live-write paths. NOT contained. See R-07 / PL-18.
+# EXPECTED_LEGACY_PATH - the formerly ungated live-write paths. See R-07 / PL-18.
+#
+# ### R-07 IS RECORDED CONTAINED HERE, AND THIS IS THE RECORD THAT CLOSES IT. Every earlier act -
+# the cutover, the boundary, the gate flip to EMPTY, P4's 14/14 weighted acceptance, both
+# finalization passes - built and certified the MECHANISM. None of them was this recording, and the
+# repository said so at every step (adjudication sec G.5, first-finalization report sec 7.3,
+# targeted adjudication sec H, CLAUDE.md sec 11). This file is not a STATUS_METADATA_FILE, so the
+# record could only ever land in a content commit AFTER the second finalizer - which is what this
+# commit is. The full evidence chain is under `containment_evidence` below.
+#
+# ### CONTAINMENT MEANS EXACTLY ONE THING HERE: external-effect paths are STRUCTURALLY FORCED
+# through the governed boundary or they FAIL CLOSED. It does NOT mean production writes are
+# enabled, it does NOT mean a production gate was registered, and it does NOT mean any autonomy -
+# bounded or otherwise - was granted. The capability still ships DARK.
 # ---------------------------------------------------------------------------------------------
 expected_legacy_paths:
   reason: >-
-    These paths can execute real external effects with no checkpoint, no witness, and no grant.
-    Phase 0 makes them visible. It does not make them safe.
+    HISTORICAL PREMISE, retained verbatim in substance because a finding whose premise disappears
+    when the finding closes is a finding nobody can audit: at the Phase-0 baseline these paths could
+    execute real external effects with no checkpoint, no witness and no grant. Phase 0 made them
+    visible; it did not make them safe. That premise held from P0 through P3 and is the reason this
+    entry exists. It no longer describes the code: see `status` and `containment_mechanism` below.
   risk_id: R-07
-  status: OPEN - NOT CONTAINED
+  status: CONTAINED
+  contained_at: >-
+    P4 - recorded by the R-07 closure content commit whose parent is the second-finalizer metadata
+    commit 06ebfdb35a544df8e9cf36d739cc54a0b6877e1f. P4's weighted acceptance (14/14, 100/100) and
+    both finalization passes preceded this record and did NOT constitute it.
   removed_by_phase: P4
   accountable_unit: U4.6 (delete), U4.7 (de-actuate), U4.8 (convert)
   deletion_condition: >-
-    EP-6/7/9/10 are physically deleted, orient_tms loses its actuator import, EP-1/EP-3 are pipeline
-    clients, and the U4.9 import gate is ON.
+    MET. EP-6/7/9/10 are physically deleted (proved by on-disk absence, not by record), orient_tms
+    (EP-8) lost its actuator import and holds a read-only cdp_readonly surface, EP-3 and EP-14 are
+    likewise structurally read-only, EP-1's write half is cut and re-routed through the governed
+    effect boundary, and the U4.9 boundary-aware import gate is ON and asserts the effect-capable
+    violation surface is EMPTY - 0 live and 0 recorded edges, agreeing both-sided.
   containment_mechanism: >-
-    NONE. Until P4 the only mitigation is the operator's one-writer-at-a-time discipline, which is
-    discipline, not a mechanism. This entry may never be read as containment.
+    STRUCTURAL, and stated as a mechanism rather than as a test result. An external effect can be
+    produced only by an effect-capable adapter; an effect-capable adapter can be imported only by
+    the containment boundary, another adapter, or a recorded quarantine importer; and the CI import
+    gate (eval/tests/test_import_gate.py, over eval/phase0/import_probe.py) fails the build if any
+    other importer exists - live and recorded, both-sided, so an unrecorded cut and an unperformed
+    recorded cut each fail. The single application route into an effect-capable adapter is therefore
+    src/freight_recon/effect_boundary.py, and inside it the only external-write construction and
+    execution path is execute_invoice_write: a narrowly typed InvoiceWriteOperation that must pass
+    the seven-step atomic checkpoint, a fresh Checkpoint Witness, an Effect Grant and an atomic
+    claim before an adapter is called. Anything that cannot present that chain does not fall back -
+    it REFUSES. The deployed authenticated Slack callback reaches this boundary and the governed
+    kernel seam through governed_write_route.py, and with no kernel registered it answers a recorded
+    ROUTE_NOT_CONFIGURED refusal rather than proceeding. There is no reachable legacy
+    callback-to-actuator route: run_action_callback_server.py imports no effect-capable adapter,
+    constructs no live-write driver, and passes operation_router=None unconditionally.
+    ### WHAT THIS IS NOT. It is not "the tests passed". It is not production writes enabled - the
+    default bounded writer performs a PROVEN non-occurrence and a non-sandbox operation is refused
+    before any claim. It is not a registered production policy gate - the production GateRegistry
+    population is EMPTY and stays empty until U8.1 / P8 by founder decision. It is not autonomy of
+    any kind, bounded or otherwise. Live supervised writes remain P12 work behind RR-01.
+    ### THE SUPERSEDED SENTENCE, KEPT SO IT CANNOT BE QUIETLY REINSTATED. Until P4 this field read
+    "NONE. ... the operator's one-writer-at-a-time discipline, which is discipline, not a mechanism.
+    This entry may never be read as containment." That judgement was correct for its whole life and
+    the RULE behind it is permanent: discipline is never containment, and no allowance in this file
+    may be read as containment. What changed is that a mechanism now exists to be read.
+  containment_evidence:
+    # Every element below is an object, a receipt or an adjudicated document - not a claim.
+    implementation_candidate: 0891d1a19a9c47155a56a3f4b2116e5a4d4aa75e
+    accepted_independent_rereview: >-
+      docs/implementation/p4-independent-rereview-report-0891d1a.md - FRESH INDEPENDENT re-review of
+      0891d1a, verdict ACCEPT FOR SEPARATE FINAL ADJUDICATION, sha256
+      181e1a37a413fd35f537e00a7e1423bf192f88205270fa15932fbabeb955d316, preserved at
+      refs/preserve/p4-independent-rereview-0891d1a
+    final_adjudication: >-
+      docs/implementation/p4-final-adjudication-report-0891d1a.md - SEPARATE FINAL ADJUDICATION of
+      0891d1a, verdict ACCEPT P4 FOR FINALIZATION, sha256
+      078cfea8f7d691da0c7649ddaa2f1f64bc7138dc64b91814dda1d6cc68cb997e, preserved at
+      refs/preserve/p4-final-adjudication-0891d1a
+    first_finalizer_metadata_commit: 86306d5c4d866baf1a7fb6e4bd8220ce31017acd
+    p4_acceptance_closure_candidate: 42ea24cfc76fac19406e7eaa44b695b8d032b3aa
+    accepted_targeted_independent_review: >-
+      docs/implementation/p4-closure-candidate-targeted-review-report-42ea24c.md - the targeted
+      independent review of the closure candidate, verdict ACCEPT FOR SEPARATE TARGETED
+      ADJUDICATION, sha256
+      5547aa5e8d89ced661b4f6e415767f8259809bdf5d175615065158fa871a8ea5, preserved at
+      refs/preserve/p4-closure-targeted-review-42ea24c
+    accepted_targeted_adjudication: >-
+      docs/implementation/p4-closure-candidate-targeted-adjudication-report-42ea24c.md - the
+      separate targeted adjudication, verdict ACCEPT CLOSURE CANDIDATE FOR SECOND FINALIZATION,
+      sha256 23496e6cb895c3ceb591947b9828de1e248ca4ed0f46c82282c1a1c256499567, preserved at
+      refs/preserve/p4-closure-targeted-adjudication-42ea24c
+    second_finalizer_metadata_commit: 06ebfdb35a544df8e9cf36d739cc54a0b6877e1f
+    second_finalization_report: >-
+      docs/implementation/p4-second-finalization-pass-report-06ebfdb3.md, sha256
+      96ef5fe85016f2de5d5840814d95dd170947474a3259ac8bb902df9f485a1fa0, preserved at
+      refs/preserve/p4-second-finalization-report-06ebfdb3 (parent 06ebfdb3).
+      ### ATTRIBUTION, STATED BECAUSE IT IS LOAD-BEARING: this report is a RECONSTRUCTION authored
+      AFTER the run by an independent attestation session that did not execute the finalizer. It may
+      be cited for facts independently established by Git objects, canonical receipts, lock/run
+      artifacts and preserved scratchpad evidence, and it is cited here only for those. It is NOT
+      contemporaneous finalizer-authored testimony. The original process PID and the Product Driver
+      run/session IDs were NOT durably recoverable and the report marks them [UNAVAILABLE]; nothing
+      here rests on them, and they may not be invented.
+    canonical_suite: 1961 passed / 0 failed / 1 skipped / 1962 collected
+    clean_clone: PASS
+    mutation_battery: 61/61 caught, 0 MISS, 0 SETUP-FAIL, 0 RESTORE-RED, byte-exact tree restoration
+    violation_edges: 0 live / 0 recorded, agreeing both-sided
+    detection_edges: 13
+    callback_socket_tests: 34 passed
+    finalizer_lock: >-
+      exactly one finalizer owner per pass, held exclusively for the whole run and released on exit;
+      re-probed UNHELD (flock LOCK_EX|LOCK_NB) with finalizer_lock.current_owner() == None before
+      this record was written
+    authenticated_callback_reaches_the_governed_seam: >-
+      action_callback._maybe_handle_governed_write_approval -> governed_write_route.py -> the
+      bounded provider and the governed-kernel seam, proved end to end through the production entry
+      point by eval/tests/test_p4_governed_write_route.py and
+      eval/tests/test_p4_deployed_governed_route.py
+    production_default: ROUTE_NOT_CONFIGURED refusal, zero grants minted
+    production_gate_registry: >-
+      EMPTY - 0 GateRegistry constructions and 0 register_gate calls across all of src/ and scripts/
+      by AST sweep. It MUST stay empty until U8.1 / P8.
+    phase_8_gate_registration: DEFERRED BY FOUNDER DECISION to U8.1 / P8 - unchanged by this record
+    reachable_legacy_callback_to_actuator_path: NONE
+    p5_implementation: NOT BEGUN - this record changes no runtime byte and starts no phase
   # P4 UPDATE: EP-6/7/9/10 (enter_truckingoffice_invoice, enter_invoice_discovered,
   # run_operate_request, run_operator_agent) were PHYSICALLY DELETED this session, executing their
   # frozen REMOVE_BEFORE_ENABLE disposition, so they are gone from this by-import list. The
@@ -243,8 +349,14 @@ expected_legacy_paths:
   # is preserved in EFFECT-PATH-INVENTORY.yaml. EP-8 (orient_tms) and EP-3 (propose_ar_from_tms)
   # left this list the same way at P4: each now holds a read-only cdp_readonly surface and imports
   # no adapter at all, so the probe no longer finds them effect-capable; their adjudication records
-  # are likewise preserved in EFFECT-PATH-INVENTORY.yaml. FOUR effect-capable-by-import scripts
-  # remain; R-07 stays OPEN because EP-1 (ADAPT) and EP-14 (READ_ONLY) are not yet cut.
+  # are likewise preserved in EFFECT-PATH-INVENTORY.yaml.
+  # ### CURRENT MEMBERSHIP, corrected with the R-07 closure record: TWO effect-capable-by-import
+  # scripts remain, and BOTH are recorded quarantine importers (enter_tms_payable EP-12,
+  # run_dogfood_pilot EP-13), test-only and mock-guarded. EP-14 and EP-1 were RELOCATED out of this
+  # list when they were cut (see `contained_formerly_effect_capable_by_import` below), so neither
+  # keeps R-07 open any longer. The superseded sentence read "FOUR effect-capable-by-import scripts
+  # remain; R-07 stays OPEN because EP-1 (ADAPT) and EP-14 (READ_ONLY) are not yet cut" - it was
+  # written before those two cuts landed and is HISTORICAL.
   effect_capable_by_import:
     - script: scripts/enter_tms_payable.py
       ep: EP-12
@@ -543,9 +655,13 @@ adapter_import_allowlist:
   # application/script importer is added, no second importer exists, the boundary edge is not a
   # violation, and a generic wrapper or direct route still FAILS - is proved mechanically by
   # eval/tests/test_import_gate.py::test_the_p4_boundary_write_edge_is_the_one_authorized_addition,
-  # NOT on the strength of this comment. The legacy EP-1 violation edge is NOT yet cut (that removal
-  # + the gate flip to EMPTY + recording R-07 CONTAINED is the adjudication-gated completion step),
-  # so R-07 stays OPEN and this detection edge coexists with the still-open violation.
+  # NOT on the strength of this comment.
+  # ### HISTORICAL, SUPERSEDED. The two sentences that followed here read: "The legacy EP-1
+  # violation edge is NOT yet cut (that removal + the gate flip to EMPTY + recording R-07 CONTAINED
+  # is the adjudication-gated completion step), so R-07 stays OPEN and this detection edge coexists
+  # with the still-open violation." All three steps have since occurred: the EP-1 violation edge was
+  # cut, the gate asserts EMPTY, and R-07 is recorded CONTAINED at `expected_legacy_paths` above.
+  # This boundary edge no longer coexists with any violation - it is the whole authorized surface.
   edges:
     # THE ONE AUTHORIZED P4 BOUNDARY EDGE (see the note above).
     - src/freight_recon/effect_boundary.py -> browser_use_write
@@ -585,8 +701,12 @@ adapter_import_allowlist:
 # mutation-proven). The residual edges below are what THIS staged session did NOT yet cut - the
 # two ADAPT pipeline-client conversions (EP-1, EP-3), the two READ_ONLY import cuts that require
 # building untestable read-only surfaces (EP-8, EP-14), and the brain_runtime effect-routing
-# rewire - and they keep R-07 OPEN until a subsequent session removes them and flips the gate to
+# rewire - and they kept R-07 OPEN until a subsequent session removed them and flipped the gate to
 # assert EMPTY. This session DELETED EP-6/7/9/10, taking the surface from 12 edges to 5.
+# ### HISTORICAL AS WRITTEN, AND NOW DISCHARGED. Every residual named in the paragraph above was
+# subsequently cut; `violation_edges` below is EMPTY and the gate asserts empty. R-07 is recorded
+# CONTAINED at `expected_legacy_paths` above. The paragraph is retained because it is the record of
+# what was still open at the staged checkpoint, not a live statement about the code.
 # ---------------------------------------------------------------------------------------------
 effect_adapter_import_gate:
   counting_rule: >-
@@ -619,9 +739,17 @@ effect_adapter_import_gate:
     operation-approval handlers fail closed; propose_ar_from_tms.py --autonomous (which reached the
     same _build_live_operation_router factory) is refused; and the ONLY external-write construction and
     execution path is the DARK governed effect boundary (effect_boundary.execute_invoice_write, a
-    typed InvoiceWriteOperation behind checkpoint/witness/grant/claim, no production caller). Recording
-    R-07 CONTAINED / P4 COMPLETE is the ADJUDICATION step and requires a session that did not implement
-    this cut (CLAUDE.md §11) — PENDING. HISTORY: This list is the EXACT current effect-capable-bypass surface and
+    typed InvoiceWriteOperation behind checkpoint/witness/grant/claim, no production caller).
+    ### THE ADJUDICATION STEP IS NOW DISCHARGED, IN FULL AND IN ORDER. This field previously ended
+    "Recording R-07 CONTAINED / P4 COMPLETE is the ADJUDICATION step and requires a session that did
+    not implement this cut (CLAUDE.md §11) — PENDING." Both halves have since happened, each by a
+    session that implemented nothing: a fresh independent re-review and a separate final
+    adjudication of 0891d1a recorded P4 COMPLETE at 14/14; a targeted independent review and a
+    separate targeted adjudication of closure candidate 42ea24c accepted it; two finalizer passes
+    executed (86306d5, 06ebfdb3); and R-07 is recorded CONTAINED at `expected_legacy_paths` above by
+    a later content commit that likewise implemented, reviewed and adjudicated nothing. The gate's
+    own condition never changed - EMPTY is still what closes it, and EMPTY is what it reports.
+    HISTORY: This list is the EXACT current effect-capable-bypass surface and
     shrinks monotonically in lockstep with every cutover edit (test_import_gate.py asserts
     live == recorded, both-sided, so a cut that is not recorded here fails, and a recorded edge that
     is not really cut fails). A prior session DELETED the four REMOVE_BEFORE_ENABLE paths
@@ -733,8 +861,11 @@ effect_adapter_import_gate:
         BrowserUseWriteLedger or NativeBrowserUseRunner through the read module. The residual
         belongs to the browser-agent execution class and is contained by the effect boundary at the
         point a write is ATTEMPTED, not by this module claiming more than it has.
-    The remaining ONE keeps R-07 OPEN until it is cut and the gate is flipped to assert EMPTY:
-      * EP-1 (run_action_callback_server -> cdp_actuator): its cdp_actuator import feeds the
+    ### HISTORICAL - THE REMAINING ONE WAS SUBSEQUENTLY CUT. As written, this paragraph said the
+    remaining edge kept R-07 OPEN until it was cut and the gate flipped to assert EMPTY. That is
+    exactly what then happened; `violation_edges` below is EMPTY and R-07 is recorded CONTAINED at
+    `expected_legacy_paths` above. Retained as the record of the state at the checkpoint:
+      * EP-1 (run_action_callback_server -> cdp_actuator): its cdp_actuator import fed the
         OperationRouter -> OperatorAgent autonomous browser WRITE path (the live R-07 write) plus
         several read closures. Containing the write path is the P12-scale supervised-write
         integration.
@@ -753,9 +884,15 @@ effect_adapter_import_gate:
     # caller; a non-sandbox operation is refused before any claim).
     #
     # With this list EMPTY and the gate asserting empty (test_import_gate.py), an external effect
-    # without a claimed grant is structurally impossible: that IS the containment. NOTE: this is the
-    # MECHANICAL close condition. Recording R-07 CONTAINED / P4 COMPLETE is the ADJUDICATION step and
-    # requires a session that did not implement this cut (CLAUDE.md §11); it is PENDING.
+    # without a claimed grant is structurally impossible: that IS the containment.
+    #
+    # ### THE ADJUDICATION STEP IS DISCHARGED. The note here previously read: "this is the MECHANICAL
+    # close condition. Recording R-07 CONTAINED / P4 COMPLETE is the ADJUDICATION step and requires a
+    # session that did not implement this cut (CLAUDE.md §11); it is PENDING." It is no longer
+    # pending. P4 is recorded COMPLETE at 14/14 by a separate final adjudication, the closure
+    # candidate was independently reviewed and separately adjudicated, two finalizers ran, and R-07
+    # is recorded CONTAINED at `expected_legacy_paths` above. This list going non-empty would
+    # falsify that record, and test_import_gate.py fails the build if it ever does.
 
 # ---------------------------------------------------------------------------------------------
 # Recomputed corpus counts. The guards assert these against the FILES, not against a headline.

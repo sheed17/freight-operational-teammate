@@ -34,21 +34,28 @@ CURRENT = "docs/implementation/CURRENT.md"
 
 # (id, file, old, new, the test that must catch it, what real defect this is)
 CASES = [
+    # M1/M3 RE-POINTED at the R-07 closure content commit. A mutation case is bound to the exact
+    # text it reintroduces the defect INTO; when the document legitimately changes, the case must be
+    # re-pointed or it SETUP-FAILs and proves nothing. P4 went COMPLETE and R-07 went CONTAINED, so
+    # both originals below moved. The DEFECT each case reintroduces is unchanged - only its anchor.
     ("M1", PHASE_OUTPUTS,
-     "## P4 — Adapter containment 🔄 IN PROGRESS — NOT COMPLETE",
+     "## P4 — Adapter containment ✅ COMPLETE — ADJUDICATED",
      "## P4 — Adapter containment ⛔ NOT STARTED",
      "test_an_executing_phase_is_never_described_as_not_begun",
-     "the original contradiction: an executing phase with landed checkpoints described as not started"),
+     "the original contradiction: a phase with landed checkpoints described as not started"),
     ("M2", PHASE_OUTPUTS,
      "## P3 — Checkpoint, Witness and claim CAS ✅ COMPLETE",
      "## P3 — Checkpoint, Witness and claim CAS ⛔ NOT STARTED",
      "test_no_navigation_document_restates_a_phase_state_the_registry_does_not_hold",
      "a navigation heading asserting a phase state the registry does not hold"),
     ("M3", CURRENT,
-     "| **R-07** | Ungated live-write paths | ### **OPEN — NOT CONTAINED** | **P4** |",
-     "| **R-07** | Ungated live-write paths | ### **R-07 is CONTAINED** | **P4** |",
+     "| **R-07** | Ungated live-write paths | ### **CONTAINED** — recorded in",
+     "| **R-07** | Ungated live-write paths | ### **R-07 is OPEN — NOT CONTAINED** — recorded in",
      "test_r07_is_never_represented_as_contained_anywhere_live",
-     "R-07 declared contained in live authority text"),
+     "the R-07 status contradicted in live authority text: the manifest records CONTAINED while the "
+     "status authority says OPEN. Before the containment record was written this case ran the other "
+     "way (an EARLY containment claim); the guard protects AGREEMENT with the manifest, not a "
+     "particular value, so the case follows it"),
     ("M4", REGISTRY,
      "    status: READY\n    execution_state: IN_PROGRESS",
      "    status: READY\n    execution_state: NOT_STARTED",

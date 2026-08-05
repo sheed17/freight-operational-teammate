@@ -69,10 +69,10 @@ artificial ceilings and no assumed rip-and-replace.
 | **Phase 1** | ✅ COMPLETE — correct effect identity (amount out of the Commit Key) |
 | **Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Phase 3** | ✅ **COMPLETE — ADJUDICATED.** The checkpoint kernel: seven-step atomic checkpoint, unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark — nothing routes through it.** The first INDEPENDENT review returned 9 findings (60/100, `NOT READY`) and P3 **did not pass it**; all nine were **remediated**; a **FRESH INDEPENDENT** review of the remediated, finalized tree then **PASSED** (zero new defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION** set all 14 weighted criteria `PASS` and recorded P3 COMPLETE ([adjudication](docs/implementation/p3-final-adjudication-review.md)). Completing P3 did **not** close R-07 — the kernel is dark until P4 routes effects through it. |
-| **Phase 4** | ✅ **COMPLETE — ADJUDICATED.** Adapter containment: the governed write route, the two-key rule at the effect boundary, and the CI import gate asserting the effect-capable violation surface is EMPTY. **Ships dark — the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal.** Its first INDEPENDENT review **REJECTED** candidate `95cf5af7` (blocking findings F-01, F-02); a separate session remediated it into `0891d1a`; a **FRESH INDEPENDENT re-review** returned ACCEPT FOR SEPARATE FINAL ADJUDICATION; a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria `PASS` ([adjudication](docs/implementation/p4-final-adjudication-report-0891d1a.md)); and `canonical_finalizer` became `PASS` on the one finalizer run that executed. **Completing it did not close R-07** — see the row below. |
-| **R-07** | ### **OPEN — NOT CONTAINED.** The containment MECHANISM is built and independently verified; the CONTAINED **record** in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) has **not** been written and cannot ride in a status-metadata commit. Only a separate content commit writing that record closes it. |
-| Live-write paths | P0 baseline was **6 production-reachable** paths (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10). All six are now cut: EP-6/7/9/10 physically DELETED, EP-3/EP-8/EP-14 cut to structurally read-only surfaces, and EP-1's write half routed through the governed write route and the checkpoint kernel. R-07's record still stays OPEN. |
-| Adapter imports | P0 baseline was **31 direct adapter-import edges** across 18 importer modules. The boundary-aware gate's effect-capable violation surface is now **EMPTY** — 0 live and 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 authorized detection edges. EMPTY was the R-07 **mechanical** close condition; the record is a separate act. |
+| **Phase 4** | ✅ **COMPLETE — ADJUDICATED.** Adapter containment: the governed write route, the two-key rule at the effect boundary, and the CI import gate asserting the effect-capable violation surface is EMPTY. **Ships dark — the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal.** Its first INDEPENDENT review **REJECTED** candidate `95cf5af7` (blocking findings F-01, F-02); a separate session remediated it into `0891d1a`; a **FRESH INDEPENDENT re-review** returned ACCEPT FOR SEPARATE FINAL ADJUDICATION; a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria `PASS` ([adjudication](docs/implementation/p4-final-adjudication-report-0891d1a.md)); and `canonical_finalizer` became `PASS` on the one finalizer run that executed. ### **Completing it did NOT close R-07** — a separate, later content commit did; see the row below. |
+| **R-07** | ### **CONTAINED.** The containment MECHANISM is built and independently verified, and the CONTAINED **record** is now written in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) (`expected_legacy_paths.status: CONTAINED`) with the mechanism named. It could not ride in a status-metadata commit, so it took a **separate content commit after both P4 finalization passes** — and that commit, not P4's completion, is what closed it. ### **CONTAINED ≠ ENABLED:** external-effect paths are structurally forced through the governed boundary or fail closed; no production write is enabled, the production `GateRegistry` population stays EMPTY until U8.1/P8, and no autonomy was granted. |
+| Live-write paths | P0 baseline was **6 production-reachable** paths (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10). All six are now cut: EP-6/7/9/10 physically DELETED, EP-3/EP-8/EP-14 cut to structurally read-only surfaces, and EP-1's write half routed through the governed write route and the checkpoint kernel. The R-07 record now says CONTAINED. |
+| Adapter imports | P0 baseline was **31 direct adapter-import edges** across 18 importer modules. The boundary-aware gate's effect-capable violation surface is now **EMPTY** — 0 live and 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 authorized detection edges. EMPTY was the R-07 **mechanical** close condition; the record was the separate act that followed it. |
 | Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
@@ -253,11 +253,16 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
   how P3 and P4 were completed — reviewer and adjudicator were sessions separate from the
   implementer, and P4's first independent review returned REJECT.
-- ⛔ Do not declare R-07 contained — the containment MECHANISM is built and independently verified,
-  but the CONTAINED record belongs in `docs/implementation/phase-0-baseline-manifest.yaml`, which is
-  not a status-metadata file. **Only a separate content commit writing that record closes R-07**,
-  and it may be made only after the P4 closure content commit is independently reviewed,
-  adjudicated and finalized. Until then R-07 is **OPEN — NOT CONTAINED**.
+- ⛔ **R-07 is now CONTAINED — do not read that as enablement.** The record was written where it
+  belongs, `docs/implementation/phase-0-baseline-manifest.yaml`, by a **separate content commit made
+  after both P4 finalization passes**; that commit, not P4's completion and not any finalizer, is
+  what closed R-07. **Containment means external-effect paths are structurally forced through the
+  governed boundary or fail closed.** It does **not** enable a production write, does **not**
+  register a production policy gate, and grants **no autonomy of any kind**. Do not weaken the
+  record: it stands only while every mechanical condition behind it holds (0 live / 0 recorded
+  violation edges agreeing both-sided, an EMPTY production `GateRegistry`, no direct
+  callback-to-actuator route, and the full evidence chain intact), and a guard fails the build the
+  moment one stops.
 - ⛔ Do not enable any external effect on live traffic. The capability ships dark and the deployed
   governed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal; enabling it is a separate,
   later, founder-authorized decision, not a consequence of P4's acceptance.
@@ -282,8 +287,9 @@ and `canonical_finalizer` became `PASS` on the one finalizer run that executed
 P3 (the checkpoint kernel) was completed the same way, one phase earlier
 ([`p3-final-adjudication-review.md`](docs/implementation/p3-final-adjudication-review.md)).
 **P4 built the mechanism that makes an ungated external effect structurally impossible — and R-07
-still stays OPEN — NOT CONTAINED**, because the CONTAINED record is a separate content commit that
-has not been made.
+did NOT close there.** The CONTAINED record is a **separate content commit**, made after both P4
+finalization passes, and it is what actually closed R-07. **R-07 is CONTAINED; containment is not
+enablement, and the capability still ships dark.**
 
 ## 12. Other instruction files
 

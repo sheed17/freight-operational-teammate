@@ -246,11 +246,13 @@ def test_authority_map_and_index_do_not_contradict_the_acceptance_oracle():
 
 # ------------------------------------------------------------------ (6) completed units are not still "next"
 
-def test_no_completed_unit_is_described_as_ready_or_pending_in_live_guidance():
-    """(6) A COMPLETE unit may not still be described as READY / awaiting review / next work in any
-    LIVE current-authority or auto-loaded surface. Historical review documents are excluded by the
-    family rule - they are evidence, and rewriting them would destroy the audit trail."""
-    done = require_population(sorted(completed_units()), "completed units")
+def live_guidance_documents() -> list[str]:
+    """The LIVE current-authority + auto-loaded population, DISCOVERED.
+
+    Extracted so the completed-unit guard (6) and the selected-READY guard (7) provably range over
+    the SAME corpus. When they were separate inline expressions, a document could be in one scan and
+    not the other and nobody would see it.
+    """
     reviews = set(inv.implementation_review_documents())
     docs = [d for d in inv.current_authority_documents() if d.endswith(".md")]
     # FIXED-SPECIFICATION: the five root control documents are a fixed architectural set (the same
@@ -260,24 +262,174 @@ def test_no_completed_unit_is_described_as_ready_or_pending_in_live_guidance():
     docs += [f for f in inv.tracked_files()
              if f in {"PRODUCT.md", "ARCHITECTURE.md", "CLAUDE.md", "README.md", "AGENTS.md"}]
     docs += inv.agent_files() + inv.compatibility_agent_files()
-    docs = require_population(sorted(set(docs) - reviews), "live current-authority documents")
+    return require_population(sorted(set(docs) - reviews), "live current-authority documents")
 
-    # STALE PATTERNS: a completed unit presented as the live program or as unfinished.
+
+def _live_text(rel: str) -> str:
+    """Historical blocks removed, then whitespace NORMALISED.
+
+    ADJ-01, half two. The stale AGENTS.md sentence read `P4 (adapter\\ncontainment) is the sole
+    READY unit` - the unit token and the claim sat on different lines, so every `[^\\n]{0,N}` window
+    in this file walked straight past it. A guard that a line wrap defeats is not a guard, and the
+    corpus is hard-wrapped prose. Newlines are therefore collapsed to single spaces BEFORE matching;
+    line numbers are reported against the original text separately.
+    """
+    return re.sub(r"\s+", " ", strip_historical((ROOT / rel).read_text(encoding="utf-8")))
+
+
+# ADJ-01. The completed-unit guard's docstring claimed "a COMPLETE unit may not still be described
+# as READY", its population DID reach ARCHITECTURE.md and AGENTS.md, and both files described the
+# COMPLETE P4 as READY - yet it passed. It matched only `the (single|one and only) READY unit`,
+# while the corpus said `READY *(selected)*`, `the sole READY unit` and `IN PROGRESS, NOT COMPLETE`.
+# The population was never the problem; the alternation was. Broadened here, and never narrowed:
+# every phrasing the original matched still matches.
+_READY_SELECTOR = r"(?:sole|single|selected|one and only|only|next)"
+_STALE_READY_PATTERNS = (
+    (r"the\s+{sel}\s+`?READY`?\s+unit", "called the READY unit"),
+    (r"`?READY`?\s+\*?\(?{sel}\)?\*?", "marked READY (selected)"),
+    (r"is\s+the\s+{sel}\s+`?READY`?\b", "called the READY unit"),
+    (r"`?READY`?\s+unit[^.]{{0,30}}\b{sel}\b", "called the READY unit"),
+)
+
+
+def test_no_completed_unit_is_described_as_ready_or_pending_in_live_guidance():
+    """(6) A COMPLETE unit may not still be described as READY / awaiting review / next work in any
+    LIVE current-authority or auto-loaded surface. Historical review documents are excluded by the
+    family rule - they are evidence, and rewriting them would destroy the audit trail.
+
+    STRENGTHENED for ADJ-01 (the targeted adjudication of `42ea24c`). Nothing was removed: all four
+    original patterns are still here, verbatim. What changed is that the READY-selection alternation
+    now reaches the constructions the corpus actually uses, and matching happens over
+    whitespace-normalised text so a hard line wrap can no longer hide a claim.
+    """
+    done = require_population(sorted(completed_units()), "completed units")
+    docs = live_guidance_documents()
+
     offenders = []
     for rel in docs:
-        text = strip_historical((ROOT / rel).read_text(encoding="utf-8"))
+        raw = strip_historical((ROOT / rel).read_text(encoding="utf-8"))
+        flat = _live_text(rel)
         for unit in done:
             u = re.escape(unit)
-            for pat, label in [
-                (rf"[Nn]ext approved (?:unit|work|program)[^\n]{{0,140}}\b{u}\b", "named as next approved work"),
-                (rf"\b{u}\b[^\n]{{0,80}}\bthe (?:single|one and only) READY unit", "called the READY unit"),
-                (rf"\b{u}\b[^\n]{{0,60}}awaiting (?:the )?independent", "described as awaiting review"),
-                (rf"BLOCKED[^\n]{{0,40}}behind[^\n]{{0,30}}\b{u}\b", "still blocking later phases"),
-            ]:
-                for m in re.finditer(pat, text):
-                    ln = text[: m.start()].count("\n") + 1
+            pats = [
+                # --- the four ORIGINAL patterns, unchanged in meaning ---
+                (rf"[Nn]ext approved (?:unit|work|program)[^.]{{0,140}}\b{u}\b", "named as next approved work"),
+                (rf"\b{u}\b[^.]{{0,80}}\bthe (?:single|one and only) READY unit", "called the READY unit"),
+                (rf"\b{u}\b[^.]{{0,60}}awaiting (?:the )?independent", "described as awaiting review"),
+                (rf"BLOCKED[^.]{{0,40}}behind[^.]{{0,30}}\b{u}\b", "still blocking later phases"),
+                # --- ADJ-01 additions: the phrasings that escaped ---
+                (rf"\b{u}\b[^.]{{0,80}}IN PROGRESS,? NOT COMPLETE", "described as in progress / not complete"),
+                (rf"\b{u}\b[^.]{{0,80}}\bis\s+(?:still\s+)?(?:executing|in progress)\b", "described as executing"),
+            ]
+            pats += [
+                (rf"\b{u}\b[^.]{{0,80}}" + tpl.format(sel=_READY_SELECTOR), label)
+                for tpl, label in _STALE_READY_PATTERNS
+            ]
+            for pat, label in pats:
+                for m in re.finditer(pat, flat, re.I):
+                    # locate a line number in the ORIGINAL text for a usable report
+                    probe = m.group(0)[:40]
+                    idx = raw.find(probe.split("  ")[0][:30])
+                    ln = raw[: idx].count("\n") + 1 if idx >= 0 else 0
                     offenders.append(f"{rel}:{ln}: COMPLETED {unit} {label}: {m.group(0)[:110]}")
     assert not offenders, (
         "COMPLETED units still described as live/unfinished work in current guidance "
         "(the switch-consistency defect):\n  " + "\n  ".join(offenders)
+    )
+
+
+# ------------------------------------------------------------------ (7) the READY unit is REACHED
+
+# A unit token: a phase id (P0..P14) or a named control unit (U-HANDOFF-1, U-REBASELINE-1, U4.9...).
+_UNIT_TOKEN = re.compile(r"\b(P\d{1,2}|U-[A-Z0-9-]+\d|U\d+(?:\.\d+)?)\b")
+# The SELECTED-READY construction itself, independent of which unit it names.
+_READY_CONSTRUCTION = re.compile(
+    r"(?:the\s+(?:sole|single|one and only|selected|only)\s+`?READY`?(?:\s+unit)?"
+    r"|`?READY`?\s+\*?\(\s*selected\s*\)\*?"
+    r"|is\s+the\s+(?:sole|single|one and only|selected|only)\s+`?READY`?\b"
+    r"|`?READY`?\s+unit[^.]{0,20}\b(?:sole|single|one and only|selected|only)\b)",
+    re.I,
+)
+
+
+def test_the_selected_ready_unit_construction_is_present_singular_and_matches_the_registry():
+    """(7) ADJ-01, the half the old guard never had: a POSITIVE check that the selected-READY claim
+    exists at all, is singular, and names the unit the registry actually holds READY.
+
+    The completed-unit guard (6) is purely NEGATIVE - it can only fire on a unit that is COMPLETE.
+    That is why the `42ea24c` defect survived it in a second way: had `ARCHITECTURE.md` simply
+    *deleted* its P4 row instead of leaving it stale, guard (6) would have gone quiet and the
+    repository would have carried no live statement of which unit is READY at all. Silence would
+    have read as compliance.
+
+    So this guard requires the construction to be REACHED and CORRECT:
+
+      * the registry must hold EXACTLY ONE READY unit (the invariant, restated and preserved);
+      * the DISCOVERED live corpus must be non-empty and must actually CONTAIN the selected-READY
+        construction - absence FAILS rather than passes;
+      * every unit the construction attributes must be that same unit - a disagreement FAILS;
+      * two different attributed units FAIL, even if the registry itself still says one;
+      * the derived surface (`BUILD-STATUS.derived.single_ready_unit`) must agree too.
+
+    It is deliberately NOT hard-coded to P5. Everything is derived from the registry, so the guard
+    keeps working - and keeps failing correctly - at the next transition. Matching is
+    whole-construction and unit-token-anchored, never a bare substring.
+    """
+    ready = ready_units()
+    assert len(ready) == 1, f"exactly one unit may be READY; the registry holds {ready}"
+    the_ready = ready[0]
+    assert the_ready in {u["unit_id"] for u in units()}, "the READY id is not a registry unit"
+
+    docs = live_guidance_documents()
+    attributed: dict[str, list[str]] = {}
+    carriers: list[str] = []
+    for rel in docs:
+        flat = _live_text(rel)
+        found_here = False
+        # A PROGRAM RANGE names a span, not a selection. `Phases P0-P14` sitting before "the single
+        # READY unit" in an agent's description would otherwise attribute the claim to P14 - a false
+        # positive found by this guard's own first run. Ranges are blanked (length-preserving) so
+        # offsets stay valid; a construction with no unit token left near it is simply not a claim
+        # about any unit, and is skipped rather than guessed at.
+        flat = re.sub(r"\bP\d{1,2}\s*[-–—]\s*P\d{1,2}\b", lambda m: " " * len(m.group(0)), flat)
+        for m in _READY_CONSTRUCTION.finditer(flat):
+            # the unit this construction is ABOUT: the nearest unit token in the 140 chars before
+            # it, else the nearest in the 120 chars after. Anchored on a token, never a substring.
+            before = _UNIT_TOKEN.findall(flat[max(0, m.start() - 140): m.start()])
+            after = _UNIT_TOKEN.findall(flat[m.end(): m.end() + 120])
+            unit = (before[-1] if before else (after[0] if after else None))
+            if unit is None:
+                continue
+            found_here = True
+            attributed.setdefault(unit, []).append(f"{rel}: {m.group(0)[:60]!r}")
+        if found_here:
+            carriers.append(rel)
+
+    # POSITIVE ANCHOR: the construction must be present. An empty scan is a FAILURE, not a pass.
+    assert carriers, (
+        "no live current-authority document carries a selected-READY construction at all - the "
+        "repository states nowhere which unit is READY. Silence is not compliance; this guard "
+        f"scanned {len(docs)} documents and found none."
+    )
+    assert len(carriers) >= 3, (
+        f"only {len(carriers)} live document(s) state which unit is READY ({carriers}) - the "
+        "selected-READY claim has thinned to the point where losing one file would erase it"
+    )
+
+    # EXACT AGREEMENT: one attributed unit, and it is the registry's.
+    wrong = {u: where for u, where in attributed.items() if u != the_ready}
+    assert not wrong, (
+        f"live guidance attributes the selected READY unit to {sorted(wrong)} while the registry "
+        f"holds {the_ready!r} READY:\n  " + "\n  ".join(w for ws in wrong.values() for w in ws)
+    )
+    assert set(attributed) == {the_ready}, (
+        f"the selected-READY construction resolves to {sorted(attributed)}, not exactly "
+        f"{{{the_ready!r}}}"
+    )
+
+    # and the DERIVED surface must not disagree with the prose or the registry
+    derived = build_status()["derived"]["single_ready_unit"]
+    assert derived == the_ready, (
+        f"BUILD-STATUS.derived.single_ready_unit is {derived!r} but the registry holds "
+        f"{the_ready!r} READY"
     )

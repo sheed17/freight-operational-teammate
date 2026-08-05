@@ -225,34 +225,76 @@ def test_a_claimed_independent_checkpoint_review_must_cite_a_report_that_exists(
 
 def test_an_executing_phase_is_never_described_as_not_begun():
     """The exact contradiction that triggered this correction: P4 carried landed checkpoint
-    evidence in one paragraph and 'IT HAS NOT BEGUN' in another. Scoped to the phase that is
-    actually executing, so it can never pin a stale moment."""
-    executing = [u for u in units() if u["execution_state"] == "IN_PROGRESS"]
-    if not executing:
-        return
-    unit = executing[0]
-    n = re.fullmatch(r"P(\d+)", unit["unit_id"]).group(1)
-    assert unit.get("landed_checkpoints"), f"{unit['unit_id']} executes with no landed evidence"
+    evidence in one paragraph and 'IT HAS NOT BEGUN' in another.
+
+    ### DE-VACUUMED at the R-07 CLOSURE CONTENT COMMIT. The original scoped itself to
+    `execution_state == IN_PROGRESS` and, finding none, did `return` - a silent PASS over an EMPTY
+    population, which is the M-9 false-green pattern CLAUDE.md sec 9 forbids by name. It went
+    vacuous the moment P4 moved IN_PROGRESS -> COMPLETE, and the roadmap mutation battery proved it:
+    case M1 turned the P4 heading into `⛔ NOT STARTED` and the guard stayed GREEN (a MISS).
+
+    The defect class was never "executing"; it is ### **a unit with LANDED EVIDENCE described as not
+    begun**. A COMPLETE unit has landed evidence too. So the population is now every unit that
+    records landed checkpoints, which cannot be empty while any phase is done - and the guard is
+    strictly stronger than the version it replaces, never weaker: everything it caught before, it
+    still catches.
+    """
+    landed = [u for u in units()
+              if re.fullmatch(r"P\d+", u["unit_id"]) and u.get("landed_checkpoints")]
+    assert landed, (
+        "no unit records landed checkpoints - this guard would pass over an empty population, "
+        "which is exactly the false green it was rewritten to stop"
+    )
+    for u in landed:
+        assert u["execution_state"] in {"IN_PROGRESS", "COMPLETE"}, (
+            f"{u['unit_id']} records landed checkpoints but execution_state is "
+            f"{u['execution_state']} - landed evidence and 'not started' cannot both be true"
+        )
     docs = _live_authority_documents()
-    rx = re.compile(rf"(?:P{n}\b|Phase\s+{n}\b)[^.\n|]{{0,60}}?"
-                    r"(?:\bhas\s+not\s+begun\b|\bnot\s+yet\s+begun\b|\bNOT\s+begun\b|"
-                    r"\*{0,3}NOT\s+STARTED)", re.I)
     offenders = []
-    for rel in docs:
-        text = _strip_historical(read(ROOT / rel))
-        for m in rx.finditer(text):
-            window = " ".join(m.group(0).split())
-            if _EXEMPT.search(window):
-                continue
-            offenders.append(f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {window[:90]!r}")
+    for unit in landed:
+        n = re.fullmatch(r"P(\d+)", unit["unit_id"]).group(1)
+        rx = re.compile(rf"(?:P{n}\b|Phase\s+{n}\b)[^.\n|]{{0,60}}?"
+                        r"(?:\bhas\s+not\s+begun\b|\bnot\s+yet\s+begun\b|\bNOT\s+begun\b|"
+                        r"\*{0,3}NOT\s+STARTED)", re.I)
+        for rel in docs:
+            text = _strip_historical(read(ROOT / rel))
+            for m in rx.finditer(text):
+                window = " ".join(m.group(0).split())
+                if _EXEMPT.search(window) or _is_superseded_in_place(text, m.start()):
+                    continue
+                offenders.append(
+                    f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {unit['unit_id']} -> "
+                    f"{window[:90]!r}"
+                )
     assert not offenders, (
-        f"{unit['unit_id']} has landed checkpoint evidence but is described as not begun:\n  "
+        "unit(s) with landed checkpoint evidence described as not begun:\n  "
         + "\n  ".join(offenders)
     )
 
 
 _EXEMPT = re.compile(r"\brequire[sd]?\b|\bmay not\b|\buntil\b|\bonce\b|\bbefore\b|\bwhen\b|"
                      r"\bunless\b|\bwould\b|\bcannot\b|\bnever\b|\bif\b", re.I)
+
+# The two MECHANICAL ways a superseded status claim may survive IN PLACE outside a <details> block.
+# Both are deliberately narrow: a document does not get to keep a stale live claim by being vague.
+#   1. QUOTED. The claim sits inside a double-quoted span - it is being reported, not asserted. A
+#      supersession note that could not quote the sentence it replaces would leave the reader unable
+#      to recognise the old wording if it ever came back.
+#   2. MARKED ON THE SAME LINE. The line carries an explicit HISTORICAL / SUPERSEDED token, so a
+#      grep-landing reader sees the marker in the same breath as the claim. A marker several lines
+#      away does not count: that is exactly how a "historical" block silently grows to cover live
+#      text.
+_HISTORICAL_MARKER = re.compile(r"\bHISTORICAL\b|\bSUPERSEDED\b", re.I)
+
+
+def _is_superseded_in_place(text: str, pos: int) -> bool:
+    if text.count('"', 0, pos) % 2 == 1:          # inside a quoted span
+        return True
+    line_start = text.rfind("\n", 0, pos) + 1
+    line_end = text.find("\n", pos)
+    line = text[line_start: line_end if line_end != -1 else len(text)]
+    return bool(_HISTORICAL_MARKER.search(line))
 
 
 def _strip_historical(text: str) -> str:
@@ -325,21 +367,43 @@ def test_no_navigation_document_restates_a_phase_state_the_registry_does_not_hol
 
 
 def test_r07_is_never_represented_as_contained_anywhere_live():
-    """R-07 is the one status the repository has always stated consistently. This guard keeps it
-    that way from the traceability layer too: the manifest record, and no live-authority document
-    may call it contained or closed."""
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen: it preserves this node's identity in TEST-NODE-MANIFEST.json AND it is the name
+    scripts/mutate_roadmap_completeness.py case M3 requires to catch its mutant.
+
+    R-07 is the one status the repository has always stated consistently, and that is the property
+    this guard protects - not the particular value. Before the containment record was written,
+    consistency meant no live document could call it contained. Now that the record exists, the
+    SAME property points the other way: no live document may call it OPEN while the manifest records
+    CONTAINED. The direction flipped; the invariant did not.
+
+    Kept from the original, unchanged: the population is DISCOVERED, historical blocks are exempt in
+    place, and conditional/hypothetical phrasings are exempted by _EXEMPT so the guard does not fire
+    on sentences explaining the rule.
+    """
     manifest = read(MANIFEST)
-    assert "status: OPEN - NOT CONTAINED" in manifest, "the R-07 manifest record changed"
+    data = yaml.safe_load(manifest)["expected_legacy_paths"]
+    assert data["status"] == "CONTAINED", (
+        f"the R-07 manifest record reads {data['status']!r}, not the authorized 'CONTAINED'"
+    )
+    docs = _live_authority_documents()
+    assert docs, "live-authority discovery produced nothing - this guard would pass vacuously"
     offenders = []
-    for rel in _live_authority_documents():
+    scanned = 0
+    for rel in docs:
         text = _strip_historical(read(ROOT / rel))
-        for m in re.finditer(r"R-07[^.\n|]{0,60}?(?:\bis\s+\*{0,3}CONTAINED|\bnow\s+closed\b|"
-                             r"\bis\s+\*{0,3}CLOSED\b)", text, re.I):
+        scanned += 1
+        for m in re.finditer(r"R-07[^.\n|]{0,60}?\b(?:is|stays|remains)\s+\*{0,3}"
+                             r"(?:OPEN|NOT\s+CONTAINED|UNCONTAINED)\b", text, re.I):
             window = " ".join(m.group(0).split())
-            if _EXEMPT.search(window):
+            if _EXEMPT.search(window) or _is_superseded_in_place(text, m.start()):
                 continue
             offenders.append(f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {window[:90]!r}")
-    assert not offenders, "R-07 is represented as contained:\n  " + "\n  ".join(offenders)
+    assert scanned >= 5, f"only {scanned} live-authority documents scanned - population collapsed"
+    assert not offenders, (
+        "R-07 is represented as OPEN while the manifest records it CONTAINED:\n  "
+        + "\n  ".join(offenders)
+    )
 
 
 def test_the_recorded_effect_violation_surface_is_the_mechanically_recomputed_one():

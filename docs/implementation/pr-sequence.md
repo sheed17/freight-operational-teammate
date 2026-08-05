@@ -30,7 +30,7 @@
 | **U0.7** | planning-graph consistency | `AC-TRACE-000` | — | n/a | n/a | ### **G4 mechanically resolves through P8** |
 | **U0.8** | acceptance bijection probes (exact-set) | `AC-MACH-000`, `AC-EVT-000` | — | n/a | n/a | ### **enumerated == registered, by SET not count** |
 | **U0.9** | direct adapter import guard *(DETECTION ONLY — not U4.9's gate)* | `AC-SEC-013` | ### **AC-SEC-013 stays red until P4** | n/a | n/a | the allowlist is shrinking-only |
-| **U0.10** | live-effect entry-point guard | `AC-SEC-013` | ### **R-07 stays OPEN** | n/a | n/a | ### **every effect-capable entry point is classified; NONE is contained** |
+| **U0.10** | live-effect entry-point guard | `AC-SEC-013` | ### **R-07 stays OPEN at P0** *(HISTORICAL — this frozen Phase-0 sequence records the state at P0; R-07 was recorded CONTAINED at P4)* | n/a | n/a | ### **every effect-capable entry point is classified; at P0 NONE was contained** |
 | **U0.11** | deprecated-semantics baseline | — | — | n/a | n/a | counts recorded, ratcheted downward-only, nothing renamed |
 | **U0.12** | the baseline manifest + its integrity | — | — | n/a | n/a | every allowance has a reason, phase, owner, deletion condition |
 | **U0.13** | ### **guard integrity — the guards guard themselves** | — | — | n/a | n/a | ### **no guard may be skipped, non-strict-xfailed, or assert vacuously over an empty set** |

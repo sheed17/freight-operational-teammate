@@ -26,8 +26,9 @@
 
 ## The state token in each heading is RESTATED, never established here
 
-Every `## PN — …` heading below carries one of exactly three tokens — **✅ COMPLETE**,
-**🔄 IN PROGRESS — NOT COMPLETE**, **⛔ NOT STARTED**. They mirror the `execution_state` field of
+Every `## PN — …` heading below opens with one of exactly three tokens — **✅ COMPLETE**,
+**🔄 IN PROGRESS — NOT COMPLETE**, **⛔ NOT STARTED** — optionally qualified after it (P4 reads
+**✅ COMPLETE — ADJUDICATED**). They mirror the `execution_state` field of
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml), which is the machine authority for
 unit state, and
 [`eval/tests/test_roadmap_completeness_control.py`](../../eval/tests/test_roadmap_completeness_control.py)
@@ -39,8 +40,9 @@ rather than hand-maintained.
 > ### **`execution_state` is not the same question as `status`.** `status` answers *may this unit
 > be worked on, and is it the approved next one* (BLOCKED / READY / IN_PROGRESS / COMPLETE);
 > `execution_state` answers *has work actually landed inside it* (NOT_STARTED / IN_PROGRESS /
-> COMPLETE). **P4 is `READY` and `IN_PROGRESS` at the same time, and both are true**: it is the
-> selected unit AND it is executing. See `meta.status_model` in the registry.
+> COMPLETE). **P5 is `READY` and `NOT_STARTED` at the same time, and both are true**: it is the
+> selected unit AND no work has landed in it. `READY` is a selection, never a claim of progress.
+> P4 is `COMPLETE` on both axes. See `meta.status_model` in the registry.
 
 ---
 
@@ -104,12 +106,12 @@ rather than hand-maintained.
 | **System capability after** | ### **Commit-once becomes a database constraint at the effect boundary.** Replay becomes structurally inert |
 | **User-visible capability** | ### **None.** A customer sees nothing until P4 routes effects through it. **A checkpoint with unconstrained bypass routes around it is theatre** — which is exactly why P4 must follow |
 | **Safety guarantees after** | Seven checks in ONE atomic transaction; an unconstructable `CheckpointPassed`; a grant is **necessary but not sufficient** — a fresh matching witness is also required; confusion check at the adapter; `EffectAttempted` emitted **before** the call so orphans are detectable |
-| **Still prohibited** | ### **R-07 stays OPEN.** The six live-write paths still bypass all of this |
+| **Still prohibited** | ### **R-07 stays OPEN through P3** *(HISTORICAL — this row states the state AFTER P3; R-07 was recorded CONTAINED at P4, see below)*. The six live-write paths still bypassed all of this |
 | **Legacy contained** | None yet — P3 builds the wall, P4 routes traffic through it |
 | **Acceptance gates** | The AC-SAFE checkpoint cases |
 | **Next unlocked** | P4 |
 
-## P4 — Adapter containment 🔄 IN PROGRESS — NOT COMPLETE — **THIS IS WHERE R-07 CLOSES**
+## P4 — Adapter containment ✅ COMPLETE — ADJUDICATED — **THIS IS WHERE R-07 CLOSED**
 
 | | |
 |---|---|
@@ -124,6 +126,18 @@ rather than hand-maintained.
 
 > ### **R-07 may not be marked CONTAINED before this phase completes.** Not by a plan, not by a
 > policy, not by operator discipline. A guard fails the build if anyone writes `CONTAINED` early.
+>
+> ### **THAT CONDITION IS NOW MET, AND THE RECORD IS WRITTEN.** P4 is adjudicated COMPLETE at 14/14
+> weighted criteria, both finalization passes ran, and a separate content commit afterwards recorded
+> `status: CONTAINED` in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) with the
+> mechanism named. The guard did not go away — it was **re-pointed**: it now fails the build if the
+> CONTAINED record stands while any of its mechanical conditions stops holding (a live or recorded
+> violation edge, the two surfaces disagreeing, a production `GateRegistry` populated before Phase 8,
+> the deployed callback regaining a direct actuator route, or missing evidence).
+>
+> ### **CONTAINED IS NOT "ENABLED".** External-effect paths are structurally forced through the
+> governed boundary or they fail closed. No production write is enabled, the production
+> `GateRegistry` population is EMPTY until U8.1 / P8, and no autonomy of any kind was granted.
 
 ## P5 — Canonical events, outbox/inbox, replay isolation + production persistence ⛔ NOT STARTED
 

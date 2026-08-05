@@ -269,28 +269,41 @@ second orchestration system and no permanent second effect-authority system.**
 | **P1** | ✅ COMPLETE | **correct effect identity** — the amount is out of the Commit Key |
 | **P2** | ✅ COMPLETE | **tenant-safe persistence** — enforced by the database, ownership humanly asserted |
 | **P3** | ✅ COMPLETE | **the checkpoint kernel** — seven-step atomic checkpoint, unconstructable `CheckpointPassed`, append-only Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark.** A FRESH independent review PASSED and a separate final adjudication set all 14 weighted criteria PASS; completing P3 did **not** close R-07. |
-| **P4** | 🔄 READY *(selected)* — **IN PROGRESS, NOT COMPLETE** | **adapter containment** — route every external effect through the kernel and close R-07. Two checkpoints landed; EP-1/EP-3/EP-8/EP-14 and finding F2 remain, so **R-07 stays OPEN** |
-| **P5+** | ⛔ NOT STARTED | everything below |
+| **P4** | ✅ **COMPLETE — ADJUDICATED** | **adapter containment** — every external effect routed through the kernel, EP-1/EP-3/EP-8/EP-14 cut and finding F2 closed, and **R-07 recorded CONTAINED**. Its first INDEPENDENT review REJECTED candidate `95cf5af7`; a separate session remediated it into `0891d1a`; a FRESH INDEPENDENT re-review accepted it; a separate FINAL ADJUDICATION set all 14 weighted criteria PASS (100/100). **Ships dark** — the deployed governed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal |
+| **P5** | 🔄 **READY *(selected)* — NOT STARTED, NOT COMPLETE** | canonical events, outbox/inbox, replay isolation and production persistence. `READY` is a **selection**, never a claim of progress: no event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. Its event content carries its own undischarged **G2** transition/event blocker, which P4's completion did not discharge |
+| **P6+** | ⛔ NOT STARTED — BLOCKED behind P5 | everything below |
 
 ## 29. The remaining safety wall
 
 > ### **Phase 2 made tenant ownership real at persistence boundaries.**
 > ### **Phase 2 did NOT make consequential external effects safe.**
 > ### **Phase 3 built the checkpoint kernel — the two-key rule is enforced INSIDE it.**
-> ### **Phase 3 did NOT route any external effect through it. Nothing does, until P4.**
-> ### **R-07 remains OPEN — NOT CONTAINED.**
+> ### **Phase 4 routed the external effects through it and CLOSED the door.**
+> ### **R-07 is CONTAINED — and CONTAINED does not mean ENABLED.**
 
-What is still missing, and what it means concretely:
+What the wall is now, and what it still is not:
 
-- **The kernel exists but is dark** (P3 COMPLETE, adjudicated): the seven checks, witness and claim
-  CAS are implemented, tested and independently reviewed, and consulted by **zero** production paths.
-- **Adapter containment incomplete** (P4, executing) — the P0 baseline was **six**
-  production-reachable live-write paths; the P4 checkpoints deleted EP-6/7/9/10, so
-  **live-write paths remain that can execute real external effects right now** with no checkpoint,
-  no witness and no grant. **The exact current residual is [`CURRENT.md`](docs/implementation/CURRENT.md)'s**
-  — this file deliberately copies no count.
-- The only current mitigation is the operator's one-writer-at-a-time discipline.
-  ### **That is discipline, not a mechanism, and it may never be recorded as containment.**
+- **The kernel exists and is now routed through** (P3 COMPLETE, P4 COMPLETE, both adjudicated): the
+  seven checks, the witness and the claim CAS are implemented, independently reviewed, and are the
+  only path an external effect can take.
+- **Adapter containment is structural** (P4 COMPLETE, R-07 CONTAINED). An external effect can be
+  produced only by an effect-capable adapter; the only application-layer importer of one is
+  `effect_boundary`; and the CI import gate fails the build if a second importer ever appears —
+  live and recorded, both-sided. Inside the boundary the sole external-write path is
+  `execute_invoice_write`, a narrowly typed operation behind checkpoint → witness → grant → atomic
+  claim. **Anything that cannot present that chain refuses rather than falls back.**
+  **The exact current counts are [`CURRENT.md`](docs/implementation/CURRENT.md)'s** — this file
+  deliberately copies none.
+- ### **CONTAINED ≠ ENABLED, and CONTAINED is not autonomy.** The capability ships **dark** and
+  **no production write is enabled**: the deployed
+  callback leaves the execution kernel unset and answers a recorded `ROUTE_NOT_CONFIGURED` refusal,
+  the production `GateRegistry` population is **EMPTY** and stays empty until U8.1 / P8 by founder
+  decision, and no autonomy — bounded or otherwise — was granted. Live supervised writes are **P12**,
+  behind the undischarged **RR-01** precondition.
+- ### **HISTORICAL, AND THE RULE BEHIND IT IS PERMANENT.** Until P4 the only mitigation was the
+  operator's one-writer-at-a-time discipline, and this section said so: *"That is discipline, not a
+  mechanism, and it may never be recorded as containment."* A mechanism now exists to record. The
+  rule does not expire — discipline is still never containment, and no allowance may be read as one.
 
 ## 28b. The eleven canonical operational loops
 

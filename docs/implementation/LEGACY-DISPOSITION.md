@@ -151,18 +151,33 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 > operation the adapter receives. It imports **no adapter, no browser session and no actuator** (the
 > effect boundary is imported lazily and is the only door), registers no credentialed adapter, and
 > has **no fallback** to `OperatorAgent` or `CdpActuator`.
-> **It ships DARK and is unwired at the entry point:** the default bounded writer performs no real
-> external write (a proven non-occurrence), a non-sandbox operation is refused before any claim, and
-> `run_action_callback_server.py` leaves `governed_write_provider`/`governed_write_kernel` as `None`
-> — resolving a pending typed operation needs the P6 Work Item / Pipeline Instance entities, and a
-> callback that could BUILD the operation could choose its amount, counterparty and target. Live
-> supervised writes are P12. Proven by `eval/tests/test_p4_governed_write_route.py`.
+> **It ships DARK:** the default bounded writer performs no real external write (a proven
+> non-occurrence), and a non-sandbox operation is refused before any claim. Live supervised writes
+> are P12. Proven by `eval/tests/test_p4_governed_write_route.py`.
+>
+> ### **AD-01 CORRECTION — THE DEPLOYED WIRING, STATED EXACTLY.** The superseded sentence read
+> *"unwired at the entry point … `run_action_callback_server.py` leaves
+> `governed_write_provider`/`governed_write_kernel` as `None`"*. That **misstated** the wiring and is
+> the finding recorded as **AD-01**. What the entry point actually does: the **lookup boundary is
+> WIRED** — it passes a real `provider` closure resolving an *already-authorized* pending write
+> through `WorkflowStorePendingWrites` with `writer=None` (the boundary's dark default bounded
+> writer), failing **closed** on any lookup error. The **execution kernel is what remains `None`**
+> (`kernel_factory = None`), deliberately: a `CheckpointKernel` cannot be constructed without a
+> `GateRegistry`, and Action Class gate registration is **U8.1 / P8** work (`AC-CKPT-6-missing`,
+> `DEFERRED_BY_DEPENDENCY`). The governed handler therefore answers a recorded
+> `ROUTE_NOT_CONFIGURED` refusal. Resolving a pending typed operation *end to end* still needs the
+> P6 Work Item / Pipeline Instance entities, and a callback that could BUILD the operation could
+> choose its amount, counterparty and target. **The fail-closed conclusion is unaffected — only the
+> description was wrong, and the stale "provider is `None`" prose must not reappear.** Guarded by
+> `eval/tests/test_p4_deployed_governed_route.py`.
 
 > ### **`governed_write_registry.py` is the MINIMUM BOUNDED REPOSITORY that makes the deployed
 > entry point reachable — canonical, not legacy.**
-> It answers the last open half of F-01: the governed chain existed, but
+> It answers the last open half of F-01: the governed chain existed, but *before this module*
 > `run_action_callback_server.py` left its provider and kernel `None`, so no operator-runnable
-> configuration ever touched it. The obstacle was authority, not plumbing — a callback that could
+> configuration ever touched it. **That is the PRE-remediation state, not the deployed one** — the
+> provider is now WIRED and only the execution kernel remains `None` (see the AD-01 correction
+> above). The obstacle was authority, not plumbing — a callback that could
 > BUILD the typed operation could choose its amount, counterparty, load, destination system,
 > adapter and capability, which is exactly what permanent human authority forbids. So the operation
 > is written down when it is **proposed**, and the callback may only **look it up**:
@@ -206,10 +221,10 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 |---|---|
 | **Current responsibility** | The single door for every external effect: the adapter operation contract (operation classes + verification modes), the unforgeable single-use `ExecutionCapability`, the CLAIMED→ATTEMPTED→VERIFIED/UNKNOWN_OUTCOME/FAILED outcome machine, orphan-effect detection (Sev-0, auto-brake), and the cross-tenant containment report (GLOBAL brake) |
 | **Current execution authority** | ### **None yet routed in production.** The boundary exists and is acceptance-proven; it ships dark alongside the kernel. The P4 containment checkpoint added the F4 outcome-safety (a generic post-attempt exception → UNKNOWN_OUTCOME), implemented and mutation-proved the orphan detective sweep mechanism (`run_detective_sweep` is its per-cycle invocation surface — no production/runtime caller exists yet; production scheduling is deferred to P11 and the boundary still ships dark), and cut the `brain_runtime → tms_write` edge (its effect executor is now injected, not imported). **EP-1's write is now cut too:** the callback constructs no live actuator and the only external-write path is the typed, dark `execute_invoice_write`. It authorises nothing until an adapter operation is registered and called — which has no production caller |
-| **Current risk** | ### **R-07 remains OPEN pending ADJUDICATION — its MECHANICAL close condition is now MET.** The boundary is built, green, and the effect-capable violation surface is **EMPTY** (0 edges; EP-1/EP-3/EP-8/EP-14 all cut, `brain_runtime` rewired), so no ungated effect-capable path exists beside the boundary. What remains is not code but the two-key discipline: recording R-07 CONTAINED / P4 COMPLETE requires a session that did not implement this cut (CLAUDE.md §11) |
-| **Canonical destination** | This IS the canonical containment boundary (ADR-004 two-key rule); the import gate makes bypassing it structurally impossible once the violation list is empty |
+| **Current risk** | ### **R-07 is CONTAINED — recorded, not merely mechanically met.** The boundary is built, green, and the effect-capable violation surface is **EMPTY** (0 live / 0 recorded edges agreeing both-sided; EP-1/EP-3/EP-8/EP-14 all cut, `brain_runtime` rewired), so no ungated effect-capable path exists beside the boundary. The two-key discipline was then satisfied in full **by other sessions**: a fresh independent re-review and a **separate** final adjudication recorded P4 COMPLETE at 14/14; a targeted independent review and a **separate** targeted adjudication accepted the acceptance-closure candidate; two finalizers ran; and only then did a later content commit write `status: CONTAINED` into `phase-0-baseline-manifest.yaml` with the mechanism named. ### **CONTAINED IS NOT ENABLED** — no production write is enabled, the production `GateRegistry` population stays EMPTY until U8.1 / P8, and no autonomy was granted |
+| **Canonical destination** | This IS the canonical containment boundary (ADR-004 two-key rule); the import gate makes bypassing it structurally impossible, and the violation list is now EMPTY with the gate asserting empty |
 | **Disposition** | ### **KEEP** — canonical, forward-only. `ExecutionCapability` stays unconstructable/unforgeable/single-use; UNKNOWN_OUTCOME may never be silently downgraded to FAILED or retried |
-| **Target phase** | Implemented at **P4** (adjudication outstanding); the routing cutover completes R-07 closure |
+| **Target phase** | Implemented and **adjudicated** at **P4**; the routing cutover landed and R-07 is recorded CONTAINED |
 | **Compatibility requirement** | No second effect-execution path may exist beside it; every adapter effect flows through `execute_effect` |
 | **Deletion condition** | Not deletable — no permanent second effect-authority system may exist beside it |
 | **Evidence required before deletion** | n/a |

@@ -209,13 +209,56 @@ def test_9_no_control_document_claims_a_phase_is_complete_before_the_registry_do
 
 
 def test_10_r07_is_recorded_open_and_never_contained():
-    """The manifest is the machine-checked record; the control documents must agree with it."""
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen to preserve its node identity in TEST-NODE-MANIFEST.json; the body is re-pointed).
+
+    The invariant is unchanged in KIND: the manifest is the machine-checked record and the control
+    documents must agree with it. Only the recorded VALUE moved - from `OPEN - NOT CONTAINED` to
+    `CONTAINED` - by the separate content commit repository authority reserved for exactly that act.
+
+    Deliberately STRONGER than a flipped literal, because a flipped literal checks a word instead of
+    a state. Three things are asserted:
+
+      1. the manifest records exactly `status: CONTAINED` under expected_legacy_paths, and exactly
+         ONE bare `status: CONTAINED` line exists in the whole file - a second would mean some other
+         allowance quietly claimed containment;
+      2. every live control document records R-07 as CONTAINED, so a document silently reverting to
+         "R-07 is OPEN" now fails as loudly as an early CONTAINED once did;
+      3. every one of them also states the BOUND. The old guard existed to stop a reader inferring
+         safety that did not exist. After closure the same failure mode is a reader inferring
+         ENABLEMENT that does not exist, so each document must say containment is not
+         production-write enablement.
+    """
     manifest = read(IMPL / "phase-0-baseline-manifest.yaml")
-    assert "status: OPEN - NOT CONTAINED" in manifest, "the R-07 manifest record changed"
-    assert not re.search(r"^\s*status:\s*CONTAINED", manifest, re.M), "R-07 was marked CONTAINED"
+    data = yaml.safe_load(manifest)["expected_legacy_paths"]
+    assert data["risk_id"] == "R-07"
+    assert data["status"] == "CONTAINED", (
+        f"the R-07 manifest record reads {data['status']!r}; the authorized spelling is 'CONTAINED'"
+    )
+    bare = re.findall(r"^\s*status:\s*CONTAINED\s*$", manifest, re.M)
+    assert len(bare) == 1, (
+        f"expected exactly one bare `status: CONTAINED` line in the manifest, found {len(bare)}"
+    )
     for path in (CURRENT, CLAUDE, ARCHITECTURE, README):
-        assert re.search(r"R-07.{0,120}OPEN", read(path), re.S), \
-            f"{path.name} must record R-07 as OPEN"
+        text = strip_historical(read(path))
+        assert re.search(r"R-07.{0,200}CONTAINED", text, re.S), (
+            f"{path.name} must record R-07 as CONTAINED"
+        )
+        stale = [
+            " ".join(m.group(0).split())
+            for m in re.finditer(r"R-07[^\n]{0,60}?\b(?:is|stays|remains)\s+\*{0,3}OPEN\b", text, re.I)
+        ]
+        assert not stale, (
+            f"{path.name} still describes R-07 as OPEN after the containment record was written: "
+            f"{stale}"
+        )
+        assert re.search(r"CONTAINED\s*(?:≠|!=)\s*ENABLED", text) or re.search(
+            r"(?:does\s+)?not\s+mean\s+(?:that\s+)?production writes?\s+(?:are|is)\s+enabled|"
+            r"no production write is enabled|enables no production write", text, re.I), (
+            f"{path.name} records R-07 CONTAINED without stating the bound - containment is not "
+            "production-write enablement, and a reader inferring otherwise is exactly the failure "
+            "this guard family exists to prevent"
+        )
 
 
 @pytest.mark.parametrize(

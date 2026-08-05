@@ -36,11 +36,32 @@ eleven canonical operational loops (W1–W11).
 **Do not read status from this file, and do not add it here.**
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) is the single authority.
 
-At the time of writing it records: Implementation **Phases P0/P1/P2/P3 COMPLETE; P4 (adapter
-containment) is the sole READY unit AND is executing — checkpoints landed, NOT COMPLETE; R-07 OPEN
-— NOT CONTAINED** (P3's checkpoint kernel is adjudicated COMPLETE and ships dark; only completing P4
-closes R-07). If this line and `CURRENT.md` ever disagree, **`CURRENT.md` is right and this line is
-stale.**
+At the time of writing it records: Implementation **Phases P0/P1/P2/P3/P4 COMPLETE; `P5` (canonical
+events, outbox/inbox, replay isolation and production persistence) is the sole READY unit and has
+NOT STARTED; P6–P14 BLOCKED; R-07 CONTAINED.** If this line and `CURRENT.md` ever disagree,
+**`CURRENT.md` is right and this line is stale.**
+
+> ### **HOW R-07 ACTUALLY CLOSED — corrected, because the wording here was wrong.**
+> This section used to say *"only completing P4 closes R-07"*. That is **not** what happened, and
+> reading it that way is exactly the P4-COMPLETE ⇒ R-07-closed conflation the repository spent four
+> documents and a guard assertion preventing. The real sequence was **four separate acts**:
+>
+> 1. **P4 implementation and acceptance completed.** Its first INDEPENDENT review REJECTED candidate
+>    `95cf5af7`; a separate session remediated it into `0891d1a`; a FRESH INDEPENDENT re-review
+>    accepted it; a **separate FINAL ADJUDICATION** set all 14 weighted criteria PASS, and P4 became
+>    COMPLETE at 100/100. ### **That did NOT close R-07.**
+> 2. **R-07 required its own separate, evidence-backed closure cycle.** The CONTAINED record lives in
+>    [`docs/implementation/phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml),
+>    which is **not** a status-metadata file, so it could ride in neither finalizer's commit.
+> 3. **Both P4 finalization passes ran** — the first on implementation candidate `0891d1a`, the
+>    second on the separately reviewed and separately adjudicated acceptance-closure candidate.
+> 4. ### **Only then** did a later content commit write the canonical containment record, with the
+>    mechanism named and the whole review / adjudication / finalizer evidence chain bound to it.
+>    **That record is what closed R-07 — not the completion of P4.**
+>
+> ### **CONTAINED IS NOT ENABLED.** External-effect paths are structurally forced through the
+> governed boundary or they fail closed. No production write is enabled, the production
+> `GateRegistry` population is EMPTY until U8.1 / P8, and no autonomy of any kind was granted.
 
 ## Roadmap
 

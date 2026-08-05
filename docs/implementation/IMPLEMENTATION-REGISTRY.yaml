@@ -1000,6 +1000,108 @@ units:
             expected_workspace_id / expected_message_ts are still checked only when non-empty, but
             channel_id is unconditional and a missing stored channel receipt now hard-refuses
             (NO_STORED_CHANNEL_RECEIPT, mutant B52).
+      # ------------------------------------------------------------------------------------------
+      # ADDED BY THE R-07 CLOSURE CONTENT COMMIT. Nothing above was discharged to make room for
+      # these. R-07 is the ONLY item this cycle closed, and it closed because a record was WRITTEN -
+      # never because a residual was waived.
+      # ------------------------------------------------------------------------------------------
+      closed_by_the_r07_closure_commit:
+        - id: R-07
+          status: CONTAINED - recorded in docs/implementation/phase-0-baseline-manifest.yaml
+          statement: >-
+            The canonical containment record was written into expected_legacy_paths.status with the
+            structural mechanism named and the full evidence chain bound to it. It could ride in
+            neither finalizer's commit (the manifest is not a STATUS_METADATA_FILE), so it took its
+            own content commit after the second finalization pass. THAT COMMIT closed R-07 - not
+            P4's completion, and not any finalizer.
+          bound: >-
+            CONTAINED means external-effect paths are structurally forced through the governed
+            boundary or fail closed. It does NOT enable a production write, does NOT register a
+            production policy gate (the GateRegistry population stays EMPTY until U8.1 / P8), and
+            grants NO autonomy of any kind, bounded or otherwise.
+        - id: F-TR-01
+          status: REMEDIATED
+          statement: >-
+            ARCHITECTURE.md sec 28/29 described P4 as "IN PROGRESS, NOT COMPLETE" and R-07 as OPEN.
+            Corrected to the certified state, with the superseded discipline-is-not-a-mechanism
+            paragraph retained and explicitly labelled HISTORICAL.
+        - id: F-TR-02
+          status: REMEDIATED
+          statement: >-
+            AGENTS.md carried stale status and the parenthetical "only completing P4 closes R-07" -
+            the exact P4-COMPLETE => R-07-closed conflation. It now states the real sequence: P4
+            implementation and acceptance completed; R-07 required a separate evidence-backed
+            closure cycle; both finalization passes ran; and only then did the canonical containment
+            record close it.
+        - id: F-TR-03
+          status: REMEDIATED
+          statement: >-
+            docs/product/FREIGHT-CAPABILITY-MAP.md stated P4 READY / not complete and R-07 OPEN.
+            Corrected to the certified state without implying P5 implementation has begun.
+        - id: F-TR-04
+          status: REMEDIATED
+          statement: >-
+            EFFECT-PATH-INVENTORY.yaml's free-text paths[EP-1].p4_f01_governed_join said "R-07
+            REMAINS OPEN - NOT CONTAINED, and P4 REMAINS NOT COMPLETE". Corrected with the
+            superseded sentence quoted in place, and the mid-cutover header paragraph marked
+            [HISTORICAL] so it is mechanically distinguishable from live status. The
+            machine-consumed `paths` surface is UNCHANGED - no effect-path classification was
+            edited to improve prose.
+        - id: ADJ-01
+          status: REMEDIATED
+          statement: >-
+            test_switch_consistency.py stated the one-READY-unit invariant while its regex reached
+            only `the (single|one and only) READY unit`, so `READY *(selected)*` and `the sole READY
+            unit` passed it, and any line-wrapped construction escaped every window. The alternation
+            is broadened, matching now runs over whitespace-normalised text, and a NEW positive
+            guard requires the selected-READY construction to be PRESENT, SINGULAR and in agreement
+            with both the registry and the derived block. No existing assertion was narrowed.
+        - id: ADJ-02
+          status: PARITY RESTORED
+          statement: >-
+            The P3 precedent (f579d92) corrected AGENTS.md, ARCHITECTURE.md, CLAUDE.md and
+            README.md; 42ea24c corrected only the latter two. All four now agree, together with
+            every other canonical status surface the parity sweep reached.
+      newly_recorded_non_blocking:
+        - id: CB-01
+          severity: LOW
+          status: OPEN, RECORDED, NOT FIXED HERE - PRE-EXISTING
+          statement: >-
+            The roadmap-completeness mutation battery (scripts/mutate_roadmap_completeness.py) has
+            TWO cases whose anchors no longer exist, so they SKIP-INVALID and prove nothing: M4
+            (registry "status: READY / execution_state: IN_PROGRESS") and M11
+            (IMPLEMENTATION-SURFACE.yaml "as FOUR effect-capable violation edges"). Both anchors
+            were ALREADY absent at 06ebfdb3 - verified with `git show HEAD:<path>` - so this is a
+            pre-existing gap surfaced by re-running the battery, not a regression introduced here.
+            Cases M1 and M3, whose anchors THIS commit legitimately moved, were re-pointed rather
+            than left broken. Battery after re-pointing: 9/11 CAUGHT, 2 SKIP-INVALID, 0 MISS.
+          disposition: >-
+            Deliberately NOT fixed here. Choosing replacement anchors is a decision about what those
+            two guards should now assert, which belongs to the guard owner rather than to a
+            documentation-consistency commit. Recorded so the next cycle owns it.
+        - id: AD-01-PROSE
+          severity: LOW
+          status: PROSE CORRECTED - THE FINDING ITSELF IS CARRIED, NOT DISCHARGED
+          statement: >-
+            AD-01's stale wording ("run_action_callback_server.py leaves governed_write_provider /
+            governed_write_kernel as None") is corrected in BOTH artifacts that carried it -
+            EFFECT-PATH-INVENTORY.yaml and LEGACY-DISPOSITION.md. The deployed truth is now stated
+            exactly: the LOOKUP BOUNDARY IS WIRED (a bounded provider closure, writer=None, failing
+            CLOSED on any lookup error) and the EXECUTION KERNEL remains None by decision, pending
+            U8.1 / P8 Action Class gate registration. AD-01 stays on the register so a
+            reintroduction of the stale prose reads as a regression rather than as new text.
+        - id: PD-01
+          severity: INFORMATIONAL
+          status: OPEN, RECORDED, NOT DISCHARGED
+          statement: >-
+            A Product Driver BLOCKED_AUTHORITY observation was reported during the second
+            finalization. Classified as a PRE-EXISTING PROSE-EXTRACTION AMBIGUITY in that external
+            tool's protocol resolver, NOT a failed repository guard: no repository guard reported
+            it, progress_status.build_status_errors() was [], test_status_reality.repo_state() was
+            a legal state, and the canonical suite was green. Recorded because an unexplained
+            external BLOCKED signal must not become folklore, and because the ambiguity will recur
+            at the next finalization until that resolver is corrected. It is the driver's finding
+            to close, not this repository's.
       founder_decision_preserved_unchanged: >-
         Production Action Class gate registration remains DEFERRED TO U8.1 / P8.
         AC-CKPT-6-missing stays DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8, green_at_phase P8,

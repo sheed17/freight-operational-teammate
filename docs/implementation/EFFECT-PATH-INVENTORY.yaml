@@ -1,31 +1,57 @@
 # EFFECT-PATH INVENTORY
 #
-# THE EXACT LIVE-WRITE ADJUDICATION (U-HANDOFF-1B, M-4), NOW WITH THE P4 CUTOVER PARTLY EXECUTED.
+# THE EXACT LIVE-WRITE ADJUDICATION (U-HANDOFF-1B, M-4). The P4 cutover is now COMPLETE.
 # The original adjudication established six production-reachable live-write paths
 # (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) and recorded a per-entry disposition for every candidate.
 #
-# P4 UPDATE (this session, staged clean cutover): the four REMOVE_BEFORE_ENABLE paths
+# ### [HISTORICAL AS WRITTEN - the "P4 UPDATE" paragraph immediately below describes the STAGED
+# ### CUTOVER as it stood mid-P4. It is retained verbatim as the cutover record. The LIVE status is
+# ### the "R-07 STATUS UPDATE" block further down and `meta.risk`; where the two differ, the live
+# ### block wins. Nothing between this marker and that block may be read as current.]
+#
+# P4 UPDATE (staged clean cutover, mid-phase): the four REMOVE_BEFORE_ENABLE paths
 # (EP-6 enter_truckingoffice_invoice, EP-7 enter_invoice_discovered, EP-9 run_operate_request,
 # EP-10 run_operator_agent) have been PHYSICALLY DELETED, executing their frozen disposition.
 # Rollback does not restore them (cutover plan). They are reclassified REMOVED_AT_P4 below and the
 # guard proves each file is gone from disk. The production-reachable live-write set is therefore no
 # longer six: it is EXACTLY TWO - EP-1 and EP-3 - the ADAPT paths still awaiting pipeline-client
-# conversion. R-07 stays OPEN - NOT CONTAINED because those two, plus the two read-by-convention
-# actuator-capable paths (EP-8, EP-14) whose import edges are not yet cut, remain.
+# conversion. [HISTORICAL] R-07 stays OPEN - NOT CONTAINED because those two, plus the two
+# read-by-convention actuator-capable paths (EP-8, EP-14) whose import edges are not yet cut, remain.
 #
 # Guarded by eval/tests/test_bootstrap_hermeticity.py: exact removed-set membership WITH on-disk
-# absence proof, exact live-set (== {EP-1, EP-3}), every candidate still adjudicated against the
-# baseline manifest probe, every entry classified, nonzero populations. R-07 remains OPEN - NOT
-# CONTAINED regardless of the count.
+# absence proof, exact live-set, every candidate still adjudicated against the baseline manifest
+# probe, every entry classified, nonzero populations.
+#
+# ### R-07 STATUS UPDATE (R-07 CLOSURE CONTENT COMMIT). Two statements above are HISTORICAL AS
+# WRITTEN. They are corrected here rather than rewritten in place, because they are the record of
+# the staged cutover and rewriting them would destroy it:
+#   * "R-07 stays OPEN - NOT CONTAINED because those two, plus the two read-by-convention
+#     actuator-capable paths (EP-8, EP-14) whose import edges are not yet cut, remain." - all four
+#     were subsequently cut, and the effect-capable violation surface is EMPTY.
+#   * "the live-write set ... is EXACTLY TWO - EP-1 and EP-3" - EP-3 was cut to READ_ONLY_STRUCTURAL
+#     at P4, so the MACHINE-CONSUMED live set below is exactly {EP-1}. EP-1's own write half is cut
+#     and re-routed through the governed effect boundary; its classification is deliberately
+#     UNCHANGED, because a classification may never be edited to make prose read better.
+# ### R-07 IS NOW RECORDED CONTAINED in docs/implementation/phase-0-baseline-manifest.yaml, which is
+# the canonical containment record. This file is scoped to the live-write ADJUDICATION and restates
+# that status; it does not set it.
 
 meta:
   candidates_from_import_probe_original: 10
   production_reachable_live_write_original: 6
   removed_at_p4: [EP-6, EP-7, EP-9, EP-10]
-  production_reachable_live_write_remaining: 2   # EP-1, EP-3 (ADAPT, deferred)
+  production_reachable_live_write_remaining: 1   # EP-1 only; EP-3 became READ_ONLY_STRUCTURAL at P4
   adjudication: U-HANDOFF-1B closes P0-F4 (read_tms_browser_use.py -> EP-14)
   containment_phase: P4
-  risk: R-07 OPEN - NOT CONTAINED
+  risk: >-
+    R-07 CONTAINED - recorded in docs/implementation/phase-0-baseline-manifest.yaml
+    (expected_legacy_paths.status), with the structural mechanism named there and the full
+    review / adjudication / finalizer evidence chain bound to it. CONTAINED means external-effect
+    paths are structurally forced through the governed boundary or fail closed. It does NOT mean any
+    production write is enabled: the deployed route answers a recorded ROUTE_NOT_CONFIGURED refusal,
+    the production GateRegistry population is EMPTY until U8.1 / P8, and no autonomy - bounded or
+    otherwise - was granted. HISTORICAL: this field read "R-07 OPEN - NOT CONTAINED" from Phase 0
+    until that record was written, and it was correct for every day of that life.
 
 paths:
 
@@ -80,16 +106,34 @@ paths:
       Grant row and the typed operation the adapter receives. Proven in
       eval/tests/test_p4_governed_write_route.py, which enters through the production entry point
       and mints no authority of its own.
-      STILL DARK, AND STILL UNWIRED AT THE ENTRY POINT. The default bounded writer performs no real
-      external write (a PROVEN non-occurrence, never a laundered success); a non-sandbox operation is
-      refused before any claim; no credentialed adapter is registered; and
-      run_action_callback_server.py leaves governed_write_provider/governed_write_kernel as None, so
-      the route is unreachable from the deployed server. Resolving a PENDING typed operation by
+      STILL DARK. The default bounded writer performs no real external write (a PROVEN
+      non-occurrence, never a laundered success); a non-sandbox operation is refused before any
+      claim; and no credentialed adapter is registered. Resolving a PENDING typed operation by
       approval id needs the P6 Work Item / Pipeline Instance entities, and a callback that could
       BUILD the operation could choose its amount, counterparty and target - which would destroy the
       permanent human authority the route exists to protect. Live supervised writes are P12.
-      R-07 REMAINS OPEN - NOT CONTAINED, and P4 REMAINS NOT COMPLETE: this records remediation, not
-      adjudication.
+      ### AD-01 CORRECTION - THE DEPLOYED WIRING, STATED EXACTLY. The superseded sentence here read
+      "STILL UNWIRED AT THE ENTRY POINT ... run_action_callback_server.py leaves
+      governed_write_provider/governed_write_kernel as None, so the route is unreachable from the
+      deployed server." That MISSTATED the wiring and is the finding recorded as AD-01. What the
+      deployed entry point actually does (scripts/run_action_callback_server.py, guarded by
+      eval/tests/test_p4_deployed_governed_route.py): the LOOKUP BOUNDARY IS WIRED - it passes a
+      real `provider` closure that resolves an ALREADY-AUTHORIZED pending write through
+      WorkflowStorePendingWrites with writer=None (the boundary's dark default bounded writer), and
+      that closure fails CLOSED on any lookup error. The EXECUTION KERNEL is what remains None:
+      `kernel_factory = None`, deliberately, because a CheckpointKernel cannot be constructed
+      without a GateRegistry and Action Class gate registration is U8.1 / P8 work
+      (AC-CKPT-6-missing, DEFERRED_BY_DEPENDENCY). The governed handler therefore answers a recorded
+      ROUTE_NOT_CONFIGURED refusal. ### THE FAIL-CLOSED CONCLUSION IS UNAFFECTED - only the
+      description was wrong. ### THE STALE "PROVIDER IS None" PROSE MUST NOT REAPPEAR.
+      ### R-07 / P4 STATUS - CORRECTED, AND THE SUPERSEDED SENTENCE KEPT SO IT CANNOT BE MISREAD.
+      This block ended "R-07 REMAINS OPEN - NOT CONTAINED, and P4 REMAINS NOT COMPLETE: this records
+      remediation, not adjudication." That was HISTORICALLY TRUE and correctly refused to
+      self-adjudicate. Both halves have since been decided by other sessions: P4 is recorded
+      COMPLETE at 14/14 by a separate final adjudication, and R-07 is recorded CONTAINED in
+      docs/implementation/phase-0-baseline-manifest.yaml by a later content commit, after both
+      finalization passes. Neither was decided here, and this block still records remediation rather
+      than adjudication - which is exactly why the sentence had to be corrected from outside it.
     p4_write_half_residual: >-
       HISTORICAL - superseded by p4_f01_governed_join above. NOT CUT. _build_live_operation_router._build_agent still constructs CdpActuator over
       CdpBrowserSession to drive the OperationRouter -> OperatorAgent autonomous browser WRITE. That

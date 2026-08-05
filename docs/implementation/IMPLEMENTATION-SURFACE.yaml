@@ -84,10 +84,12 @@ concepts:
     note: >-
       the seven checks in ONE transaction with the witness insert and the mint, canonical order,
       short-circuit-first-failure (SD-7). SHIPS DARK - no production path routes through it
-      until P4 contains the adapters; R-07 stays OPEN - NOT CONTAINED. (P3 touched no live-write
-      path; subsequent P4 checkpoints have since deleted EP-6/EP-7/EP-9/EP-10, cut EP-8 to the
-      read-only observer, EP-3 to the read-only navigator and EP-14 to the split browser-use read
-      surface, while EP-1 remains and nothing routes through the kernel yet - see CURRENT.md.)
+      until P4 contained the adapters. (P3 touched no live-write path; the P4 checkpoints then
+      deleted EP-6/EP-7/EP-9/EP-10, cut EP-8 to the read-only observer, EP-3 to the read-only
+      navigator and EP-14 to the split browser-use read surface, and routed EP-1's write half
+      through the governed boundary - see CURRENT.md.) R-07 is now recorded CONTAINED in
+      phase-0-baseline-manifest.yaml; the kernel still ships dark and no production write is
+      enabled.
 
   - name: Checkpoint Witness
     status: IMPLEMENTED
@@ -155,9 +157,13 @@ concepts:
       is now ZERO effect-capable
       violation edges - the exact set recorded in phase-0-baseline-manifest.yaml
       effect_adapter_import_gate.violation_edges (now empty) and recomputed live by the import probe,
-      and the gate asserts EMPTY. That is the R-07 MECHANICAL close condition. R-07 nevertheless stays
-      OPEN - NOT CONTAINED: recording it CONTAINED / P4 COMPLETE is the ADJUDICATION step, which
-      requires a session that did not implement this cut (CLAUDE.md sec 11) and is PENDING.
+      and the gate asserts EMPTY. That is the R-07 MECHANICAL close condition, and it was never
+      sufficient on its own: recording R-07 CONTAINED / P4 COMPLETE was the ADJUDICATION step,
+      requiring sessions that did not implement this cut (CLAUDE.md sec 11). Those sessions have
+      since run - a separate final adjudication recorded P4 COMPLETE at 14/14, a targeted review and
+      a separate targeted adjudication accepted the closure candidate, two finalizers executed, and
+      a later content commit wrote the CONTAINED record. R-07 is CONTAINED; no production write is
+      enabled.
 
   - name: Work Item
     status: SPECIFICATION_ONLY
