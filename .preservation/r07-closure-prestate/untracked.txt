@@ -1,0 +1,8 @@
+docs/implementation/p4-closure-candidate-targeted-adjudication-report-42ea24c.md
+docs/implementation/p4-closure-candidate-targeted-adjudication-report-42ea24c.md.sha256
+docs/implementation/p4-closure-candidate-targeted-review-handoff-42ea24c.md
+docs/implementation/p4-closure-candidate-targeted-review-handoff-42ea24c.md.sha256
+docs/implementation/p4-closure-candidate-targeted-review-report-42ea24c.md
+docs/implementation/p4-closure-candidate-targeted-review-report-42ea24c.md.sha256
+docs/implementation/p4-second-finalization-pass-report-06ebfdb3.md
+docs/implementation/p4-second-finalization-pass-report-06ebfdb3.md.sha256

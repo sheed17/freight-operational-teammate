@@ -1,0 +1,7 @@
+.playwright-mcp/console-2026-06-15T21-41-21-820Z.log
+.playwright-mcp/console-2026-06-15T21-58-15-937Z.log
+.playwright-mcp/console-2026-06-15T21-58-19-008Z.log
+.playwright-mcp/page-2026-06-15T21-41-22-449Z.yml
+.playwright-mcp/page-2026-06-15T21-41-50-687Z.yml
+.playwright-mcp/page-2026-06-15T22-15-43-153Z.yml
+.playwright-mcp/page-2026-06-15T22-15-55-909Z.yml
