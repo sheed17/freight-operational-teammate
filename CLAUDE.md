@@ -69,14 +69,15 @@ artificial ceilings and no assumed rip-and-replace.
 | **Phase 1** | ✅ COMPLETE — correct effect identity (amount out of the Commit Key) |
 | **Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Phase 3** | ✅ **COMPLETE — ADJUDICATED.** The checkpoint kernel: seven-step atomic checkpoint, unconstructable Checkpoint Witness, grant mint + claim CAS, brake admission. **Ships dark — nothing routes through it.** The first INDEPENDENT review returned 9 findings (60/100, `NOT READY`) and P3 **did not pass it**; all nine were **remediated**; a **FRESH INDEPENDENT** review of the remediated, finalized tree then **PASSED** (zero new defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION** set all 14 weighted criteria `PASS` and recorded P3 COMPLETE ([adjudication](docs/implementation/p3-final-adjudication-review.md)). Completing P3 did **not** close R-07 — the kernel is dark until P4 routes effects through it. |
-| **R-07** | ### **OPEN — NOT CONTAINED** — completing P3 did NOT close it; only completing P4 does |
-| Live-write paths | P0 baseline was **6 production-reachable** paths (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10). **P4 checkpoints:** EP-6/7/9/10 physically DELETED → **2 remain** — EP-1, EP-3 (ADAPT, deferred). R-07 stays OPEN. |
-| Adapter imports | P0 baseline was **31 direct adapter-import edges** across 18 importer modules. **P4 checkpoints:** cut to **18 edges** / **13 modules** (EP-6/7/9/10 delete, F1 removed EP-12's browser edge, brain_runtime rewired to injection); the boundary-aware gate's effect-capable violation surface is **4** (was 12) — EMPTY is the R-07 close condition. |
+| **Phase 4** | ✅ **COMPLETE — ADJUDICATED.** Adapter containment: the governed write route, the two-key rule at the effect boundary, and the CI import gate asserting the effect-capable violation surface is EMPTY. **Ships dark — the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal.** Its first INDEPENDENT review **REJECTED** candidate `95cf5af7` (blocking findings F-01, F-02); a separate session remediated it into `0891d1a`; a **FRESH INDEPENDENT re-review** returned ACCEPT FOR SEPARATE FINAL ADJUDICATION; a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria `PASS` ([adjudication](docs/implementation/p4-final-adjudication-report-0891d1a.md)); and `canonical_finalizer` became `PASS` on the one finalizer run that executed. **Completing it did not close R-07** — see the row below. |
+| **R-07** | ### **OPEN — NOT CONTAINED.** The containment MECHANISM is built and independently verified; the CONTAINED **record** in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) has **not** been written and cannot ride in a status-metadata commit. Only a separate content commit writing that record closes it. |
+| Live-write paths | P0 baseline was **6 production-reachable** paths (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10). All six are now cut: EP-6/7/9/10 physically DELETED, EP-3/EP-8/EP-14 cut to structurally read-only surfaces, and EP-1's write half routed through the governed write route and the checkpoint kernel. R-07's record still stays OPEN. |
+| Adapter imports | P0 baseline was **31 direct adapter-import edges** across 18 importer modules. The boundary-aware gate's effect-capable violation surface is now **EMPTY** — 0 live and 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 authorized detection edges. EMPTY was the R-07 **mechanical** close condition; the record is a separate act. |
 | Transition/event completeness | **13 of 134** transitions name no event outright (4 classes, exact members in [`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION at G2**; the old "24" was never mechanically computed and is retired |
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
 | **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
-| **Next approved unit** | ### **`P4` — Adapter containment (the CI import gate). THE ONE AND ONLY READY UNIT — two implementation checkpoints landed; independent review + final adjudication PENDING.** It routes every external effect through the checkpoint kernel and the two-key rule, deletes or de-actuates the six live-write paths, converts or removes the 31 adapter-import edges, and turns on the CI import gate. **Checkpoint 1** built the containment boundary + boundary-aware import gate and executed the DELETE cutover of EP-6/7/9/10. **Checkpoint 2 (this session)** fixed review findings **F1** (removed EP-12's live `--browser` path; AST structural quarantine proof) and **F4** (a generic post-attempt adapter exception → UNKNOWN_OUTCOME, never CLAIMED/FAILED), cut the **brain_runtime → tms_write** edge by injection, and implemented + mutation-proved the **orphan detective sweep** mechanism (`run_detective_sweep` is its per-cycle invocation surface; **no production/runtime caller exists yet** — production scheduling is deferred to P11 and the boundary still ships dark) — boundary mutation battery now **21/21**. Still deferred (they keep R-07 OPEN, all browser-untestable here): the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only import cuts, finding **F2** (cdp_session read-only split), and flipping the gate to assert EMPTY. **This is the unit that closes R-07 — and it is NOT yet complete.** P5–P14 stay BLOCKED behind it. |
+| **Next approved unit** | ### **`P5` — Canonical events, outbox/inbox, replay isolation and production persistence. THE ONE AND ONLY READY UNIT — SELECTED ONLY. IT HAS NOT BEGUN, AND IT IS NOT COMPLETE.** Its `execution_state` is `NOT_STARTED`, its `checkpoint_state` is `NO_CHECKPOINT`, and it records no landed checkpoint: no event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. When it does begin it implements the 98 event contracts with a transactional outbox and a dedup inbox, proves replay is sandboxed and structurally inert, and makes persistence production-grade (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016; SQLite stays for local development and deterministic tests). ### **It carries its own undischarged blocker:** the transition/event completeness finding still reads **COUNT NEEDS ADJUDICATION** and must be adjudicated at **G2** before its event content is written — that obligation is independent of the phase before it and was not discharged by that phase's adjudication. `P6`–`P14` stay BLOCKED behind it. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -243,32 +244,46 @@ These are not style preferences. Each one is a defect this repository actually s
 
 Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
-- ⛔ **Do not begin Implementation Phase 5** (events, outbox/inbox, replay isolation, PostgreSQL) —
-  its dependency `P4` is not COMPLETE. **`P4` (adapter containment) is now the READY unit and may
-  begin**; it is no longer forbidden here.
+- ⛔ **Do not begin Implementation Phase 6** (foundational entities and state machines) — its
+  dependency `P5` has not started. **`P5` (events, outbox/inbox, replay isolation, PostgreSQL) is
+  now the READY unit**; it is no longer forbidden here. Its event content is still blocked on the
+  **G2** transition/event adjudication, which P4's completion did not discharge.
 - ⛔ **Do not adjudicate any phase COMPLETE from within the session that implemented or remediated
   it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
-  how P3 was completed — reviewer and adjudicator were sessions separate from the implementer.
-- ⛔ Do not declare R-07 contained — **only COMPLETING P4 closes it**, and P4 is not complete.
-- ⛔ Do not enable the checkpoint kernel on live traffic outside P4's own acceptance contract —
-  it ships dark, and routing effects through it IS P4's content.
+  how P3 and P4 were completed — reviewer and adjudicator were sessions separate from the
+  implementer, and P4's first independent review returned REJECT.
+- ⛔ Do not declare R-07 contained — the containment MECHANISM is built and independently verified,
+  but the CONTAINED record belongs in `docs/implementation/phase-0-baseline-manifest.yaml`, which is
+  not a status-metadata file. **Only a separate content commit writing that record closes R-07**,
+  and it may be made only after the P4 closure content commit is independently reviewed,
+  adjudicated and finalized. Until then R-07 is **OPEN — NOT CONTAINED**.
+- ⛔ Do not enable any external effect on live traffic. The capability ships dark and the deployed
+  governed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal; enabling it is a separate,
+  later, founder-authorized decision, not a consequence of P4's acceptance.
 - ⛔ Do not weaken the kernel: `CheckpointPassed` stays unconstructable, the witness table stays
   append-only, and the claim CAS's WHERE-clause revalidation may never lose a predicate.
 - ⛔ Do not implement freight workflows.
-- ⛔ Do not delete legacy production code outside P4's cutover plan and acceptance.
+- ⛔ Do not delete legacy production code outside the deletion conditions in
+  `docs/implementation/LEGACY-DISPOSITION.md`.
 - ⛔ Do not invent design-partner observations.
 - ⛔ Do not promote the Delivered Load Closure wedge to validated.
 
 **The next approved program is
-[P4 — ADAPTER CONTAINMENT](docs/implementation/CURRENT.md)** — the one and only `READY` unit. It is
-**executing**: two implementation checkpoints have landed and it is **NOT COMPLETE** (independent
-review and final adjudication pending). P3 (the checkpoint kernel) is now **adjudicated COMPLETE**: its first INDEPENDENT
-review failed it (9 findings, 60/100), all nine findings were remediated, a **FRESH** INDEPENDENT
-review of the remediated, finalized tree **PASSED**, and a **separate FINAL ADJUDICATION** set all 14
-weighted criteria `PASS` ([`p3-final-adjudication-review.md`](docs/implementation/p3-final-adjudication-review.md)).
-**`P4` routes every external effect through the kernel and is the unit that closes R-07** — which
-stays **OPEN — NOT CONTAINED** until P4 completes.
+[P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION AND PRODUCTION PERSISTENCE](docs/implementation/CURRENT.md)**
+— the one and only `READY` unit. `READY` is a **selection**: P5 has **not begun**, records no landed
+checkpoint, and is **NOT COMPLETE**. P4 (adapter containment) is now **adjudicated COMPLETE**: its
+first INDEPENDENT review **rejected** candidate `95cf5af7`, a separate session remediated it, a
+**FRESH** INDEPENDENT re-review of candidate `0891d1a` returned ACCEPT FOR SEPARATE FINAL
+ADJUDICATION, a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria
+`PASS` ([`p4-final-adjudication-report-0891d1a.md`](docs/implementation/p4-final-adjudication-report-0891d1a.md)),
+and `canonical_finalizer` became `PASS` on the one finalizer run that executed
+([`p4-first-finalization-pass-report-86306d5.md`](docs/implementation/p4-first-finalization-pass-report-86306d5.md)).
+P3 (the checkpoint kernel) was completed the same way, one phase earlier
+([`p3-final-adjudication-review.md`](docs/implementation/p3-final-adjudication-review.md)).
+**P4 built the mechanism that makes an ungated external effect structurally impossible — and R-07
+still stays OPEN — NOT CONTAINED**, because the CONTAINED record is a separate content commit that
+has not been made.
 
 ## 12. Other instruction files
 

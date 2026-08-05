@@ -829,13 +829,16 @@ capabilities:
       - path: src/freight_recon/effect_boundary.py
         symbol: execute_effect
         note: >-
-          The single-door boundary algorithm exists and is acceptance- and mutation-proven, and it
-          SHIPS DARK - no production path routes through it, the CI import gate is not flipped to
-          EMPTY, and R-07 is OPEN - NOT CONTAINED. This is the P4 work in progress, not supervised
-          production operation, which does not exist.
+          The single-door boundary algorithm exists and is acceptance- and mutation-proven. P4 has
+          since routed the governed Slack-approved write through it and the CI import gate now
+          asserts the effect-capable violation surface is EMPTY - but it STILL SHIPS DARK: the
+          deployed callback server leaves the execution kernel None and the route answers a recorded
+          ROUTE_NOT_CONFIGURED refusal with zero grants minted, and R-07 is OPEN - NOT CONTAINED
+          until its record lands in phase-0-baseline-manifest.yaml by a separate content commit.
+          This is containment, not supervised production operation, which does not exist.
     test_or_eval_reference: "eval/tests/test_adapter_boundary_acceptance.py; eval/tests/test_import_gate.py"
     release_gate_reference: G8
-    unresolved_decisions: ["P4 is not complete - EP-1/EP-3 conversions, the EP-8/EP-14 read-only cuts and finding F2 remain"]
+    unresolved_decisions: ["R-07 remains OPEN - NOT CONTAINED: the mechanical close condition is met and independently verified, but recording CONTAINED in phase-0-baseline-manifest.yaml requires its own content commit, which has not been made", "RR-01 is a binding P12 precondition (base_url outside payload_hash and outside approval_operation_mismatch), compounded by F-08 and F-09, and must be discharged before any live writer is injected", "production Action Class gate registration stays DEFERRED to U8.1 / P8 and the production GateRegistry population must stay EMPTY"]
     current_truth_source: docs/implementation/CURRENT.md
 
   - capability_id: CAP-26

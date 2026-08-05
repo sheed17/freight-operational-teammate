@@ -48,8 +48,9 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **Implementation Phase 1** | ✅ COMPLETE — correct effect identity (the amount is out of the Commit Key) |
 | **Implementation Phase 2** | ✅ COMPLETE — tenant-safe persistence |
 | **Implementation Phase 3** | ✅ COMPLETE — **ADJUDICATED.** The checkpoint kernel (seven-step checkpoint, Checkpoint Witness, claim CAS, brake admission) **ships dark**. A FRESH independent review PASSED and a separate final adjudication set all 14 weighted criteria PASS. Completing P3 did not close R-07. |
+| **Implementation Phase 4** | ✅ COMPLETE — **ADJUDICATED.** Adapter containment: every external effect now runs through the governed write route, the checkpoint kernel and the two-key rule, and the CI import gate asserts the effect-capable violation surface is **EMPTY**. It **ships dark** — the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal with zero grants minted. Its first independent review **REJECTED** it; after remediation a fresh independent re-review accepted it and a separate final adjudication set all 14 weighted criteria PASS. **Completing it did not close R-07.** |
 | **Suite** | green — ### **exact counts live ONLY in [`CURRENT.md`](docs/implementation/CURRENT.md)'s machine-maintained status block** |
-| **Next approved work** | **`P4` — adapter containment** — the sole `READY` unit, and it is **executing: two implementation checkpoints have landed and it is NOT COMPLETE** (independent review + final adjudication pending). It routes every external effect through the checkpoint kernel and the two-key rule and turns on the CI import gate; **it is the unit that closes R-07**, which stays OPEN — NOT CONTAINED until P4 completes. |
+| **Next approved work** | **`P5` — canonical events, outbox/inbox, replay isolation and production persistence** — the sole `READY` unit. ### **`READY` is a selection: it has not begun and is NOT COMPLETE.** Its event content additionally waits on the **G2** transition/event completeness adjudication, which is still open. |
 
 **Phases are `P0`–`P14` with gates `G0`–`G10`.** Older documents refer to an 8-stage roadmap
 ("Stage 1"…"Stage 8") — **that roadmap is superseded.** See
@@ -59,17 +60,24 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 
 | Finding | Status |
 |---|---|
-| **R-07 — ungated live-write paths** | ### **OPEN — NOT CONTAINED** |
-| **6 production-reachable live-write paths** | OPEN — close at **P4** |
-| **31 direct adapter-import edges** | OPEN — close at **P4** |
-| **Transition/event completeness** — 13 of 134 transitions name no event outright (4 classes; the old "24" was never mechanically computed and is retired) | OPEN — **COUNT NEEDS ADJUDICATION** at G2, before **P5** ([audit](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) |
+| **R-07 — ungated live-write paths** | ### **OPEN — NOT CONTAINED** — the mechanism that closes it is built and independently verified; the CONTAINED **record** in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) has not been written, and only a separate content commit writing it closes the finding |
+| **6 production-reachable live-write paths** | mechanically cut — EP-6/7/9/10 deleted, EP-3/EP-8/EP-14 cut to structurally read-only, EP-1's write half routed through the governed write route; the **record** still pending |
+| **31 direct adapter-import edges** | mechanically resolved — 0 effect-capable violation edges remain (13 authorized detection edges); the **record** still pending |
+| **RR-01 — `base_url` outside the payload hash and outside the approval mismatch check** | OPEN — a **binding P12 precondition**, compounded by F-08 and F-09; must be discharged before any live writer is injected |
+| **AD-02 — `finalizer_lock.py` has zero committed test coverage** | OPEN — safety-critical and load-bearing for the next finalizer run; a committed hostile battery is owed |
+| **Transition/event completeness** — 13 of 134 transitions name no event outright (4 classes; the old "24" was never mechanically computed and is retired) | OPEN — **COUNT NEEDS ADJUDICATION** at G2, before **P5**'s event content ([audit](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) |
+| **Production Action Class gate registration** | ### **DEFERRED BY FOUNDER DECISION to U8.1 / P8** — the production `GateRegistry` population is EMPTY and must stay empty |
 | Hardcoded knowledge-base `tenant="default"` | OPEN — closes at **P7** |
 | No firsthand design-partner observation | OPEN |
 
 > ### **Phase 2 made tenant ownership real at persistence boundaries. It did NOT make consequential
-> external effects safe.** Six paths can still execute real external effects with no checkpoint, no
-> witness and no grant. The only mitigation today is the operator's one-writer-at-a-time
-> discipline — **which is discipline, not a mechanism, and is never to be recorded as containment.**
+> external effects safe. Phase 4 built the mechanism that does — and the record still says
+> `OPEN — NOT CONTAINED`.** An external effect without a grant is now structurally impossible: the
+> governed write runs through approval, checkpoint, witness, grant and atomic claim, and the import
+> gate asserts nothing is left outside that path. What has **not** happened is the recording of
+> R-07 as contained, which is a separate commit. Until then the only recorded mitigation remains
+> the operator's one-writer-at-a-time discipline — **which is discipline, not a mechanism, and is
+> never to be recorded as containment.**
 
 ## The current runtime is not the final product
 

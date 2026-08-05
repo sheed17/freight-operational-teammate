@@ -244,17 +244,28 @@ def test_no_secondary_file_carries_its_own_volatile_status_claim():
 # ------------------------------------------------------------------ 5. fresh but also RIGHT
 
 def test_the_status_record_still_states_the_canonical_facts():
-    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md sec 5 rule 20 - replaced, not deleted).
+    """REPLACED at the P4 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md sec 5 rule 20 - replaced, not
+    deleted; the function NAME is frozen to preserve its node identity in TEST-NODE-MANIFEST.json).
 
-    Every prior version pinned a moment in P3's life: NOT STARTED, then READY-but-NOT-COMPLETE.
-    P3 has now been adjudicated COMPLETE from independent evidence, so those literal assertions
-    became false and could only be deleted or inverted. The load-bearing invariants they were
-    really holding are preserved and re-pointed at the new truth:
-      * a phase reaches COMPLETE only when the registry says so, and P3's completion is backed by
-        its independent_review AND final_adjudication criteria PASS - the two a phase's own author
-        structurally cannot supply (THE anti-self-adjudication fact);
-      * the single READY unit is now P4, whose only dependency (P3) is COMPLETE;
-      * every phase after P4 stays BLOCKED, and R-07 stays OPEN - completing P3 did not close it.
+    Every prior version pinned a moment in one phase's life: P3 NOT STARTED, then P3
+    READY-but-NOT-COMPLETE, then P4 READY-but-NOT-COMPLETE. P4 has now been adjudicated COMPLETE
+    from independent evidence, so the P4-specific literals became false and could only be deleted
+    or re-pointed. Re-pointed. The load-bearing invariants are unchanged in kind:
+
+      * a phase reaches COMPLETE only when the registry says so, and that completion is legitimate
+        only with independent_review AND final_adjudication PASS - the two criteria a phase's own
+        author structurally cannot supply (THE anti-self-adjudication fact). Asserted for BOTH
+        adjudicated phases now, P3 and P4, not just the newest one;
+      * the single READY unit is now P5, whose only dependency (P4) is COMPLETE;
+      * every phase after the READY one stays BLOCKED;
+      * ### R-07 STAYS OPEN - NOT CONTAINED. Completing P4's weighted acceptance did NOT close it:
+        recording R-07 CONTAINED lives in phase-0-baseline-manifest.yaml, which is not a status
+        file, so it needs its own later content commit. This guard is the reason a session cannot
+        quietly conflate "P4 COMPLETE" with "R-07 closed".
+
+    THE ANTI-VACUOUS ANCHORS ARE DELIBERATE. A registry that failed to parse, a phase whose
+    criteria block went missing, or an empty READY scan would otherwise let every negative
+    assertion below pass over nothing at all - the exact false green this file exists to prevent.
     """
     text = CURRENT.read_text(encoding="utf-8")
     assert re.search(r"\*\*P2\*\*.*COMPLETE", text), "P2 no longer recorded COMPLETE"
@@ -264,40 +275,71 @@ def test_the_status_record_still_states_the_canonical_facts():
         "losing that record un-explains how P3 became READY, then COMPLETE"
     )
     assert re.search(r"R-07.{0,120}OPEN", text, re.S), (
-        "CURRENT.md must still record R-07 OPEN - completing P3 does not close it, only P4 does"
+        "CURRENT.md must still record R-07 OPEN - neither completing P3 nor completing P4's "
+        "weighted acceptance closes it; the manifest recording is a separate content commit"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
+    assert units, "the registry parsed to no units - every assertion below would be vacuous"
     by = {u["unit_id"]: u for u in units}
-    assert by["P3"]["status"] == "COMPLETE", f"P3 is {by['P3']['status']} - expected COMPLETE"
-    # P3 COMPLETE is legitimate ONLY with the two independently-supplied criteria PASS. A phase's
-    # own author can supply the other twelve; these two require a different session, by construction.
-    crits = {c["criterion"]: str(c["result"]).upper() for c in by["P3"]["acceptance_criteria"]}
-    assert crits.get("independent_review") == "PASS" and crits.get("final_adjudication") == "PASS", (
-        "P3 is COMPLETE without independent_review + final_adjudication PASS - a self-adjudicated "
-        "completion is exactly what this guard exists to forbid"
-    )
-    assert all(v == "PASS" for v in crits.values()), (
-        "P3 is COMPLETE while some criteria are not PASS: "
-        f"{sorted(k for k, v in crits.items() if v != 'PASS')}"
-    )
-    # the single READY unit is now P4, and its dependency P3 is COMPLETE
+    # POSITIVE ANCHOR: the phases this guard reasons about must actually be present.
+    for required in ("P3", "P4", "P5", "P14"):
+        assert required in by, f"{required} vanished from the registry"
+
+    # An adjudicated phase is COMPLETE only on a fully-PASS weighted contract summing to 100, whose
+    # independent_review + final_adjudication were supplied by a session other than the author.
+    for phase in ("P3", "P4"):
+        assert by[phase]["status"] == "COMPLETE", (
+            f"{phase} is {by[phase]['status']} - expected COMPLETE"
+        )
+        criteria = by[phase].get("acceptance_criteria")
+        assert criteria, f"{phase} is COMPLETE with no weighted acceptance contract at all"
+        assert sum(int(c["weight"]) for c in criteria) == 100, (
+            f"{phase}'s acceptance weights sum to "
+            f"{sum(int(c['weight']) for c in criteria)}, not 100"
+        )
+        crits = {c["criterion"]: str(c["result"]).upper() for c in criteria}
+        assert len(crits) == len(criteria), f"{phase} has duplicate criterion names"
+        assert crits.get("independent_review") == "PASS" and crits.get("final_adjudication") == "PASS", (
+            f"{phase} is COMPLETE without independent_review + final_adjudication PASS - a "
+            "self-adjudicated completion is exactly what this guard exists to forbid"
+        )
+        assert all(v == "PASS" for v in crits.values()), (
+            f"{phase} is COMPLETE while some criteria are not PASS: "
+            f"{sorted(k for k, v in crits.items() if v != 'PASS')}"
+        )
+
+    # the single READY unit is now P5, and its dependency P4 is COMPLETE
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P4"], f"expected P4 as the sole READY unit, found {ready}"
-    for dep in by["P4"]["dependencies"]:
+    assert ready == ["P5"], f"expected P5 as the sole READY unit, found {ready}"
+    assert by["P5"]["dependencies"], "P5 records no dependencies - its readiness proves nothing"
+    for dep in by["P5"]["dependencies"]:
         assert by[dep]["status"] == "COMPLETE", (
-            f"P4 is READY while dependency {dep} is {by[dep]['status']}"
+            f"P5 is READY while dependency {dep} is {by[dep]['status']}"
         )
-    for later in ("P5", "P14"):
+    # READY is SELECTION, never execution: P5 must not have started.
+    assert by["P5"]["execution_state"] == "NOT_STARTED", (
+        f"P5 is READY and already {by['P5']['execution_state']} - the closure commit was allowed "
+        "to begin the next phase, which the control boundary forbids"
+    )
+    assert not by["P5"].get("landed_checkpoints"), "P5 records landed work while NOT_STARTED"
+    later_phases = [u["unit_id"] for u in units
+                    if re.fullmatch(r"P\d+", u["unit_id"]) and int(u["unit_id"][1:]) >= 6]
+    assert later_phases, "no post-P5 phases found - the BLOCKED sweep would be vacuous"
+    for later in later_phases:
         assert by[later]["status"] == "BLOCKED", (
-            f"{later} is {by[later]['status']} - every phase after the READY P4 must stay BLOCKED"
+            f"{later} is {by[later]['status']} - every phase after the READY P5 must stay BLOCKED"
         )
-    # CURRENT.md must name P4 as the approved next unit and state P4 is not thereby complete.
-    assert re.search(r"the next approved unit is `P4`", text, re.I), (
-        "CURRENT.md must record P4 as the next approved unit - if the program moves on again, "
+    # CURRENT.md must name P5 as the approved next unit and state P5 is not thereby complete.
+    assert re.search(r"the next approved unit is `P5`", text, re.I), (
+        "CURRENT.md must record P5 as the next approved unit - if the program moves on again, "
         "this guard must be REPLACED with the new truth, not deleted"
     )
-    assert re.search(r"P4\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
-        "CURRENT.md must state that P4, though READY, is NOT COMPLETE"
+    assert re.search(r"P5\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
+        "CURRENT.md must state that P5, though READY, is NOT COMPLETE"
+    )
+    assert re.search(r"R-07.{0,80}OPEN\s*[—-]\s*NOT\s+CONTAINED", text, re.I | re.S), (
+        "CURRENT.md must still spell out R-07 OPEN - NOT CONTAINED alongside P4 COMPLETE, or a "
+        "reader will infer that a completed P4 closed it"
     )
 
 

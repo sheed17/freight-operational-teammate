@@ -202,17 +202,33 @@ def test_the_evidence_program_exists_and_fails_closed():
 
 
 def test_exactly_one_ready_unit_and_it_is_p3():
-    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md sec 5 rule 20 - name frozen to preserve the
-    node id, same as test_24b; body re-pointed). P3 has been adjudicated COMPLETE from independent
-    evidence, so the single READY unit is now P4. The rebaseline gate stays closed, and R-07 stays
-    OPEN - NOT CONTAINED: completing P3 did not close it, and only completing P4 does."""
+    """REPLACED at the P4 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md sec 5 rule 20 - name frozen to
+    preserve the node id, same as test_24b; body re-pointed for the second time). P4 has now been
+    adjudicated COMPLETE from independent evidence, so the single READY unit is P5.
+
+    ### R-07 STAYS OPEN - NOT CONTAINED, and this guard is where that survives the transition.
+    The rebaseline was documentation-only and P3 was kernel-only, so neither could close R-07.
+    P4's weighted acceptance is now 14/14 PASS - and it STILL does not close R-07, because the
+    CONTAINED record lives in phase-0-baseline-manifest.yaml, which is not a status-metadata file
+    and therefore needs its own later content commit. The manifest assertion below is the one that
+    would fail the instant someone marked it contained early."""
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
+    assert units, "the registry parsed to no units - the READY assertion would be vacuous"
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P4"], f"READY set drifted: {ready}"
+    assert ready == ["P5"], f"READY set drifted: {ready}"
     by = {u["unit_id"]: u for u in units}
     assert by["U-REBASELINE-1"]["status"] == "COMPLETE"
     assert by["P3"]["status"] == "COMPLETE", f"P3 is {by['P3']['status']}, expected COMPLETE"
-    # R-07 must still be OPEN - the rebaseline and P3 are both non-containment work
+    assert by["P4"]["status"] == "COMPLETE", f"P4 is {by['P4']['status']}, expected COMPLETE"
+    # POSITIVE ANCHOR: P4's completion must rest on a real, full-weight, fully-PASS contract - an
+    # absent or emptied acceptance_criteria block would otherwise satisfy "all PASS" vacuously.
+    p4_criteria = by["P4"].get("acceptance_criteria")
+    assert p4_criteria, "P4 is COMPLETE with no weighted acceptance contract"
+    assert sum(int(c["weight"]) for c in p4_criteria) == 100, "P4 acceptance weights must total 100"
+    assert all(str(c["result"]).upper() == "PASS" for c in p4_criteria), (
+        "P4 is COMPLETE while some weighted criteria are not PASS"
+    )
+    # R-07 must still be OPEN - the rebaseline, P3 and P4's acceptance are all non-containment work
     assert "status: OPEN - NOT CONTAINED" in read("docs/implementation/phase-0-baseline-manifest.yaml")
 
 

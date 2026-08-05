@@ -10,10 +10,10 @@
 derived:
   content_commit: 0891d1a19a9c47155a56a3f4b2116e5a4d4aa75e
   content_tree: a3e704645b8a06561d90cdb5f81288309ae51850
-  active_phase: P4
-  single_ready_unit: P4
+  active_phase: P5
+  single_ready_unit: P5
   cli_switch_readiness_percent: 100.0
-  overall_program_percent: 12.0
+  overall_program_percent: 22.0
   current_phase_percent: 0.0
   user_visible_maturity_percent: 0.0
   production_readiness_percent: 0.0
@@ -21,47 +21,60 @@ derived:
 # end-derived-block
 
 snapshot:
-  active_work_unit: "P4 — Adapter containment. SELECTED (status READY) and EXECUTING (execution_state IN_PROGRESS): two implementation checkpoints have landed and it is NOT COMPLETE; independent review and final adjudication are pending, and only completing it closes R-07"
-  next_approved_unit: "P4 — the one and only READY unit; route every external effect through the checkpoint kernel and the two-key rule and close R-07. It is under way and NOT complete: the EP-1/EP-3 ADAPT conversions, the EP-8/EP-14 read-only cuts, finding F2, and flipping the import gate to EMPTY all remain"
+  active_work_unit: "P5 — Canonical events, outbox/inbox, replay isolation and production persistence. SELECTED (status READY) and NOT STARTED (execution_state NOT_STARTED, checkpoint_state NO_CHECKPOINT): no event contract, outbox, inbox, replay sandbox or PostgreSQL work exists, and the session that recorded this transition did not begin any. READY is a selection, never a claim of progress"
+  next_approved_unit: "P5 — the one and only READY unit; implement the 98 event contracts with a transactional outbox and dedup inbox, prove replay structurally inert, and make persistence production-grade (PostgreSQL, migrations, durable timers per ADR-016). Its event content is still blocked on its own undischarged G2 transition/event completeness adjudication, which the preceding phase's completion did NOT discharge"
   completed_criteria:
-    # The FINAL ADJUDICATION is now recorded: a separate adjudicating session set all 14 weighted
-    # P3 criteria to PASS from independent evidence, so P3 is COMPLETE (phase computes to 100/100).
-    - "FINAL ADJUDICATION recorded: all 14 weighted P3 criteria are PASS and P3 is COMPLETE (p3-final-adjudication-review.md), set by a session that did not implement, review, remediate, normalize, N-1, or author the genuine review of P3"
-    - "a FRESH INDEPENDENT review of the remediated, finalized tree PASSED with zero new defects and 13/13 hostile probes (p3-genuine-independent-review.md)"
-    - "the first INDEPENDENT review returned 9 findings (60/100, NOT READY); P3 did not pass it; all nine (F-A CRITICAL through F-I LOW) were remediated by a session that was neither reviewer nor adjudicator"
-    - "the checkpoint kernel is implemented: seven-step atomic checkpoint, unconstructable CheckpointPassed, append-only witness, grant mint + claim CAS, brake ratchet, fp_v1 drift"
-    - "the P3 test battery is green across the nine test_phase3_* files, including the 105-case AC-CKPT merge-gating matrix (7 steps x 15 conditions, universal oracle)"
-    - "the prior illegal-history deadlock is RESOLVED: the P3 content was consolidated into a single content commit (0bf72b7, kernel tree cc53ff4f) and finalized as the metadata commit on top, so the status authority is back in the legal FINALIZED state"
-    - "the canonical suite was validated GREEN on the finalized P3 content by scripts/finalize_status.py (zero failures, one conditionally-justified skip; exact counts live only in CURRENT.md's status block and SUITE-RESULT.json), and the clean-clone gate reproduced it (GATE-RESULT.json passed:true) — executed evidence, not a criterion award"
+    # P4 FINAL ADJUDICATION recorded: a separate adjudicating session set thirteen of the fourteen
+    # weighted P4 criteria to PASS from independent evidence; canonical_finalizer became PASS on the
+    # one finalizer run that has since executed. P4 computes to 100/100 and is COMPLETE.
+    - "FINAL ADJUDICATION recorded: all 14 weighted P4 criteria are PASS and P4 is COMPLETE. Thirteen results come verbatim from p4-final-adjudication-report-0891d1a.md section F, set by a session that did not implement, remediate or review P4; canonical_finalizer is PASS on the finalizer run recorded in p4-first-finalization-pass-report-86306d5.md"
+    - "a FRESH INDEPENDENT re-review of remediated candidate 0891d1a returned ACCEPT FOR SEPARATE FINAL ADJUDICATION (p4-independent-rereview-report-0891d1a.md), re-deriving the whole 46-file unit diff from source and contradicting the builder handoff where the handoff was wrong"
+    - "P4's first INDEPENDENT review REJECTED candidate 95cf5af7 on two blocking findings (F-01 the governed join had no production caller; F-02 an empty URL filter permitted cross-origin navigation); a separate remediating session fixed both, and both were discharged on evidence the adjudicator re-derived rather than inherited"
+    - "adapter containment is implemented: the governed write route is production code with one real production caller for the checkpoint join, reachable from the authenticated Slack callback; one continuous approval identity runs from signed envelope to the operation the adapter receives; 19 hostile classes refuse with zero external attempts"
+    - "the CI import gate now asserts the effect-capable violation surface is EMPTY - 0 live and 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 live detection edges"
+    - "the P4 boundary mutation battery is 61/61 CAUGHT with 0 MISS, 0 SETUP-FAIL, 0 RESTORE-RED and byte-exact tree restoration - reproduced independently by the reviewer and again by the adjudicator"
+    - "exactly ONE canonical finalizer executed on candidate 0891d1a under an exclusively-held finalizer_lock, exit code 0, and wrote metadata commit 86306d5 touching exactly the five authorized STATUS_METADATA_FILES; the clean-clone gate passed with nine steps exit 0 bound to that commit and tree (GATE-RESULT.json passed:true) — executed evidence, not a criterion award"
+    - "FINAL ADJUDICATION recorded for P3 one phase earlier: all 14 weighted P3 criteria PASS (p3-final-adjudication-review.md), set by a session that did not implement, review, remediate, normalize, N-1, or author the genuine review of P3"
     - "U-HANDOFF-1 and U-REBASELINE-1 COMPLETE (both gates closed on independent evidence)"
   pending_criteria:
-    - "P3 acceptance: nothing remains — all 14 weighted criteria are now PASS in the registry and P3 is COMPLETE (phase 100/100). The twelve implementer-supplyable criteria plus the two that require a different session (independent_review weight 5, final_adjudication weight 4) are all recorded PASS from independent evidence"
-    - "recorded caveat (independent-review finding F-H): no INDEPENDENT mutation battery was run. The implementer guard battery (8/8) and the kernel battery (K1-K11) are evidence; the FRESH independent review corroborated the kernel with 13/13 independent hostile probes rather than a mutation battery. Noted, non-blocking"
-    - "P4's acceptance contract: to be instantiated from the acceptance_template when P4 begins"
-    - "every implementation phase P5-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P4)"
-  blockers_to_p4:
-    - "none from P3 — P3 is COMPLETE (all 14 criteria PASS), so P4's sole dependency is satisfied and P4 is the selected unit. P4 is EXECUTING and NOT COMPLETE; a session continuing it must read the P4 onboarding set first, and only COMPLETING P4 closes R-07"
+    - "P4 acceptance: nothing remains — all 14 weighted criteria are PASS in the registry and P4 is COMPLETE (phase 100/100). The twelve implementer-supplyable criteria plus the two that require a different session (independent_review weight 5, final_adjudication weight 4) are all recorded PASS from independent evidence"
+    - "P5's acceptance contract: to be instantiated from the acceptance_template when P5 begins. It has not been instantiated, so P5 contributes 0% and the current-phase number is 0% — which is correct, because P5 has not started"
+    - "the R-07 CONTAINED record in phase-0-baseline-manifest.yaml: NOT DONE. It is not a status-metadata file, so it needs its own content commit after the P4 closure content commit is independently reviewed, adjudicated and finalized"
+    - "every implementation phase P6-P14 (all SPECIFIED, 0% implemented, BLOCKED behind P5)"
+  blockers_to_p5:
+    - "none from P4 — P4 is COMPLETE (all 14 criteria PASS), so P5's sole dependency is satisfied and P5 is the selected unit. P5 has NOT started; a session picking it up must read the P5 onboarding set first"
+    - "P5's OWN blocker is undischarged: the transition/event completeness finding (13 of 134 transitions name no event) carries COUNT NEEDS ADJUDICATION and must be adjudicated at G2 before P5's event content is written. P4's completion did not discharge it and the P4 adjudication says so explicitly"
   open_program_risks:
-    - "R-07 OPEN - NOT CONTAINED. Completing P3 did NOT close it: the kernel ships dark, ungated live-write paths remain (the exact residual is CURRENT.md's - this file copies no count), and only completing P4 closes it."
+    - "R-07 OPEN - NOT CONTAINED. P4 built and independently verified the MECHANICAL close condition (the effect-capable violation surface is EMPTY with the gate asserting empty), but the CONTAINED RECORD belongs in phase-0-baseline-manifest.yaml, which is not a status-metadata file. Until a separate content commit writes it, R-07 is not closed. Exact residual detail is CURRENT.md's - this file copies no count."
+    - "RR-01 is a BINDING P12 PRECONDITION, not discharged: base_url sits outside payload_hash's canonical set and outside approval_operation_mismatch, so a tampered stored proposal row can carry a foreign target URL past the integrity anchor; two docstrings overclaim that every consequential value is hash-bound. Compounded by F-09 (an empty base_url skips the loopback refusal) and F-08 (approved-field values unconstrained and interpolated into an LLM task). Must be discharged before any live writer is injected."
+    - "AD-01 recorded and carried: EFFECT-PATH-INVENTORY.yaml and LEGACY-DISPOSITION.md describe the deployed callback server's governed_write_provider as None; it is actually WIRED (a bounded lookup, writer=None) with the kernel None. The fail-closed conclusion is unaffected. Prose fix only."
+    - "AD-02 recorded and carried: scripts/finalizer_lock.py is a safety-critical module with ZERO committed test coverage - no eval/ references, no TEST-NODE-MANIFEST.json nodes, no mutant - and it is directly load-bearing for the next finalizer run. A committed hostile battery plus a manifest regeneration is owed."
+    - "recorded non-blocking residuals carried out of P4, none discharged: RR-02, RR-03, RR-04, RR-05, RR-06, F-03, F-06, F-07, F-10. Each is recorded with its severity and disposition in the P4 unit's residual_risks_carried_forward block in IMPLEMENTATION-REGISTRY.yaml."
+    - "production Action Class gate registration remains DEFERRED BY FOUNDER DECISION to U8.1 / P8; AC-CKPT-6-missing stays DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8, and the production GateRegistry population is EMPTY and must stay empty. No production write is enabled."
     - "customer-specific freight rules remain NEEDS VALIDATION (OPEN-VALIDATION-ITEMS.md); Delivered Load Closure is a HYPOTHESIS with zero recorded firsthand design-partner observations"
-    - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5"
-    - "recorded debt: independent-review finding F-10 (trace-id namespaces / unpublished 61-point index) - auditability noise, blocks nothing"
+    - "the transition/event completeness finding carries COUNT NEEDS ADJUDICATION at G2, before P5's event content"
     - "recorded P6 obligation: the ledger's live-hold index relaxes again when Pipeline Instances take the Layer-1 hold (migrations/phase3_checkpoint.py)"
-  last_verified_test_evidence: "REFRESHED FOR P3. CURRENT.md's status block records the finalized P3 content commit (0bf72b7 lineage, kernel tree cc53ff4f), and scripts/finalize_status.py executed the full canonical suite green on that tree (zero failures, one conditionally-justified skip). Exact counts are deliberately not repeated here — volatile suite figures live ONLY in the CURRENT.md status block and SUITE-RESULT.json, both finalizer-written. The earlier failing run on reviewed tree 38f2714 (finding F-A) is history and is fixed."
-  finalizer_result: "PASS — scripts/finalize_status.py executed the full canonical suite, the clean-clone gate, the control guards and the AC gates on the finalized P3 content commit and wrote the status record; SUITE-RESULT.json is its green suite receipt, bound to the recorded content commit and tree in CURRENT.md's status block. The earlier deadlock (the P3 content sat across more than one content commit with no finalizer metadata commit on top) has been resolved by consolidating the content and finalizing it, so the status authority is in the legal FINALIZED state."
-  clean_clone_result: "PASS — scripts/clean_clone_gate.py cloned the committed state, built a fresh venv, installed only the declared dependencies, and reproduced the full green canonical suite on the recorded content commit and tree; GATE-RESULT.json records passed:true bound to that commit and tree. The earlier dependency-install and illegal-status obstacles are resolved."
-  independent_review_status: "P3: the first independent review (commit 38f2714) returned 9 findings (1 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW), 60/100, NOT READY (preserved at p3-independent-review-findings.md; dispositions at p3-findings-remediation-review.md). All nine were remediated. A FRESH independent review of the remediated, finalized tree then PASSED with zero new defects and 13/13 hostile probes (p3-genuine-independent-review.md). A SEPARATE final adjudication (p3-final-adjudication-review.md) then set independent_review and final_adjudication to PASS from that evidence, and P3 is COMPLETE — no session adjudicated its own review. The gate-level independent reviews (U-HANDOFF-2B, U-REBASELINE-REVIEW-1) are preserved and adjudicated/closed; they predate P3 and say nothing about it."
+  last_verified_test_evidence: "REFRESHED FOR P4. CURRENT.md's status block records the adjudicated P4 content commit 0891d1a (tree a3e70464), and scripts/finalize_status.py executed the full canonical suite green on that tree in-process (zero failures, one conditionally-justified skip), then reproduced it through the clean-clone gate. Exact counts are deliberately not repeated here — volatile suite figures live ONLY in the CURRENT.md status block and SUITE-RESULT.json, both finalizer-written. The node manifest is identical BY IDENTITY to live collection, with its hash recomputed through the canonical composer. NOTE: this evidence describes candidate 0891d1a. The P4 closure content commit that carries this snapshot has NOT been finalized and has no receipt of its own."
+  finalizer_result: "PASS — exactly one scripts/finalize_status.py run executed the full canonical suite, the clean-clone gate, the control guards and the AC gates on adjudicated P4 content commit 0891d1a and wrote the status record. It held .git/neyma-finalizer.lock exclusively for the whole run, exited 0, released the lock, and produced status-metadata commit 86306d5 (single parent 0891d1a) touching exactly the five authorized STATUS_METADATA_FILES. SUITE-RESULT.json is its green suite receipt, bound to the recorded content commit and tree in CURRENT.md's status block. Execution report: p4-first-finalization-pass-report-86306d5.md. NO SECOND FINALIZER HAS RUN: the P4 closure content commit carrying this snapshot is unfinalized by design and no receipt was fabricated for it."
+  clean_clone_result: "PASS — scripts/clean_clone_gate.py cloned the committed state, built a fresh venv, installed only the declared dependencies, and reproduced the full green canonical suite on content commit 0891d1a / tree a3e70464; GATE-RESULT.json records passed:true with nine steps exit 0 bound to that commit and tree, and its config_sha256, runner_sha256 and node_manifest_sha256 were each cross-checked against the candidate's own files rather than against the artifact itself. The gate was independently re-run by both the re-reviewer and the adjudicator."
+  independent_review_status: "P4: the first independent review REJECTED candidate 95cf5af7 (blocking findings F-01 and F-02; preserved byte-exactly at refs/preserve/p4-independent-review-95cf5af and carried in-tree as p4-independent-review-report.md with a disarming banner as its only modification). A separate remediating session produced candidate 0891d1a. A FRESH INDEPENDENT re-review of 0891d1a then returned ACCEPT FOR SEPARATE FINAL ADJUDICATION (p4-independent-rereview-report-0891d1a.md, sha256 181e1a37...b316, preserved at refs/preserve/p4-independent-rereview-0891d1a). A SEPARATE final adjudication (p4-final-adjudication-report-0891d1a.md, sha256 078cfea8...997e, preserved at refs/preserve/p4-final-adjudication-0891d1a) then set the fourteen criteria from that evidence — no session adjudicated its own work, and reviewer, remediator, adjudicator and finalizer were four different sessions. ### THESE REVIEWS ARE BOUND TO IMPLEMENTATION CANDIDATE 0891d1a. Neither reviewed the P4 closure content commit that carries this snapshot; that commit owes its own fresh targeted independent review and its own targeted adjudication. P3's earlier review history (first review 9 findings / 60/100 / NOT READY, remediation, fresh independent PASS, separate adjudication) is recorded in p3-final-adjudication-review.md. The gate-level independent reviews (U-HANDOFF-2B, U-REBASELINE-REVIEW-1) are preserved and adjudicated/closed; they predate P3 and say nothing about P4."
   verdict: ON TRACK
   expected_founder_experience: >-
-    The safety kernel is WRITTEN, GREEN, FINALIZED and now ADJUDICATED COMPLETE. The seven-step
-    checkpoint, the unforgeable witness, the claim CAS and the brake exist and pass their tests
-    including the full 105-case matrix; the guard and kernel mutation batteries have run; the
-    canonical suite is green on the finalized tree; the finalizer and clean-clone gate executed and
-    passed; a FRESH independent review PASSED; and a separate final adjudication set all 14 weighted
-    criteria PASS. Nothing looks different from the outside - deliberately. The kernel ships dark,
-    the customer-facing numbers stay zero on purpose, and ungated live-write paths still exist,
-    which is why R-07 stays OPEN - NOT CONTAINED. P4 is the payoff phase and it is UNDER WAY: two
-    checkpoints have landed, and because none of its weighted acceptance criteria has been
-    instantiated or awarded, the current-phase number is 0% and that is correct - landed code is not
-    completion. Expect no usable interface until P10 (Delivered Load Closure in shadow); production
-    progress becomes measurable from P11.
+    The payoff phase is done. P4 — adapter containment — is WRITTEN, GREEN, FINALIZED and now
+    ADJUDICATED COMPLETE at 14/14 weighted criteria, and it did not get there easily: its first
+    independent review REJECTED it outright, a separate session fixed both blocking findings, a
+    fresh independent re-review accepted the result, and a fourth session adjudicated it. An
+    external effect without a grant is now structurally impossible rather than merely discouraged:
+    the governed Slack-approved write runs through approval, checkpoint, witness, grant and atomic
+    claim, and the CI import gate asserts there is nothing left outside that path. The overall
+    program number moves from 12% to 22% because P4's ten program-weight points are now earned.
+    Nothing looks different from the outside - deliberately. The capability ships DARK: the deployed
+    server leaves the execution kernel unset and answers a recorded refusal, the production gate
+    registry is empty by founder decision until Phase 8, and no production write is enabled. Two
+    honest caveats, stated plainly. First, R-07 is STILL OPEN - NOT CONTAINED. The mechanism that
+    closes it is built and independently verified, but the repository has not yet WRITTEN the record
+    that says so, and that record is a separate commit that has not been made; a phase completing is
+    not the same act as a risk being recorded closed. Second, P5 is now the approved next unit but
+    HAS NOT STARTED, so the current-phase number is 0% and that is correct - a selected phase with
+    no code is 0%, and landed code is not completion either. Expect no usable interface until P10
+    (Delivered Load Closure in shadow); production progress becomes measurable from P11.

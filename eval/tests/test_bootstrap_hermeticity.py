@@ -422,7 +422,16 @@ def test_the_implementation_graph_is_consistent_and_protects_the_safety_wall():
         "P5 can begin without P4 - the rehearsal's exact bypass finding (P5 deps were [P2])"
     )
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P4"], f"READY set drifted: {ready}"  # P3 adjudicated COMPLETE -> P4 READY
+    # P3 adjudicated COMPLETE -> P4 READY; P4 then adjudicated COMPLETE -> P5 READY. The safety
+    # wall above is what makes this legal: P5 may only be selected because P4 is genuinely COMPLETE.
+    assert ready == ["P5"], f"READY set drifted: {ready}"
+    assert by_id["P4"]["status"] == "COMPLETE", (
+        f"P5 is READY while P4 is {by_id['P4']['status']} - the containment wall is bypassed"
+    )
+    p4_criteria = by_id["P4"].get("acceptance_criteria")
+    assert p4_criteria and sum(int(c["weight"]) for c in p4_criteria) == 100 and all(
+        str(c["result"]).upper() == "PASS" for c in p4_criteria
+    ), "P4 unlocked P5 without a real, full-weight, fully-PASS weighted acceptance contract"
 
 
 # ============================================================ H-3 / H-4: authority

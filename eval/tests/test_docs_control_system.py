@@ -425,42 +425,51 @@ def test_23b_every_root_control_document_appears_in_the_authority_map():
 # ============================================================ 24. the next approved work
 
 def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
-    """REPLACED at the P3 FINAL ADJUDICATION (CLAUDE.md section 5 rule 20 - replaced, not deleted).
+    """REPLACED at the P4 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md section 5 rule 20 - replaced, not
+    deleted; second replacement of this body).
 
     The function NAME is frozen to preserve its node identity in TEST-NODE-MANIFEST.json (the same
-    convention as test_24b); the BODY now asserts the post-adjudication truth. P3 has been
-    adjudicated COMPLETE from independent evidence, so the single READY unit is P4. The durable
-    invariants are preserved and re-pointed: a phase is COMPLETE only with all 14 weighted criteria
-    PASS - including independent_review and final_adjudication, which its own author structurally
-    cannot supply - and P4's gate ancestry stays closed on independent evidence."""
+    convention as test_24b); the BODY asserts the post-adjudication truth. P4 has now been
+    adjudicated COMPLETE from independent evidence, so the single READY unit is P5. The durable
+    invariants are preserved and re-pointed: an ADJUDICATED phase is COMPLETE only with all 14
+    weighted criteria PASS - including independent_review and final_adjudication, which its own
+    author structurally cannot supply - and the READY unit's gate ancestry stays closed on
+    independent evidence. Both adjudicated phases are now checked, so re-pointing the guard did
+    not drop P3's coverage."""
     units = registry_units()
+    assert units, "the registry parsed to no units - every assertion here would be vacuous"
     by_id = {u["unit_id"]: u for u in units}
     ready = [u for u in units if u["status"] == "READY"]
     assert len(ready) == 1, f"exactly one unit may be READY, found {[u['unit_id'] for u in ready]}"
     the_ready = ready[0]
-    assert the_ready["unit_id"] == "P4", f"the READY unit is {the_ready['unit_id']}, expected P4"
+    assert the_ready["unit_id"] == "P5", f"the READY unit is {the_ready['unit_id']}, expected P5"
 
-    # P3 is COMPLETE, and that completion is legitimate ONLY on a fully-PASS weighted contract whose
+    # An adjudicated phase is COMPLETE ONLY on a fully-PASS weighted contract summing to 100 whose
     # independent_review + final_adjudication were supplied by a session other than the author.
-    p3 = by_id["P3"]
-    assert p3["status"] == "COMPLETE", f"P3 is {p3['status']}, expected COMPLETE"
-    crits = p3.get("acceptance_criteria")
-    assert crits, "P3 has no weighted acceptance contract"
-    assert sum(int(c["weight"]) for c in crits) == 100, "P3 acceptance weights must total 100"
-    results = {c["criterion"]: str(c["result"]).upper() for c in crits}
-    assert results.get("independent_review") == "PASS" and results.get("final_adjudication") == "PASS", (
-        "P3 COMPLETE without independent_review + final_adjudication PASS - a self-adjudicated "
-        "completion is exactly what this guard exists to forbid"
-    )
-    unpassed = sorted(k for k, v in results.items() if v != "PASS")
-    assert not unpassed, f"P3 is COMPLETE while these criteria are not PASS: {unpassed}"
+    for phase_id in ("P3", "P4"):
+        phase = by_id[phase_id]
+        assert phase["status"] == "COMPLETE", f"{phase_id} is {phase['status']}, expected COMPLETE"
+        crits = phase.get("acceptance_criteria")
+        assert crits, f"{phase_id} has no weighted acceptance contract"
+        assert sum(int(c["weight"]) for c in crits) == 100, (
+            f"{phase_id} acceptance weights must total 100"
+        )
+        results = {c["criterion"]: str(c["result"]).upper() for c in crits}
+        assert results.get("independent_review") == "PASS" and results.get("final_adjudication") == "PASS", (
+            f"{phase_id} COMPLETE without independent_review + final_adjudication PASS - a "
+            "self-adjudicated completion is exactly what this guard exists to forbid"
+        )
+        unpassed = sorted(k for k, v in results.items() if v != "PASS")
+        assert not unpassed, f"{phase_id} is COMPLETE while these criteria are not PASS: {unpassed}"
 
-    # every P4 gate ancestor must be COMPLETE - P4 may not be READY on an open gate
+    # every gate ancestor of the READY unit must be COMPLETE - P5 may not be READY on an open gate
+    assert the_ready["dependencies"], "the READY unit records no dependencies"
     for dep in the_ready["dependencies"]:
         assert by_id[dep]["status"] == "COMPLETE", (
-            f"P4 is READY while dependency {dep} is {by_id[dep]['status']}"
+            f"P5 is READY while dependency {dep} is {by_id[dep]['status']}"
         )
     # the closed gates that let P3 begin still carry their independent-review evidence
+    p3 = by_id["P3"]
     for gate in ("U-HANDOFF-1", "U-REBASELINE-1"):
         assert gate in p3["dependencies"], f"P3 lost its {gate} gate dependency"
         evidence = " ".join(str(x) for x in by_id[gate]["completion_evidence"])
@@ -472,9 +481,13 @@ def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
         "U-REBASELINE-1 COMPLETE without the preserved independent review report"
     )
     # P4 must still prohibit the NEXT phase's work (events, P5) - the safety wall does not collapse
-    prohibited = " ".join(str(x) for x in the_ready["prohibited_scope"]).lower()
-    assert "events" in prohibited, "P4 must still prohibit P5 (events) work"
-    assert re.search(r"P4", read(CURRENT)), "CURRENT.md must name the next approved program"
+    # just because P4 finished. A completed phase's prohibited_scope is history that stays true.
+    p4_prohibited = " ".join(str(x) for x in by_id["P4"]["prohibited_scope"]).lower()
+    assert "events" in p4_prohibited, "P4 must still record that it prohibited P5 (events) work"
+    # and the READY unit must in turn prohibit the phase AFTER it
+    ready_prohibited = " ".join(str(x) for x in the_ready["prohibited_scope"]).lower()
+    assert "entities" in ready_prohibited, "P5 must prohibit P6 (entities) work"
+    assert re.search(r"P5", read(CURRENT)), "CURRENT.md must name the next approved program"
 
 
 def test_24b_the_current_status_file_forbids_the_phase_after_the_ready_one():
