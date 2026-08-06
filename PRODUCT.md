@@ -262,10 +262,11 @@ this file deliberately does not copy them, because a copied figure is a stale fi
 
 **The safety kernel exists but nothing consequential is routed through it yet.** Specifically:
 
-- **P4** — adapter containment, **executing and NOT COMPLETE** (**R-07 is OPEN — NOT
-  CONTAINED**; ungated live-write paths remain physically capable of external effects — the P3
-  kernel sits dark beside them until this phase routes every effect through it. The exact current
-  residual lives in [`CURRENT.md`](docs/implementation/CURRENT.md); this file copies no count)
+- **P4** — adapter containment, **COMPLETE — ADJUDICATED** (**R-07 recorded CONTAINED**; every
+  effect-capable path is now structurally forced through the governed boundary or fails closed, and
+  the P3 kernel is what they are forced through. ### **Containment does not mean production writes
+  are enabled** — the capability still ships dark. The exact current counts live in
+  [`CURRENT.md`](docs/implementation/CURRENT.md); this file copies none)
 - **P5** — canonical events, outbox/inbox, replay isolation
 - **P6–P9** — entities and state machines, provenance and evidence, policy/brake/exceptions,
   freight-domain projections

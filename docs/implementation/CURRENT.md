@@ -9,10 +9,14 @@
 > fresh independent re-review, and `canonical_finalizer` on the one finalizer run that executed
 > (exit 0 on `0891d1a`, metadata commit `86306d5`). **P5 (events, outbox/inbox, replay isolation,
 > PostgreSQL) is now the sole READY unit — SELECTED ONLY. P5 has not started and is NOT COMPLETE.**
-> ### **R-07 stays OPEN — NOT CONTAINED.** Completing P4's weighted acceptance did not close it:
-> the CONTAINED record belongs in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml),
-> which is not a status-metadata file, so it requires its own separate content commit that has not
-> been made.
+> ### **R-07 is now CONTAINED.** Completing P4's weighted acceptance did **not** close it — the
+> CONTAINED record belongs in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml),
+> which is not a status-metadata file, so it required its own separate content commit **after** both
+> finalization passes. That commit has been made, and **it** is the act that closed R-07.
+> ### **CONTAINED MEANS: external-effect paths are structurally forced through the governed boundary
+> or they fail closed. It does NOT mean production writes are enabled**, it registers no production
+> policy gate (the production `GateRegistry` population stays EMPTY until U8.1 / P8), and it grants
+> no autonomy of any kind. The capability still ships **dark**.
 
 ---
 
@@ -55,7 +59,7 @@ suite_skipped: 1
 | **P0** — baseline & anti-false-green infrastructure | ### **COMPLETE** | [`phase-0-implementation-review.md`](phase-0-implementation-review.md) · `d33f251` |
 | **P1** — correct effect identity (Commit Key) | ### **COMPLETE** | [`phase-1-implementation-review.md`](phase-1-implementation-review.md) · `149c02a`, `da07936` |
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
-| **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark; only completing P4 closes R-07 |
+| **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark. ### **Completing P3 did not close R-07 — and neither did completing P4:** R-07 closed only when a separate content commit, made after both P4 finalization passes, wrote the CONTAINED record into `phase-0-baseline-manifest.yaml` |
 | **P4** — adapter containment | ### **COMPLETE** | [`p4-independent-review-report.md`](p4-independent-review-report.md) — the first INDEPENDENT review, which candidate `95cf5af7` **did not pass** (REJECT — remediation required) · [`p4-independent-rereview-report-0891d1a.md`](p4-independent-rereview-report-0891d1a.md) — the FRESH INDEPENDENT re-review of the remediated candidate `0891d1a`, **ACCEPT FOR SEPARATE FINAL ADJUDICATION** · [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P4 recorded COMPLETE** · [`p4-first-finalization-pass-report-86306d5.md`](p4-first-finalization-pass-report-86306d5.md) — the one canonical finalizer run. ### **This did NOT close R-07** — see the open-risks table |
 | **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **SELECTED (`READY`) — NOT STARTED, NOT COMPLETE** | selection only; no P5 code, event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. Also carries its own undischarged **G2** validation blocker. See the P5 unit block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) |
 | **P6–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
@@ -91,30 +95,42 @@ suite_skipped: 1
 | Domain entities | **40** · adapters **18** · safety invariants **28** |
 | **AC-CKPT checkpoint matrix** | **105 / 105 GREEN** (7 steps × 15 conditions) |
 
-## ⛔ Open risks and findings — ALL STILL OPEN
+## ⛔ Open risks and findings — R-07 is CLOSED; every other residual below is CARRIED, not discharged
+
+**Nothing on this page was discharged by the R-07 closure.** R-07 is the only line that changed
+state, and it changed because a record was written, not because a residual was waived.
 
 | ID | Finding | Status | Closes at |
 |---|---|---|---|
-| **R-07** | Ungated live-write paths | ### **OPEN — NOT CONTAINED** | a **separate content commit** that records CONTAINED in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) |
-| — | ### **WHY R-07 IS STILL OPEN WITH P4 COMPLETE.** The **mechanical** close condition is met and independently verified — the effect-capable violation surface is EMPTY with the CI import gate asserting empty, 0 live / 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 live detection edges. What is **not** done is the **recording**: `phase-0-baseline-manifest.yaml` still says `status: OPEN - NOT CONTAINED`, and that file is **not** in `STATUS_METADATA_FILES`, so the record cannot ride in a status-metadata commit and did not ride in this one. It needs its own content commit, after this closure candidate is independently reviewed, adjudicated and finalized. **Until that commit lands, R-07 is OPEN.** | ### **OPEN — NOT CONTAINED** | the R-07 content commit |
-| — | **6 production-reachable live-write paths** — EP-1, EP-3, EP-6, EP-7, EP-9, EP-10 (the P0 baseline finding) | mechanically cut at P4; **record pending** | the R-07 content commit |
-| — | **31 direct adapter-import edges** across 18 importer modules (the P0 baseline finding) | mechanically resolved — 0 effect-capable violation edges remain; 13 authorized detection edges | the R-07 content commit |
+| **R-07** | Ungated live-write paths | ### **CONTAINED** — recorded in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) (`expected_legacy_paths.status: CONTAINED`) with the mechanism named | ### **CLOSED** by the separate R-07 content commit |
+| — | ### **HOW R-07 CLOSED, AND WHAT CLOSING IT DOES NOT MEAN.** The **mechanical** close condition was met and independently verified — the effect-capable violation surface is EMPTY with the CI import gate asserting empty, 0 live / 0 recorded violation edges agreeing both-sided, positively anchored by 152 inspected sources and 13 live detection edges. That was never sufficient on its own: the **recording** lives in `phase-0-baseline-manifest.yaml`, which is **not** in `STATUS_METADATA_FILES`, so it could ride in neither finalizer's commit. It required its own content commit **after** the acceptance-closure candidate was independently reviewed, separately adjudicated and finalized — and that commit is what wrote `status: CONTAINED`. ### **CONTAINMENT MECHANISM:** an external effect can be produced only by an effect-capable adapter; the only application-layer importer of one is `effect_boundary`; the import gate fails the build if a second appears; and inside the boundary the sole external-write path is `execute_invoice_write`, behind checkpoint → witness → grant → atomic claim. **Anything that cannot present that chain REFUSES — it does not fall back.** ### **CONTAINED ≠ ENABLED:** no production write is enabled, the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal, the production `GateRegistry` population is EMPTY until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** | ### **CONTAINED** | ### **CLOSED** |
+| — | **6 production-reachable live-write paths** — EP-1, EP-3, EP-6, EP-7, EP-9, EP-10 (the P0 baseline finding) | ### **CUT AND RECORDED** — EP-6/7/9/10 physically deleted (on-disk absence proved), EP-3/EP-8/EP-14 structurally read-only, EP-1's write half routed through the governed boundary | ### **CLOSED at P4 / R-07** |
+| — | **31 direct adapter-import edges** across 18 importer modules (the P0 baseline finding) | ### **RESOLVED AND RECORDED** — 0 effect-capable violation edges remain; 13 authorized detection edges | ### **CLOSED at P4 / R-07** |
 | — | P4 CHECKPOINT (P4-CP-1): EP-6/7/9/10 **DELETED** → 2 live-write paths remained (EP-1, EP-3); edges cut 31 → 20; effect-capable gate violations 12 → 5 | superseded by later P4 work | — |
 | — | P4 CONTAINMENT CUTOVER CHECKPOINT (P4-CP-2): findings **F1 + F4 fixed** (F1 = EP-12's live `--browser` path removed + AST structural quarantine proof; F4 = a generic post-attempt adapter exception becomes UNKNOWN_OUTCOME, never CLAIMED, never FAILED); **brain_runtime → tms_write edge cut** by injection; the **orphan-effect detective sweep mechanism implemented and mutation-proven** (`run_detective_sweep` is its per-cycle invocation surface; **no production/runtime caller exists yet** — production scheduling is deferred to P11 and the boundary still ships dark); gate violations **5 → 4**, edges **20 → 18**, importer modules **14 → 13**. The four violations then outstanding (EP-1, EP-3, EP-8, EP-14) and finding **F2** were deferred at that checkpoint and have since been closed — see the milestone section | superseded by later P4 work | — |
 | — | **RR-01 — a BINDING P12 PRECONDITION, NOT DISCHARGED.** `base_url` is outside `payload_hash()`'s canonical set and outside `approval_operation_mismatch`, so a tampered stored proposal row can carry a foreign target URL past the integrity anchor; two docstrings overclaim that every consequential value is hash-bound. Compounded by **F-09** (an empty `base_url` skips the loopback refusal) and **F-08** (approved-field *values* unconstrained and interpolated into an LLM task). Contained today only because the capability is dark and the deployed route is fail-closed | ### **OPEN — must be discharged before any live writer is injected** | **P12** |
-| — | **AD-01** — `EFFECT-PATH-INVENTORY.yaml` and `LEGACY-DISPOSITION.md` say the deployed callback server leaves `governed_write_provider`/`governed_write_kernel` as `None`. Mechanically false for the **provider**: it is WIRED (a bounded lookup, `writer=None`); the kernel is `None`. The operative conclusion — the route is unreachable and fails closed — is true. Prose fix only | OPEN, recorded, non-blocking | a later documentation correction |
+| — | **AD-01** — `EFFECT-PATH-INVENTORY.yaml` and `LEGACY-DISPOSITION.md` said the deployed callback server leaves `governed_write_provider`/`governed_write_kernel` as `None`. Mechanically false for the **provider**: it is **WIRED** (a bounded lookup, `writer=None`); the **kernel** is `None`, deliberately, pending Phase 8. The operative conclusion — the route is unreachable and fails closed — was and is true. ### **The prose in both files is CORRECTED by the R-07 closure commit; the stale "provider is `None`" wording must not reappear.** The finding is **carried, not discharged**: it stays recorded so a reintroduction is recognisable | ### **CARRIED — prose corrected, finding NOT discharged** | remains recorded; re-verify at P12 wiring |
 | — | **AD-02** — `finalizer_lock.py` is a 188-line safety-critical module with **zero committed test coverage**: no references under `eval/`, no nodes in [`TEST-NODE-MANIFEST.json`](TEST-NODE-MANIFEST.json), no mutant. Verified sound 16/16 twice, but only ad hoc — and it is directly load-bearing for the next finalizer run | OPEN, recorded, non-blocking | a committed hostile battery + manifest regeneration |
 | — | **RR-02 · RR-03 · RR-04 · RR-05 · RR-06 · F-03 · F-06 · F-07 · F-10** — the remaining residuals the independent re-review and the final adjudication retained; each is recorded in full, with its severity and disposition, in the P4 unit's `residual_risks_carried_forward` block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) | OPEN, recorded, non-blocking | as recorded per finding |
 | — | **Transition/event completeness: 13 of 134 name no event outright** (5 bare · 3 documented non-producing · 3 unnamed-ILLEGAL · 2 delegating; exact members in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml)) — ### **COUNT NEEDS ADJUDICATION**: the specs do not define which classes violate AC-EVT-003, and the retired "24" was never mechanically computed. ### **P4's completion did NOT discharge this** — it is independent of P4 and remains P5's own validation blocker | OPEN | **G2, before P5 content** |
 | — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
 | — | ~~Checkpoint Witness + seven-step checkpoint + claim CAS unimplemented~~ | ### **RESOLVED at P3** — the kernel exists and ships dark | **P3 ✅** |
-| — | ~~Adapter containment unimplemented~~ | ### **RESOLVED at P4** — the containment mechanism exists and is adjudicated 14/14. Recording R-07 as contained is a separate act, and it has not been made | **P4 ✅** |
+| — | ~~Adapter containment unimplemented~~ | ### **RESOLVED at P4** — the containment mechanism exists and is adjudicated 14/14, and the separate act of recording R-07 CONTAINED has now been made | **P4 ✅ · R-07 ✅** |
+| — | **F-TR-01 · F-TR-02 · F-TR-03 · F-TR-04** — the four documentation-consistency defects the targeted adjudication of `42ea24c` classified as real, non-blocking for the second finalizer and **binding on the next content commit** (`ARCHITECTURE.md` and `AGENTS.md` describing P4 incomplete, `AGENTS.md` implying P4 alone closes R-07, `FREIGHT-CAPABILITY-MAP.md` stale, `EFFECT-PATH-INVENTORY.yaml`'s free-text "P4 REMAINS NOT COMPLETE") | ### **REMEDIATED by the R-07 closure commit** | ### **CLOSED** |
+| — | **ADJ-01** — the switch-consistency guard states the one-READY-unit invariant but its regex did not reach the `READY *(selected)*` / `the sole READY unit` constructions it claims to guard, so the very defect it exists to catch passed it | ### **REMEDIATED by the R-07 closure commit** — the completed-unit patterns are broadened and a new positive check requires the selected-READY construction to exist, to be singular, and to agree with the registry | ### **CLOSED** |
+| — | **ADJ-02** — the P3 precedent's correction scope was not fully carried into P4 (`f579d92` corrected `AGENTS.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `README.md`; `42ea24c` corrected only the latter two) | ### **PARITY RESTORED by the R-07 closure commit** | ### **CLOSED** |
+| — | **Product Driver `BLOCKED_AUTHORITY` observation, reported during the second finalization.** Classified as a **pre-existing prose-extraction ambiguity in the external driver's protocol resolver**, not a failed repository guard: no repository guard reported it, `progress_status.build_status_errors()` was `[]`, `repo_state()` was legal, and the canonical suite was green | OPEN, recorded, non-blocking — **not discharged** | the driver's own resolver work; re-observe each finalization |
 | — | **Production Action Class gate registration** — the production `GateRegistry` population is **EMPTY** and must stay empty; `AC-CKPT-6-missing` remains `DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8` | ### **DEFERRED BY FOUNDER DECISION — unchanged** | **U8.1 / P8** |
 | — | **No firsthand design-partner observation recorded by any agent** | OPEN | [`design-partner-observations.md`](../product/design-partner-observations.md) |
 | — | Repository legacy reduction unfinished | OPEN | [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md) |
 
-> ### **The only mitigation for R-07 is the operator's one-writer-at-a-time discipline.**
-> ### **That is discipline, not a mechanism, and it may NEVER be recorded as containment.**
+> ### **HISTORICAL — SUPERSEDED BY THE R-07 CONTAINMENT RECORD.** From P0 until P4 this page read:
+> *"The only mitigation for R-07 is the operator's one-writer-at-a-time discipline. That is
+> discipline, not a mechanism, and it may NEVER be recorded as containment."* It was correct for
+> every day of that life. R-07's mitigation is now a **mechanism**, recorded in
+> [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml).
+> ### **THE RULE BEHIND THE OLD SENTENCE DOES NOT EXPIRE: discipline is still never containment,
+> and no allowance may ever be read as one.** What changed is that there is now a mechanism to read.
 >
 > ### **Phase 2 made tenant ownership real at persistence boundaries.**
 > ### **Phase 2 did NOT make external effects safe.**
@@ -166,11 +182,13 @@ legal-topology determination:
 > forged, and none was written for this closure commit** — this commit is a *content* commit and
 > owes its own finalization after its own independent review and adjudication.
 >
-> ### **WHAT P4's COMPLETION IS NOT.** It is **not** R-07 closed (the record is a separate content
-> commit — see the open-risks table). It is **not** permission to begin P5. It is **not** a
-> production enablement: the capability still ships dark, the deployed governed route still answers
+> ### **WHAT P4's COMPLETION WAS NOT.** It was **not** R-07 closed — that took a **separate content
+> commit**, made after both finalization passes, which is what actually wrote the CONTAINED record
+> (see the open-risks table). It is **not** permission to begin P5. It is **not** a production
+> enablement: the capability still ships dark, the deployed governed route still answers
 > `ROUTE_NOT_CONFIGURED`, and the production `GateRegistry` population is still **EMPTY** by founder
-> decision until U8.1 / P8.
+> decision until U8.1 / P8. ### **The same is true of the R-07 closure itself: recording CONTAINED
+> enabled nothing.**
 
 **What P4 bought, concretely:** an external effect without a grant is now structurally impossible
 rather than merely discouraged. The governed write route is production code with exactly one
@@ -240,9 +258,10 @@ semantics require — VERIFIED and UNKNOWN_OUTCOME hold their keys forever.
 load-bearing only when **P4** contained the adapters behind it. **Completing P3 did NOT close
 R-07** — the six live-write paths were physically untouched by P3, exactly as its prohibited scope
 required. P4 has since deleted EP-6/7/9/10, cut EP-1/EP-3/EP-8/EP-14 and routed the governed write
-through the checkpoint kernel; ### **R-07 nonetheless stays OPEN — NOT CONTAINED**, because the
-CONTAINED record in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) has not been
-written and cannot be written by a status-metadata commit.
+through the checkpoint kernel; ### **and R-07 STILL did not close there** — the CONTAINED record in
+[`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) cannot be written by a
+status-metadata commit, so it took a further, separate content commit after both finalization
+passes. ### **That commit has now been made, and R-07 is CONTAINED.**
 
 ### Gate history — ### **BOTH GATES ARE CLOSED**, all on independent evidence
 
@@ -489,8 +508,10 @@ transport truncation disclosed, in
    → a fresh witness and Effect Grant in one transaction → the effect boundary with readback
    verification. The CI import gate now **asserts the effect-capable violation surface is EMPTY**,
    and the boundary mutation battery stands at **61/61 caught** with byte-exact tree restoration.
-   ### **This is the mechanical close condition for R-07 — and it is met and independently verified.
-   R-07 is nevertheless still OPEN, because the CONTAINED record has not been written.**
+   ### **This is the mechanical close condition for R-07 — met and independently verified — and the
+   CONTAINED record has now been written, in a separate content commit after both finalization
+   passes. R-07 is CONTAINED. Containment forces external effects through the governed boundary or
+   fails them closed; it enables no production write.**
 
 ## ✅ The exact next approved work program
 
@@ -518,11 +539,13 @@ development and deterministic tests).
 
 > ### **AND THE CONTROL BOUNDARY STOPS HERE.** Recording this transition authorizes the *status
 > change*, not the start of P5 work. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a
-> session must never roll into the next unit merely because the current one finished. The next legal
-> acts on this branch are, in order: a **fresh targeted independent review** of the closure content
-> commit, a **separate targeted adjudication** of it, exactly one **second finalizer** run, and only
-> then the **separate R-07 content commit**. Integration to `main` is fast-forward-only under R-21
-> and is a separate founder-authorized act.
+> session must never roll into the next unit merely because the current one finished. The
+> acceptance-closure candidate has since received its fresh targeted independent review, its
+> separate targeted adjudication and exactly one second finalizer, and the **separate R-07 content
+> commit** has been made. ### **The next legal acts on this branch are, in order: a fresh targeted
+> independent review of the R-07 closure content commit, a separate targeted adjudication of it,
+> exactly one third finalizer, P4/R-07 campaign closure verification — and only then may P5 begin.**
+> Integration to `main` is fast-forward-only under R-21 and is a separate founder-authorized act.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
 green final-tree validation via [`scripts/finalize_status.py`](../../scripts/finalize_status.py),
@@ -535,14 +558,14 @@ defects, 13/13 hostile probes); and a **separate FINAL ADJUDICATION**
 — by a session that neither implemented P3, reviewed it, remediated it, normalized the history, nor
 corrected N-1.
 
-> ### **R-07 is OPEN — NOT CONTAINED, and completing P4's weighted acceptance did not change
-> that.** The P0 finding was 31 direct adapter-import edges and all six production-reachable
-> live-write paths. P4 has since deleted EP-6/7/9/10, cut EP-1/EP-3/EP-8/EP-14, routed the governed
-> write through the checkpoint kernel and flipped the gate to assert the effect-capable violation
-> surface is EMPTY — the **mechanical** close condition, independently verified twice. What remains
-> is the **record**: `phase-0-baseline-manifest.yaml` still says `status: OPEN - NOT CONTAINED`, and
-> that file is not a status-metadata file, so the record needs its own content commit. **Only that
-> commit closes R-07** — not P3, not P4's acceptance block, not a plan, and not operator discipline.
+> ### **R-07 is CONTAINED — and completing P4's weighted acceptance is NOT what did it.** The P0
+> finding was 31 direct adapter-import edges and all six production-reachable live-write paths. P4
+> deleted EP-6/7/9/10, cut EP-1/EP-3/EP-8/EP-14, routed the governed write through the checkpoint
+> kernel and flipped the gate to assert the effect-capable violation surface is EMPTY — the
+> **mechanical** close condition, independently verified twice. What remained after all of that was
+> the **record**, and `phase-0-baseline-manifest.yaml` is not a status-metadata file, so it needed
+> its own content commit after both finalization passes. **That commit is what closed R-07** — not
+> P3, not P4's acceptance block, not a finalizer, not a plan, and not operator discipline.
 
 ## ⛔ What must NOT begin yet
 
@@ -550,8 +573,8 @@ corrected N-1.
 |---|---|
 | ### **Implementation Phase 6** (foundational entities and state machines) | Requires `P5` COMPLETE. ### **P5 itself is now READY** — it is deliberately no longer in this table, though it has not started and must not be started by the session that recorded this transition |
 | **Writing the event contracts, outbox, inbox or replay sandbox** | The READY unit is a *selection*; this specific content is still blocked on the **G2** transition/event completeness adjudication, which P4's completion did not discharge |
-| Declaring R-07 contained | ### **Only the separate R-07 content commit closes it**, and that commit may be made only after this closure candidate is independently reviewed, adjudicated and finalized. Not P3, not P4's acceptance block, not a plan, not operator discipline |
-| Running a finalizer on this closure content commit | It must first receive a **fresh targeted independent review** and a **separate targeted adjudication**. No finalizer receipt exists for it and none may be fabricated |
+| Treating R-07 CONTAINED as production enablement | ### **Containment is not enablement.** External-effect paths are structurally forced through the governed boundary or fail closed. No production write is enabled, the deployed route answers `ROUTE_NOT_CONFIGURED`, the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** Live supervised writes are P12, behind the undischarged **RR-01** |
+| Running a finalizer on the R-07 closure content commit | It must first receive a **fresh targeted independent review** and a **separate targeted adjudication**. No finalizer receipt exists for it and none may be fabricated |
 | Freight workflow implementation | Requires P6–P9 foundations |
 | Deleting legacy production code | Requires the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md); P4 executed only the S1/S2 deletions its own acceptance covered |
 | Registering production Action Class gates | ### **DEFERRED BY FOUNDER DECISION to U8.1 / P8.** The production `GateRegistry` population is EMPTY and must stay empty; `AC-CKPT-6-missing` stays `DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8` |
@@ -616,7 +639,20 @@ P4 closure content commit** must additionally read, in order:
 [`p4-closure-content-topology-determination.md`](p4-closure-content-topology-determination.md) →
 the P4 unit block's `acceptance_criteria` and `residual_risks_carried_forward` in
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
-[`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) (the R-07 record, deliberately
-untouched by the closure commit). ### **None of those four reports reviewed the closure commit
-itself** — the re-review and the adjudication are bound to implementation candidate `0891d1a`, and
-they say so in their own headers.
+[`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml) (the R-07 containment record).
+### **None of those four reports reviewed the closure commit itself** — the re-review and the
+adjudication are bound to implementation candidate `0891d1a`, and they say so in their own headers.
+
+**A session performing the fresh targeted independent review or the targeted adjudication of the
+R-07 CLOSURE content commit** must additionally read, in order:
+[`p4-closure-candidate-targeted-review-report-42ea24c.md`](p4-closure-candidate-targeted-review-report-42ea24c.md) →
+[`p4-closure-candidate-targeted-adjudication-report-42ea24c.md`](p4-closure-candidate-targeted-adjudication-report-42ea24c.md) →
+[`p4-second-finalization-pass-report-06ebfdb3.md`](p4-second-finalization-pass-report-06ebfdb3.md) →
+[`p4-r07-closure-handoff.md`](p4-r07-closure-handoff.md) →
+[`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml)'s `expected_legacy_paths` block.
+### **The second-finalization report is a RECONSTRUCTION authored after the run by an independent
+attestation session that did not execute the finalizer.** It may be cited for facts independently
+established by Git objects, canonical receipts, lock/run artifacts and preserved scratchpad
+evidence — never as contemporaneous finalizer testimony — and the items it marks `[UNAVAILABLE]`
+(the process PID and the Product Driver run/session IDs) are documented limitations, not blanks to
+be filled in. ### **None of the reports above reviewed the R-07 closure commit itself.**

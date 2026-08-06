@@ -206,12 +206,16 @@ def test_exactly_one_ready_unit_and_it_is_p3():
     preserve the node id, same as test_24b; body re-pointed for the second time). P4 has now been
     adjudicated COMPLETE from independent evidence, so the single READY unit is P5.
 
-    ### R-07 STAYS OPEN - NOT CONTAINED, and this guard is where that survives the transition.
-    The rebaseline was documentation-only and P3 was kernel-only, so neither could close R-07.
-    P4's weighted acceptance is now 14/14 PASS - and it STILL does not close R-07, because the
-    CONTAINED record lives in phase-0-baseline-manifest.yaml, which is not a status-metadata file
-    and therefore needs its own later content commit. The manifest assertion below is the one that
-    would fail the instant someone marked it contained early."""
+    ### THE R-07 SEPARATION SURVIVES THE TRANSITION, AND THIS GUARD IS WHERE. The rebaseline was
+    documentation-only and P3 was kernel-only, so neither could close R-07. P4's weighted acceptance
+    reached 14/14 PASS - and it STILL did not close R-07, because the CONTAINED record lives in
+    phase-0-baseline-manifest.yaml, which is not a status-metadata file and therefore needed its own
+    later content commit, after both finalization passes. That commit has since been made.
+    The manifest assertion below used to fail the instant anyone marked R-07 contained EARLY. It now
+    fails if the record reads CONTAINED WITHOUT the control state that alone authorizes it - P4
+    COMPLETE on a real full-weight fully-PASS contract, and P5 the sole READY unit. That is the same
+    separation, asserted from the other side, and it is why the record cannot be back-dated onto a
+    tree where P4 was not adjudicated."""
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
     assert units, "the registry parsed to no units - the READY assertion would be vacuous"
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
@@ -228,17 +232,49 @@ def test_exactly_one_ready_unit_and_it_is_p3():
     assert all(str(c["result"]).upper() == "PASS" for c in p4_criteria), (
         "P4 is COMPLETE while some weighted criteria are not PASS"
     )
-    # R-07 must still be OPEN - the rebaseline, P3 and P4's acceptance are all non-containment work
-    assert "status: OPEN - NOT CONTAINED" in read("docs/implementation/phase-0-baseline-manifest.yaml")
+    # The R-07 record may read CONTAINED only inside the control state the separate closure commit
+    # had to follow. The rebaseline, P3 and P4's acceptance were all non-containment work.
+    r07 = yaml.safe_load(
+        read("docs/implementation/phase-0-baseline-manifest.yaml"))["expected_legacy_paths"]
+    assert r07["status"] == "CONTAINED", f"the R-07 record reads {r07['status']!r}"
+    assert str(r07["contained_at"]).strip().startswith("P4"), (
+        "R-07 is recorded CONTAINED without naming P4 as the phase that earned it"
+    )
+    assert by["P4"]["status"] == "COMPLETE" and ready == ["P5"], (
+        "R-07 is recorded CONTAINED outside the control state that alone authorizes it"
+    )
 
 
 def test_r07_remains_open_not_contained():
-    """The rebaseline is documentation-only; it may never mark R-07 contained."""
-    manifest = read("docs/implementation/phase-0-baseline-manifest.yaml")
-    # the existing errata guard forbids CONTAINED; assert the OPEN record persists in status
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen to preserve its node identity in TEST-NODE-MANIFEST.json; the body is re-pointed).
+
+    The rebaseline is documentation-only and could never mark R-07 contained - that remains true and
+    is asserted below by requiring the U-REBASELINE-1 unit to record no containment claim of its
+    own. What changed is who DID close it: a separate content commit, after both P4 finalization
+    passes, writing the record into phase-0-baseline-manifest.yaml. So the status authority must now
+    state CONTAINED, and must still state the bound (containment is not production-write
+    enablement), because an unbounded CONTAINED reads as enablement to exactly the reader this guard
+    family protects.
+    """
     current = read("docs/implementation/CURRENT.md")
-    assert re.search(r"R-07.{0,80}OPEN\s*[—-]\s*NOT\s+CONTAINED", current, re.I | re.S), (
-        "CURRENT.md no longer records R-07 OPEN - NOT CONTAINED"
+    assert re.search(r"R-07.{0,200}\bCONTAINED\b", current, re.I | re.S), (
+        "CURRENT.md no longer records R-07 CONTAINED"
+    )
+    assert not re.search(r"R-07[^\n]{0,60}?\b(?:is|stays|remains)\s+\*{0,3}OPEN\b", current, re.I), (
+        "CURRENT.md still describes R-07 as OPEN after the containment record was written"
+    )
+    assert re.search(r"CONTAINED\s*(?:≠|!=)\s*ENABLED|not mean production writes are enabled|"
+                     r"no production write is enabled", current, re.I), (
+        "CURRENT.md records R-07 CONTAINED without stating that containment is not enablement"
+    )
+    # the rebaseline unit itself may never claim to have contained anything
+    units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
+    rb = next(u for u in units if u["unit_id"] == "U-REBASELINE-1")
+    blob = " ".join(str(v) for v in rb.values())
+    assert not re.search(r"R-07[^.\n]{0,60}\bCONTAINED\b", blob, re.I) or \
+        re.search(r"R-07[^.\n]{0,60}(?:NOT|never|cannot)[^.\n]{0,20}CONTAINED", blob, re.I), (
+        "the documentation-only rebaseline unit claims R-07 containment"
     )
 
 

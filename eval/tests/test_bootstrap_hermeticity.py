@@ -372,8 +372,23 @@ def test_the_effect_path_inventory_is_exact_and_fully_classified():
     )
     ep14 = next(p for p in paths if p["id"] == "EP-14")
     assert ep14["path"] == "scripts/read_tms_browser_use.py", "the P0-F4 adjudication is gone"
-    assert re.search(r"R-07 OPEN", read(IMPL / "EFFECT-PATH-INVENTORY.yaml")), (
-        "the inventory stopped recording R-07 as open"
+    # R-07's status as this inventory RESTATES it. The canonical record is the baseline manifest;
+    # this file is scoped to the live-write adjudication and must AGREE with it rather than drift.
+    # Re-pointed at the R-07 closure content commit (rule 20): it asserted the literal "R-07 OPEN"
+    # for the whole time that was true, and now asserts the recorded closure together with its
+    # bound - because an unbounded CONTAINED in an effect-path inventory reads as enablement.
+    recorded = yaml.safe_load(
+        read(IMPL / "phase-0-baseline-manifest.yaml"))["expected_legacy_paths"]
+    assert recorded["status"] == "CONTAINED", (
+        f"the canonical R-07 record reads {recorded['status']!r}"
+    )
+    assert str(inv["meta"]["risk"]).strip().startswith("R-07 CONTAINED"), (
+        "the inventory's meta.risk no longer agrees with the canonical R-07 CONTAINED record: "
+        f"{str(inv['meta']['risk'])[:80]!r}"
+    )
+    assert re.search(r"NOT mean any production write is enabled",
+                     " ".join(str(inv["meta"]["risk"]).split()), re.I), (
+        "the inventory records R-07 CONTAINED without the bound - containment is not enablement"
     )
 
 
@@ -442,7 +457,13 @@ def test_registry_md_carries_no_independent_status_authority():
         "registry.md lost its authority banner (the rehearsal found it contradicting the "
         "canonical registry on Phase 2)"
     )
-    live = re.sub(r"<details>.*?</details>", "", text, flags=re.S)
+    # DELEGATED at the R-01/R-02 remediation: only a SELF-LABELLING <details> block is quarantined.
+    # registry.md's block labels itself "Historical status table (pre-Blocker snapshot - WRONG
+    # about Phase 2; retained as evidence)", so it still exempts - by saying so, not by existing.
+    sys.path.insert(0, str(ROOT / "eval"))
+    from control import status_claims
+
+    live = status_claims.strip_historical_blocks(text)
     live = "\n".join(l for l in live.split("\n") if not l.startswith(">"))  # the banner DESCRIBES the defect
     assert not re.search(r"Phase 2[^|\n]{0,40}IN PROGRESS", live), (
         "registry.md asserts Phase 2 IN PROGRESS outside the quarantined historical block"

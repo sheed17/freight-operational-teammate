@@ -15,12 +15,15 @@ Discipline carried from the implementation phases:
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "eval"))
+from control import status_claims  # noqa: E402
 DOCS = ROOT / "docs"
 IMPL = DOCS / "implementation"
 
@@ -59,8 +62,15 @@ def registry_units() -> list[dict]:
 
 def strip_historical(text: str) -> str:
     """Explicitly-labelled historical blocks may retain superseded claims IN PLACE. Everything
-    outside them is live instruction. (Same rule as test_switch_consistency.strip_historical.)"""
-    return re.sub(r"<details>.*?</details>", "", text, flags=re.S)
+    outside them is live instruction. (Same rule as test_switch_consistency.strip_historical.)
+
+    DELEGATED at the R-01/R-02 remediation. This used to be
+    `re.sub(r"<details>.*?</details>", "", text, flags=re.S)` - six copies of which existed across
+    the guard modules, none of which checked for the label its own docstring claimed to require.
+    `CURRENT.md` records an incident in which a false transition claim was planted inside a
+    `<details>` block precisely BECAUSE every control guard stops reading there. One definition,
+    label-aware, in `control.status_claims`; see that module's docstring."""
+    return status_claims.strip_historical_blocks(text)
 
 
 # ============================================================ 1-5. the required documents exist
@@ -209,13 +219,97 @@ def test_9_no_control_document_claims_a_phase_is_complete_before_the_registry_do
 
 
 def test_10_r07_is_recorded_open_and_never_contained():
-    """The manifest is the machine-checked record; the control documents must agree with it."""
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen to preserve its node identity in TEST-NODE-MANIFEST.json; the body is re-pointed).
+
+    The invariant is unchanged in KIND: the manifest is the machine-checked record and the control
+    documents must agree with it. Only the recorded VALUE moved - from `OPEN - NOT CONTAINED` to
+    `CONTAINED` - by the separate content commit repository authority reserved for exactly that act.
+
+    Deliberately STRONGER than a flipped literal, because a flipped literal checks a word instead of
+    a state. Three things are asserted:
+
+      1. the manifest records exactly `status: CONTAINED` under expected_legacy_paths, and exactly
+         ONE bare `status: CONTAINED` line exists in the whole file - a second would mean some other
+         allowance quietly claimed containment;
+      2. every live control document records R-07 as CONTAINED, so a document silently reverting to
+         "R-07 is OPEN" now fails as loudly as an early CONTAINED once did;
+      3. every one of them also states the BOUND. The old guard existed to stop a reader inferring
+         safety that did not exist. After closure the same failure mode is a reader inferring
+         ENABLEMENT that does not exist, so each document must say containment is not
+         production-write enablement.
+
+    RE-POINTED AT THE REPLACEMENT CANDIDATE (F-02), on two counts.
+
+    THE CORPUS IS NO LONGER A HARD-CODED FOUR-TUPLE. It was `(CURRENT, CLAUDE, ARCHITECTURE,
+    README)`, which cannot collapse but also cannot GROW: it never reached `LEGACY-DISPOSITION.md`
+    or any agent lens, and that is exactly where the live false claims were. The stale-claim half
+    now runs over the DISCOVERED live-authority population unified with this guard's four. The four
+    keep their own stronger per-document obligation - state CONTAINED, and state the bound -
+    because those are the documents a reader actually lands on.
+
+    THE PATTERN IS GONE. `R-07[^\\n]{0,60}?\\b(?:is|stays|remains)\\s+\\*{0,3}OPEN\\b` required a
+    copula to FOLLOW the risk id, and omitted NOT CONTAINED / UNCONTAINED from its alternation
+    entirely. It is replaced by the structural parse in `control.status_claims`; see that module's
+    docstring for why word-order matching was the wrong shape for this invariant.
+    """
     manifest = read(IMPL / "phase-0-baseline-manifest.yaml")
-    assert "status: OPEN - NOT CONTAINED" in manifest, "the R-07 manifest record changed"
-    assert not re.search(r"^\s*status:\s*CONTAINED", manifest, re.M), "R-07 was marked CONTAINED"
+    data = yaml.safe_load(manifest)["expected_legacy_paths"]
+    assert data["risk_id"] == "R-07"
+    assert data["status"] == "CONTAINED", (
+        f"the R-07 manifest record reads {data['status']!r}; the authorized spelling is 'CONTAINED'"
+    )
+    bare = re.findall(r"^\s*status:\s*CONTAINED\s*$", manifest, re.M)
+    assert len(bare) == 1, (
+        f"expected exactly one bare `status: CONTAINED` line in the manifest, found {len(bare)}"
+    )
+
+    # (a) the four landing documents carry the record AND its bound - unchanged in strength
     for path in (CURRENT, CLAUDE, ARCHITECTURE, README):
-        assert re.search(r"R-07.{0,120}OPEN", read(path), re.S), \
-            f"{path.name} must record R-07 as OPEN"
+        text = strip_historical(read(path))
+        assert re.search(r"R-07.{0,200}CONTAINED", text, re.S), (
+            f"{path.name} must record R-07 as CONTAINED"
+        )
+        assert re.search(r"CONTAINED\s*(?:≠|!=)\s*ENABLED", text) or re.search(
+            r"(?:does\s+)?not\s+mean\s+(?:that\s+)?production writes?\s+(?:are|is)\s+enabled|"
+            r"no production write is enabled|enables no production write", text, re.I), (
+            f"{path.name} records R-07 CONTAINED without stating the bound - containment is not "
+            "production-write enablement, and a reader inferring otherwise is exactly the failure "
+            "this guard family exists to prevent"
+        )
+
+    # (b) NO live document in the UNIFIED population may claim OPEN / NOT CONTAINED
+    population = sorted(
+        set(status_claims.live_authority_documents(ROOT))
+        | {p.relative_to(ROOT).as_posix() for p in (CURRENT, CLAUDE, ARCHITECTURE, README)}
+    )
+    assert len(population) >= 15, (
+        f"the unified R-07 population collapsed to {len(population)} documents"
+    )
+    for required in (CURRENT, CLAUDE, ARCHITECTURE, README, LEGACY):
+        rel = required.relative_to(ROOT).as_posix()
+        assert rel in population, (
+            f"{rel} dropped out of the unified R-07 population - nothing would be checking it"
+        )
+
+    stale: list[str] = []
+    contained_claims = 0
+    for rel in population:
+        for claim in status_claims.parse_status_claims(read(ROOT / rel)):
+            if not claim.is_live:
+                continue
+            if claim.polarity == status_claims.CONTAINED:
+                contained_claims += 1
+            else:
+                stale.append(f"{rel}:{claim.line}: {claim.excerpt[:110]!r}")
+    assert contained_claims >= 5, (
+        f"only {contained_claims} live CONTAINED claims across {len(population)} documents - the "
+        "status construction disappeared, so this guard would pass over a silent corpus"
+    )
+    assert not stale, (
+        "documents still describe R-07 as OPEN / NOT CONTAINED after the containment record was "
+        "written:\n  " + "\n  ".join(stale)
+    )
 
 
 @pytest.mark.parametrize(

@@ -97,7 +97,12 @@ effect capability narrows to zero, but observe + prepare + verify + exception-de
 **Nothing in this lifecycle is implemented end-to-end to the canonical architecture yet.** The
 first slice to run is **Delivered Load Closure in shadow (read-only) at phase P10**, then supervised
 effects at P12, then multi-loop expansion + customer-authorized authority migration at P13. The
-safety foundations that make any live write possible (P3 kernel COMPLETE but dark; **P4 adapter
-containment READY, not complete; R-07 OPEN**) are the current focus — see
-[`CURRENT.md`](../implementation/CURRENT.md). Per-capability phase mapping is in
-[`FREIGHT-CAPABILITY-MAP.md`](FREIGHT-CAPABILITY-MAP.md).
+safety foundations that make any live write possible are now built and dark: **P3 kernel COMPLETE
+but dark; P4 adapter containment COMPLETE and adjudicated, with R-07 recorded CONTAINED.**
+**Containment is not enablement** — no production write is enabled, and the production
+`GateRegistry` stays EMPTY until U8.1 / P8. **P5** is the sole READY unit and has **not started**;
+P6–P14 are BLOCKED — see [`CURRENT.md`](../implementation/CURRENT.md). Per-capability phase mapping
+is in [`FREIGHT-CAPABILITY-MAP.md`](FREIGHT-CAPABILITY-MAP.md).
+
+> **SUPERSEDED, kept so the old wording is recognisable if it returns.** This paragraph read
+> *"P4 adapter containment READY, not complete; R-07 OPEN"*.

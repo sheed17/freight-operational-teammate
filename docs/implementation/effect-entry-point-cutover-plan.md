@@ -2,14 +2,26 @@
 
 *Derived by **import inspection** (recon §6/§7), not reputation. ### **No write-capable entry point is unclassified.***
 
-> **P4 EXECUTION STATUS (implementation checkpoint, this session).** The **Terminal direct writes**
-> row below is EXECUTED: **EP-6, EP-7, EP-9, EP-10 are physically DELETED** (rollback does not
-> restore them). The effect-capable import surface fell from 31 edges to 20 and the boundary-aware
-> gate's violation surface from 12 to 5. The remaining rows are NOT yet done and keep **R-07 OPEN**:
-> EP-1/EP-3 (**CONVERT_TO_PIPELINE_CLIENT**), EP-8/EP-14 (**MAKE_READ_ONLY** — each needs a
-> read-only surface that could not be built and verified in this environment), and the
-> `brain_runtime -> tms_write` rewire; the CI import gate is not yet flipped to assert EMPTY. This
-> checkpoint is **awaiting independent review and final adjudication.**
+> ### **P4 EXECUTION STATUS — COMPLETE.** Every cutover row below is executed. **EP-6, EP-7, EP-9,
+> EP-10 are physically DELETED** (rollback does not restore them); **EP-1** and **EP-3** are
+> converted; **EP-8** and **EP-14** are structurally read-only. The boundary-aware gate's violation
+> surface is **EMPTY** (0 live / 0 recorded edges, agreeing both-sided) and the CI import gate
+> asserts empty. P4 was independently re-reviewed and separately adjudicated **COMPLETE at 14/14**,
+> two finalization passes ran, and **R-07 is recorded `CONTAINED`** in
+> [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml). ### **CONTAINED IS NOT
+> ENABLED** — production writes stay dark behind a `ROUTE_NOT_CONFIGURED` refusal and the
+> production `GateRegistry` stays EMPTY until U8.1 / P8.
+>
+> **SUPERSEDED, kept verbatim so the old wording is recognisable if it ever returns.** This block
+> read: *"P4 EXECUTION STATUS (implementation checkpoint, this session). … The effect-capable
+> import surface fell from 31 edges to 20 and the boundary-aware gate's violation surface from 12
+> to 5. The remaining rows are NOT yet done and keep R-07 OPEN: EP-1/EP-3
+> (CONVERT_TO_PIPELINE_CLIENT), EP-8/EP-14 (MAKE_READ_ONLY — each needs a read-only surface that
+> could not be built and verified in this environment), and the `brain_runtime -> tms_write`
+> rewire; the CI import gate is not yet flipped to assert EMPTY. This checkpoint is awaiting
+> independent review and final adjudication."* It recorded the staged implementation checkpoint.
+> Every residual it named was subsequently cut, and the review and adjudication it awaited both
+> completed.
 
 ## The inventory *(EP-id · file · symbol · effect capability · classification)*
 | EP | File | Imports | External system / op | Tenant derivation | Current idempotency | Current commit identity | Verification | Can race? | Bypasses target pipeline? | Prod reachable | Target adapter op | Action Class | ### Class | ### Cutover |

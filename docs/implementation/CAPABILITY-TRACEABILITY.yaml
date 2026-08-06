@@ -535,7 +535,7 @@ capabilities:
         note: "the P3 kernel - COMPLETE and adjudicated, and it SHIPS DARK: no production path routes through it"
       - path: src/freight_recon/effect_boundary.py
         symbol: execute_effect
-        note: "the P4 containment boundary - PARTIALLY implemented and ships dark; R-07 is OPEN, NOT CONTAINED"
+        note: "the P4 containment boundary - implemented, adjudicated COMPLETE at P4, and ships dark; R-07 is recorded CONTAINED. Containment forces external effects through this boundary or fails them closed; it does not mean production writes are enabled"
     test_or_eval_reference: "eval/tests/test_phase3_checkpoint_matrix.py (105/105 GREEN); eval/tests/test_adapter_boundary_acceptance.py; eval/tests/test_import_gate.py"
     release_gate_reference: G4
     unresolved_decisions: ["typed policy authoring, compilation, versioning and the autonomy runtime remain P8; P3 holds only the minimal structural gate contract checkpoint step 5 requires"]
@@ -833,12 +833,14 @@ capabilities:
           since routed the governed Slack-approved write through it and the CI import gate now
           asserts the effect-capable violation surface is EMPTY - but it STILL SHIPS DARK: the
           deployed callback server leaves the execution kernel None and the route answers a recorded
-          ROUTE_NOT_CONFIGURED refusal with zero grants minted, and R-07 is OPEN - NOT CONTAINED
-          until its record lands in phase-0-baseline-manifest.yaml by a separate content commit.
-          This is containment, not supervised production operation, which does not exist.
+          ROUTE_NOT_CONFIGURED refusal with zero grants minted. R-07 is recorded CONTAINED in
+          phase-0-baseline-manifest.yaml, by a separate content commit made after both P4
+          finalization passes - not by P4's completion. This is containment, not supervised
+          production operation, which does not exist: CONTAINED does not mean production writes are
+          enabled.
     test_or_eval_reference: "eval/tests/test_adapter_boundary_acceptance.py; eval/tests/test_import_gate.py"
     release_gate_reference: G8
-    unresolved_decisions: ["R-07 remains OPEN - NOT CONTAINED: the mechanical close condition is met and independently verified, but recording CONTAINED in phase-0-baseline-manifest.yaml requires its own content commit, which has not been made", "RR-01 is a binding P12 precondition (base_url outside payload_hash and outside approval_operation_mismatch), compounded by F-08 and F-09, and must be discharged before any live writer is injected", "production Action Class gate registration stays DEFERRED to U8.1 / P8 and the production GateRegistry population must stay EMPTY"]
+    unresolved_decisions: ["R-07 is RESOLVED and recorded CONTAINED in phase-0-baseline-manifest.yaml: the mechanical close condition was met and independently verified, and the record was then written by its own content commit after both P4 finalization passes. Retained in this list as the closure record, NOT as an open decision. CONTAINED does not mean production writes are enabled", "RR-01 is a binding P12 precondition (base_url outside payload_hash and outside approval_operation_mismatch), compounded by F-08 and F-09, and must be discharged before any live writer is injected", "production Action Class gate registration stays DEFERRED to U8.1 / P8 and the production GateRegistry population must stay EMPTY"]
     current_truth_source: docs/implementation/CURRENT.md
 
   - capability_id: CAP-26
