@@ -86,6 +86,8 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     # Added by the P4 F-01 remediation: it reads the deployed entry point, so the central inventory
     # discovers it as a control guard.
     "test_p4_deployed_governed_route.py": (RETAIN, "the deployed entry point's governed-write wiring: the lookup boundary is wired, the callback cannot construct an operation, and the execution kernel seam stays blocked pending adjudication of AC-CKPT-6-missing"),
+    # Added by the R-07 closure REPLACEMENT candidate, closing F-03.
+    "test_evidence_binding.py": (RETAIN, "the R-07 evidence chain bound at CONTENT level rather than citation level: every load-bearing report is enumerated FROM the containment record and bound to the IMMUTABLE preserved blob at its refs/preserve ref - recorded digest, sidecar, preservation parent and recorded verdict - with banner-aware body isolation, so the required disarm banner is respected rather than circumvented and a mutable worktree report can never substitute for accepted evidence. Its hostile battery reproduces the ACCEPT-to-REJECT verdict flip that previously left 1957 tests green"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_",

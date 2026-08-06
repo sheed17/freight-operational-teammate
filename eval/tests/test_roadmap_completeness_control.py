@@ -33,11 +33,41 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 from control import inventory as inv  # noqa: E402
+from control import status_claims  # noqa: E402
+
+# Every live false R-07 claim the targeted adjudication found sat in a document the guards were not
+# reaching, and a discovered population that silently stops including a canonical surface is
+# indistinguishable from a clean one. Both supervisor lenses are named below: the `.claude/` file is
+# canonical, the `.codex/` file its compatibility surface.
+#
+# FIXED-SPECIFICATION. Reason: this is not a population being SCANNED, it is a REACH ASSERTION about
+# the discovered population, and it is the direct remedy for F-02. Discovery still builds the
+# corpus; this only requires that discovery did not lose these documents. Discovering the list would
+# defeat its whole purpose - a corpus that dropped LEGACY-DISPOSITION.md would drop it from a
+# discovered expectation too, and the guard would pass. It has to be written down to bite.
+REQUIRED_R07_REACH = (
+    "docs/implementation/LEGACY-DISPOSITION.md",
+    "docs/implementation/phase-0-baseline-manifest.yaml",
+    "docs/implementation/EFFECT-PATH-INVENTORY.yaml",
+    "docs/implementation/PHASE-OUTPUTS.md",
+    "docs/implementation/effect-entry-point-cutover-plan.md",
+    "docs/implementation/CURRENT.md",
+    ".claude/agents/principal-architect-supervisor.md",
+    ".codex/agents/principal-architect-supervisor.md",
+    ".claude/agents/roadmap-steward.md",
+    "docs/product/AUTONOMY-MATRIX.md",
+    "docs/product/NEYMA-OPERATOR.md",
+    "docs/product/QUOTE-TO-CASH-LIFECYCLE.md",
+    "docs/product/OPERATIONAL-USE-CASE-COVERAGE.yaml",
+    "ARCHITECTURE.md",
+    "CLAUDE.md",
+)
 
 IMPL = ROOT / "docs" / "implementation"
 REGISTRY = IMPL / "IMPLEMENTATION-REGISTRY.yaml"
@@ -225,34 +255,89 @@ def test_a_claimed_independent_checkpoint_review_must_cite_a_report_that_exists(
 
 def test_an_executing_phase_is_never_described_as_not_begun():
     """The exact contradiction that triggered this correction: P4 carried landed checkpoint
-    evidence in one paragraph and 'IT HAS NOT BEGUN' in another. Scoped to the phase that is
-    actually executing, so it can never pin a stale moment."""
-    executing = [u for u in units() if u["execution_state"] == "IN_PROGRESS"]
-    if not executing:
-        return
-    unit = executing[0]
-    n = re.fullmatch(r"P(\d+)", unit["unit_id"]).group(1)
-    assert unit.get("landed_checkpoints"), f"{unit['unit_id']} executes with no landed evidence"
+    evidence in one paragraph and 'IT HAS NOT BEGUN' in another.
+
+    ### DE-VACUUMED at the R-07 CLOSURE CONTENT COMMIT. The original scoped itself to
+    `execution_state == IN_PROGRESS` and, finding none, did `return` - a silent PASS over an EMPTY
+    population, which is the M-9 false-green pattern CLAUDE.md sec 9 forbids by name. It went
+    vacuous the moment P4 moved IN_PROGRESS -> COMPLETE, and the roadmap mutation battery proved it:
+    case M1 turned the P4 heading into `⛔ NOT STARTED` and the guard stayed GREEN (a MISS).
+
+    The defect class was never "executing"; it is ### **a unit with LANDED EVIDENCE described as not
+    begun**. A COMPLETE unit has landed evidence too. So the population is now every unit that
+    records landed checkpoints, which cannot be empty while any phase is done - and the guard is
+    strictly stronger than the version it replaces, never weaker: everything it caught before, it
+    still catches.
+    """
+    landed = [u for u in units()
+              if re.fullmatch(r"P\d+", u["unit_id"]) and u.get("landed_checkpoints")]
+    assert landed, (
+        "no unit records landed checkpoints - this guard would pass over an empty population, "
+        "which is exactly the false green it was rewritten to stop"
+    )
+    for u in landed:
+        assert u["execution_state"] in {"IN_PROGRESS", "COMPLETE"}, (
+            f"{u['unit_id']} records landed checkpoints but execution_state is "
+            f"{u['execution_state']} - landed evidence and 'not started' cannot both be true"
+        )
     docs = _live_authority_documents()
-    rx = re.compile(rf"(?:P{n}\b|Phase\s+{n}\b)[^.\n|]{{0,60}}?"
-                    r"(?:\bhas\s+not\s+begun\b|\bnot\s+yet\s+begun\b|\bNOT\s+begun\b|"
-                    r"\*{0,3}NOT\s+STARTED)", re.I)
     offenders = []
-    for rel in docs:
-        text = _strip_historical(read(ROOT / rel))
-        for m in rx.finditer(text):
-            window = " ".join(m.group(0).split())
-            if _EXEMPT.search(window):
-                continue
-            offenders.append(f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {window[:90]!r}")
+    for unit in landed:
+        n = re.fullmatch(r"P(\d+)", unit["unit_id"]).group(1)
+        rx = re.compile(rf"(?:P{n}\b|Phase\s+{n}\b)[^.\n|]{{0,60}}?"
+                        r"(?:\bhas\s+not\s+begun\b|\bnot\s+yet\s+begun\b|\bNOT\s+begun\b|"
+                        r"\*{0,3}NOT\s+STARTED)", re.I)
+        for rel in docs:
+            text = _strip_historical(read(ROOT / rel))
+            for m in rx.finditer(text):
+                window = " ".join(m.group(0).split())
+                if _EXEMPT.search(window) or _is_superseded_in_place(text, m.start()):
+                    continue
+                offenders.append(
+                    f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {unit['unit_id']} -> "
+                    f"{window[:90]!r}"
+                )
     assert not offenders, (
-        f"{unit['unit_id']} has landed checkpoint evidence but is described as not begun:\n  "
+        "unit(s) with landed checkpoint evidence described as not begun:\n  "
         + "\n  ".join(offenders)
     )
 
 
 _EXEMPT = re.compile(r"\brequire[sd]?\b|\bmay not\b|\buntil\b|\bonce\b|\bbefore\b|\bwhen\b|"
                      r"\bunless\b|\bwould\b|\bcannot\b|\bnever\b|\bif\b", re.I)
+
+# The two MECHANICAL ways a superseded status claim may survive IN PLACE outside a <details> block.
+# Both are deliberately narrow: a document does not get to keep a stale live claim by being vague.
+#   1. QUOTED. The claim sits inside a double-quoted span - it is being reported, not asserted. A
+#      supersession note that could not quote the sentence it replaces would leave the reader unable
+#      to recognise the old wording if it ever came back.
+#   2. MARKED ON THE SAME LINE. The line carries an explicit HISTORICAL / SUPERSEDED token, so a
+#      grep-landing reader sees the marker in the same breath as the claim. A marker several lines
+#      away does not count: that is exactly how a "historical" block silently grows to cover live
+#      text.
+_HISTORICAL_MARKER = re.compile(r"\bHISTORICAL\b|\bSUPERSEDED\b", re.I)
+
+
+def _is_superseded_in_place(text: str, pos: int) -> bool:
+    """F-05 CLOSED: quote parity is counted from the start of the enclosing BLOCK, not the file.
+
+    This previously read `text.count('"', 0, pos) % 2 == 1` over the whole document, so a single
+    unbalanced double quote anywhere inverted parity for the ENTIRE REMAINDER of the file and
+    silently exempted every later stale claim. The hazard was latent, not live (0 of 57
+    live-authority documents had odd parity), but it is one stray quote away from live at all times.
+
+    Counting from the enclosing block bounds the blast radius to that block. This is STRICTLY
+    NARROWER than what it replaces - it exempts a subset of what the old rule exempted - and it
+    still admits the multi-line quoted supersessions the corpus legitimately uses.
+    """
+    block_start = text.rfind("\n\n", 0, pos)
+    block_start = 0 if block_start == -1 else block_start + 2
+    if text.count('"', block_start, pos) % 2 == 1:   # inside a quoted span within this block
+        return True
+    line_start = text.rfind("\n", 0, pos) + 1
+    line_end = text.find("\n", pos)
+    line = text[line_start: line_end if line_end != -1 else len(text)]
+    return bool(_HISTORICAL_MARKER.search(line))
 
 
 def _strip_historical(text: str) -> str:
@@ -275,15 +360,14 @@ def _live_authority_documents() -> list[str]:
         had to state AT ITS OWN MOMENT and are bound to an adjudicated result and an independent
         report. HANDOFF-04's "the agent states Phase 3 is NOT STARTED" was TRUE when adjudicated
         PASS; rewriting it would falsify closed history, which this correction may never do.
+
+    UNIFIED at the replacement candidate: the definition now lives in `control.status_claims`, so
+    this guard and `test_docs_control_system.py::test_10_...` derive the SAME population from ONE
+    definition. They previously ran over different corpora - one discovered, one a hard-coded
+    four-tuple that could never grow - and only one of them reached the documents carrying the live
+    false R-07 claims. The behaviour here is unchanged; only its home moved.
     """
-    docs = list(inv.current_authority_documents())
-    docs += inv.root_control_like_documents() + inv.agent_files() + inv.compatibility_agent_files()
-    historical = set(inv.implementation_review_documents()) | set(inv.historical_documents())
-    frozen = {d for d in docs if re.search(r"U-[\w-]+-ACCEPTANCE\.yaml$", d)}
-    excluded = historical | frozen | {"docs/implementation/IMPLEMENTATION-REGISTRY.yaml"}
-    out = sorted({d for d in docs if d not in excluded and (ROOT / d).exists()})
-    assert len(out) >= 15, f"the live-authority scan population collapsed to {len(out)}"
-    return out
+    return status_claims.live_authority_documents(ROOT)
 
 
 def test_no_navigation_document_restates_a_phase_state_the_registry_does_not_hold():
@@ -325,21 +409,165 @@ def test_no_navigation_document_restates_a_phase_state_the_registry_does_not_hol
 
 
 def test_r07_is_never_represented_as_contained_anywhere_live():
-    """R-07 is the one status the repository has always stated consistently. This guard keeps it
-    that way from the traceability layer too: the manifest record, and no live-authority document
-    may call it contained or closed."""
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen: it preserves this node's identity in TEST-NODE-MANIFEST.json AND it is the name
+    scripts/mutate_roadmap_completeness.py case M3 requires to catch its mutant.
+
+    R-07 is the one status the repository has always stated consistently, and that is the property
+    this guard protects - not the particular value. Before the containment record was written,
+    consistency meant no live document could call it contained. Now that the record exists, the
+    SAME property points the other way: no live document may call it OPEN while the manifest records
+    CONTAINED. The direction flipped; the invariant did not.
+
+    Kept from the original, unchanged: the population is DISCOVERED and historical claims are exempt
+    in place (quoted, or marked on their line).
+
+    RE-POINTED AT THE REPLACEMENT CANDIDATE (F-02). The body no longer scans for a substring. The
+    pattern it used required a copula from the closed set {is, stays, remains} to FOLLOW `R-07`,
+    which made it structurally blind to this repository's own canonical status-row grammar - the
+    copula-free markdown table cell `| **Current risk** | ### **R-07 - OPEN, NOT CONTAINED.** |`.
+    Measured against the tree that shipped it: 8 of 12 relevant grammar forms missed, and 0 of the 5
+    live defects caught while the suite reported green. A third substring alternation would be the
+    same defect a third time.
+
+    It now delegates to `control.status_claims`, which SEGMENTS documents into claim units (table
+    cells and sentences), NORMALIZES markdown emphasis and line wrapping away, and decides POLARITY
+    from a closed vocabulary with negated containment resolved first. Word order is irrelevant to
+    every step, so `R-07 remains open`, `keeps R-07 open` and `does not contain R-07` are one parse.
+
+    THREE POSITIVE ASSERTIONS, so this can never pass vacuously:
+      1. the corpus is non-empty and did not collapse;
+      2. every document in REQUIRED_R07_REACH was actually parsed - a corpus change cannot silently
+         drop `LEGACY-DISPOSITION.md` or an agent lens, which is exactly the gap all five live
+         defects passed through;
+      3. the CONTAINED construction is still PRESENT somewhere live - so a document that stops
+         stating R-07's status fails here rather than passing by saying nothing.
+    """
     manifest = read(MANIFEST)
-    assert "status: OPEN - NOT CONTAINED" in manifest, "the R-07 manifest record changed"
-    offenders = []
-    for rel in _live_authority_documents():
-        text = _strip_historical(read(ROOT / rel))
-        for m in re.finditer(r"R-07[^.\n|]{0,60}?(?:\bis\s+\*{0,3}CONTAINED|\bnow\s+closed\b|"
-                             r"\bis\s+\*{0,3}CLOSED\b)", text, re.I):
-            window = " ".join(m.group(0).split())
-            if _EXEMPT.search(window):
+    data = yaml.safe_load(manifest)["expected_legacy_paths"]
+    assert data["status"] == "CONTAINED", (
+        f"the R-07 manifest record reads {data['status']!r}, not the authorized 'CONTAINED'"
+    )
+    docs = _live_authority_documents()
+    assert docs, "live-authority discovery produced nothing - this guard would pass vacuously"
+
+    scanned: set[str] = set()
+    offenders: list[str] = []
+    contained_claims = 0
+    for rel in docs:
+        text = read(ROOT / rel)
+        scanned.add(rel)
+        for claim in status_claims.parse_status_claims(text):
+            if not claim.is_live:
                 continue
-            offenders.append(f"{rel}:{text[: m.start()].count(chr(10)) + 1}: {window[:90]!r}")
-    assert not offenders, "R-07 is represented as contained:\n  " + "\n  ".join(offenders)
+            if claim.polarity == status_claims.CONTAINED:
+                contained_claims += 1
+            else:
+                offenders.append(f"{rel}:{claim.line}: {claim.excerpt[:110]!r}")
+
+    assert len(scanned) >= 15, (
+        f"only {len(scanned)} live-authority documents scanned - the population collapsed"
+    )
+    missing_reach = [d for d in REQUIRED_R07_REACH if d not in scanned]
+    assert not missing_reach, (
+        "these canonical/control documents carry R-07 status language but were NOT in the scanned "
+        f"population, so nothing was checking them: {missing_reach}"
+    )
+    assert contained_claims >= 5, (
+        f"only {contained_claims} live CONTAINED claims parsed across {len(scanned)} documents - "
+        "the status construction this guard checks has disappeared, so the guard would pass over a "
+        "corpus that says nothing about R-07 at all"
+    )
+    assert not offenders, (
+        "R-07 is represented as OPEN/NOT CONTAINED while the manifest records it CONTAINED "
+        "(correct the claim, or keep it quoted or marked HISTORICAL/SUPERSEDED on its line):\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# The grammar the R-07 status guard must decide, and the polarity each form carries. Every OPEN
+# form here is a construction the guard this replaced could not see: 8 of 12 were measured MISSED on
+# the tree that shipped it, including all five live defects. Asserting the PARSE - rather than only
+# asserting the corpus is clean - is what stops the guard degenerating into a constant: a parser
+# that returned "no claims" for everything would keep the corpus assertions green forever.
+_R07_GRAMMAR = (
+    ("R-07 remains open", status_claims.OPEN),
+    ("R-07 is open", status_claims.OPEN),
+    ("R-07 stays open", status_claims.OPEN),
+    ("keeps R-07 open", status_claims.OPEN),
+    ("leaves R-07 open", status_claims.OPEN),
+    ("R-07 not contained", status_claims.OPEN),
+    ("R-07 is not contained", status_claims.OPEN),
+    ("does not contain R-07", status_claims.OPEN),
+    ("requires R-07 to remain open", status_claims.OPEN),
+    ("violation residuals keep R-07 open", status_claims.OPEN),
+    ("R-07 contained", status_claims.CONTAINED),
+    ("R-07 is contained", status_claims.CONTAINED),
+    # the repository's own copula-free canonical status row, and other real-world shapes
+    ("| **Current risk** | ### **R-07 — OPEN, NOT CONTAINED.** |", status_claims.OPEN),
+    ("R-07: OPEN", status_claims.OPEN),
+    ("R-07 still OPEN", status_claims.OPEN),
+    ("R-07 was never contained", status_claims.OPEN),
+    ("R-07 stays uncontained", status_claims.OPEN),
+    ("R-07 still recorded OPEN unless the unit is P4 itself", status_claims.OPEN),
+    ("**Still present — DEFERRED (it keeps R-07 OPEN):** the write half", status_claims.OPEN),
+    ("this repository has six live-write paths and an open R-07", status_claims.OPEN),
+    ("R-07\nremains\nopen", status_claims.OPEN),          # wrapped across source lines
+    ("### **R-07** *is* **OPEN**", status_claims.OPEN),   # emphasis-decorated
+)
+
+
+@pytest.mark.parametrize("text,expected", _R07_GRAMMAR,
+                         ids=[t[:38].replace("\n", " ") for t, _ in _R07_GRAMMAR])
+def test_the_r07_status_parser_decides_every_required_grammar_form(text: str, expected: str):
+    """Word order must be irrelevant. Verb-precedes, verb-absent, negated, object-position,
+    line-wrapped and emphasis-decorated forms are all the same claim."""
+    parsed = status_claims.parse_status_claims(text)
+    assert parsed, f"no status claim parsed at all from {text!r} - the form is invisible"
+    assert expected in [c.polarity for c in parsed], (
+        f"{text!r} parsed as {[c.polarity for c in parsed]}, expected {expected}"
+    )
+    if expected == status_claims.OPEN:
+        assert status_claims.live_open_claims(text), (
+            f"{text!r} parsed OPEN but was exempted - it is an assertion, not a hypothetical"
+        )
+
+
+# `open` is also an ordinary adjective here. A guard firing on these is the unrelated-identifier
+# failure CLAUDE.md sec 9 names, and every one of them occurs verbatim in the live corpus.
+_NOT_STATUS_CLAIMS = (
+    "## ⛔ Open risks and findings — R-07 is CLOSED",
+    "This did NOT close R-07 — see the open-risks table",
+    "R-07 is CONTAINED; every other open item below is carried, not discharged",
+    "Retained in this list as the closure record, NOT as an open decision. R-07 is CONTAINED",
+    "R-07 may not be marked CONTAINED before this phase completes.",
+)
+
+
+@pytest.mark.parametrize("text", _NOT_STATUS_CLAIMS, ids=[t[:34] for t in _NOT_STATUS_CLAIMS])
+def test_the_r07_status_parser_does_not_fire_on_unrelated_or_hypothetical_usage(text: str):
+    live = status_claims.live_open_claims(text)
+    assert not live, f"{text!r} is not a live OPEN claim, but parsed as one: {[c.excerpt for c in live]}"
+
+
+def test_the_superseded_in_place_quote_exemption_cannot_reach_past_its_own_block():
+    """F-05, mechanically. One unbalanced quote must not exempt the rest of the document.
+
+    Under the file-wide parity rule this replaced, the stray quote in the first block flipped
+    parity for everything after it, so the live claim in the SECOND block was silently exempted.
+    """
+    text = 'A stray " quote in the first block.\n\nR-07 is OPEN in a later block.\n'
+    claims = status_claims.parse_status_claims(text)
+    assert claims, "nothing parsed - the fixture no longer exercises the rule"
+    assert any(c.is_live and c.polarity == status_claims.OPEN for c in claims), (
+        "an unbalanced quote in an EARLIER block exempted a live claim in a LATER one - this is "
+        "exactly the file-tail-fragile parity defect F-05 recorded"
+    )
+    # and the exemption still works INSIDE the block that owns the quote
+    same_block = 'The superseded sentence read "R-07 is OPEN" and is retained for recognition.\n'
+    assert not status_claims.live_open_claims(same_block), (
+        "a genuinely quoted supersession must still be exempt"
+    )
 
 
 def test_the_recorded_effect_violation_surface_is_the_mechanically_recomputed_one():
@@ -376,6 +604,42 @@ def test_the_recorded_effect_violation_surface_is_the_mechanically_recomputed_on
     assert not wrong, (
         f"IMPLEMENTATION-SURFACE.yaml claims {wrong} effect-capable edges; the probe computes "
         f"{len(live)} and the manifest records {len(recorded)}"
+    )
+
+    # WIDENED at the replacement candidate. The count above was checked only in
+    # IMPLEMENTATION-SURFACE.yaml, so the same drift survived elsewhere: LEGACY-DISPOSITION.md
+    # sec S15a stated the gate's deletion condition was "not yet - FOUR residuals remain" long after
+    # the surface reached EMPTY, and no guard read that sentence. A stated RESIDUAL count is the
+    # same claim as a stated EDGE count and is now held to the same recomputed number, wherever it
+    # is written, across the discovered live-authority population.
+    # It runs over the SAME claim units and the SAME normalization as the R-07 status parser, so a
+    # count wrapped in markdown emphasis (`**four** residuals remain`) or split across source lines
+    # cannot escape it - both of which the first draft of this check did let through.
+    residual_rx = re.compile(
+        r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
+        r"(?:\S+\s+){0,2}?residuals?\s+(?:remain|are\s+left|survive)", re.I,
+    )
+    residual_offenders = []
+    for rel in _live_authority_documents():
+        text = read(ROOT / rel)
+        body = status_claims.strip_historical_blocks(text)
+        for unit, unit_off in status_claims.claim_units(body):
+            if "residual" not in unit.lower():
+                continue
+            if _is_superseded_in_place(body, unit_off):
+                continue
+            for m in residual_rx.finditer(status_claims.normalize(unit)):
+                token = m.group(1)
+                stated = int(token) if token.isdigit() else words[token.lower()]
+                if stated != len(live):
+                    line = body[:unit_off].count("\n") + 1
+                    residual_offenders.append(
+                        f"{rel}:{line}: {' '.join(m.group(0).split())!r} but the probe computes "
+                        f"{len(live)}"
+                    )
+    assert not residual_offenders, (
+        "a live document states a violation-residual count the probe does not compute; correct it, "
+        "or quote it / mark it HISTORICAL on its line:\n  " + "\n  ".join(residual_offenders)
     )
 
 

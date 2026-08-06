@@ -88,9 +88,14 @@ or configuration.
 
 ## 4. What this means in practice
 
-- **Nothing consequential is autonomous today.** The current program is building the safety
-  foundation (P3 kernel COMPLETE but dark; **P4 adapter containment READY, not complete; R-07
-  OPEN** — [`CURRENT.md`](../implementation/CURRENT.md)). Bounded autonomy is a P14 destination.
+- **Nothing consequential is autonomous today.** The safety foundation is built and dark: **P3
+  kernel COMPLETE but dark; P4 adapter containment COMPLETE and adjudicated, with R-07 recorded
+  CONTAINED** — [`CURRENT.md`](../implementation/CURRENT.md). **Containment granted no autonomy of
+  any kind:** production writes stay dark behind a `ROUTE_NOT_CONFIGURED` refusal and the
+  production `GateRegistry` stays EMPTY until U8.1 / P8. Bounded autonomy remains a P14
+  destination.
+  *(SUPERSEDED wording, kept so it is recognisable if it returns: "P4 adapter containment READY,
+  not complete; R-07 OPEN".)*
 - **Every consequential action passes the full effect pipeline** — `Work Item → Pipeline Instance →
   policy & validation → optional approval → atomic checkpoint → Checkpoint Witness → Effect Grant →
   atomic claim → adapter execution → verification → outcome → evidence & projection → closure`

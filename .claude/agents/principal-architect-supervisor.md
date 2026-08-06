@@ -50,8 +50,17 @@ that gap; the `.codex/agents/` counterpart is the compatibility surface.
 
 1. **Scope fidelity** — only the one READY unit; nothing from its `prohibited_scope`; nothing
    from a later phase smuggled in early.
-2. **Safety boundaries intact** — R-07 still recorded OPEN unless the unit is P4 itself; no new
-   ungated effect path; no second effect authority; no second orchestration system made permanent.
+2. **Safety boundaries intact** — verify R-07 against the machine record in
+   `docs/implementation/phase-0-baseline-manifest.yaml` (`expected_legacy_paths.status`), never
+   against a value remembered from this lens. It reads **`CONTAINED`**, recorded at P4 by a
+   separate content commit after both finalization passes. **CONTAINED is not ENABLED:** no
+   production write is enabled, the production `GateRegistry` population stays EMPTY until
+   U8.1 / P8, and no autonomy — bounded or otherwise — was granted, so a unit claiming any of
+   those is a BLOCKER. Also: no new ungated effect path; no second effect authority; no second
+   orchestration system made permanent.
+   > **SUPERSEDED.** This criterion read *"R-07 still recorded OPEN unless the unit is P4
+   > itself"*. That instructed a supervisor to reject the correct repository state, and is
+   > retained only so the superseded wording is recognisable if it returns.
 3. **Acceptance discipline** — the unit's named acceptance cases ran, on the final tree, LAST;
    mutation evidence where the unit requires it (N/N DETECTED via the safe in-memory harness,
    never git restoration); exact-set guards, not counts.
@@ -71,5 +80,13 @@ Lead with findings (`BLOCKER` / `SHOULD-FIX` / `NIT`), then the closing verdict:
 An APPROVED verdict requires: the canonical verification sequence in
 `phase-code-reviewer.md` ran green on the final tree, the working tree is clean, and the status
 guard passes. **If the implementing agent could not verify something, that is a finding, not a
-footnote. Do not assume production readiness — this repository has six production-reachable
-live-write paths and an open R-07, and no unit is APPROVED into pretending otherwise.**
+footnote. Do not assume production readiness.** The P0 baseline finding of **six**
+production-reachable live-write paths (EP-1, EP-3, EP-6, EP-7, EP-9, EP-10) was **CUT at P4** —
+EP-6/7/9/10 physically deleted, EP-3/EP-8/EP-14 structurally read-only, EP-1's write half routed
+through the governed effect boundary — and R-07 is recorded **CONTAINED**. **Containment is a
+structural bound, not readiness:** production writes stay dark behind a `ROUTE_NOT_CONFIGURED`
+refusal and an EMPTY production `GateRegistry`, and **no unit is APPROVED into pretending
+otherwise.** Read the counts from the machine record, not from this sentence.
+
+> **SUPERSEDED.** This paragraph read *"this repository has six production-reachable live-write
+> paths and an open R-07"*. Both halves are stale: the six are cut and R-07 is CONTAINED.

@@ -41,16 +41,25 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 |---|---|
 | **Current responsibility** | Drive a real browser against a live TMS and commit real money effects |
 | **Current execution authority** | ### **NONE. They act on import and call.** No checkpoint, no witness, no grant. |
-| **Current risk** | ### **R-07 — OPEN, NOT CONTAINED.** This is the highest-risk subsystem in the repository. |
+| **Current risk** | ### **R-07 — CONTAINED (recorded at P4).** Still the highest-consequence subsystem in the repository: containment is a structural bound on how these modules can be reached, not a clean bill of health. Every external effect must pass the ADR-004 effect boundary; the effect-capable violation surface is EMPTY (0 live / 0 recorded edges, agreeing both-sided); the CI import gate fails the build if a second effect-capable importer appears. ### **CONTAINED IS NOT ENABLED** — no production write is enabled, the production `GateRegistry` population stays EMPTY until U8.1 / P8, and no autonomy was granted |
 | **Canonical destination** | Adapter boundary contracts ([`adapters/02-tms.md`](../specifications/adapters/02-tms.md), [`10-browser.md`](../specifications/adapters/10-browser.md)) behind ADR-004's effect boundary |
 | **Disposition** | ### **ADAPT** — converted to grant-and-witness-gated adapters (`mock_tms_write_server.py`: **QUARANTINE**, test-only) |
-| **Target phase** | **P4** (requires P3's witness to exist first) |
+| **Target phase** | **P4** — executed and adjudicated; P4 is COMPLETE and the routing cutover landed |
 | **Compatibility requirement** | None. There is no supported path that writes without a grant. |
-| **Deletion condition** | The U4.9 CI import gate is ON and `adapter_import_allowlist.edges` is empty |
+| **Deletion condition** | The U4.9 CI import gate is ON and `adapter_import_allowlist.edges` is empty — ### **MET at P4** (the gate asserts EMPTY). Deletion itself remains a later-phase act; a met condition is not an instruction to delete today |
 | **Evidence required before deletion** | Every effect routed through a claimed grant + fresh witness; orphan-adapter detection live at Sev-0; `adapter-boundary-acceptance.md` green |
 
+> **SUPERSEDED, kept verbatim so the old wording is recognisable if it ever returns.** Until the
+> R-07 closure content commit the `Current risk` row above read: *"R-07 — OPEN, NOT CONTAINED. This
+> is the highest-risk subsystem in the repository."* That was true when written and is **not** a
+> live statement now — R-07 is recorded `CONTAINED` in
+> [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml). The `Target phase` row read
+> *"P4 (requires P3's witness to exist first)"* and the `Deletion condition` row was unmarked; P3's
+> witness exists, P4 is COMPLETE, and the condition is MET.
+
 > **These modules are the reason `PRODUCT.md` §19 exists.** They work, they are proven live, and
-> they are the single largest source of unbounded risk in the system.
+> they are the single largest source of unbounded consequence in the system. What changed at P4 is
+> that the consequence is now reachable **only** through the effect boundary — not that it is small.
 
 ## S2 — Effect-capable entry-point scripts ⛔
 
@@ -60,7 +69,7 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 |---|---|
 | **Current responsibility** | Operator-invoked live writes, bypassing every review surface |
 | **Current execution authority** | ### **Full, ungated.** EP-8 was *"read-only by convention, actuator-capable by import"* |
-| **Current risk** | 6 of these are production-reachable; the only mitigation is operator discipline |
+| **Current risk** | ### **CUT at P4.** The P0 baseline finding — *"6 of these are production-reachable; the only mitigation is operator discipline"* — is **SUPERSEDED as a live statement** and retained as the finding of record. EP-6/7/9/10 are physically deleted, EP-3/EP-8/EP-14 are structurally read-only, and EP-1's write half is routed through the governed effect boundary. Operator discipline is no longer the mitigation, which matters because ### **discipline was never a mechanism** |
 | **Canonical destination** | Pipeline clients (EP-1, EP-3) or nothing at all |
 | **Disposition** | ### **DELETE** — EP-6, EP-7, EP-9, EP-10 (`REMOVE_BEFORE_ENABLE`) · **ADAPT** — EP-1, EP-3 → pipeline clients · **MAKE_READ_ONLY** — EP-8 |
 | **Target phase** | **P4** |
@@ -151,18 +160,33 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 > operation the adapter receives. It imports **no adapter, no browser session and no actuator** (the
 > effect boundary is imported lazily and is the only door), registers no credentialed adapter, and
 > has **no fallback** to `OperatorAgent` or `CdpActuator`.
-> **It ships DARK and is unwired at the entry point:** the default bounded writer performs no real
-> external write (a proven non-occurrence), a non-sandbox operation is refused before any claim, and
-> `run_action_callback_server.py` leaves `governed_write_provider`/`governed_write_kernel` as `None`
-> — resolving a pending typed operation needs the P6 Work Item / Pipeline Instance entities, and a
-> callback that could BUILD the operation could choose its amount, counterparty and target. Live
-> supervised writes are P12. Proven by `eval/tests/test_p4_governed_write_route.py`.
+> **It ships DARK:** the default bounded writer performs no real external write (a proven
+> non-occurrence), and a non-sandbox operation is refused before any claim. Live supervised writes
+> are P12. Proven by `eval/tests/test_p4_governed_write_route.py`.
+>
+> ### **AD-01 CORRECTION — THE DEPLOYED WIRING, STATED EXACTLY.** The superseded sentence read
+> *"unwired at the entry point … `run_action_callback_server.py` leaves
+> `governed_write_provider`/`governed_write_kernel` as `None`"*. That **misstated** the wiring and is
+> the finding recorded as **AD-01**. What the entry point actually does: the **lookup boundary is
+> WIRED** — it passes a real `provider` closure resolving an *already-authorized* pending write
+> through `WorkflowStorePendingWrites` with `writer=None` (the boundary's dark default bounded
+> writer), failing **closed** on any lookup error. The **execution kernel is what remains `None`**
+> (`kernel_factory = None`), deliberately: a `CheckpointKernel` cannot be constructed without a
+> `GateRegistry`, and Action Class gate registration is **U8.1 / P8** work (`AC-CKPT-6-missing`,
+> `DEFERRED_BY_DEPENDENCY`). The governed handler therefore answers a recorded
+> `ROUTE_NOT_CONFIGURED` refusal. Resolving a pending typed operation *end to end* still needs the
+> P6 Work Item / Pipeline Instance entities, and a callback that could BUILD the operation could
+> choose its amount, counterparty and target. **The fail-closed conclusion is unaffected — only the
+> description was wrong, and the stale "provider is `None`" prose must not reappear.** Guarded by
+> `eval/tests/test_p4_deployed_governed_route.py`.
 
 > ### **`governed_write_registry.py` is the MINIMUM BOUNDED REPOSITORY that makes the deployed
 > entry point reachable — canonical, not legacy.**
-> It answers the last open half of F-01: the governed chain existed, but
+> It answers the last open half of F-01: the governed chain existed, but *before this module*
 > `run_action_callback_server.py` left its provider and kernel `None`, so no operator-runnable
-> configuration ever touched it. The obstacle was authority, not plumbing — a callback that could
+> configuration ever touched it. **That is the PRE-remediation state, not the deployed one** — the
+> provider is now WIRED and only the execution kernel remains `None` (see the AD-01 correction
+> above). The obstacle was authority, not plumbing — a callback that could
 > BUILD the typed operation could choose its amount, counterparty, load, destination system,
 > adapter and capability, which is exactly what permanent human authority forbids. So the operation
 > is written down when it is **proposed**, and the callback may only **look it up**:
@@ -206,10 +230,10 @@ in a subsystem below — so a new module or script cannot quietly arrive without
 |---|---|
 | **Current responsibility** | The single door for every external effect: the adapter operation contract (operation classes + verification modes), the unforgeable single-use `ExecutionCapability`, the CLAIMED→ATTEMPTED→VERIFIED/UNKNOWN_OUTCOME/FAILED outcome machine, orphan-effect detection (Sev-0, auto-brake), and the cross-tenant containment report (GLOBAL brake) |
 | **Current execution authority** | ### **None yet routed in production.** The boundary exists and is acceptance-proven; it ships dark alongside the kernel. The P4 containment checkpoint added the F4 outcome-safety (a generic post-attempt exception → UNKNOWN_OUTCOME), implemented and mutation-proved the orphan detective sweep mechanism (`run_detective_sweep` is its per-cycle invocation surface — no production/runtime caller exists yet; production scheduling is deferred to P11 and the boundary still ships dark), and cut the `brain_runtime → tms_write` edge (its effect executor is now injected, not imported). **EP-1's write is now cut too:** the callback constructs no live actuator and the only external-write path is the typed, dark `execute_invoice_write`. It authorises nothing until an adapter operation is registered and called — which has no production caller |
-| **Current risk** | ### **R-07 remains OPEN pending ADJUDICATION — its MECHANICAL close condition is now MET.** The boundary is built, green, and the effect-capable violation surface is **EMPTY** (0 edges; EP-1/EP-3/EP-8/EP-14 all cut, `brain_runtime` rewired), so no ungated effect-capable path exists beside the boundary. What remains is not code but the two-key discipline: recording R-07 CONTAINED / P4 COMPLETE requires a session that did not implement this cut (CLAUDE.md §11) |
-| **Canonical destination** | This IS the canonical containment boundary (ADR-004 two-key rule); the import gate makes bypassing it structurally impossible once the violation list is empty |
+| **Current risk** | ### **R-07 is CONTAINED — recorded, not merely mechanically met.** The boundary is built, green, and the effect-capable violation surface is **EMPTY** (0 live / 0 recorded edges agreeing both-sided; EP-1/EP-3/EP-8/EP-14 all cut, `brain_runtime` rewired), so no ungated effect-capable path exists beside the boundary. The two-key discipline was then satisfied in full **by other sessions**: a fresh independent re-review and a **separate** final adjudication recorded P4 COMPLETE at 14/14; a targeted independent review and a **separate** targeted adjudication accepted the acceptance-closure candidate; two finalizers ran; and only then did a later content commit write `status: CONTAINED` into `phase-0-baseline-manifest.yaml` with the mechanism named. ### **CONTAINED IS NOT ENABLED** — no production write is enabled, the production `GateRegistry` population stays EMPTY until U8.1 / P8, and no autonomy was granted |
+| **Canonical destination** | This IS the canonical containment boundary (ADR-004 two-key rule); the import gate makes bypassing it structurally impossible, and the violation list is now EMPTY with the gate asserting empty |
 | **Disposition** | ### **KEEP** — canonical, forward-only. `ExecutionCapability` stays unconstructable/unforgeable/single-use; UNKNOWN_OUTCOME may never be silently downgraded to FAILED or retried |
-| **Target phase** | Implemented at **P4** (adjudication outstanding); the routing cutover completes R-07 closure |
+| **Target phase** | Implemented and **adjudicated** at **P4**; the routing cutover landed and R-07 is recorded CONTAINED |
 | **Compatibility requirement** | No second effect-execution path may exist beside it; every adapter effect flows through `execute_effect` |
 | **Deletion condition** | Not deletable — no permanent second effect-authority system may exist beside it |
 | **Evidence required before deletion** | n/a |
@@ -407,10 +431,14 @@ What remains is structurally read-only on the F2 pattern: **no write API exists*
 
 **READ HALF CUT at U4.11 (P4, this session):** `scripts/run_action_callback_server.py` (EP-1, **ADAPT** — *partial*). Its five read closures ran over a mutation-capable session; three held a `CdpActuator` purely to call `.observe()`. Two **spliced caller data into JavaScript source** (`_JS + "(" + repr(str(load_ref)) + ")"` — F2's exact defect) and one **composed a target the page never published** (`href.rstrip("/") + "/attachments"`), navigating to it with `location.href=` — the generic traversal EP-3 had just removed, still live here. All five now run on `cdp_readonly`; the column mapping and document scrape are Python over a vetted observation, so the JavaScript is *gone* rather than escaped more carefully, and the documents page is reached through an **EP-3 provenance record**. **No edge count changed** — this removed live defects, it did not cut the violation.
 
-**Still present — DEFERRED (it keeps R-07 OPEN):** the same file's **write** half. `_build_live_operation_router._build_agent` constructs `CdpActuator` for the OperationRouter→OperatorAgent autonomous browser WRITE — the live R-07 write, a P12-scale integration. A guard now asserts that factory is the **only** construction site in the file, so the residual is named and cannot spread.
+**WRITE HALF CUT at U4.11 (P4) — the deferral below is DISCHARGED.** `scripts/run_action_callback_server.py` (EP-1) constructs no live actuator: AST over the file finds **0** `CdpActuator` constructions and **0** `cdp_actuator` imports, and `_build_live_operation_router` / `_build_agent` exist nowhere in `src/` or `scripts/`. `operation_router = None` unconditionally. The only external-write path is the typed, dark `execute_invoice_write` behind checkpoint → witness → grant → atomic claim, which has no production caller.
+
+> **SUPERSEDED, kept verbatim so the old wording is recognisable if it ever returns.** This entry read: *"Still present — DEFERRED (it keeps R-07 OPEN): the same file's write half. `_build_live_operation_router._build_agent` constructs `CdpActuator` for the OperationRouter→OperatorAgent autonomous browser WRITE — the live R-07 write, a P12-scale integration. A guard now asserts that factory is the only construction site in the file, so the residual is named and cannot spread."* That described the state at U4.11's read-half cut, before the write half was cut. It is **not** a live statement: R-07 is recorded `CONTAINED` in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml).
 
 > **Why the factory was not simply moved.** Any `ADAPTER_MODULES` import from a script is an edge and an effect-capable one is a violation, so the only destination that removes the edge is `effect_boundary` itself — not an adapter module, and already the gate's one exempt importer. But `effect_boundary.execute_effect` has **no production caller**; it ships dark. Moving the factory there *without* routing the write through checkpoint → witness → grant → claim → verification would take the violation count to zero while leaving an ungated live write. **That is a wrapper, and a wrapper that logs the bypass is not containment (PL-6)** — the exact false green P4 exists to prevent. The factory stays visible until the boundary integration is real. This was NOT deferred blind (CLAUDE.md §9).
-Deletion condition: EP-6/7/9/10 physically deleted (**done**), the import gate ON and `effect_adapter_import_gate.violation_edges` empty (**not yet** — **four** residuals remain after the P4 containment checkpoint cut the brain_runtime edge).
+Deletion condition: EP-6/7/9/10 physically deleted (**done**), the import gate ON and `effect_adapter_import_gate.violation_edges` empty — ### **MET.** The recomputed live set and the recorded set are both **empty** and agree both-sided; **zero** residuals remain.
+
+> **SUPERSEDED, kept verbatim so the old wording is recognisable if it ever returns.** This condition read: *"…`effect_adapter_import_gate.violation_edges` empty (not yet — four residuals remain after the P4 containment checkpoint cut the brain_runtime edge)."* The four residuals named there — EP-1, EP-3, EP-8, EP-14 — were all subsequently cut. A count claim is deliberately not restated here as a number to be maintained by hand: `test_the_recorded_effect_violation_surface_is_the_mechanically_recomputed_one` recomputes it.
 
 ### S15b — Browser/TMS discovery and drive tooling — **ADAPT at P4**
 `scripts/discover_tms_screen.py` · `scripts/drive_real_tms.py` · `scripts/validate_screen_map.py` · `scripts/record_tms_observation.py` · `scripts/read_mock_tms.py`

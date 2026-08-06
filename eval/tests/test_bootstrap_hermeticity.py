@@ -372,8 +372,23 @@ def test_the_effect_path_inventory_is_exact_and_fully_classified():
     )
     ep14 = next(p for p in paths if p["id"] == "EP-14")
     assert ep14["path"] == "scripts/read_tms_browser_use.py", "the P0-F4 adjudication is gone"
-    assert re.search(r"R-07 OPEN", read(IMPL / "EFFECT-PATH-INVENTORY.yaml")), (
-        "the inventory stopped recording R-07 as open"
+    # R-07's status as this inventory RESTATES it. The canonical record is the baseline manifest;
+    # this file is scoped to the live-write adjudication and must AGREE with it rather than drift.
+    # Re-pointed at the R-07 closure content commit (rule 20): it asserted the literal "R-07 OPEN"
+    # for the whole time that was true, and now asserts the recorded closure together with its
+    # bound - because an unbounded CONTAINED in an effect-path inventory reads as enablement.
+    recorded = yaml.safe_load(
+        read(IMPL / "phase-0-baseline-manifest.yaml"))["expected_legacy_paths"]
+    assert recorded["status"] == "CONTAINED", (
+        f"the canonical R-07 record reads {recorded['status']!r}"
+    )
+    assert str(inv["meta"]["risk"]).strip().startswith("R-07 CONTAINED"), (
+        "the inventory's meta.risk no longer agrees with the canonical R-07 CONTAINED record: "
+        f"{str(inv['meta']['risk'])[:80]!r}"
+    )
+    assert re.search(r"NOT mean any production write is enabled",
+                     " ".join(str(inv["meta"]["risk"]).split()), re.I), (
+        "the inventory records R-07 CONTAINED without the bound - containment is not enablement"
     )
 
 

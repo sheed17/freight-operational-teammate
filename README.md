@@ -60,9 +60,9 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 
 | Finding | Status |
 |---|---|
-| **R-07 — ungated live-write paths** | ### **OPEN — NOT CONTAINED** — the mechanism that closes it is built and independently verified; the CONTAINED **record** in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) has not been written, and only a separate content commit writing it closes the finding |
-| **6 production-reachable live-write paths** | mechanically cut — EP-6/7/9/10 deleted, EP-3/EP-8/EP-14 cut to structurally read-only, EP-1's write half routed through the governed write route; the **record** still pending |
-| **31 direct adapter-import edges** | mechanically resolved — 0 effect-capable violation edges remain (13 authorized detection edges); the **record** still pending |
+| **R-07 — ungated live-write paths** | ### **CONTAINED** — the mechanism is built and independently verified, and the CONTAINED **record** is now written in [`phase-0-baseline-manifest.yaml`](docs/implementation/phase-0-baseline-manifest.yaml) with the mechanism named. It took a **separate content commit after both P4 finalization passes** — not P4's completion — to close it. ### **CONTAINED ≠ ENABLED:** external-effect paths are structurally forced through the governed boundary or fail closed; no production write is enabled, the production `GateRegistry` stays EMPTY until U8.1/P8, and no autonomy was granted |
+| **6 production-reachable live-write paths** | ### **CUT AND RECORDED** — EP-6/7/9/10 deleted, EP-3/EP-8/EP-14 cut to structurally read-only, EP-1's write half routed through the governed write route |
+| **31 direct adapter-import edges** | ### **RESOLVED AND RECORDED** — 0 effect-capable violation edges remain (13 authorized detection edges) |
 | **RR-01 — `base_url` outside the payload hash and outside the approval mismatch check** | OPEN — a **binding P12 precondition**, compounded by F-08 and F-09; must be discharged before any live writer is injected |
 | **AD-02 — `finalizer_lock.py` has zero committed test coverage** | OPEN — safety-critical and load-bearing for the next finalizer run; a committed hostile battery is owed |
 | **Transition/event completeness** — 13 of 134 transitions name no event outright (4 classes; the old "24" was never mechanically computed and is retired) | OPEN — **COUNT NEEDS ADJUDICATION** at G2, before **P5**'s event content ([audit](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) |
