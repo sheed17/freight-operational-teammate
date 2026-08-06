@@ -209,7 +209,7 @@ cli_switch_gates:
   - gate: independent_repository_inspection_agrees_p3_may_begin
     weight: 25
     status: DONE
-    evidence: "same independent review performed the repository inspection: P3 symbols provably absent from src/ (79 files swept), guard categories audited, R-07 honestly OPEN, exactly-one-READY verified - and concluded 'nothing found here blocks P3's content'"
+    evidence: "same independent review performed the repository inspection: P3 symbols provably absent from src/ (79 files swept), guard categories audited, R-07 honestly OPEN (HISTORICAL - this records what the review found AT P3; R-07 was recorded CONTAINED at P4), exactly-one-READY verified - and concluded 'nothing found here blocks P3's content'"
   - gate: p3_weighted_acceptance_contract_instantiated
     weight: 15
     status: DONE

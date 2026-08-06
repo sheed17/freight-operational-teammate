@@ -38,12 +38,41 @@ def test_effect_capable_entry_points_match_the_manifest():
 
 
 def test_r07_exposure_is_recorded_as_open_and_uncontained():
-    """PL-18 may not be falsely closed. The manifest must SAY the paths are not contained."""
+    """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
+    frozen to preserve its node identity in TEST-NODE-MANIFEST.json; the body is re-pointed).
+
+    PL-18 may not be falsely closed - and it may not be falsely left open either. The original body
+    asserted `NOT CONTAINED` in the status and `NONE` in the mechanism, which was the truth from P0
+    through the second P4 finalization. R-07 is now recorded CONTAINED by the separate content
+    commit repository authority reserved for exactly that act, so those two literals became false
+    and could only be deleted or re-pointed. Re-pointed, and made stronger in the same move: the
+    record must now name a REAL structural mechanism, and this file's own subject - the
+    effect-capable-BY-IMPORT entry-point set - must be exactly the recorded, mock-guarded,
+    test-only quarantine. A PRODUCTION entry point reappearing there fails here even while the
+    status still reads CONTAINED. The full close conditions live in test_phase0_baseline_manifest.py
+    ::test_r07_containment_record_holds_only_while_its_mechanical_conditions_hold.
+    """
     legacy = manifest.load()["expected_legacy_paths"]
     assert legacy["risk_id"] == "R-07"
-    assert "NOT CONTAINED" in legacy["status"]
-    assert "NONE" in legacy["containment_mechanism"]
+    assert legacy["status"] == "CONTAINED"
     assert legacy["removed_by_phase"] == "P4"
+    mech = legacy["containment_mechanism"]
+    assert not mech.strip().startswith("NONE"), (
+        "the containment mechanism still opens with NONE while the status claims CONTAINED"
+    )
+    assert "STRUCTURAL" in mech and "effect_boundary" in mech, (
+        "R-07 is recorded CONTAINED without naming the structural mechanism that contains it"
+    )
+    # the exposure itself: only the recorded, mock-guarded quarantine importers may remain
+    remaining = {e["script"] for e in legacy["effect_capable_by_import"]}
+    assert remaining == {"scripts/enter_tms_payable.py", "scripts/run_dogfood_pilot.py"}, (
+        f"the effect-capable-by-import set drifted from the recorded quarantine: {sorted(remaining)}"
+    )
+    for entry in legacy["effect_capable_by_import"]:
+        assert "test-only" in entry["cutover"], (
+            f"{entry['script']} is effect-capable by import and is NOT test-only - R-07 cannot be "
+            "recorded CONTAINED while a production entry point is effect-capable by import"
+        )
 
 
 def test_every_reference_to_an_effect_capable_script_is_classified():

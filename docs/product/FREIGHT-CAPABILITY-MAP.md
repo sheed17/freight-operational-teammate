@@ -21,9 +21,11 @@ related loop · dependencies · autonomy ceiling.**
 **Current state is uniform and honest:** per the coverage matrix, every freight use case is at
 readiness tier **SPECIFIED** — the behaviour and acceptance contract exist, but the freight
 capability is not implemented. The post-P2 work completed to date is the **safety foundation** —
-the P3 checkpoint kernel (**COMPLETE, and shipping dark**) — plus the **in-progress P4 adapter
-containment** (**READY, not COMPLETE**; **R-07 remains OPEN — NOT CONTAINED**); **P5–P14 have not
-begun.** So no freight capability here is a live product capability. Read
+the P3 checkpoint kernel (**COMPLETE, and shipping dark**) and the P4 adapter containment
+(**COMPLETE — ADJUDICATED**; **R-07 recorded CONTAINED**, and *contained* means external-effect
+paths are structurally forced through the governed boundary or fail closed — **not** that any
+production write is enabled). **`P5` is the sole READY unit and has NOT STARTED; P6–P14 are
+BLOCKED.** So no freight capability here is a live product capability. Read
 [`CURRENT.md`](../implementation/CURRENT.md) for the machine-verified status. "Target phase" is the earliest phase where the capability is
 scheduled to appear (shadow, then supervised, then possibly bounded-autonomous) — **not a claim that
 it exists.** Autonomy ceiling uses the canonical gate decisions of
@@ -248,7 +250,7 @@ it exists.** Autonomy ceiling uses the canonical gate decisions of
 - **The action choice (per action):** `observe · understand · recommend · draft · request approval · execute · verify · escalate · stop` — decomposing onto the canonical five verbs (Observe/Assist/Execute/Verify/Escalate) and the four gate decisions.
 - **The canonical effect pipeline** (every consequential effect): `Work Item → Pipeline Instance → policy & validation → optional approval → atomic checkpoint → Checkpoint Witness → Effect Grant → atomic claim → adapter execution → verification → outcome → evidence & projection → closure.`
 - **Examples of the ladder:** read a load → automatic observation · classify a document → automatic · request a missing POD → potentially bounded-automatic later · update a nonfinancial operational status → policy-controlled · send a routine status message → policy-controlled · book a carrier outside approved rate bounds → approval required · accept a claim settlement → human authority · change banking information → strong human verification · move money → tightly controlled · ambiguous external action → `UNKNOWN_OUTCOME`, stop, investigate, escalate.
-- **Current state:** the safety kernel (checkpoint/witness/grant/brake) is recorded COMPLETE at P3 and **ships dark**; routing effects through it is P4 (READY, not complete); **R-07 OPEN** — see [`CURRENT.md`](../implementation/CURRENT.md). · **Dependencies:** P3, P4, P8.
+- **Current state:** the safety kernel (checkpoint/witness/grant/brake) is recorded COMPLETE at P3 and **ships dark**; routing effects through it is P4, recorded **COMPLETE — ADJUDICATED**, and **R-07 is recorded CONTAINED** — external-effect paths are structurally forced through the governed boundary or fail closed. **No production write is enabled**: the deployed route answers a recorded `ROUTE_NOT_CONFIGURED` refusal and the production `GateRegistry` population stays EMPTY until U8.1 / P8. See [`CURRENT.md`](../implementation/CURRENT.md). · **Dependencies:** P3, P4, P8.
 - **Autonomy ceiling:** this is the mechanism that *enforces* every other capability's ceiling; the authorization assertion is `PERMANENT_HUMAN_ASSERTION_REQUIRED` (ADR-003).
 
 ## 17. Shared memory & learning  — cross-cutting knowledge base · P7/P9

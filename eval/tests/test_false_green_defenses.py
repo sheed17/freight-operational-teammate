@@ -45,8 +45,15 @@ def require_population(items, what: str):
 
 
 def _strip_quarantine(text: str) -> str:
-    """Remove <details> blocks and blockquote banner lines - the sanctioned homes of stale text."""
-    text = re.sub(r"<details>.*?</details>", "", text, flags=re.S)
+    """Remove SELF-LABELLING <details> blocks and blockquote banner lines - the sanctioned homes of
+    stale text.
+
+    DELEGATED at the R-01/R-02 remediation to the one label-aware definition in
+    `control.status_claims`. A quarantine that anyone can enter by typing `<details>` is not a
+    quarantine, and this module's whole subject is false green."""
+    from control import status_claims
+
+    text = status_claims.strip_historical_blocks(text)
     return "\n".join(l for l in text.split("\n") if not l.lstrip().startswith(">"))
 
 

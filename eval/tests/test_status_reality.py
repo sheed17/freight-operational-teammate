@@ -218,8 +218,16 @@ def test_registry_meta_mirrors_current_md_exactly():
 # ------------------------------------------------------------------ 4. no secondary volatile claims
 
 def _strip_historical(text: str) -> str:
-    """Quarantined <details> blocks exist precisely to hold stale figures. Exempt them."""
-    return re.sub(r"<details>.*?</details>", "", text, flags=re.S)
+    """Quarantined <details> blocks exist precisely to hold stale figures. Exempt them - but only
+    when the block SAYS SO.
+
+    DELEGATED at the R-01/R-02 remediation to the one label-aware definition in
+    `control.status_claims`. An UNLABELLED `<details>` block is not a quarantine, and exempting one
+    is how a stale figure hides from the very guard that exists to find it."""
+    sys.path.insert(0, str(ROOT / "eval"))
+    from control import status_claims
+
+    return status_claims.strip_historical_blocks(text)
 
 
 def test_no_secondary_file_carries_its_own_volatile_status_claim():
@@ -258,10 +266,12 @@ def test_the_status_record_still_states_the_canonical_facts():
         adjudicated phases now, P3 and P4, not just the newest one;
       * the single READY unit is now P5, whose only dependency (P4) is COMPLETE;
       * every phase after the READY one stays BLOCKED;
-      * ### R-07 STAYS OPEN - NOT CONTAINED. Completing P4's weighted acceptance did NOT close it:
-        recording R-07 CONTAINED lives in phase-0-baseline-manifest.yaml, which is not a status
-        file, so it needs its own later content commit. This guard is the reason a session cannot
-        quietly conflate "P4 COMPLETE" with "R-07 closed".
+      * ### R-07 IS NOW CONTAINED - AND COMPLETING P4 IS NOT WHAT DID IT. Recording R-07 CONTAINED
+        lives in phase-0-baseline-manifest.yaml, which is not a status file, so it took its own
+        later content commit after both finalization passes. This guard is still the reason a
+        session cannot quietly conflate "P4 COMPLETE" with "R-07 closed": it requires the status
+        authority to record CONTAINED **and** to state the bound - containment is not
+        production-write enablement - so an unbounded CONTAINED cannot be read as an enablement.
 
     THE ANTI-VACUOUS ANCHORS ARE DELIBERATE. A registry that failed to parse, a phase whose
     criteria block went missing, or an empty READY scan would otherwise let every negative
@@ -274,9 +284,13 @@ def test_the_status_record_still_states_the_canonical_facts():
         "U-HANDOFF-2B evidence; U-REBASELINE-1A on the independent U-REBASELINE-REVIEW-1) - "
         "losing that record un-explains how P3 became READY, then COMPLETE"
     )
-    assert re.search(r"R-07.{0,120}OPEN", text, re.S), (
-        "CURRENT.md must still record R-07 OPEN - neither completing P3 nor completing P4's "
-        "weighted acceptance closes it; the manifest recording is a separate content commit"
+    assert re.search(r"R-07.{0,200}CONTAINED", text, re.S), (
+        "CURRENT.md must record R-07 CONTAINED - neither completing P3 nor completing P4's "
+        "weighted acceptance closed it; the manifest recording was a separate content commit, and "
+        "the status authority must state its outcome"
+    )
+    assert not re.search(r"R-07[^\n]{0,60}?\b(?:is|stays|remains)\s+\*{0,3}OPEN\b", text, re.I), (
+        "CURRENT.md still describes R-07 as OPEN after the containment record was written"
     )
     units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
     assert units, "the registry parsed to no units - every assertion below would be vacuous"
@@ -337,9 +351,21 @@ def test_the_status_record_still_states_the_canonical_facts():
     assert re.search(r"P5\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
         "CURRENT.md must state that P5, though READY, is NOT COMPLETE"
     )
-    assert re.search(r"R-07.{0,80}OPEN\s*[—-]\s*NOT\s+CONTAINED", text, re.I | re.S), (
-        "CURRENT.md must still spell out R-07 OPEN - NOT CONTAINED alongside P4 COMPLETE, or a "
-        "reader will infer that a completed P4 closed it"
+    # The record must be spelled out AND bounded. An unqualified "R-07 CONTAINED" next to "P4
+    # COMPLETE" invites exactly two wrong inferences: that completing P4 closed it, and that closing
+    # it enabled something. Both must be refused in the status authority's own words.
+    assert re.search(r"R-07\s+is\s+(?:now\s+)?\*{0,3}CONTAINED", text, re.I), (
+        "CURRENT.md must spell out that R-07 is CONTAINED"
+    )
+    assert re.search(r"(?:did|does)\s+\*{0,3}NOT\*{0,3}\s+close\s+(?:it|R-07)|"
+                     r"not\s+what\s+did\s+it|is\s+NOT\s+what\s+did\s+it", text, re.I), (
+        "CURRENT.md must state that completing P4 did NOT close R-07 - a separate content commit "
+        "did; without that sentence a reader infers the conflation this guard exists to prevent"
+    )
+    assert re.search(r"CONTAINED\s*(?:≠|!=)\s*ENABLED|not mean production writes are enabled|"
+                     r"no production write is enabled|enables no production write", text, re.I), (
+        "CURRENT.md records R-07 CONTAINED without stating the bound - containment forces external "
+        "effects through the governed boundary or fails them closed; it enables nothing"
     )
 
 

@@ -13,8 +13,11 @@
 #   - readiness_tier uses the seven canonical tiers (PROGRESS-PROTOCOL.md sec 5); every freight use
 #     case is SPECIFIED today because no freight/product capability has been implemented - the
 #     completed post-P2 work is the safety foundation (P3 checkpoint kernel, COMPLETE and dark)
-#     plus the in-progress P4 adapter containment (READY, not COMPLETE; R-07 OPEN); P5-P14 have
-#     not begun.
+#     plus P4 adapter containment, COMPLETE and adjudicated, with R-07 recorded CONTAINED and
+#     production writes still dark; P5 is the sole READY unit and has NOT STARTED; P6-P14 are
+#     BLOCKED. Containment is not enablement: no production write is enabled.
+#     SUPERSEDED, kept so the old wording is recognisable if it returns - this read "plus the
+#     in-progress P4 adapter containment (READY, not COMPLETE; R-07 OPEN); P5-P14 have not begun".
 
 meta:
   unit: U-REBASELINE-1

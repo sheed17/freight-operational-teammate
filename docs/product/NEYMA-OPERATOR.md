@@ -378,7 +378,11 @@ as currently available.** Every Operator capability sits in exactly one band:
 | **Shadow-capable** | reachable in read-only shadow once P9/P10/P11 land | DISCOVERY and SHADOW OPERATOR modes; historical replay; shadow-vs-human diff |
 | **Supervised-capable** | reachable under human approval once P12 lands | SUPERVISED OPERATOR mode |
 | **Autonomy-capable** | reachable only per earned class once P14 lands | BOUNDED AUTONOMY mode |
-| **Not yet implemented** | the honest state of **all** of the above today | **Nothing in this document is implemented.** No Operator mode, artifact runtime, discovery lifecycle, or learning/change process exists in production; the current program's active unit is **P4 adapter containment (READY, not complete; R-07 OPEN — NOT CONTAINED)**, and P5–P14 have not begun. |
+| **Not yet implemented** | the honest state of **all** of the above today | **Nothing in this document is implemented.** No Operator mode, artifact runtime, discovery lifecycle, or learning/change process exists in production. **P4 adapter containment is COMPLETE and adjudicated, and R-07 is recorded CONTAINED** — a structural bound on how an effect can be reached, which enables nothing: production writes stay dark and the production `GateRegistry` stays EMPTY until U8.1 / P8. **P5** is the sole READY unit and has **not started**; P6–P14 are BLOCKED. |
+
+> **SUPERSEDED, kept so the old wording is recognisable if it returns.** The row above read
+> *"the current program's active unit is P4 adapter containment (READY, not complete; R-07 OPEN —
+> NOT CONTAINED), and P5–P14 have not begun."*
 
 > **The Operator is a documented role and a reconciled phase map — not a shipped capability.**
 > It is built only when [`CURRENT.md`](../implementation/CURRENT.md) says a phase that carries it is
