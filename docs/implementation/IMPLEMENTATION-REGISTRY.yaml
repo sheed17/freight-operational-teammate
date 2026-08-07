@@ -46,9 +46,9 @@ meta:
   # rewritten by scripts/finalize_status.py::_write_status (scripts/update_current_status.py has
   # been a refusing shim since U-HANDOFF-1C and writes nothing). test_status_reality.py fails
   # the build if they disagree with CURRENT.md or with the checked-out commit.
-  baseline_commit: 42ea24cfc76fac19406e7eaa44b695b8d032b3aa
-  validated_tree: 1e2bba791a5c2c77194d1df9ce16e1d9df84315a
-  suite: "1961 passed, 0 failed, 1 conditionally justified skip"
+  baseline_commit: a31a94aa8239113ec8ea3c02b5ef6fad922a1b24
+  validated_tree: 637580b64ca666695d0811c4119e866de6100ce9
+  suite: "2072 passed, 0 failed, 1 conditionally justified skip"
   status_convention: >-
     Two-commit convention: content commit first, then exactly one status-metadata commit that
     records it. A commit cannot contain its own hash, so baseline_commit names the content
