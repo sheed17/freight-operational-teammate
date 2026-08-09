@@ -190,87 +190,712 @@ def test_a_clean_clone_has_no_workspace_database():
     assert ignored, "data/active_workspace is no longer gitignored"
 
 
-# ============================================================ M-4: transition/event audit
+# ============================================================ G2: the transition/event contract
+#
+# The G2 targeted architecture adjudication over certified predecessor 6e8127d ruled
+# INTERPRETATION C - HYBRID: the PRODUCER predicate is membership in events/registry.md sec 3, and
+# the COMPLETENESS predicate is the presence of a durable write (GR-2). NEITHER READS PROSE.
+#
+# Interpretation B ("explicitly documented non-producing") was refused because its predicate is
+# PROSE-DEPENDENT AND SELF-CERTIFYING: a row exempts itself by writing the right words in the Event
+# column. That failure is not hypothetical - 07-conflict:CF-7 and 09-exception:EC-7 both carried
+# "(no state change)", the old parser honoured it as a non-production declaration, and BOTH ROWS IN
+# FACT PERFORM DURABLE WRITES. Two real defects were being laundered into legal exemptions.
+#
+# The adjudicated defects these guards hold closed:
+#   G2-D1  the old classifier's `else` branch was a FALSE GREEN - it never checked that the cell
+#          named a canonical event, so 12-rule:RU-8 (Event cell "(Exception raised)") passed as
+#          evented while naming nothing at all. UNKNOWN CLASSIFICATION IS NOW A FAILURE.
+#   G2-D3  01-work-item:WI-14 said "same guards as WI-5/6/7/3/12 respectively" over FOUR target
+#          states and FIVE references. Ownership is resolved by TARGET STATE, never positionally.
+#   G2-D5  no column-count guard existed. 03-external-effect-grant:EF-5x carried 7 cells against 8
+#          headers; a cell missing BEFORE the Event column would have shifted classification
+#          silently. The row is repaired and the guard is here.
+#   G2-D7  the anti-"24" guard collided with the truth - the computed count of NON-PRODUCER
+#          transitions is ALSO 24, a different quantity that happens to share a value.
+#   G2-D11 nothing asserted the sec-3 producer map and the 134-row corpus were bijective in BOTH
+#          directions.
+#   G2-D12 the audit recorded 121/13; the corrected as-found split was 120/14.
+#   G2-D14 the audit classified EF-3 as DOCUMENTED_NON_PRODUCING; it is the declared sec-3 producer
+#          of the EXISTING canonical event EffectExecuted.
+#
+# Discipline as everywhere here: exact sets, never counts; positive anchors before every negative
+# assertion; whole-token matching; and no guard may pass by measuring nothing.
+
+SPECS = ROOT / "docs" / "specifications"
+MACHINES = SPECS / "state-machines"
+
+CLASS_TOKENS = ("NON_PRODUCING", "DELEGATES_TO", "CONSUMES", "EVENT_REQUIRED")
+CLASS_TOKEN_RE = re.compile(r"\b(" + "|".join(CLASS_TOKENS) + r"):([A-Za-z0-9_,;=-]+)")
+NON_PRODUCING_REASONS = {"ENUMERATED_NO_OP", "GR1_ILLEGAL_REFUSAL"}
+# The only declared deviation from "exactly one producer transition" (events/registry.md sec 9).
+COORDINATION_EVENTS = {"RealityEstablished", "ConflictRaised", "PolicyVersionChanged",
+                       "IllegalTransitionAttempted"}
+
 
 def _audit() -> dict:
     return yaml.safe_load(read(IMPL / "TRANSITION-EVENT-AUDIT.yaml"))
 
 
-def _computed_classes() -> dict[str, set[str]]:
-    """The canonical computation: escape-aware split, per-table Event column."""
-    machines = ROOT / "docs" / "specifications" / "state-machines"
-    bare, documented, illegal_unnamed, delegating, evented = set(), set(), set(), set(), set()
-    for f in sorted(machines.glob("*.machine.md")):
+def _bare(cell: str) -> bool:
+    return re.sub(r"[*`\s]", "", cell) in ("", "—", "-", "–")
+
+
+def _expand_producers(field: str | None) -> list[str]:
+    """The registry's own shorthand: `PL-7v/9v` -> [PL-7v, PL-9v]; `IB-2/2r/2h` -> three ids. A
+    bare suffix inherits the preceding machine prefix."""
+    out: list[str] = []
+    prefix = None
+    for tok in (field or "").split("/"):
+        tok = tok.strip()
+        m = re.match(r"^([A-Z]{2})-(\d+[a-z]*)", tok)
+        if m:
+            prefix = m.group(1)
+            out.append(f"{prefix}-{m.group(2)}")
+            continue
+        m = re.match(r"^(\d+[a-z]*)", tok)
+        if m and prefix:
+            out.append(f"{prefix}-{m.group(1)}")
+    return out
+
+
+def _event_registry() -> dict:
+    """events/registry.md sec 3. F15 is a LENS over cross-machine consumption and declares no
+    contract (sec 9); counting it would double-count every event it names."""
+    section = read(SPECS / "events" / "registry.md")
+    section = section.split("## 3. CANONICAL EVENT LIST")[1].split("## 4.")[0]
+    declared = []
+    for line in section.split("\n"):
+        fam = re.match(r"^\*\*(F\d+)\s", line)
+        if not fam:
+            continue
+        for m in re.finditer(r"`([A-Za-z][A-Za-z0-9]*)`(‡?)(?:\(([^)]*)\))?", line):
+            declared.append({"family": fam.group(1), "name": m.group(1),
+                             "coordination": m.group(2) == "‡",
+                             "producers": _expand_producers(m.group(3))})
+    contracts = [e for e in declared if e["family"] != "F15"]
+    owned = [e for e in contracts if int(e["family"][1:]) <= 13]
+    producers_of: dict[str, set[str]] = {}
+    for e in owned:
+        for tid in e["producers"]:
+            producers_of.setdefault(tid, set()).add(e["name"])
+    return {"declared": declared, "contracts": contracts, "owned": owned,
+            "corpus": [e["name"] for e in contracts], "producers_of": producers_of}
+
+
+def _canonical_states() -> set[str]:
+    text = read(MACHINES / "registry.md")
+    text = text.split("## 4. CANONICAL STATE REGISTRY")[1].split("## 5.")[0]
+    return set(re.findall(r"`([A-Z][A-Z_]*)`", text))
+
+
+def _states_in(fragment: str, states: set[str]) -> set[str]:
+    return {t for t in re.findall(r"[A-Z][A-Z_]{2,}", fragment) if t in states}
+
+
+def _transition_rows() -> list[dict]:
+    r"""Every transition row across the 13 machine files, with its From-To / Writes / Event cells
+    resolved BY HEADER NAME (the columns are not in the same order in every machine) and its cell
+    count recorded against its header count (G2-D5). Escape-aware split on `(?<!\\)\|` - the
+    U-HANDOFF-1B correction, without which `H\\|S` in the Trig column shifts every later cell."""
+    rows = []
+    for f in sorted(MACHINES.glob("*.machine.md")):
         short = f.name.replace(".machine.md", "")
-        ev_idx = None
-        for ln in f.read_text(encoding="utf-8").split("\n"):
-            if not ln.strip().startswith("|"):
-                ev_idx = None
+        headers = None
+        for lineno, line in enumerate(f.read_text(encoding="utf-8").split("\n"), 1):
+            if not line.strip().startswith("|"):
+                headers = None
                 continue
-            c = [x.strip() for x in re.split(r"(?<!\\)\|", ln)[1:-1]]
-            if not c:
+            cells = [c.strip() for c in re.split(r"(?<!\\)\|", line)[1:-1]]
+            if not cells:
                 continue
-            if re.sub(r"[*\s]", "", c[0]) == "ID":
-                headers = [re.sub(r"[*`\s]", "", h).lower() for h in c]
-                ev_idx = next((i for i, h in enumerate(headers) if h.startswith("event")), None)
+            if re.sub(r"[*\s]", "", cells[0]) == "ID":
+                headers = [re.sub(r"[*`\s]", "", h).lower() for h in cells]
                 continue
-            if ev_idx is None or re.match(r"^[-: ]+$", c[0]):
+            if headers is None or re.match(r"^[-: ]+$", cells[0]):
                 continue
-            tid = re.sub(r"[*`\s]", "", c[0])
+            tid = re.sub(r"[*`\s]", "", cells[0])
             if not re.fullmatch(r"[A-Z]{2}-\d+[a-z]?", tid):
                 continue
-            key = f"{short}:{tid}"
-            cell = c[ev_idx] if ev_idx < len(c) else ""
-            bare_cell = re.sub(r"[*`\s]", "", cell)
-            if bare_cell in ("", "—", "-", "–"):
-                bare.add(key)
-            elif re.search(r"no new event|no state change", cell, re.I):
-                documented.add(key)
-            elif re.search(r"ILLEGAL", cell) and not re.search(r"IllegalTransition", cell):
-                illegal_unnamed.add(key)
-            elif re.sub(r"[*`\s]", "", cell) == "asthose":
-                delegating.add(key)
-            else:
-                evented.add(key)
-    return {"BARE": bare, "DOCUMENTED_NON_PRODUCING": documented,
-            "ILLEGAL_UNNAMED": illegal_unnamed, "DELEGATING": delegating, "EVENTED": evented}
+
+            def col(pred, _cells=cells, _headers=headers):
+                i = next((i for i, h in enumerate(_headers) if pred(h)), None)
+                return _cells[i] if i is not None and i < len(_cells) else ""
+
+            rows.append({
+                "key": f"{short}:{tid}", "id": tid, "machine": short, "line": lineno,
+                "n_cells": len(cells), "n_headers": len(headers),
+                "from_to": col(lambda h: h.startswith("from")),
+                "writes": col(lambda h: h.startswith("writes") or h == "prov"),
+                "event": col(lambda h: h.startswith("event")),
+            })
+    return rows
 
 
-def test_transition_event_audit_matches_the_specs():
-    """The audit's exact members must equal a fresh mechanical computation - exact SETS, so a
-    same-count substitution fails, and a spec edit that changes any class fails until the audit
-    is re-adjudicated."""
-    computed = _computed_classes()
-    audit = _audit()
-    total = sum(len(v) for v in computed.values())
-    assert total == audit["meta"]["total_transitions"] == 134, f"transition population drifted: {total}"
-    recorded = {c["name"]: set(c["members"]) for c in audit["classes"]}
-    for name in ("BARE", "DOCUMENTED_NON_PRODUCING", "ILLEGAL_UNNAMED", "DELEGATING"):
-        require_population(recorded.get(name, set()), f"audit class {name}")
-        assert computed[name] == recorded[name], (
-            f"class {name} drifted: computed-only={sorted(computed[name] - recorded[name])}, "
-            f"audit-only={sorted(recorded[name] - computed[name])}"
-        )
-    not_naming = sum(len(recorded[n]) for n in recorded)
-    assert not_naming == audit["meta"]["transitions_not_naming_an_event"]
-    assert len(computed["EVENTED"]) == audit["meta"]["transitions_naming_an_event"]
-    assert audit["meta"]["status"] == "COUNT_NEEDS_ADJUDICATION", (
-        "the finding was closed without the G2 adjudication"
+def _durable_write(row: dict, states: set[str]) -> bool:
+    """GR-2's subject. A row writes durably iff its To side names a canonical state its From side
+    does not, OR its Writes / Prov column is non-empty. Both read STRUCTURED columns."""
+    if not _bare(row["writes"]):
+        return True
+    if "→" not in row["from_to"]:
+        return False
+    left, right = row["from_to"].split("→", 1)
+    return bool(_states_in(right, states) - _states_in(left, states))
+
+
+def _classify(rows: list[dict], producers_of: dict[str, set[str]]) -> dict:
+    """The G2 classifier. sec-3 membership decides PRODUCER. Every other row MUST carry exactly one
+    structured token. A row the classifier cannot decide is an ERROR - never a pass, never a skip."""
+    classified, errors = {}, []
+    for row in rows:
+        tokens = CLASS_TOKEN_RE.findall(row["event"])
+        if row["id"] in producers_of:
+            if tokens:
+                errors.append(
+                    f"{row['key']}: a declared sec-3 producer carries a {tokens[0][0]} token - "
+                    "producer identity is decided by the registry, never by the row"
+                )
+            classified[row["key"]] = {"class": "PRODUCER", "arg": None, "row": row}
+            continue
+        if len(tokens) != 1:
+            errors.append(
+                f"{row['key']} (line {row['line']}): {len(tokens)} classification tokens in Event "
+                f"cell {row['event'][:70]!r}. A non-producer row must carry exactly one of "
+                f"{list(CLASS_TOKENS)}. UNKNOWN CLASSIFICATION IS A BUILD FAILURE - it may never "
+                "silently PASS or SKIP."
+            )
+            continue
+        classified[row["key"]] = {"class": tokens[0][0], "arg": tokens[0][1], "row": row}
+    return {"classified": classified, "errors": errors}
+
+
+def _resolve_delegation(spec: str, rows_by_id: dict, producers_of: dict, states: set[str]) -> dict:
+    """`BLOCKED=WI-5,WI-6;AWAITING_HUMAN=WI-7` -> {state: owner_event}. Ownership is resolved by
+    TARGET STATE and never positionally (G2-D3): WI-5 and WI-6 BOTH target BLOCKED, so the word
+    "respectively" over four states and five references could not decide it."""
+    resolution, errors = {}, []
+    for branch in [b for b in spec.split(";") if b]:
+        if "=" not in branch:
+            errors.append(f"malformed delegation branch {branch!r} - expected <TO_STATE>=<ids>")
+            continue
+        state, ids = branch.split("=", 1)
+        targets = [t for t in ids.split(",") if t]
+        if state not in states:
+            errors.append(f"{state!r} is not a canonical state (state-machines/registry.md sec 4)")
+        if not targets:
+            errors.append(f"{state}: ZERO delegation targets - delegation may never resolve to "
+                          "zero owners")
+            continue
+        owners: set[str] = set()
+        for tid in targets:
+            if tid not in rows_by_id:
+                errors.append(f"{state}: delegation target {tid} does not exist in the corpus")
+                continue
+            if tid not in producers_of:
+                errors.append(f"{state}: delegation target {tid} is not a sec-3 producer of any "
+                              "event, so it owns nothing to delegate")
+                continue
+            target_to = _states_in(rows_by_id[tid]["from_to"].split("→", 1)[-1], states)
+            if state not in target_to:
+                errors.append(f"{state}: delegation target {tid} does not itself transition to "
+                              f"{state} (its To set is {sorted(target_to)}) - positional matching "
+                              "is forbidden; targets are matched by target state")
+            owners |= producers_of[tid]
+        if len(owners) == 0:
+            errors.append(f"{state}: delegation resolves to ZERO event owners")
+        elif len(owners) > 1:
+            errors.append(f"{state}: delegation resolves to {sorted(owners)} - DUPLICATE/AMBIGUOUS "
+                          "ownership. Exactly one valid delegation owner is required.")
+        else:
+            resolution[state] = next(iter(owners))
+    return {"resolution": resolution, "errors": errors}
+
+
+def _g2_state() -> dict:
+    """One parse, shared by the guards below, so they cannot disagree with each other."""
+    registry = _event_registry()
+    rows = _transition_rows()
+    states = _canonical_states()
+    return {"registry": registry, "rows": rows, "states": states,
+            "rows_by_id": {r["id"]: r for r in rows},
+            "result": _classify(rows, registry["producers_of"])}
+
+
+# ------------------------------------------------------------ corpus integrity
+
+def test_the_transition_corpus_is_positively_anchored_and_every_row_is_column_aligned():
+    """G2-D5. The 134 rows are anchored by EXACT SET EQUALITY against the registered expectation -
+    a count match with different members must fail - and every row's cell count must equal its
+    table's header count. A row short one cell BEFORE the Event column shifts every later value and
+    silently changes its classification; EF-5x was exactly that row."""
+    sys.path.insert(0, str(ROOT / "eval"))
+    from phase0 import manifest
+
+    rows = require_population(_transition_rows(), "transition rows")
+    keys = [r["key"] for r in rows]
+    assert len(keys) == len(set(keys)), (
+        f"duplicate transition keys: {sorted(k for k in set(keys) if keys.count(k) > 1)}"
+    )
+    expected = {f"{f.replace('.machine.md', '')}:{t}"
+                for f, ids in manifest.canonical_expected()["transitions"].items() for t in ids}
+    assert len(expected) == 134, f"the registered expectation drifted from 134: {len(expected)}"
+    assert set(keys) == expected, (
+        f"transition corpus drifted: corpus-only={sorted(set(keys) - expected)}, "
+        f"registered-only={sorted(expected - set(keys))}"
+    )
+    misaligned = [f"{r['key']} (line {r['line']}): {r['n_cells']} cells vs {r['n_headers']} headers"
+                  for r in rows if r["n_cells"] != r["n_headers"]]
+    assert not misaligned, (
+        "transition rows whose cell count differs from their header count - a missing cell shifts "
+        "every later column and can change an Event classification silently:\n  "
+        + "\n  ".join(misaligned)
     )
 
 
+def test_no_new_canonical_event_was_minted_and_the_total_is_still_98():
+    """The frozen registry. AC-TRACE-000 asserts 98/98 and five canonical documents repeat it.
+    Exact set equality against the registered expectation, so a swap at constant total fails."""
+    sys.path.insert(0, str(ROOT / "eval"))
+    from phase0 import manifest
+
+    registry = _event_registry()
+    owned = {e["name"] for e in registry["owned"]}
+    assert len(owned) == 98, f"the F1-F13 canonical event total is {len(owned)}, not 98"
+    assert owned == manifest.expected_event_names(), (
+        "the canonical event set drifted from the registered expectation: "
+        f"registry-only={sorted(owned - manifest.expected_event_names())}, "
+        f"expected-only={sorted(manifest.expected_event_names() - owned)}"
+    )
+    security = [e["name"] for e in registry["contracts"] if e["family"] == "F14"]
+    assert len(security) == 13, f"the F14 security-event count is {len(security)}, not 13"
+    assert not [e for e in registry["declared"] if e["family"] == "F15" and e["producers"]], (
+        "F15 declared a producer transition - it is a lens over cross-machine consumption and "
+        "declares no contract (events/registry.md sec 9)"
+    )
+
+
+# ------------------------------------------------------------ the producer map <-> corpus bijection
+
+def test_the_producer_map_and_the_transition_corpus_are_bijective():
+    """G2-D11. The sec-3 map, the corpus and the classification form ONE relation, asserted in both
+    directions. Zero-owner and duplicate-owner are separate prohibitions, both fail-closed."""
+    g2 = _g2_state()
+    registry, rows = g2["registry"], g2["rows"]
+    owned = require_population(registry["owned"], "canonical event contracts")
+    corpus_ids = {r["id"] for r in rows}
+
+    # zero-owner prohibition: every canonical event has at least one producer, and it exists.
+    orphans = [e["name"] for e in owned if not e["producers"]]
+    assert not orphans, f"canonical events with NO declared producer transition: {sorted(orphans)}"
+    dangling = sorted({tid for e in owned for tid in e["producers"]} - corpus_ids)
+    assert not dangling, (
+        f"declared producer transition(s) that do not exist in the 134-row corpus: {dangling}"
+    )
+
+    # duplicate-owner prohibition: declared once, and (unless a declared coordination event) the
+    # producers all belong to ONE machine - registry sec 182, "no event is emitted by two
+    # incompatible transitions".
+    names = [e["name"] for e in owned]
+    assert len(names) == len(set(names)), (
+        f"canonical event(s) declared more than once: "
+        f"{sorted(n for n in set(names) if names.count(n) > 1)}"
+    )
+    spanning = [(e["name"], e["producers"]) for e in owned
+                if not e["coordination"] and len({p.split("-")[0] for p in e["producers"]}) > 1]
+    assert not spanning, (
+        "non-coordination event(s) whose producers span more than one machine - only the declared "
+        f"coordination events may do that: {spanning}"
+    )
+    declared_coordination = {e["name"] for e in registry["contracts"] if e["coordination"]}
+    assert declared_coordination == COORDINATION_EVENTS, (
+        f"the declared coordination-event set drifted: {sorted(declared_coordination)}"
+    )
+
+    # reverse direction: every producer row must still NAME a canonical event in its Event cell, so
+    # a producer cannot go silent in the specification the map is derived from. EF-3 was silent -
+    # it documented the event it does NOT emit and omitted the one it owns (G2-D14).
+    corpus_names = set(registry["corpus"])
+    silent = []
+    for tid in sorted(registry["producers_of"]):
+        cell = g2["rows_by_id"][tid]["event"]
+        if not [n for n in re.findall(r"`([A-Za-z][A-Za-z0-9]*)", cell) if n in corpus_names]:
+            silent.append(f"{g2['rows_by_id'][tid]['key']}: {cell[:70]!r}")
+    assert not silent, (
+        "declared producer transition(s) naming no canonical event in their Event cell:\n  "
+        + "\n  ".join(silent)
+    )
+
+
+def test_ef_3_is_a_producer_of_the_existing_effect_executed_event():
+    """G2-D2 / G2-D14, pinned by name. Two independent authorities already assign the event -
+    events/registry.md sec 3 `EffectExecuted`(EF-3) and 03-external-effect-grant-events.md - so
+    this needed NO new event type and NO naming discretion. The old cell was true about
+    EffectAttempted and silently omitted the event the row owns; a second EffectAttempted would be
+    a Sev-0 orphan (M3 sec 19/38), which is an argument against duplicating ONE event, not against
+    emitting the row's own."""
+    registry = _event_registry()
+    assert registry["producers_of"].get("EF-3") == {"EffectExecuted"}, (
+        f"EF-3's sec-3 ownership drifted: {registry['producers_of'].get('EF-3')}"
+    )
+    cell = _g2_state()["rows_by_id"]["EF-3"]["event"]
+    assert "`EffectExecuted`" in cell, f"EF-3 no longer names EffectExecuted: {cell!r}"
+    family = read(SPECS / "events" / "03-external-effect-grant-events.md")
+    assert "EffectExecuted" in family and "EF-3" in family, (
+        "the M3 event family file no longer corroborates the EffectExecuted/EF-3 assignment"
+    )
+    # PL-10 (M2) names EffectExecuted but does NOT own it - it consumes the co-transition.
+    assert "EF-3" not in read(IMPL / "TRANSITION-EVENT-AUDIT.yaml").split("EVENT_REQUIRED")[1].split("CONSUMES")[0], (
+        "EF-3 is recorded as an open event obligation - it is a producer with an existing event"
+    )
+
+
+# ------------------------------------------------------------ classification, fail-closed
+
+def test_every_transition_is_classified_and_unknown_classification_is_a_failure():
+    """G2-D1. The old classifier assigned rows to EVENTED through an `else` branch that never
+    checked the cell named a canonical event. Here every row resolves to a member of a CLOSED
+    vocabulary or the build fails."""
+    g2 = _g2_state()
+    assert not g2["result"]["errors"], (
+        "unclassified or malformed transition rows:\n  " + "\n  ".join(g2["result"]["errors"])
+    )
+    classified = require_population(g2["result"]["classified"], "classified transitions")
+    assert len(classified) == 134, f"only {len(classified)} of 134 rows classified"
+    counts: dict[str, int] = {}
+    for rec in classified.values():
+        counts[rec["class"]] = counts.get(rec["class"], 0) + 1
+    audit = _audit()
+    assert counts == audit["computed_classification"], (
+        f"the audit's classification drifted from the specification: computed={counts}, "
+        f"recorded={audit['computed_classification']}"
+    )
+    assert sum(counts.values()) == audit["meta"]["total_transitions"] == 134
+
+
+def test_non_producing_rows_are_structurally_declared_and_perform_zero_durable_writes():
+    """A NON_PRODUCING row that declares a durable write FAILS. Prose never establishes
+    non-production: 'no state change' is not a classification token and carries no weight."""
+    g2 = _g2_state()
+    marked = require_population(
+        {k: v for k, v in g2["result"]["classified"].items() if v["class"] == "NON_PRODUCING"},
+        "NON_PRODUCING transitions",
+    )
+    offenders = []
+    for key, rec in sorted(marked.items()):
+        if rec["arg"] not in NON_PRODUCING_REASONS:
+            offenders.append(f"{key}: reason code {rec['arg']!r} is outside the closed set "
+                             f"{sorted(NON_PRODUCING_REASONS)}")
+        if _durable_write(rec["row"], g2["states"]):
+            offenders.append(
+                f"{key}: declared NON_PRODUCING but performs a durable write "
+                f"(From->To {rec['row']['from_to'][:40]!r}, Writes {rec['row']['writes'][:40]!r})"
+            )
+    assert not offenders, "invalid NON_PRODUCING declarations:\n  " + "\n  ".join(offenders)
+    recorded = {m["key"]: m["reason_code"]
+                for c in _audit()["classes"] if c["name"] == "NON_PRODUCING" for m in c["members"]}
+    assert {k: v["arg"] for k, v in marked.items()} == recorded, (
+        f"the audit's NON_PRODUCING members drifted: computed={ {k: v['arg'] for k, v in marked.items()} }, "
+        f"recorded={recorded}"
+    )
+
+
+def test_delegation_resolves_to_exactly_one_owner_per_target_state():
+    """G2-D3. Every target must exist, be a producer, and itself transition to the state it is
+    delegated for; every branch must resolve to EXACTLY ONE event; and the declared states must
+    cover the delegating row's own To set exactly - no branch may be silently dropped."""
+    g2 = _g2_state()
+    marked = require_population(
+        {k: v for k, v in g2["result"]["classified"].items() if v["class"] == "DELEGATES_TO"},
+        "DELEGATES_TO transitions",
+    )
+    offenders = []
+    for key, rec in sorted(marked.items()):
+        got = _resolve_delegation(rec["arg"], g2["rows_by_id"], g2["registry"]["producers_of"],
+                                 g2["states"])
+        offenders += [f"{key}: {e}" for e in got["errors"]]
+        own_to = _states_in(rec["row"]["from_to"].split("→", 1)[-1], g2["states"])
+        if set(got["resolution"]) != own_to:
+            offenders.append(
+                f"{key}: declared branches {sorted(got['resolution'])} do not cover its own To set "
+                f"{sorted(own_to)} exactly"
+            )
+    assert not offenders, "invalid DELEGATES_TO declarations:\n  " + "\n  ".join(offenders)
+    recorded = {m["key"]: {s: b["owner_event"] for s, b in m["resolution"].items()}
+                for c in _audit()["classes"] if c["name"] == "DELEGATES_TO" for m in c["members"]}
+    computed = {k: _resolve_delegation(v["arg"], g2["rows_by_id"],
+                                       g2["registry"]["producers_of"], g2["states"])["resolution"]
+                for k, v in marked.items()}
+    assert computed == recorded, f"delegation ownership drifted: {computed} vs {recorded}"
+    # the positional reading is gone from the corpus, not merely unused
+    for f in sorted(MACHINES.glob("*.machine.md")):
+        assert "respectively" not in f.read_text(encoding="utf-8"), (
+            f"{f.name} resolves delegation positionally again ('respectively') - WI-14 has four "
+            "target states and five references, so positional matching cannot decide it"
+        )
+
+
+def test_consuming_rows_name_an_event_owned_by_a_different_transition():
+    """The co-transition rows. Correct architecture, not a violation - registry sec 182 gives the
+    event ONE producer and makes the other machine a consumer. The guard proves the consumed event
+    exists and that the consuming row is NOT its producer."""
+    g2 = _g2_state()
+    marked = require_population(
+        {k: v for k, v in g2["result"]["classified"].items() if v["class"] == "CONSUMES"},
+        "CONSUMES transitions",
+    )
+    corpus = set(g2["registry"]["corpus"])
+    offenders = []
+    for key, rec in sorted(marked.items()):
+        names = [n for n in rec["arg"].split(",") if n]
+        if not names:
+            offenders.append(f"{key}: CONSUMES names no event")
+        for name in names:
+            if name not in corpus:
+                offenders.append(f"{key}: consumes {name!r}, which is not a canonical event")
+            elif name in g2["registry"]["producers_of"].get(rec["row"]["id"], set()):
+                offenders.append(f"{key}: declares it CONSUMES {name}, which it actually OWNS")
+    assert not offenders, "invalid CONSUMES declarations:\n  " + "\n  ".join(offenders)
+    recorded = {m["key"]: m["consumes"]
+                for c in _audit()["classes"] if c["name"] == "CONSUMES" for m in c["members"]}
+    computed = {k: [n for n in v["arg"].split(",") if n] for k, v in marked.items()}
+    assert computed == recorded, f"the audit's CONSUMES members drifted: {computed} vs {recorded}"
+
+
+def test_every_durable_write_is_recorded_by_an_event_or_a_registered_open_obligation():
+    """GR-2's converse - 'no state change without its event'. A durable-writing row must be a sec-3
+    producer, consume a co-transitioned event, or carry a REGISTERED open obligation. There is no
+    fourth option and no silent exemption."""
+    g2 = _g2_state()
+    classified = require_population(g2["result"]["classified"], "classified transitions")
+    durable = require_population(
+        [k for k, v in classified.items() if _durable_write(v["row"], g2["states"])],
+        "durable-writing transitions",
+    )
+    unrecorded = [k for k in durable
+                  if classified[k]["class"] not in
+                  ("PRODUCER", "CONSUMES", "DELEGATES_TO", "EVENT_REQUIRED")]
+    assert not unrecorded, f"durable writes with no event and no recorded obligation: {unrecorded}"
+    open_rows = sorted(k for k in durable if classified[k]["class"] == "EVENT_REQUIRED")
+    recorded = sorted(m for c in _audit()["classes"] if c["name"] == "EVENT_REQUIRED"
+                      for m in c["members"])
+    assert open_rows == recorded, (
+        f"the open GR-2 violations drifted: computed={open_rows}, recorded={recorded}"
+    )
+
+
+def test_the_founder_gated_event_obligations_are_explicit_and_cannot_be_silently_discharged():
+    """The seven durable writes no canonical event records. Each carries a registered obligation id
+    that is NOT an event-shaped name and is NOT in the canonical corpus - a placeholder masquerading
+    as a canonical event name is exactly what the founder/architect boundary forbids. While any
+    obligation is open, the audit may not record a discharged status."""
+    g2 = _g2_state()
+    audit = _audit()
+    obligations = require_population(audit["founder_gated_event_obligations"],
+                                     "founder-gated event obligations")
+    by_id = {o["id"]: o for o in obligations}
+    corpus = set(g2["registry"]["corpus"])
+    marked = {k: v for k, v in g2["result"]["classified"].items() if v["class"] == "EVENT_REQUIRED"}
+    assert {v["arg"] for v in marked.values()} == set(by_id), (
+        f"obligation ids in the specs {sorted(v['arg'] for v in marked.values())} do not match the "
+        f"registered obligations {sorted(by_id)}"
+    )
+    offenders = []
+    for oid, obligation in sorted(by_id.items()):
+        if oid in corpus or re.fullmatch(r"[A-Z][A-Za-z0-9]*", oid):
+            offenders.append(f"{oid}: reads as a canonical event NAME - obligations record the "
+                             "missing fact, they never mint a name")
+        for field in ("transition", "durable_write", "semantic_obligation", "decision_required"):
+            if not str(obligation.get(field, "")).strip():
+                offenders.append(f"{oid}: missing {field} - the gated decision must stay explicit")
+        if obligation["transition"] not in marked:
+            offenders.append(f"{oid}: names {obligation['transition']}, which is not EVENT_REQUIRED")
+    assert not offenders, "invalid founder-gated obligations:\n  " + "\n  ".join(offenders)
+    assert audit["meta"]["open_founder_gated_obligations"] == len(obligations)
+    assert audit["meta"]["status"] == "G2_PARTIALLY_DISCHARGED_FOUNDER_GATED", (
+        f"G2 records status {audit['meta']['status']!r} while {len(obligations)} founder-gated "
+        "event obligations are open - G2 may not be recorded discharged until they are decided"
+    )
+    assert audit["meta"]["canonical_events_F1_F13"] == 98
+
+
+# ------------------------------------------------------------ audit + control-document truthfulness
+
+def test_transition_event_audit_matches_the_specs():
+    """The audit's exact members must equal a fresh mechanical computation - exact SETS, so a
+    same-count substitution fails, and a spec edit that changes any class fails until the audit is
+    re-derived. G2-D12: the retired 121/13 pair may be recorded as history, never as the finding."""
+    g2 = _g2_state()
+    audit = _audit()
+    assert not g2["result"]["errors"], g2["result"]["errors"]
+    computed = {}
+    for key, rec in g2["result"]["classified"].items():
+        computed.setdefault(rec["class"], set()).add(key)
+    assert sum(len(v) for v in computed.values()) == audit["meta"]["total_transitions"] == 134
+    recorded_classes = {c["name"]: c["members"] for c in audit["classes"]}
+    for name in ("NON_PRODUCING", "DELEGATES_TO", "EVENT_REQUIRED", "CONSUMES"):
+        members = require_population(recorded_classes.get(name), f"audit class {name}")
+        keys = {m if isinstance(m, str) else m["key"] for m in members}
+        assert computed[name] == keys, (
+            f"class {name} drifted: computed-only={sorted(computed[name] - keys)}, "
+            f"audit-only={sorted(keys - computed[name])}"
+        )
+    view = audit["producer_view"]
+    assert view["producer_transitions"] == len(computed["PRODUCER"]) == 110
+    assert view["non_producer_transitions"] == 134 - len(computed["PRODUCER"]) == 24
+    assert view["events_with_zero_producers"] == 0
+    assert view["declared_producers_absent_from_the_corpus"] == 0
+    # the historical measurement stays labelled historical and is not restated as current truth
+    found = audit["adjudicated_as_found"]
+    assert (found["transitions_naming_a_canonical_event"],
+            found["transitions_not_naming_a_canonical_event"]) == (120, 14)
+    assert "HISTORICAL" in found["note"], "the as-found split lost its historical label"
+    retired = {str(r["figure"]) for r in audit["retired_figures"]}
+    assert {"24", "121 / 13"} <= retired, f"a retired figure left the record: {sorted(retired)}"
+
+
 def test_the_retired_24_figure_does_not_reappear_in_control_documents():
-    """The old figure was never mechanically computed. Naming it as RETIRED is allowed; citing
-    it as the finding's count is not."""
+    """G2-D7. The old figure was never mechanically computed. Naming it as RETIRED is allowed;
+    citing it as the finding's count is not.
+
+    THE CARVE-OUT, AND WHY IT IS NOT A DODGE. The G2 adjudication computed that exactly 24 of the
+    134 rows are NOT producer transitions. That is a DIFFERENT quantity from the retired count of
+    transitions naming no event, and it happens to share a value. Without this carve-out a TRUE
+    sentence would trip the guard, and the only ways out would be to contort the phrasing or to
+    stop stating the truth - both evidence-hiding. The carve-out therefore admits the phrase only
+    when the sentence says NON-PRODUCER, which the retired figure never meant."""
     offenders = []
     for f in [ROOT / "CLAUDE.md", ROOT / "README.md", ROOT / "ARCHITECTURE.md",
               IMPL / "CURRENT.md", IMPL / "PHASE-OUTPUTS.md"]:
-        for m in re.finditer(r"\b24\b(?![0-9])[^.\n]{0,50}(transitions?|event)", read(f)):
-            ctx = m.group(0)
-            if re.search(r"retired|never mechanically", read(f)[max(0, m.start() - 120): m.end() + 120], re.I):
+        text = read(f)
+        for m in re.finditer(r"\b24\b(?![0-9])[^.\n]{0,50}(transitions?|event)", text):
+            window = text[max(0, m.start() - 120): m.end() + 120]
+            if re.search(r"retired|never mechanically", window, re.I):
                 continue
-            offenders.append(f"{f.name}: {ctx!r}")
+            if re.search(r"non-producer|not producer transitions", window, re.I):
+                continue  # the computed non-producer count - a different quantity (G2-D7)
+            offenders.append(f"{f.name}: {m.group(0)!r}")
     assert not offenders, f"the uncomputed '24' figure is back as a live count: {offenders}"
+
+
+def test_the_retired_naming_split_does_not_reappear_as_the_current_finding():
+    """G2-D12/G2-D13 anti-drift. '13 of 134' and '121 name an event' were the pre-adjudication
+    pair; the corrected AS-FOUND split is 120/14 and the current corpus is classified, not split.
+    Either figure may appear as history; neither may be restated as the live finding."""
+    offenders = []
+    for f in [ROOT / "CLAUDE.md", ROOT / "README.md", ROOT / "ARCHITECTURE.md",
+              IMPL / "CURRENT.md", IMPL / "PHASE-OUTPUTS.md", ROOT / "docs" / "product"
+              / "OPEN-VALIDATION-ITEMS.md"]:
+        text = read(f)
+        for m in re.finditer(r"\b(?:13|121)\b\s*(?:of\s*134|transitions)[^.\n]{0,60}", text):
+            window = text[max(0, m.start() - 160): m.end() + 160]
+            if re.search(r"retired|superseded|historical|as[- ]found|corrected", window, re.I):
+                continue
+            offenders.append(f"{f.name}: {m.group(0)[:80]!r}")
+    assert not offenders, (
+        "the retired 121/13 naming split is being cited as the current finding:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# ------------------------------------------------------------ hostile cases for each adjudicated defect
+
+def _synthetic(tid, event, writes="—", from_to="`A_STATE` → `A_STATE`"):
+    return {"key": f"synthetic:{tid}", "id": tid, "machine": "synthetic", "line": 0,
+            "n_cells": 8, "n_headers": 8, "from_to": from_to, "writes": writes, "event": event}
+
+
+def test_hostile_an_unclassifiable_row_fails_rather_than_passing():
+    """G2-D1's exact shape: a row whose Event cell names nothing canonical and carries no token.
+    The old `else` branch called this EVENTED."""
+    for cell in ("*(Exception raised)*", "—", "*(no state change)*", "as those", ""):
+        result = _classify([_synthetic("ZZ-1", cell)], {})
+        assert result["errors"] and not result["classified"], (
+            f"Event cell {cell!r} was classified instead of failing - unknown classification must "
+            "be a BUILD FAILURE, never a pass and never a skip"
+        )
+    ok = _classify([_synthetic("ZZ-1", "`NON_PRODUCING:ENUMERATED_NO_OP`")], {})
+    assert not ok["errors"] and ok["classified"]["synthetic:ZZ-1"]["class"] == "NON_PRODUCING", (
+        "the classifier rejects a well-formed declaration - the guard would be vacuous"
+    )
+
+
+def test_hostile_two_class_tokens_on_one_row_fail():
+    result = _classify(
+        [_synthetic("ZZ-2", "`NON_PRODUCING:ENUMERATED_NO_OP` `CONSUMES:WorkBlocked`")], {})
+    assert result["errors"], "a row declaring two classes was accepted"
+
+
+def test_hostile_a_producer_row_may_not_self_declare_a_class():
+    """Producer identity is decided by events/registry.md sec 3. A row that could re-declare itself
+    NON_PRODUCING would reintroduce prose-style self-certification with better syntax."""
+    result = _classify([_synthetic("WI-1", "`NON_PRODUCING:ENUMERATED_NO_OP`")],
+                       {"WI-1": {"WorkItemCreated"}})
+    assert result["errors"], "a declared sec-3 producer was allowed to declare itself NON_PRODUCING"
+
+
+def test_hostile_non_producing_with_a_durable_write_fails():
+    """CF-7 and EC-7's exact defect: a row claiming silence while writing durably."""
+    states = _canonical_states()
+    by_field = _synthetic("ZZ-3", "`NON_PRODUCING:ENUMERATED_NO_OP`", writes="`severity`")
+    by_state = _synthetic("ZZ-4", "`NON_PRODUCING:ENUMERATED_NO_OP`",
+                          from_to="`DRAFT` → `PROPOSED`")
+    assert _durable_write(by_field, states), "a non-empty Writes column was not read as durable"
+    assert _durable_write(by_state, states), "a real state change was not read as durable"
+    assert not _durable_write(_synthetic("ZZ-5", "x", from_to="`GRANTED` → `GRANTED`"), states), (
+        "a same-state zero-write row was read as durable - AP-8 would be a false violation"
+    )
+
+
+def test_hostile_delegation_that_resolves_to_zero_or_several_owners_fails():
+    """Zero-owner and duplicate-owner are separate prohibitions and both must fail closed."""
+    g2 = _g2_state()
+    rows_by_id, states = g2["rows_by_id"], g2["states"]
+    producers = g2["registry"]["producers_of"]
+
+    missing = _resolve_delegation("BLOCKED=WI-999", rows_by_id, producers, states)
+    assert missing["errors"], "a delegation to a non-existent transition was accepted"
+
+    empty = _resolve_delegation("BLOCKED=", rows_by_id, producers, states)
+    assert empty["errors"], "a delegation with zero targets was accepted"
+
+    non_producer = _resolve_delegation("BLOCKED=PL-7a", rows_by_id, producers, states)
+    assert non_producer["errors"], "a delegation to a non-producing target was accepted"
+
+    ambiguous = _resolve_delegation("BLOCKED=WI-5,WI-7", rows_by_id, producers, states)
+    assert ambiguous["errors"], (
+        "a delegation resolving to two different owner events was accepted - duplicate ownership "
+        "must fail closed"
+    )
+    wrong_state = _resolve_delegation("CLOSED=WI-5", rows_by_id, producers, states)
+    assert wrong_state["errors"], (
+        "a delegation whose target does not transition to the declared state was accepted - that "
+        "is positional matching wearing a target-state disguise"
+    )
+    good = _resolve_delegation("BLOCKED=WI-5,WI-6", rows_by_id, producers, states)
+    assert not good["errors"] and good["resolution"] == {"BLOCKED": "WorkBlocked"}, (
+        f"the real WI-14 BLOCKED branch does not resolve: {good}"
+    )
+
+
+def test_hostile_a_column_short_row_is_detected_rather_than_shifting_silently():
+    """G2-D5. EF-5x carried 7 cells against 8 headers. The Event cell still resolved by luck; a
+    cell missing BEFORE the Event column would have shifted the classification without a sound."""
+    shifted = _synthetic("ZZ-6", "`CONSUMES:WorkBlocked`")
+    shifted["n_cells"] = 7
+    assert shifted["n_cells"] != shifted["n_headers"], "the fixture does not model the defect"
+    live = [r for r in _transition_rows() if r["n_cells"] != r["n_headers"]]
+    assert not live, f"a column-short row is live in the corpus again: {[r['key'] for r in live]}"
+
+
+def test_hostile_the_g2_status_cannot_be_flipped_to_discharged_while_obligations_are_open():
+    """The fail-closed property, asserted over the file's own contract rather than over prose."""
+    audit = _audit()
+    assert audit["meta"]["discharged_status_value_forbidden_while_obligations_open"] is True
+    assert audit["meta"]["open_founder_gated_obligations"] > 0
+    assert "DISCHARGED_FOUNDER_GATED" in audit["meta"]["status"]
+    assert "PARTIALLY" in audit["meta"]["status"], (
+        "G2 records a fully-discharged status while founder-gated obligations remain open"
+    )
 
 
 # ============================================================ M-4: table partition

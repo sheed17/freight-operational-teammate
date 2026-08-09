@@ -17,14 +17,14 @@
 | **EF-2r** | `GRANTED` → `REVOKED` | B\|P\|H | brake engaged \| policy changed \| approval revoked (unclaimed) — ### **nothing happened** | — | `GrantRevoked{cause}` | system | `test_ef_revoke_unclaimed_is_safe` |
 | **EF-2x** | `GRANTED` → `EXPIRED_UNCLAIMED` | T | TTL elapsed, unclaimed — ### **nothing happened** | — | `GrantExpired` | system | `test_ef_expire_unclaimed` |
 | **EF-2f** | `GRANTED` + second `ClaimAttempted` | S | CAS finds not-`GRANTED` | — | `ClaimRefused{cause}` — ### **adapter does nothing** | system | `test_ef_second_claim_refused` |
-| **EF-3** | `CLAIMED` → `ATTEMPTED` | X | ### **adapter touched the world and returned** | `attempted_at` | *(no new event — `EffectAttempted` already emitted at EF-2)* | system | `test_ef_attempted` |
+| **EF-3** | `CLAIMED` → `ATTEMPTED` | X | ### **adapter touched the world and returned** | `attempted_at` | `EffectExecuted` *(EF-2 already emitted `EffectAttempted`; this row MUST NOT emit a second one — §19/§38)* | system | `test_ef_attempted` |
 | **EF-3f** | `CLAIMED` → `FAILED` | S | ### **PROVABLE non-occurrence** (pre-flight adapter rejection) (GR-5) | `failure_proof` | `EffectFailed{proof}` | system | `test_ef_failed_requires_proof` |
 | **EF-3u** | `CLAIMED` → `UNKNOWN_OUTCOME` | S\|R | timeout \| crash \| lost response — ### **cannot prove nothing happened (GR-6)** | `exposure, unknown_reason=UNKNOWN_OUTCOME` | `OutcomeUnknown` | ### **a named human** | `test_ef_claimed_crash_is_unknown` |
 | **EF-4** | `ATTEMPTED` → `VERIFIED` | X | ### **healthy-channel readback (positive control) matches the APPROVED fingerprint** (GR-5, M-70/71) | `verified_at, verification_outcome=VERIFIED_SUCCESS, health_signal`; ### **co-commit the record (verify+record one txn)** | `EffectVerified` | system | `test_ef_verify_requires_healthy_match` |
 | **EF-4c** | `ATTEMPTED` → `UNKNOWN_OUTCOME` | X | readback contradicts approved facts | `unknown_reason=OBSERVATION_CONFLICTING` | `VerificationConflict` | ### **a named human (urgent)** | `test_ef_conflicting_readback_is_unknown` |
 | **EF-4u** | `ATTEMPTED` → `UNKNOWN_OUTCOME` | X | ### **no positive health signal (blind)** | `unknown_reason=OBSERVATION_UNAVAILABLE` | `VerificationUnavailable` | ### **a named human** | `test_ef_blind_readback_is_unavailable_not_failure` |
 | **EF-5** | `UNKNOWN_OUTCOME` → `{VERIFIED,FAILED}` | H\|X | `HumanEstablishedReality{decision_ref}` (GR-14) **or** `LaterObservationProves` (deterministic; requires our commit_key in the external record — V7) | `reality_decision_ref` | `RealityEstablished{outcome}` | resolves to system | `test_ef_unknown_resolved_only_by_human_or_proof` |
-| **EF-5x** | `UNKNOWN_OUTCOME` + `TimerFired` | T | — | — | ### ⛔ **ILLEGAL (GR-6)** | `test_ef_no_timer_moves_unknown` |
+| **EF-5x** | `UNKNOWN_OUTCOME` + `TimerFired` | T | — | — | ### ⛔ **ILLEGAL (GR-6)** — `NON_PRODUCING:GR1_ILLEGAL_REFUSAL` | unchanged | `test_ef_no_timer_moves_unknown` |
 
 ## 15. Illegal transitions.
 Mint without a witness → impossible (EF-1 guard). Two `CLAIMED` for one commit_key → impossible (unique index). `VERIFIED` without a healthy-match readback → ILLEGAL (EF-4 guard). `FAILED` without proof → ILLEGAL. Any timer on `UNKNOWN_OUTCOME` → ILLEGAL. `REVOKED`/`EXPIRED_UNCLAIMED`→ anything → ILLEGAL (terminal). Re-claiming a `CLAIMED`/`REVOKED`/`EXPIRED` grant → `ClaimRefused` (adapter inert).

@@ -1229,12 +1229,128 @@ units:
     legacy_dispositions_affected: [legacy_state_management]
     rollback_posture: "Ships dark."
     validation_blockers:
-      - "THE TRANSITION/EVENT COMPLETENESS FINDING MUST BE ADJUDICATED FIRST (G2). The prior
-         '24 of 134' claim is RETIRED - never mechanically computed. The mechanically observed
-         set is 13 non-naming transitions in four structurally different classes
-         (docs/implementation/TRANSITION-EVENT-AUDIT.yaml); the canonical predicate for
-         AC-EVT-003 carries COUNT NEEDS ADJUDICATION, and no replacement completeness claim is
-         invented here."
+      - "G2 IS ADJUDICATED AND PARTIALLY DISCHARGED - IT STILL BLOCKS P5's EVENT CONTENT. The
+         adjudication ruled interpretation C (HYBRID): a producer transition is one declared in
+         events/registry.md sec 3 (110 of the 134 rows; the other 24 are non-producer
+         transitions), and completeness is GR-2 over durable writes. P5 U5.1 landed that contract:
+         all 134 rows carry structured classification, prose is never a classifier, an undecidable
+         row fails the build, and EF-3 is re-attributed to the EXISTING canonical event
+         EffectExecuted. ### WHAT IS NOT DISCHARGED: seven transitions - PL-7a, AP-9, CF-7, EC-7,
+         PO-2, PO-3, RU-8 - perform durable writes that no canonical event records. Each is a live
+         GR-2 violation, recorded open with its semantic obligation and NO invented name in
+         docs/implementation/TRANSITION-EVENT-AUDIT.yaml. ### NAMING THEM CHANGES THE FROZEN
+         98-EVENT REGISTRY AND IS FOUNDER/ARCHITECT AUTHORITY. No builder, reviewer or adjudicator
+         may mint them, and no session may raise the canonical event total above 98. AP-9
+         additionally requires an emit-vs-derive decision and PO-2 a re-attribute-vs-mint decision.
+         The prior '24 of 134' claim and the prior '121 / 13' split are BOTH RETIRED - neither was
+         ever correct - and no replacement completeness claim is invented here."
+      - "P5's event content (event contracts, outbox, inbox, replay sandbox) remains blocked by the
+         seven open G2 obligations above. Non-event P5 surfaces are not authorized by this
+         instantiation either: READY is selection, and this unit's acceptance criteria are
+         instantiated PENDING, scored by nobody."
+    # ---------------------------------------------------------------- P5 weighted acceptance contract
+    # INSTANTIATED BY P5 U5.1 - the first P5 content commit - from the FROZEN PROGRAM-WEIGHTS.yaml
+    # acceptance_template (14 criteria, weights sum EXACTLY 100), verbatim and in template order.
+    # This is TRANSCRIPTION, NOT AUTHORSHIP: the builder exercised zero discretion over criteria or
+    # weights. Precedent is identical for both completed phases (P3 via U-REBASELINE-1A, P4 from
+    # the same frozen template).
+    #
+    # ### EVERY RESULT IS PENDING. NOTHING IS SCORED. A builder must not run un-contracted, and a
+    # ### builder must not score itself - independent_review (5) and final_adjudication (4) are
+    # ### structurally un-self-suppliable, which caps any self-assessed phase at 91/100.
+    # P5's phase completion therefore computes to 0.0, which is correct: P5 has not started.
+    acceptance_criteria:
+      - criterion: accepted_scope_and_design
+        weight: 6
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: required_tests
+        weight: 8
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: core_implementation
+        weight: 20
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: failure_handling
+        weight: 8
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: concurrency_handling
+        weight: 8
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: authorization_and_security
+        weight: 10
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: migrations_and_persistence
+        weight: 6
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: observability_and_operational_behavior
+        weight: 6
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: mutation_or_hostile_cases
+        weight: 8
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: full_test_suite
+        weight: 5
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: canonical_finalizer
+        weight: 3
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: clean_clone_execution
+        weight: 3
+        result: PENDING
+        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+      - criterion: independent_review
+        weight: 5
+        result: PENDING
+        evidence: >-
+          PENDING - not scored, and STRUCTURALLY UN-SELF-SUPPLIABLE. It requires a session that did
+          not implement, remediate or review this unit.
+      - criterion: final_adjudication
+        weight: 4
+        result: PENDING
+        evidence: >-
+          PENDING - not scored, and STRUCTURALLY UN-SELF-SUPPLIABLE. It requires a session that did
+          not implement, remediate, review or finalize this unit.
+    # ---------------------------------------------------------------- P5 sub-units
+    # P5 had no committed sub-unit enumeration. U5.1 is the first, recorded by the builder that
+    # performed it, exactly as the G2 adjudication sec L directed.
+    #
+    # ### THE THREE-FIELD STATUS MODEL IS DELIBERATELY NOT USED HERE, AND P5's OWN TRIPLE IS
+    # ### UNCHANGED: status READY / execution_state NOT_STARTED / checkpoint_state NO_CHECKPOINT.
+    # That is correct, not an omission. execution_state asks "has work actually landed INSIDE this
+    # phase?" and P5's phase work - event contracts, outbox, inbox, replay sandbox, PostgreSQL -
+    # has landed nothing. U5.1 corrected SPECIFICATION AND CONTROL surfaces and instantiated this
+    # unit's contract; it executed no P5 phase content. IN_PROGRESS would also be structurally
+    # false: it requires a landed checkpoint, and U5.1 has none - it is an unreviewed candidate.
+    sub_units:
+      - sub_unit_id: U5.1
+        name: G2 specification/control correction and P5 acceptance-contract instantiation
+        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          Specification and control surfaces only. Landed the adjudicated G2 event contract, the
+          structured classification of all 134 transitions, the EF-3 re-attribution to the existing
+          EffectExecuted, the parser/guard corrections G2-D1/D3/D5/D7/D11/D12/D14, the corrected
+          transition-event audit, the corrected canonical documents, and this weighted acceptance
+          contract at PENDING.
+        explicitly_not_done: >-
+          ### NO event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. ### NO
+          canonical event name was minted and the canonical event total is unchanged at 98. ### NO
+          criterion was scored. G2 is NOT fully discharged - seven founder/architect-gated event
+          obligations remain open.
+        owed_next: >-
+          a fresh independent targeted review by a session that did not build it, then a separate
+          targeted adjudication, then exactly one finalizer-generated metadata commit.
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     rebaseline_contract:
       user_visible_capability: none

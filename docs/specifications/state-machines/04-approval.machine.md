@@ -17,8 +17,8 @@
 | **AP-5** | `GRANTED` → `VOID_ON_BRAKE` | B | `BrakeEngaged` in scope | — | `ApprovalVoided{brake}` | `test_ap_brake_voids` |
 | **AP-6** | `GRANTED` → `REVOKED` | H | human revokes before consumption | — | `ApprovalRevoked` | `test_ap_human_revoke` |
 | **AP-7** | `GRANTED` → `CONSUMED` | S | ### **atomic CAS in the SAME txn as the M3 claim; commit_key matches** | `consumed_at` | `ApprovalConsumed` | `test_ap_consumed_once_in_claim_txn` |
-| **AP-8** | `GRANTED` → `GRANTED` | S | `AttemptFailedProvably` (PL-10f) — ### **survives a provably-failed attempt** | — | — | `test_ap_survives_provable_failure` |
-| **AP-9** | `GRANTED` → `GRANTED` *(frozen)* | S | `AttemptOutcomeUnknown` (PL-10u) — ### **MUST NOT be reused until reality established** | `frozen=true` | — | `test_ap_frozen_after_unknown_not_reusable` |
+| **AP-8** | `GRANTED` → `GRANTED` | S | `AttemptFailedProvably` (PL-10f) — ### **survives a provably-failed attempt** | — | `NON_PRODUCING:ENUMERATED_NO_OP` | `test_ap_survives_provable_failure` |
+| **AP-9** | `GRANTED` → `GRANTED` *(frozen)* | S | `AttemptOutcomeUnknown` (PL-10u) — ### **MUST NOT be reused until reality established** | `frozen=true` | `EVENT_REQUIRED:G2-OB-AP-9-FREEZE-FACT-UNRECORDED` | `test_ap_frozen_after_unknown_not_reusable` |
 
 **Dual control:** `AP-2` requires **quorum by distinct authenticated actors**, each `ApprovalSignature` binding the **same fingerprint**; ### **drift between signatures voids ALL signatures** ⇒ back to `REQUESTED` with a fresh fingerprint.
 
