@@ -150,7 +150,7 @@ rather than hand-maintained.
 | **Still prohibited** | Entities and machines (P6); policy (P8) |
 | **Legacy contained** | Legacy state management begins to be displaced |
 | **Acceptance gates** | **G2**; `event-and-replay-acceptance.md` |
-| **Blocked on** | ### **The transition/event completeness finding must be adjudicated first** — COUNT NEEDS ADJUDICATION, 4 classes, [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml) |
+| **Blocked on** | ### **G2 IS ADJUDICATED AND PARTIALLY DISCHARGED — the remaining block is founder/architect EVENT NAMING, not adjudication.** The predicate is settled and mechanised (interpretation C, HYBRID) and all 134 rows carry structured classification. ### **7 transitions perform durable writes that no canonical event records** — `PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8` — each a live `GR-2` violation recorded open with its semantic obligation and **no invented name** in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml). Naming them changes the frozen 98-event registry and is founder/architect authority, so **P5's event content stays blocked** |
 | **Next unlocked** | P6 |
 
 ## P6 — Foundational entities and state machines ⛔ NOT STARTED

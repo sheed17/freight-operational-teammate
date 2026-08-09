@@ -23,7 +23,7 @@
 | **WI-11** | `ESCALATED` → `IN_PROGRESS` | H | `OwnershipReassigned`; new authenticated `owner_id` | `from_owner,to_owner` | `OwnershipTransferred` | ### **the new owner** | `test_wi_reassign_from_escalated` |
 | **WI-12** | any non-terminal → `CANCELLED` | H | `CancellationRequested`; ### **`decision_ref` valid** | closure immutable | `WorkItemCancelled{decision_ref}` | unchanged | `test_wi_cancel_requires_decision_ref` |
 | **WI-13** | `CLOSED` → `IN_PROGRESS` *(new phase)* | H | `ReopenRequested`; ### **`decision_ref` valid**; ### **prior closure event NOT mutated (GR-12)**; `phase_seq++` **or** a linked new Work Item | `prior_closure_ref, phase_seq++` | `Reopened{prior_closure_ref}` | reopening actor's assignee | `test_wi_reopen_new_phase_preserves_closure` |
-| **WI-14** | `ESCALATED` → `{BLOCKED,AWAITING_HUMAN,CLOSED,CANCELLED}` | S\|H | same guards as WI-5/6/7/3/12 respectively | as those | as those | as those | `test_wi_escalated_can_still_close_block_await` |
+| **WI-14** | `ESCALATED` → `{BLOCKED,AWAITING_HUMAN,CLOSED,CANCELLED}` | S\|H | same guards as WI-5/6/7/3/12, resolved by TARGET STATE (never positionally) | as those | `DELEGATES_TO:BLOCKED=WI-5,WI-6;AWAITING_HUMAN=WI-7;CLOSED=WI-3;CANCELLED=WI-12` | as those | `test_wi_escalated_can_still_close_block_await` |
 
 ## 15. Illegal-transition table *(GR-1; representative — anything not in §14 is illegal)*
 `CLOSED`+`PipelineClosed` → ILLEGAL (already closed) · `CANCELLED`+anything → ILLEGAL · any→`CLOSED`/`CANCELLED` without `decision_ref` → ILLEGAL · `OPEN`+`HumanDecided` (no request outstanding) → ILLEGAL · closure by inactivity/`AutoClose` → ILLEGAL (I11). **Each emits `IllegalTransitionAttempted`.**
