@@ -15,7 +15,7 @@
 | **IB-3** | `PROPOSED` → `PROPOSED` | S | ### **model READ an identifier off a RETAINED artifact (evidence span required)** — evidence, re-enters IB-2 | `MODEL_EXTRACTED` | `ClaimEvidenced` | `test_ib_model_extract_is_evidence_not_confirmation` |
 | **IB-4** | `PROPOSED` → `AMBIGUOUS` | S | ### **model GUESSED (`MODEL_INFERRED`)** OR multiple candidates OR ### **a single WEAK candidate** | any | `ClaimAmbiguous` → **Exception** | `test_ib_guess_or_single_weak_is_ambiguous` |
 | **IB-5** | `CONFIRMED` → `SUPERSEDED` | S | `RecomputedByInferrer` AND ### **provenance = `LINKER_INFERRED`** (a legitimate rebuild) | — | `ClaimSuperseded` | `test_ib_linker_claim_may_be_recomputed` |
-| **IB-5x** | `CONFIRMED` + `RecomputedByInferrer` | S | ### **provenance = `OWNER_ASSERTED`** | — | ### ⛔ **ILLEGAL (GR-9)** → `IllegalTransitionAttempted` | `test_ib_owner_binding_survives_relinker` |
+| **IB-5x** | `CONFIRMED` + `RecomputedByInferrer` | S | ### **provenance = `OWNER_ASSERTED`** | — | ### ⛔ **ILLEGAL (GR-9)** → `IllegalTransitionAttempted` — `NON_PRODUCING:GR1_ILLEGAL_REFUSAL` | `test_ib_owner_binding_survives_relinker` |
 | **IB-6** | `CONFIRMED` → `CONFLICTING` | S | ### **the inferrer DISAGREES with an `OWNER_ASSERTED` binding** | — | `ConflictRaised` (M7) | `test_ib_inferrer_vs_owner_raises_conflict` |
 | **IB-7** | `CONFIRMED` → `CORRECTED` | H | `HumanCorrected{decision_ref}`; ### **PROPAGATES (GR-12, F-17): re-derive dependents, raise M10 for completed effects that rested on it** | `OWNER_ASSERTED` | `ClaimCorrected` | `test_ib_correction_propagates_compensation` |
 | **IB-8** | `{PROPOSED,AMBIGUOUS}` → `REJECTED` | H\|S | disproven / entity cancelled | — | `ClaimSuperseded` | `test_ib_reject` |

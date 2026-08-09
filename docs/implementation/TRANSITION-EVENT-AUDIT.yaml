@@ -1,70 +1,916 @@
-# TRANSITION-EVENT AUDIT
+# TRANSITION-EVENT AUDIT — the G2 event contract, its classification, and what remains gated
 #
-# THE "24 OF 134" CORRECTION (U-HANDOFF-1B, M-4). The repository repeatedly claimed "24 of 134
-# transitions cite no event". The independent rehearsal could not reproduce 24 under any
-# definition, and U-HANDOFF-1B established why: the figure came from a parse whose column
-# alignment broke on escaped pipes (`H\|S` in the Trig column shifts every later cell), and no
-# executable source computed it. 24 is hereby RETIRED as a count.
+# ---------------------------------------------------------------------------------------------
+# WHAT THIS FILE IS. The machine-readable record of the G2 transition/event completeness contract:
+# how every one of the 134 transition rows is classified, which canonical event each producer
+# transition owns, and which obligations remain undischarged. Every number below is RECOMPUTED
+# from the specifications by
+#   eval/tests/test_bootstrap_hermeticity.py::test_transition_event_audit_matches_the_specs
+# and its sibling G2 guards, by EXACT SET EQUALITY. No figure here may be copied forward; a spec
+# edit that changes any class fails the build until this file is re-derived.
 #
-# The mechanically proven result (escape-aware split on `(?<!\\)\|`, per-table Event-column
-# detection from headers; recomputed and exact-membership-guarded by
-# eval/tests/test_bootstrap_hermeticity.py::test_transition_event_audit_matches_the_specs):
-# 134 transitions parse; 121 name a canonical event outright; 13 do not, in FOUR structurally
-# different classes listed below.
+# ---------------------------------------------------------------------------------------------
+# HISTORY OF THE THREE RETIRED FIGURES. Read this before quoting any number.
 #
-# STATUS: COUNT NEEDS ADJUDICATION (gate G2, before P5).
-# The specifications do NOT unambiguously define which classes violate AC-EVT-003 ("every
-# producer transition emits its required event"). The exact architecture decision required:
+#   "24 of 134 transitions cite no event"  — RETIRED (U-HANDOFF-1B, M-4). Never mechanically
+#       computed; the plausible source parsed with a column alignment that broke on escaped pipes.
+#       It must never be revived AS A COUNT OF TRANSITIONS THAT NAME NO EVENT. See the separate
+#       and DIFFERENT quantity `producer_view.non_producer_transitions`, which is also 24 and is
+#       a genuine computed result about a different question (G2-D7).
 #
-#     For AC-EVT-003, is a "producer transition" (a) every transition row, or (b) every row not
-#     documented as non-producing? Specifically: do BARE rows count as gaps (presumably yes);
-#     do DOCUMENTED_NON_PRODUCING rows satisfy the contract by documenting their silence; do
-#     ILLEGAL_UNNAMED refusal rows require IllegalTransitionAttempted to be named (two ILLEGAL
-#     rows DO name it, three do not - inconsistent either way); and do DELEGATING rows inherit
-#     the events of the rows they reference?
+#   "121 name an event / 13 do not"        — RETIRED (G2 adjudication, G2-D12). The parser that
+#       produced it assigned rows to its EVENTED bucket through an `else` branch that never
+#       checked the cell named a canonical event, so 12-rule:RU-8 (`ACTIVE` -> `EXPIRED`, Event
+#       cell "(Exception raised)") passed as evented while naming no canonical event at all
+#       (G2-D1). The corrected AS-FOUND split is 120 / 14 — recorded below under
+#       `adjudicated_as_found`, which is a HISTORICAL measurement of the pre-remediation corpus
+#       and is NOT the current state of this repository.
 #
-# Until G2 adjudicates, the finding is preserved as OPEN with these exact members. No canonical
-# document may cite a single number for it; guards enforce membership below and forbid the
-# retired "24" figure in control documents.
+#   "EF-3 is DOCUMENTED_NON_PRODUCING"     — RETIRED (G2-D14). EF-3 is a declared producer
+#       transition of the EXISTING canonical event `EffectExecuted` in events/registry.md sec 3,
+#       and the M3 event family file states the same. Its cell documented the true fact that a
+#       second `EffectAttempted` is not emitted and silently omitted the event the row does own.
+#
+# ---------------------------------------------------------------------------------------------
+# STATUS. G2 is PARTIALLY discharged. The architecture question is settled and mechanised; seven
+# transitions still perform durable writes that no canonical event records, and naming those
+# events is founder/architect design authority that no builder, reviewer or adjudicator holds.
+# Those seven are enumerated in `founder_gated_event_obligations` and are FAIL-CLOSED: while any
+# remains open, `meta.status` may not be changed to a discharged value, and P5's event content
+# stays blocked. Nothing below discharges them.
 
 meta:
   total_transitions: 134
-  transitions_naming_an_event: 121
-  transitions_not_naming_an_event: 13
-  retired_figure: 24
-  retired_reason: column misalignment on escaped pipes; no executable source ever computed it
-  adjudication_gate: G2 (before P5)
-  status: COUNT_NEEDS_ADJUDICATION
+  canonical_events_F1_F13: 98
+  adjudication_gate: G2
+  adjudicated_at: 6e8127dab02e3443183d06825836f5a805f53de0
+  partially_discharged_by: P5 U5.1 (G2 specification/control correction)
+  status: G2_PARTIALLY_DISCHARGED_FOUNDER_GATED
+  open_founder_gated_obligations: 7
+  discharged_status_value_forbidden_while_obligations_open: true
+  # P5 U5.1's first content candidate, 38b4bda, was REJECTED by a separate targeted governance
+  # adjudication: its CONSUMES class was self-certifying (F-01, with F-07 merged in), PL-15x and
+  # IB-5x diverged from an adjudicated per-row disposition, PHASE-OUTPUTS.md carried a live control
+  # falsehood (F-02), and the anti-"24" carve-out was keyword-proximity based (F-03). This file is
+  # the corrected record. The rejected candidate is preserved permanently at
+  # refs/preserve/p5-u51-rejected-candidate-38b4bda with its review and adjudication.
+  consumes_contract_remediated_by: >-
+    P5 U5.1 replacement candidate, implementing CONSUMES-VALID from the targeted governance
+    adjudication of 38b4bda (sec 2 and sec 5). Architecture RATIFIED; controls REPLACED.
 
+# ---------------------------------------------------------------------------------------------
+# THE ADJUDICATED CONTRACT (interpretation C — HYBRID). Producer identity is table membership;
+# completeness is the presence of a durable write. Neither predicate reads prose.
+contract:
+  ruling: >-
+    INTERPRETATION C - HYBRID. The producer predicate is MEMBERSHIP IN A TABLE
+    (events/registry.md sec 3) and the completeness predicate is THE PRESENCE OF A DURABLE WRITE
+    (GR-2). Interpretation A (every row must name an event) is refuted mechanically: it
+    misclassifies the 11 correct co-transition/causation rows and would require inflating the
+    frozen 98-event registry. Interpretation B (explicitly documented non-producing) is refused
+    because its predicate is PROSE-DEPENDENT AND SELF-CERTIFYING - CF-7 and EC-7 both exempted
+    themselves with "(no state change)" while performing durable writes.
+
+  producer_transition: >-
+    Transition T is a producer transition of event E IFF T appears in E's producer-transition
+    field in docs/specifications/events/registry.md sec 3. Section 3 is the SOLE authority for
+    this relation. A machine table's Event column is NOT the producer map - it carries both
+    events the row produces and events the row co-transitions with, causes or reflects.
+
+  gr2_durable_write: >-
+    GR-2 (state-machines/registry.md sec 3) - "the state change + emitted events are ONE commit;
+    no state change without its event; no event without its transition." A row performs a DURABLE
+    WRITE iff (a) its From -> To names a canonical state on the To side that is not in its From
+    set (registry sec 4), OR (b) its Writes / Prov column is non-empty and not an em-dash.
+
+  classification_vocabulary:
+    # A row is classified by sec-3 membership FIRST. Every row that is not a sec-3 producer MUST
+    # carry exactly one structured token in its Event cell, drawn from this closed set. Prose is
+    # never a classifier. A row the classifier cannot decide is a BUILD FAILURE - never a pass and
+    # never a skip.
+    PRODUCER: >-
+      T appears in sec 3's producer-transition field for at least one canonical event. Carries no
+      token; the token would be redundant with the authority that decides it.
+    CONSUMES: >-
+      "CONSUMES:<EventName>[,<EventName>]" - the row co-transitions with, or is caused by, an event
+      whose sec-3 producer is a DIFFERENT transition
+      (docs/specifications/state-machines/registry.md sec 5, line 182: "no event is emitted by two
+      incompatible transitions ... the other machine consumes it").
+      ### THE TOKEN IS A CLAIM, NOT A PROOF, AND IT CARRIES NO EXEMPTING FORCE OF ITS OWN. What this
+      class asserts is exactly what `consumes_valid` below MECHANICALLY PROVES and no more. A
+      durable-writing consumer discharges GR-2 only when the co-transition relationship is proven
+      from structured columns; a row that cannot be decided FAILS THE BUILD. A zero-durable-write
+      consumer is DESCRIPTIVE only - GR-2 does not bind it, so its marker exempts nothing.
+    NON_PRODUCING: >-
+      "NON_PRODUCING:<REASON_CODE>" from the closed set below. Legal only when the row performs
+      ZERO durable writes. A NON_PRODUCING row that declares a durable write FAILS THE BUILD.
+    DELEGATES_TO: >-
+      "DELEGATES_TO:<TO_STATE>=<id>[,<id>][;<TO_STATE>=<id>...]" - ownership resolved by TARGET
+      STATE, never positionally. Every target must exist in the corpus, be a sec-3 producer, and
+      have the declared state in its own To set; every declared state must resolve to EXACTLY ONE
+      canonical event (zero owners and ambiguous ownership both FAIL); and the union of declared
+      states must equal the row's own To set exactly.
+    EVENT_REQUIRED: >-
+      "EVENT_REQUIRED:<OBLIGATION_ID>" - the row performs a durable write, GR-2 therefore requires
+      an event, and the canonical event NAME is undecided founder/architect design authority. The
+      obligation id must be registered in `founder_gated_event_obligations`, must not be an
+      event-shaped name, and must not appear in the canonical event corpus. This is a RECORDED,
+      OPEN VIOLATION - not an exemption.
+
+  non_producing_reason_codes:
+    ENUMERATED_NO_OP: >-
+      an enumerated same-state row with zero writes, whose architectural purpose is to make a
+      (state, trigger) pair legal-and-inert so GR-1 does not raise IllegalTransitionAttempted.
+    GR1_ILLEGAL_REFUSAL: >-
+      an enumerated ILLEGAL refusal row. GR-1 attaches IllegalTransitionAttempted to EVERY illegal
+      pair through the rule itself, and such a row persists nothing, so it satisfies the
+      zero-durable-write test inherently.
+
+  # -------------------------------------------------------------------------------------------
+  # CONSUMES-VALID. The contract the targeted governance adjudication of candidate 38b4bda
+  # REQUIRED, after ruling that the first attempt at this class was SELF-CERTIFYING.
+  #
+  # ### WHAT WENT WRONG, RECORDED SO IT CANNOT RECUR QUIETLY. The rejected candidate's guard proved
+  # ### only that the named event EXISTED and that the row did not OWN it. It proved no
+  # ### relationship of any kind. So 04-approval:AP-9 - the highest-severity open GR-2 obligation
+  # ### in this corpus - could be relabelled CONSUMES:ApprovalConsumed (owner AP-7, MUTUALLY
+  # ### EXCLUSIVE with it) and the suite stayed green; and it could be relabelled
+  # ### CONSUMES:BrakeReleased, an M13 brake event with no machine, aggregate, family, causal or
+  # ### temporal relationship whatsoever to an M4 approval freeze, and the suite STILL stayed green.
+  # ### The class admitted ANY of the 98 canonical events. That is the CF-7 prose failure recommitted
+  # ### in structured syntax: a document certifying a safety property about itself that nothing
+  # ### checked.
+  #
+  # The relationship itself was never in doubt and was never invented here - it pre-exists in
+  # byte-unchanged authority, and the adjudication RATIFIED the architecture. What is added is the
+  # PROOF. Enforced by
+  # test_bootstrap_hermeticity.py::test_consuming_rows_prove_an_authoritative_co_transition_relationship
+  # and consumed by the GR-2 converse guard, which now refuses to treat an unproven CONSUMES row as
+  # discharging anything.
+  consumes_valid:
+    authority:
+      co_transition_rule: >-
+        docs/specifications/state-machines/registry.md sec 5, line 182 - "No event is emitted by two
+        incompatible transitions. Where two machines co-transition (M2<->M3, M2<->M4), the event has
+        ONE PRODUCER (listed above) and the other machine CONSUMES it." BYTE-UNCHANGED by this unit.
+      shared_moment_rule: >-
+        docs/specifications/state-machines/registry.md sec 4, line 125 - GRANTED and CLAIMED are
+        "the same conceptual event surfaced on the two machines that share the moment ... they are
+        co-transitioned, not two meanings". BYTE-UNCHANGED by this unit.
+      consumer_guard_rule: >-
+        docs/specifications/events/registry.md line 7 - "Consumers react according to THEIR OWN
+        deterministic transition guards; the event does not instruct them." This is why 4(d) requires
+        payload COVERAGE of the persisted fields and NOT that the payload encode the consumer's
+        resulting state - encoding it would make the event a command.
+      machine_source_of_truth: >-
+        THE `Writes` COLUMN'S `co-commit` DECLARATIONS, required in BOTH rows. This is structured
+        data that already existed: at the certified predecessor EF-2 carried
+        "`claimed_at`; co-commit M2 `CLAIMED`, M4 `CONSUMED`" and PL-9 the reciprocal. This unit added
+        the same cell content to the seven under-declared durable consumers and their owner rows. It
+        MINTED NO EVENT and did not touch the frozen 98.
+      prose_is_never_a_predicate: >-
+        ### The narrative "## M2<->M3 co-transition rule" sections in the machine files may NEVER be
+        the predicate, in any class. A narrative section is exactly what the G2 adjudication sec F
+        refused when it rejected interpretation B.
+    rules:
+      "1_event_exists": every named event exists in the sec-3 canonical corpus.
+      "2_not_self_owned": T is not itself the sec-3 producer of that event.
+      "3_owner_is_a_transition": >-
+        the event's sec-3 producer(s) must ALL resolve to rows of the 134-row corpus. An event whose
+        producer is a RULE rather than a transition - IllegalTransitionAttempted, owned by GR-1 -
+        offers no transition to co-commit with and therefore CANNOT BE CONSUMED. This is the
+        mechanical reason 02-pipeline-instance:PL-15x and 06-identity-binding-claim:IB-5x are
+        NON_PRODUCING and not CONSUMES, exactly as G2 sec H step 7 ruled.
+      "4_zero_write_is_descriptive_only": >-
+        if T performs NO durable write, GR-2 does not bind it. The marker is DESCRIPTIVE and carries
+        NO EXEMPTING FORCE. 12-rule:RU-3 is the only such row.
+      "5a_co_commit_declared_bidirectionally_and_row_bound": >-
+        ### THE ORDERED PAIR (MACHINE, TARGET STATE), REQUIRED IN BOTH ROWS' co-commit segments.
+        FORWARD: there is a state s in To(owner) such that (M(owner), s) is declared by T. REVERSE:
+        there is a state s in To(T) such that (M(T), s) is declared by the OWNER ROW ITSELF. Both
+        directions, or FAIL. ### THE MACHINE INTEGER ALONE IS NOT ENOUGH AND THAT IS THE WHOLE
+        FINDING: replacement candidate 1ae365a compared machine numbers and discarded the state
+        token beside them, which POOLED EVERY DECLARATION ACROSS A WHOLE MACHINE - so every row on
+        machine M inherited every declaration any row on M's partner machine ever wrote. Measured
+        cost: 23 false-accepting (consumer, event) pairs across the 8 durable consumers. The state
+        token was always present in all twenty declarations in the corpus; it was simply not read.
+        ### THE REVERSE LEG IS THE NON-CIRCULAR ONE - the owner row lives on a different machine,
+        was written for a different purpose, and PRE-EXISTS the claim, so a candidate row can no
+        longer prove its own exemption with a token it added to its own cell.
+      "5a_undecidable_is_a_failure": >-
+        if either row names no canonical To state, or declares the machine at issue with NO
+        canonical state beside it, the relationship is UNDECIDABLE and the build FAILS (rule 7).
+        02-pipeline-instance:PL-9's "M4 `ApprovalConsumed`" leg is exactly that shape - an event
+        name where a state belongs. It is never exercised today, because no owner of a PL-9-consumed
+        event lives on M4, and it fails closed if one ever does rather than being read as a bare
+        machine. Normalising that leg to the state `CONSUMED` was offered as OPTIONAL and is NOT
+        taken here: it is a specification edit this remediation does not need.
+      "5b_not_mutually_exclusive": >-
+        ### THE DECISIVE MISSING INVARIANT. The owner and T must not be rows of the same machine
+        whose From sets intersect and whose To states differ. If the owner's transition did not fire,
+        its event was never emitted, so it can record NOTHING. AP-9 (GRANTED->GRANTED frozen) and
+        AP-7 (GRANTED->CONSUMED) cannot both fire on one approval.
+      "5c_cross_machine": >-
+        T's machine is not the owner's machine. A within-machine "consumption" is either production
+        or delegation.
+      "5d_replay_coverage": >-
+        every field T declares it persists appears in a consumed event's sec-5 payload, so a
+        full-history replay can reconstruct the write (AC-EVT-008). Fields are read only from
+        STRUCTURED forms - a backticked declaration or a name=value assignment. PROSE IN A Writes
+        CELL DECLARES NO FIELD, so a field name cannot be smuggled in inside a sentence.
+      "6_downgrade_prohibition": >-
+        EVENT_REQUIRED -> CONSUMES requires 5a-5d in full. NON_PRODUCING -> CONSUMES requires the row
+        first acquire a durable write AND satisfy them.
+      "7_fail_closed": >-
+        ### any CONSUMES row for which the relationship cannot be DECIDED FAILS THE BUILD. Never a
+        pass, never a skip.
+    insufficient_by_themselves: >-
+      ### RULED INSUFFICIENT BY NAME, so none of these may ever become the predicate: that the event
+      exists; that the consumer does not own it; that the event FAMILY matches; that the TARGET STATE
+      matches; that the names resemble each other; that the producer is merely "another transition";
+      that the aggregate class counts stay constant. Set equality between the specification and this
+      file proves the two AGREE - it proves nothing about whether either is TRUE.
+    target_state_prohibition_does_not_bar_the_row_binding: >-
+      ### RULED EXPLICITLY, because the two are easy to confuse. "That the TARGET STATE matches" is
+      barred as a SUBSTITUTE for the co-transition relation - bare target-state similarity is the
+      DELEGATES_TO predicate, not this one. Rule 5a does something different: it makes the EXISTING
+      bidirectional co-commit DECLARATION row-specific by reading the state the declaration itself
+      carries. It is a CONJUNCT ADDED TO 5a, never a disjunct replacing it, and 5b, 5c and 5d all
+      remain required in full. A future remediation that weakens or drops any of them in exchange
+      for the state binding is OUT OF CONTRACT.
+    refused_as_architecture_invention: >-
+      ### These were considered for the relationship key and REFUSED, so none may be added without
+      its own authorization: a producer/consumer TRANSITION ID inside the declaration (no
+      declaration carries one); the SOURCE (`From`) state (likewise); a canonical EVENT NAME inside
+      the declaration (PL-9's M4 leg is the corpus's only event-named leg and is a data
+      irregularity, not a convention); a COMMIT/CAUSATION identity (causation_id is a runtime
+      carrier, and the declared co-commit is the specification-level artifact); and a NEW COLUMN in
+      the transition tables. ### The key uses only data the twenty existing declarations already
+      carry: no specification data changed, and no event was minted.
+
+  zero_owner_prohibition: >-
+    Every canonical event in sec 3 must have at least one producer transition that exists in the
+    134-row corpus. An event with no resolvable producer FAILS THE BUILD.
+
+  duplicate_owner_prohibition: >-
+    Each canonical event is declared exactly once in sec 3; a name declared twice FAILS THE BUILD.
+    A non-coordination event's producer transitions must all belong to ONE machine
+    (state-machines/registry.md sec 5, line 182). Only the declared coordination events (marked with
+    the double-dagger) may span machines: RealityEstablished, ConflictRaised, PolicyVersionChanged,
+    IllegalTransitionAttempted.
+
+  traceability: >-
+    The sec-3 producer map and the 134-row corpus are asserted bijective in BOTH directions by
+    exact set equality (G2-D11): every declared producer id exists as a corpus row, and every
+    corpus row is either a declared producer or carries exactly one structured classification
+    token. Every sec-3 producer row must additionally name at least one canonical event in its
+    Event cell, so a producer cannot go silent in the specification it is derived from.
+
+  fail_closed: >-
+    Unknown or unclassified event responsibility is a BUILD FAILURE. It may never silently PASS or
+    SKIP. Malformed classification (an unknown class token, an unknown reason code, a delegation
+    that resolves to zero or several owners, a NON_PRODUCING row with a durable write, an
+    unregistered obligation id, a row whose cell count differs from its header count) is a BUILD
+    FAILURE.
+
+  no_prose_self_certification: >-
+    No classifier reads narrative prose. "no new event", "no state change", "as those",
+    "(Exception raised)" and "respectively" are NOT classification syntax and carry no weight.
+
+# ---------------------------------------------------------------------------------------------
+# WHAT THE CORPUS COMPUTES NOW. Recomputed on every run; exact members below.
+computed_classification:
+  PRODUCER: 110
+  CONSUMES: 9
+  NON_PRODUCING: 6
+  DELEGATES_TO: 2
+  EVENT_REQUIRED: 7
+  # 110 + 9 + 6 + 2 + 7 = 134
+  #
+  # ### THE NUMBER 11 IS NOT PRESERVED, AND THAT IS THE POINT. The targeted adjudication of candidate
+  # 38b4bda corrected the class membership: PL-15x and IB-5x were classified CONSUMES against G2
+  # sec H step 7's explicit ruling that their naming IllegalTransitionAttempted inline is "redundant
+  # documentation, not a different contract". Both are zero-durable-write GR-1 refusal rows,
+  # structurally identical to EF-5x / CM-5x / BR-5, and they are now classified with them. The count
+  # is a CONSEQUENCE of the corrected membership, never the target: every class is asserted by EXACT
+  # SET EQUALITY, and the semantic relational guards fail even when these five totals are held
+  # constant.
+
+producer_view:
+  producer_transitions: 110
+  non_producer_transitions: 24
+  # NOTE (G2-D7): this 24 is NOT the retired "24 of 134". The retired figure claimed to count
+  # transitions that NAME NO EVENT. This one counts corpus rows that are not declared producers in
+  # events/registry.md sec 3 - a different question that happens to have the same answer.
+  events_with_zero_producers: 0
+  declared_producers_absent_from_the_corpus: 0
+  canonical_events_declared_more_than_once: 0
+  non_coordination_events_spanning_more_than_one_machine: 0
+
+# The G2 adjudication's HISTORICAL measurement of the corpus AS FOUND at 6e8127d, before this
+# unit's corrections. Recorded so the correction is auditable; NOT a description of current state.
+adjudicated_as_found:
+  transitions_naming_a_canonical_event: 120
+  transitions_not_naming_a_canonical_event: 14
+  note: >-
+    HISTORICAL. Measured at certified predecessor 6e8127d, before EF-3 was re-attributed and
+    before the classification tokens were added. The fourteenth member was 12-rule:RU-8, which the
+    old parser's else-branch had passed as evented (G2-D1).
+
+retired_figures:
+  - figure: 24
+    retired_as: the count of transitions that name no event
+    reason: column misalignment on escaped pipes; no executable source ever computed it
+    do_not_confuse_with: producer_view.non_producer_transitions
+  - figure: 121 / 13
+    retired_as: the split of transitions naming / not naming an event
+    reason: >-
+      the parser's else-branch never checked the cell named a canonical event, so RU-8 was a false
+      green (G2-D1). The corrected as-found split is 120 / 14.
+
+# Retired STATUS TOKENS, as distinct from retired FIGURES. A retired token may appear in a
+# historical evidence document, which is true as of its own commit; it may NOT appear as a LIVE
+# claim in the control-document population. Enforced by
+# test_bootstrap_hermeticity.py::test_a_retired_g2_status_token_never_appears_as_a_live_claim,
+# which reads this list rather than a hard-coded one, so retiring a token registers its own guard.
+retired_status_tokens:
+  - token: COUNT_NEEDS_ADJUDICATION
+    retired_as: this file's meta.status before the G2 architecture adjudication
+    superseded_by: G2_PARTIALLY_DISCHARGED_FOUNDER_GATED
+    reason: >-
+      G2 WAS ADJUDICATED, at certified predecessor 6e8127d. The open question is no longer the count
+      and no longer the interpretation - it is the seven founder/architect event names. A control
+      document still telling an agent to adjudicate the count directs it to redo settled work and
+      hides the real block.
+    found_live_at: >-
+      docs/implementation/PHASE-OUTPUTS.md P5 "Blocked on" row - reported as F-02 by the independent
+      review of candidate 38b4bda, UPHELD and NARROWED by the targeted adjudication, and CORRECTED by
+      this unit. The candidate had not touched that line.
+  - token: 4 classes
+    retired_as: >-
+      the pre-adjudication prose classification (BARE / DOCUMENTED_NON_PRODUCING / ILLEGAL_UNNAMED /
+      DELEGATING), which covered only 13 rows and left 121 unclassified through an else-fallthrough
+    superseded_by: >-
+      the FIVE-member closed structured vocabulary PRODUCER / CONSUMES / NON_PRODUCING /
+      DELEGATES_TO / EVENT_REQUIRED, covering all 134 rows, where an undecidable row fails the build
+    reason: >-
+      the old four were prose-derived and self-certifying; two of them (CF-7, EC-7) exempted rows
+      that in fact performed durable writes.
+    found_live_at: same PHASE-OUTPUTS.md row as above; corrected by this unit.
+
+# ---------------------------------------------------------------------------------------------
+# EXACT MEMBERSHIP. Asserted by set equality against a fresh computation - a same-count
+# substitution fails.
 classes:
 
-  - name: BARE
-    meaning: the Event cell is a bare em-dash with no explanation - the undisputed gap candidates
+  - name: NON_PRODUCING
+    meaning: zero durable writes, explicitly classified; proven, never self-declared in prose
+    members:
+      - key: 04-approval:AP-8
+        reason_code: ENUMERATED_NO_OP
+        proof: "GRANTED -> GRANTED (same state); Writes = em-dash"
+        purpose: >-
+          makes the pair (GRANTED, AttemptFailedProvably) enumerated and inert so GR-1 does not
+          raise IllegalTransitionAttempted when an approval correctly survives a provably-failed
+          attempt (M4 sec 20).
+      - key: 03-external-effect-grant:EF-5x
+        reason_code: GR1_ILLEGAL_REFUSAL
+        proof: "no To state; Writes = em-dash"
+      - key: 10-compensation:CM-5x
+        reason_code: GR1_ILLEGAL_REFUSAL
+        proof: "no To state; Writes = em-dash"
+      - key: 13-brake:BR-5
+        reason_code: GR1_ILLEGAL_REFUSAL
+        proof: "no To state; Writes = em-dash"
+      - key: 02-pipeline-instance:PL-15x
+        reason_code: GR1_ILLEGAL_REFUSAL
+        proof: "no To state; Writes = em-dash"
+        reclassified_from: CONSUMES
+        reclassification_authority: >-
+          The targeted governance adjudication of candidate 38b4bda, sec 3, restoring G2 sec H
+          step 7: "PL-15x and IB-5x naming it inline is REDUNDANT DOCUMENTATION, NOT A DIFFERENT
+          CONTRACT." Mechanically: the row persists nothing, so GR-2 does not bind it, and
+          IllegalTransitionAttempted's declared sec-3 producer is the RULE GR-1 - not a transition -
+          so there is no owner row to co-commit with and the event cannot be consumed
+          (consumes_valid rule 3).
+        inline_event_naming_retained: >-
+          the Event cell still reads "ILLEGAL (GR-6) -> `IllegalTransitionAttempted`". That naming is
+          TRUE and informative - GR-1 does emit it - and it is retained deliberately. It carries ZERO
+          classification weight, which is the whole discipline: only the structured token classifies.
+      - key: 06-identity-binding-claim:IB-5x
+        reason_code: GR1_ILLEGAL_REFUSAL
+        proof: "no To state; Prov = em-dash"
+        reclassified_from: CONSUMES
+        reclassification_authority: >-
+          as PL-15x above - the same adjudicated disposition, the same mechanical reason. This row
+          refuses a RecomputedByInferrer against an OWNER_ASSERTED binding (GR-9).
+        inline_event_naming_retained: >-
+          as PL-15x - retained, true, and carrying no classification weight.
+
+  - name: DELEGATES_TO
+    meaning: the event is owned elsewhere; ownership resolved by target state, never positionally
+    members:
+      - key: 01-work-item:WI-14
+        from_to: "ESCALATED -> {BLOCKED,AWAITING_HUMAN,CLOSED,CANCELLED}"
+        resolution:
+          BLOCKED: {targets: [WI-5, WI-6], owner_event: WorkBlocked}
+          AWAITING_HUMAN: {targets: [WI-7], owner_event: HumanRequested}
+          CLOSED: {targets: [WI-3], owner_event: WorkItemClosed}
+          CANCELLED: {targets: [WI-12], owner_event: WorkItemCancelled}
+        arity_note: >-
+          G2-D3. The row referenced five transitions against four target states, so the word
+          "respectively" could not decide it - WI-5 and WI-6 BOTH target BLOCKED. Target-state
+          matching decides it exactly: the BLOCKED branch resolves to the single event WorkBlocked,
+          whose sec-3 producer list is (WI-5/6). The word "respectively" has been removed.
+        duplicate_risk: >-
+          none. WI-14 fires INSTEAD of its targets, from a different From state (ESCALATED), never
+          in addition to them.
+      - key: 07-conflict:CF-6
+        from_to: "ESCALATED -> {RESOLVED_BY_RULE,RESOLVED_BY_HUMAN}"
+        resolution:
+          RESOLVED_BY_RULE: {targets: [CF-3], owner_event: ConflictResolved}
+          RESOLVED_BY_HUMAN: {targets: [CF-4], owner_event: ConflictResolved}
+        duplicate_risk: >-
+          none. CF-6 fires INSTEAD of CF-3/CF-4, from a different From state (ESCALATED).
+
+  - name: EVENT_REQUIRED
+    meaning: >-
+      a durable write with no canonical event recording it. GR-2 is VIOLATED by each of these rows
+      as written. They are recorded open, not exempted. See founder_gated_event_obligations.
     members:
       - 02-pipeline-instance:PL-7a
-      - 04-approval:AP-8
       - 04-approval:AP-9
+      - 07-conflict:CF-7
+      - 09-exception:EC-7
       - 11-policy:PO-2
       - 11-policy:PO-3
+      - 12-rule:RU-8
 
-  - name: DOCUMENTED_NON_PRODUCING
-    meaning: the cell explicitly documents that no (new) event is emitted, by design
-    members:
-      - 03-external-effect-grant:EF-3    # "(no new event - EffectAttempted already emitted)"
-      - 07-conflict:CF-7                 # "(no state change)" - party attaches to existing conflict
-      - 09-exception:EC-7                # "(no state change)"
-
-  - name: ILLEGAL_UNNAMED
+  - name: CONSUMES
     meaning: >-
-      an ILLEGAL refusal row that names no event - while PL-15x and IB-5x, the other ILLEGAL
-      rows, DO name IllegalTransitionAttempted, so the spec is internally inconsistent here
+      the row co-transitions with, or is caused by, an event owned by a different transition on a
+      DIFFERENT machine, under a relationship PROVEN by consumes_valid above from structured columns
+      only. Eight are durable-writing co-transition mirrors whose relationship discharges GR-2; one
+      (RU-3) performs zero durable writes, so GR-2 does not bind it and its marker exempts nothing.
+    membership_derivation: >-
+      NOT copied from the rejected candidate's list of eleven. Re-derived: of the eleven, PL-15x and
+      IB-5x fail consumes_valid rule 3 (their event's producer is the rule GR-1, not a transition) and
+      are NON_PRODUCING above. The nine below each satisfy the contract in full, and `owner`,
+      `owner_machine` and `durable_write` are RECOMPUTED and asserted against this record on every run.
     members:
-      - 03-external-effect-grant:EF-5x
-      - 10-compensation:CM-5x
-      - 13-brake:BR-5
+      - key: 02-pipeline-instance:PL-6
+        consumes: [ApprovalRequested]
+        owner: [AP-1]
+        owner_machine: [M4]
+        durable_write: true
+        relationship: >-
+          M2<->M4. PL-6 moves the pipeline to AWAITING_APPROVAL in the same commit in which M4's AP-1
+          creates the approval request. Co-commit declared in both rows (PL-6 -> M4 `REQUESTED`;
+          AP-1 -> M2 `AWAITING_APPROVAL`). Cross-machine, not mutually exclusive. Persists no field of
+          its own, so 5d is satisfied with nothing to cover; the state itself is reconstructible from
+          PolicyEvaluated{gate_decision} plus PL-6's own deterministic guard.
+      - key: 02-pipeline-instance:PL-9
+        consumes: [GrantClaimed]
+        owner: [EF-2]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          ### THE PARADIGM CASE, and the only row that already satisfied 5a at the certified
+          predecessor. M2<->M3: the claim CAS. PL-9 declares "co-commit: M3 `CLAIMED` + M4
+          `ApprovalConsumed` + `EffectAttempted`"; EF-2 declares "co-commit M2 `CLAIMED`, M4
+          `CONSUMED`". Neither row may be in CLAIMED without the other (M2 sec 4, the M2<->M3
+          co-transition rule).
+      - key: 02-pipeline-instance:PL-10
+        consumes: [EffectExecuted]
+        owner: [EF-3]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          M2<->M3 mirror of the adapter return. Co-commit declared both ways (PL-10 -> M3 `ATTEMPTED`;
+          EF-3 -> M2 `EXECUTED`). Its Writes cell is the PROSE "ext: the world was touched", which
+          declares NO field - so 5d has nothing to cover, and prose cannot smuggle one in.
+      - key: 02-pipeline-instance:PL-10f
+        consumes: [EffectFailed]
+        owner: [EF-3f]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          Exact mirror: EF-3f is `CLAIMED`->`FAILED` and writes failure_proof, as PL-10f does.
+          Co-commit declared both ways. 5d: failure_proof is carried by EffectFailed's sec-5 payload.
+      - key: 02-pipeline-instance:PL-10u
+        consumes: [OutcomeUnknown]
+        owner: [EF-3u, EF-4c, EF-4u]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          Mirror of EF-3u (`CLAIMED`->`UNKNOWN_OUTCOME`). OutcomeUnknown is declared in sec 3 with
+          THREE producers (EF-3u/EF-4c/EF-4u); 5a-5c are required of EVERY one of them, and all three
+          are M3 rows that now declare the reciprocal co-commit with M2. 5d: exposure and
+          unknown_reason are both carried by OutcomeUnknown's sec-5 payload.
+        precision_residual: >-
+          the declared owner set is BROADER than the single causal path (EF-3u). The adjudication
+          recorded this as precision owed, not a defect: the contract is satisfied for all three
+          owners, so no member is admitted on a weaker basis than any other. Narrowing sec 3's
+          producer list is a producer-map change and is not available to this unit.
+      - key: 02-pipeline-instance:PL-11
+        consumes: [EffectVerified]
+        owner: [EF-4]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          M2<->M3 verification mirror. EF-4 already declared a co-commit ("verify+record one txn",
+          with PL-12); this unit added the machine token so the declaration names M2 explicitly, and
+          PL-11 declares M3 `VERIFIED`. Persists no field of its own.
+      - key: 02-pipeline-instance:PL-11c
+        consumes: [VerificationConflict, VerificationUnavailable]
+        owner: [EF-4c, EF-4u]
+        owner_machine: [M3]
+        durable_write: true
+        relationship: >-
+          Exact mirrors: EF-4c writes unknown_reason=OBSERVATION_CONFLICTING and EF-4u
+          unknown_reason=OBSERVATION_UNAVAILABLE. Co-commit declared in all three rows, and now
+          ROW-BOUND: PL-11c declares M3 `UNKNOWN_OUTCOME`, which is exactly the state EF-4c and
+          EF-4u enter, and each of them declares M2 `NEEDS_VERIFICATION`, exactly the state PL-11c
+          enters. 5d: unknown_reason is carried by both events' sec-5 payload.
+        precision_residual: >-
+          ### THE ONE EXPLOIT THE ROW BINDING DOES NOT CLOSE, CARRIED DELIBERATELY. PL-11c also
+          ACCEPTS OutcomeUnknown, which it does not declare. OutcomeUnknown's sec-3 producers are
+          EF-3u/EF-4c/EF-4u; EF-4c and EF-4u ARE PL-11c's genuine partners, and only EF-3u is
+          causally wrong - it passes because all three declare M2 `NEEDS_VERIFICATION` while both
+          PL-10u and PL-11c target NEEDS_VERIFICATION, so the (machine, To-state) key is not
+          injective when two rows on one machine share a target state. ### ITS ROOT IS
+          events/registry.md sec 3's three-producer list, a FROZEN AND FORBIDDEN SURFACE for this
+          unit, and all three candidate closures were considered and REFUSED - one of them
+          (injectivity) VERIFIED TO OVER-REJECT legitimate rows. Measured against sec 3 as frozen
+          this is not a proven false accept but an inherited imprecision. Recorded in full under
+          consumes_relation_matrix.carried_residuals; NOT claimed closed. Sibling of PL-10u's
+          owner-set-breadth residual, which has the same root.
+      - key: 02-pipeline-instance:PL-15
+        consumes: [RealityEstablished]
+        owner: [EF-5, CM-5]
+        owner_machine: [M3, M10]
+        durable_write: true
+        relationship: >-
+          RealityEstablished is a declared coordination event with two structurally-identical
+          producers, so 5a-5c are proven against BOTH: PL-15 declares co-commit with M3
+          `{VERIFIED,FAILED}` AND M10 `COMPLETED`, and EF-5 and CM-5 each declare the reciprocal with
+          M2. 5d: decision_ref is carried by RealityEstablished's sec-5 payload (decision_ref,
+          outcome).
+        precision_residual: >-
+          PL-15's To set has two members and is resolved at runtime by the event's own `outcome`
+          field, which makes the row DELEGATION-SHAPED. The adjudication noted it owes the same
+          exactly-one-owner-per-branch proof DELEGATES_TO carries. That invariant is NOT imposed here,
+          because the adjudicated CONSUMES-VALID contract does not require it and imposing it would
+          reject CM-5, a row the same adjudication ruled a valid owner. Recorded as owed precision.
+      - key: 12-rule:RU-3
+        consumes: [ConflictRaised]
+        owner: [CF-1, IB-6, EF-4c]
+        owner_machine: [M3, M6, M7]
+        durable_write: false
+        relationship: >-
+          ### CAUSATION, NOT CO-TRANSITION, AND ZERO DURABLE WRITE. RU-3's To side is "*(blocked)*",
+          which names no canonical state, and its Writes cell is an em-dash - so GR-2 DOES NOT BIND
+          IT and rules 5a-5d are not required (consumes_valid rule 4). ### ITS MARKER THEREFORE
+          EXEMPTS NOTHING; it documents that a rule-vs-rule disagreement raises M7's own fact. M7's
+          conflict is an independent domain fact, which is why RU-3 is not itself a producer.
+        related_residual: G2-D9
 
-  - name: DELEGATING
-    meaning: the row says "as those", inheriting the events of the rows it references
-    members:
-      - 01-work-item:WI-14               # events of WI-5/6/7/3/12 respectively
-      - 07-conflict:CF-6                 # events of CF-3/CF-4
+# ---------------------------------------------------------------------------------------------
+# ### THE EXHAUSTIVE CONSUMER/EVENT RELATION MATRIX. Recomputed on every run, never sampled.
+#
+# The separate targeted re-adjudication of replacement candidate 1ae365a refused hand-selected
+# hostile examples as sufficient evidence. The previous hostile swap node tested PL-10f <-> PL-11c -
+# the one pair where 5d happens to engage - and its own docstring conceded that 5a/5b/5c do not
+# catch a producer swap, leaving the structurally weaker state-only pair untested. The matrix
+# replaces that sampling with the complete finite relation set.
+consumes_relation_matrix:
+  method: >-
+    every CONSUMES row evaluated against every canonical F1-F14 contract by the SAME predicate the
+    live corpus is judged by, with the expectation derived INDEPENDENTLY from the relationships the
+    specification itself declares. Enforced by
+    test_bootstrap_hermeticity.py::test_the_relation_matrix_over_every_consumer_and_every_canonical_event_is_exact.
+  consumers: 9
+  durable_consumers: 8
+  canonical_contracts_evaluated: 111
+  durable_evaluations: 888
+  measured_against_rejected_candidate_1ae365a:
+    false_accepts: 23
+    false_rejects: 0
+    note: >-
+      ### the magnitude the re-adjudication established, and it is RECOMPUTED here rather than
+      carried as a number. The independent review reported 120; the re-adjudication corrected that
+      to 23, because 97 of the 120 were 12-rule:RU-3's - the zero-durable-write row whose rule-4
+      exemption is ADJUDICATED CORRECT and which the review's own prose intended to exclude.
+  measured_against_this_candidate:
+    false_accepts: 0
+    false_rejects: 0
+    note: >-
+      zero of both across the current valid consumer relation corpus, with every one of the twelve
+      declared consumer/owner pairs accepted - including PL-15's two-branch, two-machine case.
+  carried_residuals:
+    - pair: "02-pipeline-instance:PL-9 -> EffectAttempted"
+      class: NOT A FALSE ACCEPT - ARCHITECTURALLY TRUE
+      why: >-
+        events/registry.md sec 3 declares `EffectAttempted`(EF-2), THE SAME OWNER ROW as
+        GrantClaimed, and PL-9's own Writes cell names it in the same co-commit: "M3 `CLAIMED` + M4
+        `ApprovalConsumed` + `EffectAttempted` (emitted BEFORE the call)". Same owner row, same
+        transaction, one authorized semantic operation.
+      authority: >-
+        P5 U5.1 replacement targeted re-adjudication of 1ae365a, sec H.5 - "NOT A FALSE ACCEPT - the
+        relationship is architecturally TRUE. My ground-truth label was over-strict."
+    - pair: "02-pipeline-instance:PL-11c -> OutcomeUnknown"
+      class: CARRIED RESIDUAL - JUSTIFIED, INHERITED, NOT CLOSED BY THIS UNIT
+      why: >-
+        OutcomeUnknown's sec-3 producers are EF-3u/EF-4c/EF-4u. EF-4c and EF-4u ARE PL-11c's genuine
+        partners; only EF-3u is causally wrong, and it passes because all three declare M2
+        `NEEDS_VERIFICATION` while both PL-10u and PL-11c target NEEDS_VERIFICATION - so the
+        (machine, To-state) key is not injective when two rows on one machine share a target state.
+      root_cause: >-
+        ### events/registry.md sec 3's THREE-PRODUCER LIST for OutcomeUnknown - a FROZEN, FORBIDDEN
+        SURFACE for this unit. Measured against sec 3 AS FROZEN, EF-4c and EF-4u are canonical
+        producers and are PL-11c's declared partners, so this is NOT a proven false accept; it is an
+        imprecision inherited from a frozen producer map.
+      closures_considered_and_refused:
+        - "narrow sec 3's producer list to {EF-3u} - FORBIDDEN: a producer-map change; the 98 is frozen"
+        - "add the `From` state to co-commit declarations - REFUSED: no declaration carries one;
+           this invents a convention and is not mechanically necessary"
+        - "require each (owner, machine, state) to resolve to exactly one consumer row - REFUSED,
+           VERIFIED TO OVER-REJECT: EF-5's M2 `{VERIFIED,FAILED}` resolves to PL-11, PL-10f AND
+           PL-15, and EF-3u's to PL-10u AND PL-11c, producing FALSE REJECTS OF LEGITIMATE ROWS,
+           which is worse than the residual"
+      authority: >-
+        P5 U5.1 replacement targeted re-adjudication of 1ae365a, sec H.5 - "CARRIED RESIDUAL -
+        inherited, explicitly justified, NON-BLOCKING ... The remediation must RECORD it as a named
+        carried residual with its authority citation and must NOT attempt to fix it."
+      status: OPEN - carried, not discharged. Belongs to whichever unit is authorized to touch sec 3.
+
+# ---------------------------------------------------------------------------------------------
+# ### THE SEVEN, FROZEN BY SET IDENTITY. Not by count - the count is a CONSEQUENCE.
+#
+# Candidate 1ae365a held this population with {spec obligation ids} == {registered obligation ids}
+# plus open_founder_gated_obligations == len(obligations). Both are CONSISTENCY checks, and a
+# coordinated edit satisfies both while REMOVING a member. That is how 02-pipeline-instance:PL-7a -
+# the SOLE autonomous entry into CHECKPOINT, severity HIGHEST GOVERNANCE - was laundered into
+# CONSUMES by one token, with open_founder_gated_obligations falling 7 -> 6 unchallenged and the
+# whole G2 guard block still at 53 passed / 0 failed.
+frozen_event_required_set:
+  record_id: G2-U51-EVENT-REQUIRED-SET-SEVEN
+  adjudication: >-
+    NEYMA P5 U5.1 - replacement candidate 1ae365a, separate targeted governance re-adjudication,
+    sec I.3 ("An explicit guard MUST bind the exact EVENT_REQUIRED SET, not merely its count").
+  adjudication_digest: 30eddf57c7e44f442258b94e592f209f2932dbeca9812eb4c22b3b6a36e39ed9
+  recorded_on: "2026-08-08"
+  members:
+    - 02-pipeline-instance:PL-7a
+    - 04-approval:AP-9
+    - 07-conflict:CF-7
+    - 09-exception:EC-7
+    - 11-policy:PO-2
+    - 11-policy:PO-3
+    - 12-rule:RU-8
+  # ### A MEMBER MAY LEAVE ONLY THROUGH ONE OF THESE TWO ROUTES. NO THIRD ROUTE EXISTS.
+  authorized_discharge_routes:
+    - id: MINTED_CANONICAL_EVENT
+      requires: >-
+        a canonical event minted under FOUNDER/ARCHITECT authority, present in events/registry.md
+        sec 3, with the discharging row declared as its producer there. Re-proven mechanically.
+    - id: PRE_EXISTING_STRUCTURAL_PROOF
+      requires: >-
+        a PRE-EXISTING structural CONSUMES / DELEGATES_TO / NON_PRODUCING proof that the row
+        actually satisfies - for CONSUMES that is consumes_valid rules 1,2,3,5a-5d and 7 in full,
+        with the 5a REVERSE leg row-bound. Re-proven mechanically, so writing the record is not the
+        discharge.
+  discharges: []
+  no_third_route: true
+  silent_deletion_is_a_build_failure: true
+  self_certification_prohibited: >-
+    ### the discharge record may not be authored by the same edit that performs the
+    reclassification unless the structural proof ALSO holds. Prose is never a predicate, in any
+    class; a token a candidate adds to its OWN Writes cell is an ASSERTION and may satisfy the
+    forward leg of 5a and nothing more.
+  enforced_by: >-
+    test_bootstrap_hermeticity.py::test_the_event_required_set_is_frozen_by_identity_and_never_by_count
+    (three-way exact set equality: specification, this record, and the registered obligations) and
+    test_hostile_an_open_obligation_may_not_annex_another_rows_co_commit_declaration (the exact
+    PL-7a laundering, asserted to FAIL, with a positive control that the unmutated seven PASS).
+
+# ---------------------------------------------------------------------------------------------
+# THE FOUNDER/ARCHITECT BOUNDARY. Seven durable writes that no canonical event records.
+#
+# ### NO SESSION BELOW FOUNDER/ARCHITECT AUTHORITY MAY MINT A CANONICAL EVENT NAME, CHANGE THE
+# ### FROZEN 98-EVENT TOTAL, OR MARK ANY OF THESE DISCHARGED. Each entry states the SEMANTIC
+# ### OBLIGATION - the fact that must become recordable - and deliberately states NO NAME.
+founder_gated_event_obligations:
+
+  - id: G2-OB-PL-7A-AUTONOMOUS-ADMISSION-UNRECORDED
+    transition: 02-pipeline-instance:PL-7a
+    durable_write: "VALIDATED -> CHECKPOINT"
+    severity: HIGHEST GOVERNANCE
+    semantic_obligation: >-
+      that a pipeline was admitted to checkpoint under autonomous caps, recording the gate decision
+      and the caps evaluated.
+    why_it_matters: >-
+      PL-7a is the SOLE autonomous entry into CHECKPOINT (gate = AUTONOMOUS_WITHIN_CAPS) - the
+      bounded-autonomy admission point. Its human-gated sibling PL-7b emits ApprovalBound; PL-7a
+      emits nothing. M2 sec 39 requires an audit record for every transition and registry sec 2
+      makes the emitted event the audit record, so the one transition where the system proceeds
+      WITHOUT a human is the one with no audit record.
+    live_exposure: >-
+      NONE TODAY. Bounded autonomy is BLOCKED at P14 and ships dark. This is a specification defect
+      to fix BEFORE that path is built.
+    decision_required: founder/architect - a new canonical event type
+
+  - id: G2-OB-AP-9-FREEZE-FACT-UNRECORDED
+    transition: 04-approval:AP-9
+    durable_write: "frozen=true"
+    severity: HIGHEST SAFETY OF THE SEVEN
+    semantic_obligation: >-
+      that an approval was frozen pending established reality, carrying the unknown-outcome
+      reference that froze it.
+    why_it_matters: >-
+      ### `frozen` IS A GUARD INPUT TO AN ILLEGAL DETERMINATION (M4 sec 15 - "reuse of a frozen
+      (AP-9) approval -> ILLEGAL"; sec 13 - "MUST NOT be reused until reality established"). It is
+      a durable write that appears in NO event, so a full-history rebuild reconstructs an approval
+      that is NOT frozen - i.e. REUSABLE. ### THE REBUILT STATE IS LESS SAFE THAN THE ORIGINAL,
+      which inverts the purpose of replay (AC-EVT-008).
+    admissible_remedies:
+      - "AP-9 emits a new canonical Approval* event; or"
+      - "the durable write is REMOVED and `frozen` becomes a DERIVED predicate over
+         (OutcomeUnknown AND NOT RealityEstablished)."
+    remedy_note: >-
+      The row as written violates GR-2 under BOTH remedies. Choosing between them is design
+      authority. ### DO NOT IMPROVISE THE EVENT DESIGN.
+    fail_closed_default_until_decided: >-
+      treat any approval with an unresolved OutcomeUnknown as frozen.
+    decision_required: founder/architect - emit-vs-derive, then (if emit) a new canonical event type
+
+  - id: G2-OB-CF-7-PARTY-ATTACH-FACT-UNRECORDED
+    transition: 07-conflict:CF-7
+    durable_write: "append parties[]"
+    semantic_obligation: >-
+      that a new disagreeing party attached to an existing conflict, carrying its provenance_class.
+    why_it_matters: >-
+      CF-1 places parties[] into history via ConflictRaised; an un-evented append means a
+      full-history rebuild reproduces a STALE PARTY SET - an AC-EVT-008 digest divergence, which
+      AC-EVT-015 escalates to an auto-brake. M7's own text refutes the old "(no state change)"
+      exemption three times (sec 34 Writes include the outbox; sec 39 audit "with parties"; sec 22
+      "still an event, never silence"). The old cell answered the From -> To column, not the Event
+      column - a category error.
+    decision_required: founder/architect - a new canonical event type
+
+  - id: G2-OB-EC-7-SEVERITY-CHANGE-FACT-UNRECORDED
+    transition: 09-exception:EC-7
+    durable_write: "severity"
+    semantic_obligation: >-
+      that the severity of an open exception was reassessed, carrying the old and new values and
+      the actor.
+    why_it_matters: >-
+      EC-1 emits ExceptionRaised{severity}, so severity IS in the event stream at creation; EC-7
+      mutates it with no event, so a rebuild reproduces the ORIGINAL severity. Severity drives
+      EC-4/EC-5 ageing and escalation thresholds and, per M9 sec 30, Sev-0 exceptions auto-engage
+      the brake - so a rebuilt projection can UNDER-STATE severity relative to live state.
+    decision_required: founder/architect - a new canonical event type
+
+  - id: G2-OB-PO-2-PROPOSAL-FACT-UNRECORDED
+    transition: 11-policy:PO-2
+    durable_write: "DRAFT -> PROPOSED"
+    semantic_obligation: >-
+      that a policy draft was put forward for approval, carrying the policy_version and the
+      gate_decision that had to be non-null for it to proceed.
+    why_it_matters: >-
+      ### A NAMING COLLISION, NOT MERELY A GAP. PO-1 (- -> DRAFT) emits `PolicyProposed`, so the
+      event named "Proposed" fires on the DRAFT transition while the actual DRAFT -> PROPOSED
+      transition emits nothing. M11 sec 39 requires every draft/activate/supersede/revoke/expire to
+      be an audit AND security event.
+    admissible_remedies:
+      - "re-attribute `PolicyProposed` to PO-2 and mint a new event for PO-1; or"
+      - "mint a new event for PO-2 and leave PO-1's attribution unchanged."
+    remedy_note: >-
+      Both remedies change the frozen registry (one re-attributes an existing name and adds one;
+      the other adds one). Neither is available below founder/architect authority.
+    decision_required: founder/architect - re-attribution and/or a new canonical event type
+
+  - id: G2-OB-PO-3-APPROVAL-FACT-UNRECORDED
+    transition: 11-policy:PO-3
+    durable_write: "PROPOSED -> APPROVED + approval_id"
+    semantic_obligation: >-
+      that a policy change was approved through a gated M2 pipeline, binding the approval_id and
+      the diff that was the material fact.
+    why_it_matters: >-
+      This is the "no admin path" evidence. The policy change ran through an M2 pipeline with the
+      diff as material facts, binding approval_id. With no event, ### REPLAY AND AUDIT CANNOT PROVE
+      A POLICY CHANGE WAS HUMAN-GATED. M11 sec 39's own list omits "approve" as well - the same gap
+      in two places.
+    decision_required: founder/architect - a new canonical event type
+
+  - id: G2-OB-RU-8-EXPIRY-FACT-UNRECORDED
+    transition: 12-rule:RU-8
+    durable_write: "ACTIVE -> EXPIRED"
+    semantic_obligation: >-
+      that a narrowing rule reached its TTL and left the ACTIVE set, symmetric with M11's
+      PolicyExpired (PO-7).
+    why_it_matters: >-
+      The fourteenth member of the finding, invisible to the old parser (G2-D1). F12 has no
+      expiry event at all, while M11's exact counterpart PO-7 (ACTIVE -> EXPIRED) emits
+      PolicyExpired. Rule expiry changes which rules are ACTIVE, which changes checkpoint
+      evaluation - a fact replay cannot currently reconstruct. The raised Exception records a
+      DIFFERENT aggregate and does not record that this rule expired.
+    decision_required: founder/architect - a new canonical event type
+
+# ---------------------------------------------------------------------------------------------
+# RECORDED, NOT DISCHARGED. Carried out of the G2 adjudication and out of this unit.
+recorded_residuals:
+
+  - id: G2-D4
+    surface: spec / schema
+    status: OPEN - RECORDED, NOT FIXED
+    statement: >-
+      events/registry.md sec 3 does not list WI-14 or CF-6 in the producer lists of the events they
+      delegate (WorkBlocked (WI-5/6), ConflictResolved (CF-3/4)). If a delegated emission carried
+      producer_transition_id = WI-14 or CF-6 the sec-3 map would be incomplete and the bijection
+      guard would fail.
+    admissible_remedies:
+      - "extend the sec-3 producer lists to include the delegating rows; or"
+      - "define delegated emissions to carry the TARGET row's transition id."
+    why_not_fixed_here: >-
+      Both remedies are decisions about the producer map or the event envelope's semantics. The
+      DELEGATES_TO guard resolves EVENT OWNERSHIP without needing either, so this unit resolved the
+      mechanical question and left the schema decision open rather than improvising it.
+
+  - id: G2-D6
+    surface: spec (+ corpus)
+    status: OPEN - RECORDED, NOT FIXED
+    statement: >-
+      `VerificationDeferred` is declared in F3 with producer PL-11d, which is an M2 row, while
+      state-machines/registry.md sec 5 declares its producer to be M3 - and M3 has NO corresponding
+      transition row at all.
+    why_not_fixed_here: >-
+      Discharging it requires ADDING A TRANSITION to M3, which changes the 134-row corpus. That is
+      outside a bounded specification/control correction and outside this unit's authority.
+
+  - id: G2-D8
+    surface: schema
+    status: OPEN - RECORDED, NOT FIXED
+    statement: >-
+      producer_transition_id is required-always in the canonical envelope (events/registry.md
+      sec 1) but is undefined for IllegalTransitionAttempted, whose declared producer is the RULE
+      GR-1, not a transition. A required field with no defined value is a schema gap.
+    fail_closed_default_proposed_by_the_adjudication: >-
+      a reserved non-transition sentinel plus the payload's machine/state/trigger.
+    why_not_fixed_here: >-
+      Defining the sentinel is event-schema content, which remains blocked on the same
+      founder/architect gate as the seven obligations above.
+    relationship_to_consumes_valid: >-
+      the same rule-not-a-transition fact is now LOAD-BEARING in consumes_valid rule 3: because
+      GR-1 is not a corpus row, IllegalTransitionAttempted has no owner transition to co-commit with
+      and can never be consumed. That is what puts PL-15x and IB-5x in NON_PRODUCING. The SCHEMA
+      question of what producer_transition_id carries for that event remains untouched and open.
+
+  - id: G2-D9
+    surface: spec
+    status: OPEN - RECORDED, NOT FIXED
+    statement: >-
+      12-rule:RU-3 causes M7's ConflictRaised (RULE_VS_RULE) but sec 3's coordination producer list
+      for ConflictRaised is (CF-1/IB-6/EF-4c) and omits RU-3.
+    why_not_fixed_here: >-
+      Adding RU-3 to a coordination event's producer list changes the producer map (110 -> 111) and
+      the coordination architecture's membership. RU-3 performs zero durable writes, so GR-2 does
+      not bind it, and it is classified CONSUMES here WITH NO EXEMPTING FORCE (consumes_valid
+      rule 4) - the marker documents the causation and discharges nothing, so nothing rests on this
+      residual staying open. Whether RU-3 should instead be a declared coordination producer is a
+      coordination-architecture decision, not a parser correction.
+
+  - id: G2-D10
+    surface: spec
+    status: OPEN - RECORDED, NOT FIXED
+    statement: >-
+      specifications/acceptance/foundational-machine-acceptance.md calls all 134 "the 134 LEGAL
+      transitions" while five of them (EF-5x, CM-5x, BR-5, PL-15x, IB-5x) are explicitly ILLEGAL
+      refusal rows.
+    why_not_fixed_here: >-
+      foundational-machine-acceptance.md is an acceptance-specification surface outside the
+      canonical-document set this unit was scoped to correct, and it is read by
+      eval/phase0 declared-total guards.
+
+  - id: G2-D7
+    surface: test/control
+    status: CLOSED BY THIS UNIT
+    statement: >-
+      the anti-"24" control-document guard would have failed on the TRUE sentence "24 of the 134
+      transitions are not producer transitions", because the retired figure and the computed
+      non-producer count share a value.
+    how_closed: >-
+      the guard gained a carve-out that distinguishes the RETIRED count of unnamed transitions from
+      the COMPUTED count of non-producer transitions, and a companion guard now forbids reviving
+      the retired 121/13 split as the current finding. Contorting the phrasing to dodge the guard
+      would have been evidence-hiding and was refused.
+    carve_out_precision_correction: >-
+      F-03 of the independent review of candidate 38b4bda, reproduced exactly by the targeted
+      adjudication: the first carve-out keyed on `non-producer` appearing anywhere in a +/-120
+      CHARACTER WINDOW, so appending one clause - "24 of the 134 transitions name no event outright,
+      WHICH IS THE NON-PRODUCER POPULATION" - revived the retired figure in exactly its retired sense
+      and the suite stayed green. A proximity window is the same prose-proximity predicate the G2
+      adjudication sec F refused for classification, and it was no more defensible here. The carve-out
+      is now scoped to the MATCHED CLAUSE (24 and non-producer within one clause) and the
+      retired-label carve-out to the ENCLOSING SENTENCE, with a hostile node asserting the exact
+      reproduction sentence above FAILS.

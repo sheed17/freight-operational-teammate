@@ -98,11 +98,41 @@ event as permission. Each contract states explicitly what the event **proves** a
 **13 machines, 134 transitions.** Each transition names its guards, its writes, its event, the
 owner afterwards, and the test that validates it.
 
-*Open finding:* **13 of the 134 transitions name no event outright** — in four structurally
-different classes (bare, documented non-producing, unnamed-ILLEGAL, delegating; exact members in
-[`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)). **Which classes
-violate `AC-EVT-003` is a G2 question that must be settled before P5** — the specifications do not
-define the predicate, so the finding carries **COUNT NEEDS ADJUDICATION**, not a number.
+**The G2 event contract, adjudicated.** A *producer transition* of an event is one declared in that
+event's producer field in [`events/registry.md`](docs/specifications/events/registry.md) §3 — that
+table, not a machine's Event column, is the producer map. **110 of the 134 rows are producer
+transitions; the remaining 24 are non-producer transitions**, because a row may co-transition with,
+cause, or reflect an event another machine owns
+([`state-machines/registry.md`](docs/specifications/state-machines/registry.md) §5, line 182: one
+producer, the others consume).
+Completeness is the separate `GR-2` obligation — *no state change without its event* — evaluated
+over **durable writes**, read from the `From → To` and `Writes` columns. **Neither predicate reads
+prose:** every non-producer row carries a structured `CONSUMES` / `NON_PRODUCING` / `DELEGATES_TO` /
+`EVENT_REQUIRED` marker, and a row the classifier cannot decide **fails the build**. A
+prose-dependent predicate was refused precisely because it is self-certifying: `CF-7` and `EC-7`
+both exempted themselves with *"(no state change)"* while performing durable writes.
+
+### **A structured marker is not a proof either, and `CONSUMES` is where that bites.** A label saying
+a row consumes an event asserts a relationship; it does not establish one. So a durable-writing
+consumer must satisfy `CONSUMES-VALID`, read entirely from structured columns: the co-commit is
+**declared in both rows'** `Writes` cells, the owner is on a **different machine**, the owner is **not
+mutually exclusive** with the consumer, and every field the consumer persists is carried by a consumed
+event's §5 **payload** so replay can reconstruct it. Undecidable **fails the build**. The first
+attempt at this class proved only that the named event existed and was not self-owned, which let the
+corpus's highest-severity open obligation (`AP-9`, `frozen=true`) be relabelled as consuming an
+unrelated *brake* event while every guard stayed green. **Count arithmetic reconciling is not
+evidence: set equality between a specification and its audit proves they agree, not that either is
+true.**
+
+*Open finding, PARTIALLY discharged:* **seven durable writes are recorded by no canonical event** —
+`PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`. Each violates `GR-2` as written and each is
+recorded open, with its semantic obligation stated and **no event name invented**, in
+[`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml). ### **Naming those
+events changes the frozen 98-event registry and is founder/architect authority, so P5's event
+content stays blocked.** The two safety-relevant ones: `AP-9` writes `frozen=true`, a guard input to
+an ILLEGAL determination, so a full-history rebuild reconstructs an approval that is **not** frozen —
+less safe than the original; and `PL-7a` is the sole autonomous entry into `CHECKPOINT`, so the one
+transition that proceeds without a human is the one with no audit record.
 
 ## 12. Tenant model
 

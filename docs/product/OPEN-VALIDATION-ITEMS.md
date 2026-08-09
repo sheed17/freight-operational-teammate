@@ -46,19 +46,19 @@ invented for this registry.
 | **Accountable source** | Design partner, via the founder |
 | **Status** | **OPEN** |
 
-### V-A1 — Which transition/event classes violate `AC-EVT-003`? (COUNT NEEDS ADJUDICATION)
+### V-A1 — What are the seven missing canonical events? (G2 PARTIALLY DISCHARGED — FOUNDER/ARCHITECT GATED)
 
 | | |
 |---|---|
-| **Question** | 13 of 134 transitions name no event outright, in 4 structurally different classes ([`TRANSITION-EVENT-AUDIT.yaml`](../implementation/TRANSITION-EVENT-AUDIT.yaml)). Which classes are legitimate non-producers and which are mapping gaps? The retired "24" was never mechanically computed. |
+| **Question** | ### **The classification question is SETTLED.** G2 ruled that a producer transition is one declared in `events/registry.md` §3 and that completeness is `GR-2` over durable writes, and all 134 rows are now mechanically classified ([`TRANSITION-EVENT-AUDIT.yaml`](../implementation/TRANSITION-EVENT-AUDIT.yaml)). What remains is narrower and is a **naming** question: **seven transitions perform durable writes that no canonical event records** — `PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`. Each obligation's *semantics* are stated; none of their *names* may be invented below founder/architect authority, because minting them changes the frozen 98-event registry asserted by `AC-TRACE-000`. |
 | **Affected workflow** | All |
 | **Affected entity/state** | State machines ↔ event contracts |
-| **Implementation impact** | ### **Blocks P5.** If they are a gap, the event corpus is incomplete and replay reconstructs a state history with holes. |
-| **Blocking status** | **ARCHITECTURE_BLOCKER** — blocks **P5**, gate **G2** |
-| **Safe interim behaviour** | The bijection guard asserts the exact set; no transition may silently acquire or lose an event |
-| **Evidence needed** | Adjudication against each machine — **a repository decision, not a customer one** |
-| **Accountable source** | Architecture (settle before P5) |
-| **Status** | **OPEN** |
+| **Implementation impact** | ### **Blocks P5's event content.** Each of the seven is a live `GR-2` violation: the durable write happens, no event records it, and replay therefore reconstructs a state history with holes. `AP-9` is the sharpest — it writes `frozen=true`, a guard input to an ILLEGAL determination, so a rebuild reconstructs an approval that is **not** frozen, i.e. **reusable**. The rebuilt state is *less safe than the original*. |
+| **Blocking status** | **ARCHITECTURE_BLOCKER** — blocks **P5**'s event content, gate **G2** (partially discharged) |
+| **Safe interim behaviour** | Fail-closed. Unknown classification is a build failure, never a pass or a skip; the seven are recorded as open obligations that cannot be silently discharged; and until `AP-9` is decided, any approval with an unresolved `OutcomeUnknown` is treated as frozen. ### **The route by which one of the seven could be silently discharged is now closed too.** U5.1's first candidate was rejected because its `CONSUMES` class was self-certifying: a two-line coordinated edit relabelled `AP-9` as consuming an event that does not carry `frozen`, and every guard stayed green. A durable-writing consumer must now satisfy `CONSUMES-VALID` — a co-commit declared in **both** rows, a different machine, no mutual exclusivity with the owner, and §5 payload coverage of every persisted field — with the undecidable case failing the build. |
+| **Evidence needed** | ### **A founder/architect decision on each of the seven event names, and on `AP-9`'s emit-vs-derive remedy and `PO-2`'s re-attribute-vs-mint remedy** — a repository decision, not a customer one |
+| **Accountable source** | Founder/architect (settle before P5's event content) |
+| **Status** | **OPEN — narrowed from "which classes violate the contract" to "what are these seven events called"** |
 
 ### V-15 — How are detention, lumper and TONU authorised in the moment, and where is that recorded?
 

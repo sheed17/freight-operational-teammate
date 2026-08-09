@@ -8,7 +8,7 @@
 
 | ID | From → To | Trig | Preconditions / guards | Writes | Event | Test |
 |---|---|---|---|---|---|---|
-| **AP-1** | — → `REQUESTED` | S | gate∈{`HUMAN_APPROVAL_REQUIRED`,`PERMANENT_HUMAN_ASSERTION_REQUIRED`}; ### **`material_facts_fingerprint`+`canonical_payload` computed from RUNTIME reads (M-55, M-13)** | fingerprint, payload, `policy_version`, TTL | `ApprovalRequested{fingerprint}` | `test_ap_request_binds_runtime_facts` |
+| **AP-1** | — → `REQUESTED` | S | gate∈{`HUMAN_APPROVAL_REQUIRED`,`PERMANENT_HUMAN_ASSERTION_REQUIRED`}; ### **`material_facts_fingerprint`+`canonical_payload` computed from RUNTIME reads (M-55, M-13)** | fingerprint, payload, `policy_version`, TTL; co-commit M2 `AWAITING_APPROVAL` | `ApprovalRequested{fingerprint}` | `test_ap_request_binds_runtime_facts` |
 | **AP-2** | `REQUESTED` → `GRANTED` | H | ### **an AUTHENTICATED, authorized human** (never model/counterparty); single-use transport token valid; ### for `PERMANENT_HUMAN_ASSERTION_REQUIRED`, a human **assertion** | `granted_by, granted_at` | `ApprovalGranted` | `test_ap_grant_requires_authenticated_authorized_human` |
 | **AP-2d** | `REQUESTED` → `DENIED` | H | human denies | — | `ApprovalDenied` | `test_ap_deny` |
 | **AP-3** | `{REQUESTED,GRANTED}` → `EXPIRED` | T | TTL elapsed (durable timer) | — | `ApprovalExpired` | `test_ap_expiry_is_not_an_approval` |
@@ -17,8 +17,8 @@
 | **AP-5** | `GRANTED` → `VOID_ON_BRAKE` | B | `BrakeEngaged` in scope | — | `ApprovalVoided{brake}` | `test_ap_brake_voids` |
 | **AP-6** | `GRANTED` → `REVOKED` | H | human revokes before consumption | — | `ApprovalRevoked` | `test_ap_human_revoke` |
 | **AP-7** | `GRANTED` → `CONSUMED` | S | ### **atomic CAS in the SAME txn as the M3 claim; commit_key matches** | `consumed_at` | `ApprovalConsumed` | `test_ap_consumed_once_in_claim_txn` |
-| **AP-8** | `GRANTED` → `GRANTED` | S | `AttemptFailedProvably` (PL-10f) — ### **survives a provably-failed attempt** | — | — | `test_ap_survives_provable_failure` |
-| **AP-9** | `GRANTED` → `GRANTED` *(frozen)* | S | `AttemptOutcomeUnknown` (PL-10u) — ### **MUST NOT be reused until reality established** | `frozen=true` | — | `test_ap_frozen_after_unknown_not_reusable` |
+| **AP-8** | `GRANTED` → `GRANTED` | S | `AttemptFailedProvably` (PL-10f) — ### **survives a provably-failed attempt** | — | `NON_PRODUCING:ENUMERATED_NO_OP` | `test_ap_survives_provable_failure` |
+| **AP-9** | `GRANTED` → `GRANTED` *(frozen)* | S | `AttemptOutcomeUnknown` (PL-10u) — ### **MUST NOT be reused until reality established** | `frozen=true` | `EVENT_REQUIRED:G2-OB-AP-9-FREEZE-FACT-UNRECORDED` | `test_ap_frozen_after_unknown_not_reusable` |
 
 **Dual control:** `AP-2` requires **quorum by distinct authenticated actors**, each `ApprovalSignature` binding the **same fingerprint**; ### **drift between signatures voids ALL signatures** ⇒ back to `REQUESTED` with a fresh fingerprint.
 
