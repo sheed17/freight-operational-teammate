@@ -194,6 +194,7 @@ emitted_events:
     - PolicyEvaluated
     - IntentValidated
     - PipelineRejected
+    - AutonomousAdmissionRecorded
     - ApprovalBound
     - CheckpointPassed
     - CheckpointFailed
@@ -224,6 +225,7 @@ emitted_events:
     - ApprovalVoided
     - ApprovalRevoked
     - ApprovalConsumed
+    - ApprovalFrozen
   F5:
     - ObservationReceived
     - ObservationConfirmed
@@ -242,6 +244,7 @@ emitted_events:
   F7:
     - ConflictRaised
     - ConflictOpened
+    - ConflictPartyAttached
     - ConflictEscalated
     - ConflictResolved
   F8:
@@ -257,6 +260,7 @@ emitted_events:
     - ExceptionAcknowledged
     - ExceptionAgeing
     - ExceptionEscalated
+    - ExceptionSeverityChanged
     - ExceptionResolved
   F10:
     - CompensationRequired
@@ -268,6 +272,8 @@ emitted_events:
     - CompensationFailed
   F11:
     - PolicyProposed
+    - PolicySubmitted
+    - PolicyApproved
     - PolicyActivated
     - PolicySuperseded
     - PolicyRevoked
@@ -281,6 +287,7 @@ emitted_events:
     - RuleActivated
     - RuleSuperseded
     - RuleRevoked
+    - RuleExpired
   F13:
     - BrakeEngaged
     - BrakeWidened

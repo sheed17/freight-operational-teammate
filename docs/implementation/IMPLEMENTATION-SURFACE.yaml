@@ -247,7 +247,7 @@ concepts:
       full release-evidence machinery is P8. The legacy ops_control pause flag remains a
       convention beside it (S3 disposition).
 
-  - name: Canonical events (98 contracts)
+  - name: Canonical events (105 contracts)
     status: SPECIFICATION_ONLY
     specification: docs/specifications/events/registry.md
     absent_symbols: [EventContract, emit_canonical_event]

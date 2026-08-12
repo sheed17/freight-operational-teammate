@@ -25,9 +25,11 @@
 | M11 Policy | 7 | `AC-MACH-1101..1107` | `PolicyProposed`…`VersionChanged` | version row | **G4** |
 | M12 Rule | 9 | `AC-MACH-1201..1209` | `RuleProposed`…`Revoked` | version row | G1 |
 | M13 Brake | 5 | `AC-MACH-1301..1305` | `BrakeEngaged`…`Released` | row + brake_version | **G4** |
-| **Total** | ### **134** | — | ### **all 98** | — | — |
+| **Total** | ### **134** | — | ### **all 105** | — | — |
 
-> ### **ERRATA (2026-07-16):** the Total row previously read **141** / **all 92**. ### **The 13 per-machine counts above were and remain CORRECT — they sum to 134.** The emitted-event total is **98** (F1–F13). Both errors were arithmetic, not architectural: every count enumerated in a single table was right; both counts requiring summation across 13 files were wrong. See `docs/implementation/canonical-corpus-errata-review.md`.
+> ### **ERRATA (2026-07-16):** the Total row previously read **141** / **all 92**. ### **The 13 per-machine counts above were and remain CORRECT — they sum to 134.** The emitted-event total was **98** (F1–F13) and is now **105** — see the amendment note below. Both errors were arithmetic, not architectural: every count enumerated in a single table was right; both counts requiring summation across 13 files were wrong. See `docs/implementation/canonical-corpus-errata-review.md`.
+
+> ### **AMENDMENT (2026-08-12) — FOUNDER/ARCHITECT AUTHORITY, NOT AN ERRATUM.** The emitted-event total moved **98 → 105**. Seven canonical events were **minted** to discharge the seven recorded `GR-2` obligations — `AutonomousAdmissionRecorded`(PL-7a), `ApprovalFrozen`(AP-9), `ConflictPartyAttached`(CF-7), `ExceptionSeverityChanged`(EC-7), `PolicySubmitted`(PO-2), `PolicyApproved`(PO-3), `RuleExpired`(RU-8). ### **The transition total is UNCHANGED at 134** — no transition was added, removed or split; seven existing rows acquired the events their durable writes always owed. `PolicyProposed` remains PO-1's, unchanged. See `docs/implementation/TRANSITION-EVENT-AUDIT.yaml`.
 
 ## Per-machine mandatory assertions *(every machine, every case)*
 1. ### **Every legal transition succeeds under its EXACT guards** — and fails when any guard is relaxed by one condition (a guard-mutation probe).

@@ -14,10 +14,12 @@ negative assertions over proven populations; whole-token matching.
 from __future__ import annotations
 
 import ast
+import inspect
 import itertools
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -283,6 +285,27 @@ def _event_registry() -> dict:
             "corpus": [e["name"] for e in contracts], "producers_of": producers_of}
 
 
+def _consequential_events() -> list[str]:
+    """events/registry.md sec 5's CONSEQUENTIAL list, in declaration order.
+
+    ### THIS SURFACE WAS ENTIRELY UNGUARDED (F-05). No node under eval/ read it, so striking
+    `PolicyApproved` - which candidate f01d942's own commit message called "the 'no admin path'
+    evidence" - left the whole canonical suite green, while that commit simultaneously claimed
+    twenty mutations "each neutering a RULE, or a fact in the specification the guard reads". A
+    CONSEQUENTIAL event is the one that must pin the SD-3 `entity_versions` set, the material-facts
+    fingerprint, `policy_version` and `brake_version` - exactly what makes a decision reproducible
+    from the log. Membership is read from the LIST LINE ONLY: the amendment note beneath it also
+    names `PolicyApproved`, and reading the prose as the list would let the list itself be emptied
+    while the note kept the guard green.
+    """
+    section = read(SPECS / "events" / "registry.md")
+    section = section.split("## 5. WHICH EVENTS ARE CONSEQUENTIAL")[1].split("\n## ")[0]
+    listing = [l for l in section.split("\n") if l.strip().startswith("`")]
+    if len(listing) != 1:
+        return []                     # UNDECIDABLE - the node below fails closed on an empty result
+    return re.findall(r"`([A-Za-z][A-Za-z0-9]*)`", listing[0])
+
+
 def _canonical_states() -> set[str]:
     text = read(MACHINES / "registry.md")
     text = text.split("## 4. CANONICAL STATE REGISTRY")[1].split("## 5.")[0]
@@ -326,10 +349,87 @@ def _transition_rows() -> list[dict]:
                 "key": f"{short}:{tid}", "id": tid, "machine": short, "line": lineno,
                 "n_cells": len(cells), "n_headers": len(headers),
                 "from_to": col(lambda h: h.startswith("from")),
+                "trig": col(lambda h: h.startswith("trig")),
                 "writes": col(lambda h: h.startswith("writes") or h == "prov"),
                 "event": col(lambda h: h.startswith("event")),
             })
     return rows
+
+
+# ------------------------------------------------- the trigger-type set: a CLOSED, structured column
+#
+# ### R3-A. `_resolve_delegation` proved only (target exists · is a sec-3 producer · shares the target
+# state). That triple is satisfied by `PL-7a -> DELEGATES_TO:CHECKPOINT=PL-7b`, which is semantically
+# FALSE: PL-7b's event asserts a BOUND HUMAN APPROVAL, while PL-7a is the autonomous-within-caps path
+# where no human acted. A row could therefore have discharged its GR-2 obligation by delegating to a
+# sibling that reaches the same state for an INCOMPATIBLE REASON.
+#
+# ### THE INVARIANT IS STRUCTURAL AND GENERAL - NO PL-7a SPECIAL CASE, NO PROSE EXCEPTION.
+# `Trig` is a CLOSED code set declared in state-machines/registry.md sec 1: H human · S deterministic
+# system · X observed external · T timer · P policy change · B brake change · R recovery. A row
+# carries one code or a union (`S\|H`). A delegating row hands its OWN trigger to a target: if the two
+# trigger-type sets are DISJOINT, the target's transition cannot be the one this row's trigger causes,
+# so the target's event cannot record what this row did.
+#
+#   WI-14  `S|H` -> WI-5 `S`, WI-6 `S|X`, WI-7 `S`, WI-3 `S`, WI-12 `H`     all intersect  ACCEPT
+#   CF-6   `S|H` -> CF-3 `S`, CF-4 `H`                                      all intersect  ACCEPT
+#   PL-7a  `S`   -> PL-7b `H`                                          {S} n {H} = empty   REJECT
+#
+# ### AND IT IS NOT SUFFICIENT ON ITS OWN (P5 U5.2 replacement, re-adjudication F-01). The first
+# candidate f01d942 shipped the trigger conjunct ALONE and asserted in its subject line that it had
+# "close[d] the false-delegation route". Driven over the complete structurally-expressible population
+# the real predicate then admitted 157 of 250 triples, 106 of them CROSS-MACHINE, and NINE of them
+# sourced at one of the seven founder-gated rows - among them `AP-9 -> GRANTED=EF-2f`, in which M3's
+# idempotent claim REFUSAL would stand as the record of an M4 approval freeze, and
+# `RU-8 -> EXPIRED=PO-7`, whose own committed prose already says the other aggregate's fact "does not
+# record that THIS rule expired". The trigger conjunct closes 4 of 13 adj7-sourced routes, not "the
+# route". It is KEPT - it is the only conjunct that refuses `PL-7a -> PL-7b` - and a second is ADDED.
+#
+# ### THE SECOND CONJUNCT: SAME MACHINE. state-machines/registry.md sec 1 declares the UNIVERSAL
+# ORDERING KEY `(tenant_id, aggregate_id, aggregate_version)`. A target on a DIFFERENT machine is a
+# DIFFERENT AGGREGATE, so its event carries a different `aggregate_id` and cannot, under this
+# repository's own envelope, be the record of THIS aggregate's state change. This is the exact
+# structural DUAL of the already-adjudicated CONSUMES rule 5c, which requires CROSS-machine on the
+# authority of state-machines/registry.md:182: a co-transition mirror necessarily spans two
+# aggregates, and a delegation of one aggregate's own record necessarily does not. Both conjuncts
+# derive from one line of specification; neither is fitted to an exploit list.
+#
+#   base predicate (target exists · sec-3 producer · shares target state)   250 admits · 13 adj7
+#   + trigger only                                                          167 admits ·  9 adj7
+#   + same-machine only                                                     102 admits ·  2 adj7
+#   + BOTH                                                                   53 admits ·  0 adj7
+#
+# Same-machine ALONE is insufficient: it still admits `PL-7a -> PL-7b` and `AP-9 -> AP-2`. Trigger
+# ALONE is insufficient: it admits the nine above. Zero declared branches are false-rejected by
+# either, measured over WI-14's five and CF-6's two.
+#
+# ### THE 53 SURVIVORS ARE NECESSARY CONDITIONS, NOT A SEMANTIC PROOF. They are asserted EXACTLY, as
+# a named residual, by ADJUDICATED_DELEGATION_ADMITS below. See that record for what remains open.
+#
+# The whole corpus is swept by
+# test_the_delegation_predicate_is_swept_over_the_whole_corpus_and_its_admitted_set_is_exact, which
+# CALLS `_resolve_delegation` itself over every (row, target state, same-state producer) triple
+# rather than re-implementing a clause inline - the defect (F-03) that let the above ship. It asserts
+# the admitted set EXACTLY in both directions, so deleting EITHER conjunct from the predicate turns
+# it RED.
+#
+# UNDECIDABLE IS A FAILURE. A row whose Trig cell yields no canonical code, or whose machine file
+# yields no machine number, cannot be judged, so it fails closed rather than being waved through as
+# "no constraint".
+
+# FIXED-SPECIFICATION: the seven codes of state-machines/registry.md sec 1, a closed set declared by
+# the specification itself - not a discovered population.
+TRIGGER_CODES = frozenset("HSXTPBR")
+_TRIGGER_TOKEN = re.compile(r"(?<![A-Za-z])([A-Z])(?![A-Za-z])")
+
+
+def _trigger_types(row: dict) -> set[str]:
+    """The row's declared trigger-type set, read from the structured `Trig` column and nothing else.
+
+    `S\\|H` -> {S, H}; `T\\|B\\|P` -> {T, B, P}; `S` -> {S}. Only codes in the closed set count, so a
+    stray capital in a cell contributes nothing and an empty result means UNDECIDABLE.
+    """
+    return {t for t in _TRIGGER_TOKEN.findall(row.get("trig", "") or "") if t in TRIGGER_CODES}
 
 
 def _durable_write(row: dict, states: set[str]) -> bool:
@@ -369,11 +469,41 @@ def _classify(rows: list[dict], producers_of: dict[str, set[str]]) -> dict:
     return {"classified": classified, "errors": errors}
 
 
-def _resolve_delegation(spec: str, rows_by_id: dict, producers_of: dict, states: set[str]) -> dict:
+def _resolve_delegation(source: dict, spec: str, rows_by_id: dict, producers_of: dict,
+                        states: set[str]) -> dict:
     """`BLOCKED=WI-5,WI-6;AWAITING_HUMAN=WI-7` -> {state: owner_event}. Ownership is resolved by
     TARGET STATE and never positionally (G2-D3): WI-5 and WI-6 BOTH target BLOCKED, so the word
-    "respectively" over four states and five references could not decide it."""
+    "respectively" over four states and five references could not decide it.
+
+    ### `source` IS REQUIRED, NOT OPTIONAL (R3-A). Target-state agreement alone is a FALSE predicate:
+    it accepts `PL-7a -> CHECKPOINT=PL-7b`, where the target's event asserts a bound human approval
+    the delegating row never obtained. The delegating row's own `Trig` set must INTERSECT each
+    target's, AND the target must live on the SAME MACHINE - a different machine is a different
+    aggregate under sec 1's `(tenant_id, aggregate_id, aggregate_version)` ordering key, so its event
+    cannot be the record of THIS aggregate's state change. Both conjuncts need the source row, which
+    is why it is positional and first. Making it defaultable would restore the fail-open this closes.
+
+    ### BOTH CONJUNCTS ARE REQUIRED AND NEITHER SUFFICES (re-adjudication F-01, ruling on the
+    remediation scope). Trigger alone admits nine routes sourced at the seven founder-gated rows;
+    same-machine alone still admits `PL-7a -> PL-7b` and `AP-9 -> AP-2`. Together they admit 53 of
+    250 expressible triples, none sourced at the seven, and false-reject none of the seven declared
+    branches. Each fails CLOSED when its datum is undecidable.
+    """
     resolution, errors = {}, []
+    source_trig = _trigger_types(source)
+    source_machine = _machine_number(source.get("machine", ""))
+    if not source_trig:
+        errors.append(
+            f"{source.get('key', '<row>')}: its own Trig cell {source.get('trig', '')!r} yields no "
+            f"canonical trigger code from {sorted(TRIGGER_CODES)} - a delegation whose trigger type "
+            "is UNDECIDABLE fails closed; it is never treated as unconstrained"
+        )
+    if source_machine is None:
+        errors.append(
+            f"{source.get('key', '<row>')}: its machine {source.get('machine', '')!r} yields no "
+            "machine number, so the same-aggregate relationship cannot be DECIDED - a delegation "
+            "whose aggregate identity is UNDECIDABLE fails closed"
+        )
     for branch in [b for b in spec.split(";") if b]:
         if "=" not in branch:
             errors.append(f"malformed delegation branch {branch!r} - expected <TO_STATE>=<ids>")
@@ -400,6 +530,46 @@ def _resolve_delegation(spec: str, rows_by_id: dict, producers_of: dict, states:
                 errors.append(f"{state}: delegation target {tid} does not itself transition to "
                               f"{state} (its To set is {sorted(target_to)}) - positional matching "
                               "is forbidden; targets are matched by target state")
+            # ---- R3-A: the delegating row's trigger type must INTERSECT the target's. Reaching the
+            # same state is not enough - the target must be reachable by the trigger THIS row carries,
+            # or its event records a different fact about a different cause.
+            target_trig = _trigger_types(rows_by_id[tid])
+            if not target_trig:
+                errors.append(                                          # UNDECIDABLE fails closed
+                    f"{state}: delegation target {tid}'s Trig cell "
+                    f"{rows_by_id[tid].get('trig', '')!r} yields no canonical trigger code, so the "
+                    "trigger relationship cannot be DECIDED - never a pass, never a skip"
+                )
+            elif source_trig and not (source_trig & target_trig):
+                errors.append(
+                    f"{state}: delegation target {tid} has DISJOINT TRIGGER TYPES from the "
+                    f"delegating row - the row is triggered by {sorted(source_trig)}, {tid} by "
+                    f"{sorted(target_trig)} (state-machines/registry.md sec 1). A target the "
+                    "delegating row's own trigger can never fire does not perform this row's "
+                    "transition, so its event records a DIFFERENT fact with a DIFFERENT cause and "
+                    "cannot be delegated to"
+                )
+            # ---- SAME MACHINE = SAME AGGREGATE. state-machines/registry.md sec 1's universal
+            # ordering key is (tenant_id, aggregate_id, aggregate_version). A target on another
+            # machine is another AGGREGATE, so its event carries a different aggregate_id and is the
+            # record of a DIFFERENT object's history - never of this row's write. The structural dual
+            # of consumes_valid 5c, which requires CROSS-machine for a co-transition mirror.
+            target_machine = _machine_number(rows_by_id[tid]["machine"])
+            if target_machine is None:
+                errors.append(                                          # UNDECIDABLE fails closed
+                    f"{state}: delegation target {tid}'s machine "
+                    f"{rows_by_id[tid]['machine']!r} yields no machine number, so the "
+                    "same-aggregate relationship cannot be DECIDED - never a pass, never a skip"
+                )
+            elif source_machine is not None and target_machine != source_machine:
+                errors.append(
+                    f"{state}: delegation target {tid} is CROSS-MACHINE - the delegating row is on "
+                    f"M{source_machine}, {tid} on M{target_machine} (state-machines/registry.md "
+                    "sec 1: the universal ordering key is (tenant_id, aggregate_id, "
+                    "aggregate_version)). A different machine is a DIFFERENT AGGREGATE, so the "
+                    "target's event carries a different aggregate_id and records a different "
+                    "object's history; it can never be the record of THIS aggregate's write"
+                )
             owners |= producers_of[tid]
         if len(owners) == 0:
             errors.append(f"{state}: delegation resolves to ZERO event owners")
@@ -409,6 +579,97 @@ def _resolve_delegation(spec: str, rows_by_id: dict, producers_of: dict, states:
         else:
             resolution[state] = next(iter(owners))
     return {"resolution": resolution, "errors": errors}
+
+
+# ------------------------------------ THE DELEGATION RESIDUAL: what the predicate still lets through
+#
+# ### THESE ARE NECESSARY CONDITIONS, NOT A SEMANTIC PROOF - AND THIS RECORD IS THE ADMISSION.
+# `_resolve_delegation` proves five structural facts: the target exists, it is a sec-3 producer, it
+# transitions to the delegated state, its trigger types intersect the delegating row's, and it lives
+# on the same machine (= the same aggregate). Every one is NECESSARY for a delegation to be
+# truthful. Together they are NOT SUFFICIENT: nothing here reads what the target's event MEANS.
+#
+# This is the same standard the repository already accepted for CONSUMES-VALID, whose four conjuncts
+# are likewise necessary conditions carrying the recorded ADJUDICATED_UNDECLARED_ACCEPTS residual
+# above. What the re-adjudication of f01d942 refused was not the imprecision - it was announcing the
+# imprecision as CLOSURE. So the surviving population is asserted EXACTLY, in both directions, and
+# the two members that are visibly semantically wrong are NAMED:
+#
+#   EF-1 -> GRANTED=EF-2f    EF-2f owns `ClaimRefused` - an IDEMPOTENT REFUSAL of a second claim on
+#                            an already-claimed grant. It is on M3, it reaches `GRANTED`, and its
+#                            trigger intersects EF-1's, so all five conjuncts hold. It is not the
+#                            record of EF-1's grant. NOT DECLARED by the corpus and NOT CLOSED here:
+#                            refusing it needs a reading of what the event ASSERTS, which no
+#                            structured column carries.
+#   IB-1 -> PROPOSED=IB-3    same shape on M6.
+#
+# The remaining 49 are same-machine sibling pairs that reach a shared state (the WI, BR, EX, EC, OB
+# and PL clusters). None is DECLARED by the corpus - the corpus declares seven branches, all of them
+# in this set - and none is sourced at a member of ADJUDICATED_EVENT_REQUIRED, which is the property
+# the founder-gate depends on and which the node below asserts separately.
+#
+# ### THIS SET IS A MEASUREMENT, NOT A TARGET. It is what
+# test_the_delegation_predicate_is_swept_over_the_whole_corpus_and_its_admitted_set_is_exact
+# recomputes by CALLING `_resolve_delegation` over all 250 structurally-expressible triples. Deleting
+# EITHER conjunct from the predicate makes the set grow and turns that node RED:
+#
+#   both conjuncts                 51 admitted · 0 sourced at the adjudicated seven · 0 false rejects
+#   trigger conjunct deleted      157 admitted · 9 sourced at the adjudicated seven
+#   same-machine conjunct deleted  96 admitted · 2 sourced at the adjudicated seven
+#   both deleted                  235 admitted · 13 sourced at the adjudicated seven
+ADJUDICATED_DELEGATION_ADMITS = frozenset({
+    ("01-work-item:WI-11", "IN_PROGRESS", "WI-13"),
+    ("01-work-item:WI-11", "IN_PROGRESS", "WI-9"),
+    ("01-work-item:WI-13", "IN_PROGRESS", "WI-11"),
+    ("01-work-item:WI-13", "IN_PROGRESS", "WI-9"),
+    ("01-work-item:WI-14", "AWAITING_HUMAN", "WI-7"),          # DECLARED
+    ("01-work-item:WI-14", "BLOCKED", "WI-5"),                 # DECLARED
+    ("01-work-item:WI-14", "BLOCKED", "WI-6"),                 # DECLARED
+    ("01-work-item:WI-14", "CANCELLED", "WI-12"),              # DECLARED
+    ("01-work-item:WI-14", "CLOSED", "WI-3"),                  # DECLARED
+    ("01-work-item:WI-2", "IN_PROGRESS", "WI-4"),
+    ("01-work-item:WI-2", "IN_PROGRESS", "WI-8"),
+    ("01-work-item:WI-4", "IN_PROGRESS", "WI-2"),
+    ("01-work-item:WI-4", "IN_PROGRESS", "WI-8"),
+    ("01-work-item:WI-5", "BLOCKED", "WI-6"),
+    ("01-work-item:WI-6", "BLOCKED", "WI-5"),
+    ("01-work-item:WI-8", "IN_PROGRESS", "WI-2"),
+    ("01-work-item:WI-8", "IN_PROGRESS", "WI-4"),
+    ("01-work-item:WI-9", "IN_PROGRESS", "WI-11"),
+    ("01-work-item:WI-9", "IN_PROGRESS", "WI-13"),
+    ("02-pipeline-instance:PL-10", "EXECUTED", "PL-11d"),
+    ("02-pipeline-instance:PL-3", "REJECTED", "PL-5"),
+    ("02-pipeline-instance:PL-5", "REJECTED", "PL-3"),
+    ("02-pipeline-instance:PL-7v", "VOIDED", "PL-9v"),
+    ("02-pipeline-instance:PL-9v", "VOIDED", "PL-7v"),
+    ("03-external-effect-grant:EF-1", "GRANTED", "EF-2f"),     # NAMED RESIDUAL - see above
+    ("03-external-effect-grant:EF-2f", "GRANTED", "EF-1"),
+    ("03-external-effect-grant:EF-4", "VERIFIED", "EF-5"),
+    ("03-external-effect-grant:EF-5", "VERIFIED", "EF-4"),
+    ("04-approval:AP-8", "GRANTED", "AP-9"),
+    ("05-observation:OB-3", "BOUND", "OB-4"),
+    ("05-observation:OB-4", "BOUND", "OB-3"),
+    ("06-identity-binding-claim:IB-1", "PROPOSED", "IB-3"),    # NAMED RESIDUAL - see above
+    ("06-identity-binding-claim:IB-2", "CONFIRMED", "IB-2r"),
+    ("06-identity-binding-claim:IB-2r", "CONFIRMED", "IB-2"),
+    ("06-identity-binding-claim:IB-3", "PROPOSED", "IB-1"),
+    ("06-identity-binding-claim:IB-5x", "CONFIRMED", "IB-2"),
+    ("06-identity-binding-claim:IB-5x", "CONFIRMED", "IB-2r"),
+    ("07-conflict:CF-6", "RESOLVED_BY_HUMAN", "CF-4"),         # DECLARED
+    ("07-conflict:CF-6", "RESOLVED_BY_RULE", "CF-3"),          # DECLARED
+    ("08-expectation:EX-1", "RAISED", "EX-5"),
+    ("08-expectation:EX-2", "DISCHARGED", "EX-4"),
+    ("08-expectation:EX-4", "DISCHARGED", "EX-2"),
+    ("08-expectation:EX-5", "RAISED", "EX-1"),
+    ("09-exception:EC-3", "RESOLVED", "EC-6"),
+    ("09-exception:EC-6", "RESOLVED", "EC-3"),
+    ("13-brake:BR-1", "ACTIVE", "BR-2"),
+    ("13-brake:BR-1", "ACTIVE", "BR-3"),
+    ("13-brake:BR-2", "ACTIVE", "BR-1"),
+    ("13-brake:BR-2", "ACTIVE", "BR-3"),
+    ("13-brake:BR-3", "ACTIVE", "BR-1"),
+    ("13-brake:BR-3", "ACTIVE", "BR-2"),
+})
 
 
 # ------------------------------------------------------- CONSUMES-VALID: the co-transition contract
@@ -774,10 +1035,46 @@ ADJUDICATED_EVENT_REQUIRED = frozenset({
 DISCHARGE_ROUTES = ("MINTED_CANONICAL_EVENT", "PRE_EXISTING_STRUCTURAL_PROOF")
 
 
-def _discharge_route_errors(key: str, entry: dict, rec: dict, ctx: dict, states: set[str]) -> list:
+def _registered_durable_writes(audit: dict) -> dict[str, str]:
+    """`{transition: durable_write}` from the FOUNDER-GATED OBLIGATION REGISTER.
+
+    This is the authoritative statement of WHAT WRITE each frozen-set member performs, written when
+    the obligation was adjudicated and held under
+    test_the_founder_gated_event_obligations_are_explicit_and_cannot_be_silently_discharged, which
+    requires every register entry to carry a NON-EMPTY `durable_write` and forbids the register to
+    shrink. It is therefore a datum the discharging edit may not quietly empty.
+    """
+    return {str(o.get("transition", "")): str(o.get("durable_write", "") or "").strip()
+            for o in (audit.get("founder_gated_event_obligations") or [])}
+
+
+# ### N-01 (P5 U5.2 replacement). A DISCHARGE MAY NEVER BE ADMITTED ON A RE-READING OF A CELL THE
+# ### DISCHARGING EDIT IS ITSELF PERMITTED TO CHANGE.
+#
+# The first candidate f01d942 re-proved the NON_PRODUCING route with `_durable_write(rec["row"])` -
+# a re-reading of the row's own `Writes` cell. That cell is authored by the very edit performing the
+# discharge, so the route was self-certifying: empty the Writes cell, flip the Event cell to
+# `NON_PRODUCING:ENUMERATED_NO_OP`, coordinate the audit records, and the row leaves the frozen seven
+# with the discharge machinery green. Three of the seven - AP-9, CF-7 and EC-7, precisely those whose
+# durable write is a FIELD write rather than a state change - fell to a TWO-CELL specification edit,
+# AP-9 being the row of the 38b4bda rejection. This is the same self-certification the 38b4bda
+# adjudication forbade for CONSUMES, applied to the one route that never received the ruling.
+#
+# THE RULE. For a member of ADJUDICATED_EVENT_REQUIRED the register's own `durable_write` field is
+# authoritative, not the row's cell - and every member's register entry records one, because the
+# obligation EXISTS only because the write does. The NON_PRODUCING route is therefore STRUCTURALLY
+# UNAVAILABLE to a frozen-set member: a row may leave by minting the fact it was missing, or by
+# proving a PRE-EXISTING relationship (CONSUMES / DELEGATES_TO) that acquires somebody else's event -
+# never by asserting that the write the adjudication recorded does not happen. Retracting the write
+# itself is an amendment of the adjudicated set, which has its own guard and its own authority.
+# ZERO FALSE REJECTS: no discharge in this corpus uses the route, and the register field it reads is
+# separately held non-empty and non-shrinkable.
+def _discharge_route_errors(key: str, entry: dict, rec: dict, ctx: dict, states: set[str],
+                            audit: dict) -> list:
     """### A discharge is real only if the row NOW SATISFIES THE TRUTH PREDICATE of the class it
     moved into. This is what stops a launderer from simply WRITING a discharge record: the record is
-    a claim, and the claim is re-proven here from structured data."""
+    a claim, and the claim is re-proven here from structured data - and never from data the
+    discharging edit authored (N-01)."""
     route = entry.get("route")
     if route == "MINTED_CANONICAL_EVENT":
         event = str(entry.get("event", ""))
@@ -793,11 +1090,30 @@ def _discharge_route_errors(key: str, entry: dict, rec: dict, ctx: dict, states:
                     for e in _consumes_relationship_errors(
                         rec["row"], [n for n in rec["arg"].split(",") if n], ctx)]
         if rec["class"] == "NON_PRODUCING":
+            # ---- N-01. The route may NOT be re-proven from the row's own `Writes` cell, which the
+            # discharging edit authors. The obligation register is the authority.
+            registered = _registered_durable_writes(audit).get(key)
+            if registered is None:
+                return [f"{key}: claims the NON_PRODUCING route while carrying NO entry in "
+                        "founder_gated_event_obligations - the durable write this row was gated on "
+                        "can then only be re-read from the row's OWN Writes cell, which the "
+                        "discharging edit authors. FAIL CLOSED: the register may not shrink"]
+            if registered:
+                return [
+                    f"### {key}: NON_PRODUCING IS NOT AN AVAILABLE DISCHARGE ROUTE FOR AN "
+                    f"ADJUDICATED FOUNDER-GATED ROW. The obligation register records its durable "
+                    f"write as {registered!r}. Re-proving 'this row writes nothing' from the row's "
+                    "own `Writes` cell would let the DISCHARGING EDIT supply its own evidence - the "
+                    "self-certification the 38b4bda adjudication forbade. A member leaves by "
+                    "MINTING the fact it was missing, or by proving a PRE-EXISTING CONSUMES / "
+                    "DELEGATES_TO relationship that acquires another row's event. Retracting the "
+                    "write is an AMENDMENT OF THE ADJUDICATED SET, not a discharge of it"
+                ]
             return ([f"{key}: claims NON_PRODUCING while still performing a durable write"]
                     if _durable_write(rec["row"], states) else [])
         if rec["class"] == "DELEGATES_TO":
             return [f"{key}: claims a DELEGATES_TO proof that does not resolve: {e}"
-                    for e in _resolve_delegation(rec["arg"], ctx["rows_by_id"],
+                    for e in _resolve_delegation(rec["row"], rec["arg"], ctx["rows_by_id"],
                                                  ctx["producers_of"], states)["errors"]]
         return [f"{key}: claims a structural proof but is classified {rec['class']}"]
     return []                                     # an unknown route is reported by the caller
@@ -833,6 +1149,19 @@ def _event_required_set_errors(classified: dict, audit: dict, ctx: dict, states:
         if not str(entry.get("authority", "")).strip():
             errors.append(f"{key}: the discharge cites no authority - it may not be self-certified "
                           "by the same edit that performs the reclassification")
+    # ### N-01's AUTHORITY MUST EXIST BEFORE IT CAN BE CONSULTED. Every adjudicated member records
+    # its durable write in the obligation register; that field is what makes the NON_PRODUCING route
+    # structurally unavailable, so an empty or missing one is a build failure HERE and not only in
+    # the register's own node. Fail closed: a launderer who empties the field must also delete this.
+    registered_writes = _registered_durable_writes(audit)
+    for key in sorted(ADJUDICATED_EVENT_REQUIRED):
+        if not registered_writes.get(key):
+            errors.append(
+                f"{key}: the founder-gated obligation register records no durable_write for this "
+                "adjudicated member. That field is the AUTHORITY that bars the NON_PRODUCING "
+                "discharge route (N-01); without it the route would fall back to re-reading the "
+                "row's own Writes cell, which the discharging edit authors"
+            )
     computed = {k for k, v in classified.items() if v["class"] == "EVENT_REQUIRED"}
     for key in sorted(ADJUDICATED_EVENT_REQUIRED):
         if key in computed:
@@ -852,7 +1181,7 @@ def _event_required_set_errors(classified: dict, audit: dict, ctx: dict, states:
         if rec is None:
             errors.append(f"{key}: discharged, and no longer classified at all")
             continue
-        errors += _discharge_route_errors(key, entry, rec, ctx, states)
+        errors += _discharge_route_errors(key, entry, rec, ctx, states, audit)
     for key in sorted(computed - set(ADJUDICATED_EVENT_REQUIRED)):
         errors.append(
             f"{key} JOINED EVENT_REQUIRED without amending the frozen adjudicated record - "
@@ -902,15 +1231,48 @@ def test_the_transition_corpus_is_positively_anchored_and_every_row_is_column_al
     )
 
 
-def test_no_new_canonical_event_was_minted_and_the_total_is_still_98():
-    """The frozen registry. AC-TRACE-000 asserts 98/98 and five canonical documents repeat it.
-    Exact set equality against the registered expectation, so a swap at constant total fails."""
+MINTED_2026_08_12 = {
+    "AutonomousAdmissionRecorded": "PL-7a", "ApprovalFrozen": "AP-9",
+    "ConflictPartyAttached": "CF-7", "ExceptionSeverityChanged": "EC-7",
+    "PolicySubmitted": "PO-2", "PolicyApproved": "PO-3", "RuleExpired": "RU-8",
+}
+
+
+def test_the_canonical_event_registry_equals_its_registered_expectation_exactly():
+    """### REPLACED, NOT WEAKENED (P5 U5.2; CLAUDE.md sec 5 rule 20). This node was
+    `test_no_new_canonical_event_was_minted_and_the_total_is_still_98`, and it asserted the literal
+    98 because the registry was frozen to every session below founder/architect authority. Seven
+    events have now been minted BY that authority, so the literal became false and the node could only
+    be deleted or re-pointed. RE-POINTED, and the invariant it actually carries is unchanged:
+
+      * the canonical set equals the REGISTERED expectation by EXACT SET EQUALITY, so a swap at
+        constant total still fails - that was always the real oracle, and the number was the
+        diagnostic;
+      * the seven minted names are pinned INDIVIDUALLY to the transitions they were authorized for,
+        so "seven were added" cannot be satisfied by seven DIFFERENT events;
+      * every other name is byte-identical to the certified predecessor's set - the mint added, and
+        changed nothing.
+
+    Deleting this node instead would have removed the only place the event corpus is bound to a
+    reviewed list at all."""
     sys.path.insert(0, str(ROOT / "eval"))
     from phase0 import manifest
 
     registry = _event_registry()
     owned = {e["name"] for e in registry["owned"]}
-    assert len(owned) == 98, f"the F1-F13 canonical event total is {len(owned)}, not 98"
+    assert len(owned) == 105, f"the F1-F13 canonical event total is {len(owned)}, not 105"
+    # the mint, name by name and producer by producer - not merely "seven more than before"
+    for name, tid in sorted(MINTED_2026_08_12.items()):
+        assert name in owned, f"{name} left the canonical corpus"
+        assert registry["producers_of"].get(tid) == {name}, (
+            f"{tid}'s sec-3 ownership is {registry['producers_of'].get(tid)}, not {{{name!r}}} - the "
+            "authorized mint bound exactly one event to exactly one transition"
+        )
+    # nothing else moved: the corpus is the pre-mint 98 plus exactly these seven
+    assert len(owned - set(MINTED_2026_08_12)) == 98, (
+        "the canonical corpus is not the previous 98 plus the seven authorized names - something "
+        f"other than the mint changed it: {sorted(owned - set(MINTED_2026_08_12))}"
+    )
     assert owned == manifest.expected_event_names(), (
         "the canonical event set drifted from the registered expectation: "
         f"registry-only={sorted(owned - manifest.expected_event_names())}, "
@@ -925,6 +1287,50 @@ def test_no_new_canonical_event_was_minted_and_the_total_is_still_98():
 
 
 # ------------------------------------------------------------ the producer map <-> corpus bijection
+
+def test_the_consequential_event_list_is_a_guarded_subset_of_the_canonical_corpus():
+    """### F-05. events/registry.md sec 5 decides WHICH events must carry the SD-3 `entity_versions`
+    set, the material-facts fingerprint, `policy_version` and `brake_version` - the pins that let a
+    replay reproduce the decision context of a consequential act. Nothing in eval/ read that list, so
+    a member could be struck with the entire canonical suite green.
+
+    Three properties, all read from the LIST LINE and never from the prose beneath it:
+
+      (1) the list is DECIDABLE and non-empty - an unparseable sec 5 fails closed rather than
+          silently yielding an empty set that every subset assertion would then satisfy;
+      (2) every member EXISTS in the sec-3 canonical corpus - a consequential event that is not a
+          canonical event is a pin obligation attached to nothing;
+      (3) the SAFETY SPINE is present. These are not a sample: each is the event that carries the
+          decision context of an act with real-world consequence, and `PolicyApproved` is here
+          because P5 U5.2 promoted it and the promotion was offered as the "no admin path" evidence.
+          The list may GROW - a new consequential event is normal - but a member may not silently
+          LEAVE."""
+    consequential = require_population(_consequential_events(),
+                                       "events/registry.md sec 5 CONSEQUENTIAL members")
+    assert len(consequential) == len(set(consequential)), (
+        f"sec 5 names an event twice: "
+        f"{sorted({n for n in consequential if consequential.count(n) > 1})}"
+    )
+    corpus = set(_event_registry()["corpus"])
+    dangling = sorted(set(consequential) - corpus)
+    assert not dangling, (
+        f"sec 5 declares {dangling} CONSEQUENTIAL, and sec 3 does not declare them at all - a pin "
+        "obligation attached to an event that does not exist"
+    )
+    # FIXED-SPECIFICATION: the acts whose decision context a replay must be able to reproduce.
+    spine = {"ApprovalRequested", "ApprovalGranted", "ApprovalConsumed", "CheckpointPassed",
+             "EffectGranted", "GrantClaimed", "EffectAttempted", "EffectExecuted", "EffectVerified",
+             "EffectFailed", "OutcomeUnknown", "RealityEstablished", "CompensationApproved",
+             "CompensationStarted", "CompensationCompleted", "ClaimConfirmed", "PolicyApproved",
+             "PolicyActivated", "PolicyVersionChanged", "BrakeEngaged", "BrakeReleased"}
+    missing = sorted(spine - set(consequential))
+    assert not missing, (
+        f"### {missing} LEFT sec 5's CONSEQUENTIAL LIST. A consequential event that stops being "
+        "consequential stops having to pin the SD-3 entity_versions set, the material-facts "
+        "fingerprint, policy_version and brake_version - so a replay can no longer reproduce the "
+        "decision context of the act it records. Removing one is an adjudicated act, not an edit"
+    )
+
 
 def test_the_producer_map_and_the_transition_corpus_are_bijective():
     """G2-D11. The sec-3 map, the corpus and the classification form ONE relation, asserted in both
@@ -1011,7 +1417,10 @@ def test_every_transition_is_classified_and_unknown_classification_is_a_failure(
     )
     classified = require_population(g2["result"]["classified"], "classified transitions")
     assert len(classified) == 134, f"only {len(classified)} of 134 rows classified"
-    counts: dict[str, int] = {}
+    # Every class in the closed vocabulary is counted, INCLUDING the ones with zero members. A dict
+    # built only from observed classes silently drops an emptied class, and "the key is absent" would
+    # then compare equal to nothing at all - which is how an emptied class stops being asserted.
+    counts: dict[str, int] = {c: 0 for c in ("PRODUCER", *CLASS_TOKENS)}
     for rec in classified.values():
         counts[rec["class"]] = counts.get(rec["class"], 0) + 1
     audit = _audit()
@@ -1060,8 +1469,8 @@ def test_delegation_resolves_to_exactly_one_owner_per_target_state():
     )
     offenders = []
     for key, rec in sorted(marked.items()):
-        got = _resolve_delegation(rec["arg"], g2["rows_by_id"], g2["registry"]["producers_of"],
-                                 g2["states"])
+        got = _resolve_delegation(rec["row"], rec["arg"], g2["rows_by_id"],
+                                  g2["registry"]["producers_of"], g2["states"])
         offenders += [f"{key}: {e}" for e in got["errors"]]
         own_to = _states_in(rec["row"]["from_to"].split("→", 1)[-1], g2["states"])
         if set(got["resolution"]) != own_to:
@@ -1072,7 +1481,7 @@ def test_delegation_resolves_to_exactly_one_owner_per_target_state():
     assert not offenders, "invalid DELEGATES_TO declarations:\n  " + "\n  ".join(offenders)
     recorded = {m["key"]: {s: b["owner_event"] for s, b in m["resolution"].items()}
                 for c in _audit()["classes"] if c["name"] == "DELEGATES_TO" for m in c["members"]}
-    computed = {k: _resolve_delegation(v["arg"], g2["rows_by_id"],
+    computed = {k: _resolve_delegation(v["row"], v["arg"], g2["rows_by_id"],
                                        g2["registry"]["producers_of"], g2["states"])["resolution"]
                 for k, v in marked.items()}
     assert computed == recorded, f"delegation ownership drifted: {computed} vs {recorded}"
@@ -1215,11 +1624,67 @@ def test_every_durable_write_is_recorded_by_an_event_or_a_registered_open_obliga
     )
 
 
+def _recorded_discharges(audit: dict) -> dict[str, dict]:
+    """The transitions the audit records as DISCHARGED, keyed by transition. A claim, not a proof -
+    `_discharge_route_errors` re-derives every one from the specification."""
+    record = audit.get("frozen_event_required_set") or {}
+    return {str(e.get("transition", "")): e for e in (record.get("discharges") or [])}
+
+
+def _g2_status_errors(audit: dict) -> list[str]:
+    """### THE FAIL-CLOSED STATUS PREDICATE, extracted so it can be attacked over a MUTATED audit.
+
+    Held as a predicate rather than as three literal assertions because the property is
+    CONDITIONAL - "no discharged status value WHILE an obligation is open" - and a literal assertion
+    can only ever describe whichever side of the condition the corpus happens to be on today. The
+    hostile node feeds it a synthetic open obligation and requires it to bite.
+    """
+    errors: list[str] = []
+    meta = audit["meta"]
+    obligations = audit["founder_gated_event_obligations"] or []
+    if not obligations:
+        return ["the founder-gated obligation register is EMPTY - discharged obligations are "
+                "RETAINED with their discharge recorded, never deleted; an empty register means the "
+                "history of the finding was erased, which is a build failure and not tidying"]
+    open_ids = [o["id"] for o in obligations if str(o.get("status", "OPEN")).upper() != "DISCHARGED"]
+    if meta.get("discharged_status_value_forbidden_while_obligations_open") is not True:
+        errors.append("the audit no longer asserts that a discharged status is forbidden while "
+                      "obligations are open - the fail-closed rule cannot be switched off")
+    if meta.get("open_founder_gated_obligations") != len(open_ids):
+        errors.append(
+            f"meta.open_founder_gated_obligations={meta.get('open_founder_gated_obligations')!r} "
+            f"but {len(open_ids)} obligation(s) carry a non-DISCHARGED status: {sorted(open_ids)}"
+        )
+    if meta.get("discharged_founder_gated_obligations") != len(obligations) - len(open_ids):
+        errors.append("meta.discharged_founder_gated_obligations disagrees with the register")
+    if meta.get("total_founder_gated_obligations") != len(obligations):
+        errors.append("meta.total_founder_gated_obligations disagrees with the register - the "
+                      "retained history and the count of it must not drift apart")
+    status = str(meta.get("status", ""))
+    if open_ids and "DISCHARGED" in status and "PARTIALLY" not in status:
+        errors.append(
+            f"### G2 records status {status!r} while {len(open_ids)} founder-gated obligation(s) "
+            f"are OPEN: {sorted(open_ids)}. A discharged status value may not be set while any "
+            "obligation is open - that is the whole fail-closed rule"
+        )
+    return errors
+
+
 def test_the_founder_gated_event_obligations_are_explicit_and_cannot_be_silently_discharged():
-    """The seven durable writes no canonical event records. Each carries a registered obligation id
+    """The seven durable writes no canonical event recorded. Each carries a registered obligation id
     that is NOT an event-shaped name and is NOT in the canonical corpus - a placeholder masquerading
-    as a canonical event name is exactly what the founder/architect boundary forbids. While any
-    obligation is open, the audit may not record a discharged status."""
+    as a canonical event name is exactly what the founder/architect boundary forbids.
+
+    ### REPLACED, NOT WEAKENED (P5 U5.2). All seven are now DISCHARGED by minted canonical events
+    under founder/architect authority, so the old "spec EVENT_REQUIRED ids == registered obligation
+    ids" equality would now read `{} == {}` and pass over nothing. The equality is kept for the OPEN
+    obligations, where it is what it always was, and a second, equally exact equality is added for the
+    DISCHARGED ones: each must be absent from the specs, must name the event that discharged it, and
+    that discharge must be recorded in `frozen_event_required_set.discharges` and re-proven there.
+
+    ### THE REGISTER ITSELF MAY NOT SHRINK. A discharged obligation stays, with its
+    `semantic_obligation` and `why_it_matters` intact. Deleting one erases the record of what was
+    wrong, which is exactly how a repaired defect regresses unnoticed."""
     g2 = _g2_state()
     audit = _audit()
     obligations = require_population(audit["founder_gated_event_obligations"],
@@ -1227,9 +1692,12 @@ def test_the_founder_gated_event_obligations_are_explicit_and_cannot_be_silently
     by_id = {o["id"]: o for o in obligations}
     corpus = set(g2["registry"]["corpus"])
     marked = {k: v for k, v in g2["result"]["classified"].items() if v["class"] == "EVENT_REQUIRED"}
-    assert {v["arg"] for v in marked.values()} == set(by_id), (
-        f"obligation ids in the specs {sorted(v['arg'] for v in marked.values())} do not match the "
-        f"registered obligations {sorted(by_id)}"
+    discharges = _recorded_discharges(audit)
+
+    open_ids = {o["id"] for o in obligations if str(o.get("status", "OPEN")).upper() != "DISCHARGED"}
+    assert {v["arg"] for v in marked.values()} == open_ids, (
+        f"obligation ids carried by EVENT_REQUIRED rows {sorted(v['arg'] for v in marked.values())} "
+        f"do not match the OPEN registered obligations {sorted(open_ids)}"
     )
     offenders = []
     for oid, obligation in sorted(by_id.items()):
@@ -1238,16 +1706,40 @@ def test_the_founder_gated_event_obligations_are_explicit_and_cannot_be_silently
                              "missing fact, they never mint a name")
         for field in ("transition", "durable_write", "semantic_obligation", "decision_required"):
             if not str(obligation.get(field, "")).strip():
-                offenders.append(f"{oid}: missing {field} - the gated decision must stay explicit")
-        if obligation["transition"] not in marked:
-            offenders.append(f"{oid}: names {obligation['transition']}, which is not EVENT_REQUIRED")
+                offenders.append(f"{oid}: missing {field} - the gated decision must stay explicit, "
+                                 "discharged or not")
+        transition, discharged = obligation["transition"], oid not in open_ids
+        if not discharged and transition not in marked:
+            offenders.append(f"{oid}: names {transition}, which is not EVENT_REQUIRED")
+        if discharged:
+            if transition in marked:
+                offenders.append(f"{oid}: recorded DISCHARGED while {transition} is still "
+                                 "EVENT_REQUIRED in the specification")
+            event = str(obligation.get("discharging_event", ""))
+            if event not in corpus:
+                offenders.append(f"{oid}: names discharging_event {event!r}, which is not a "
+                                 "canonical event - a discharge may not point at a name that does "
+                                 "not exist")
+            entry = discharges.get(transition)
+            if not entry:
+                offenders.append(f"{oid}: recorded DISCHARGED with no entry in "
+                                 "frozen_event_required_set.discharges - the two records must agree, "
+                                 "and the discharge record is the one that gets re-proven")
+            elif str(entry.get("event", "")) != event:
+                offenders.append(f"{oid}: the obligation names {event!r} and its discharge record "
+                                 f"names {entry.get('event')!r}")
+            elif str(entry.get("route", "")) != str(obligation.get("discharge_route", "")):
+                offenders.append(f"{oid}: obligation route and discharge route disagree")
+            if not str(obligation.get("discharge_authority", "")).strip():
+                offenders.append(f"{oid}: discharged with no authority cited")
     assert not offenders, "invalid founder-gated obligations:\n  " + "\n  ".join(offenders)
-    assert audit["meta"]["open_founder_gated_obligations"] == len(obligations)
-    assert audit["meta"]["status"] == "G2_PARTIALLY_DISCHARGED_FOUNDER_GATED", (
-        f"G2 records status {audit['meta']['status']!r} while {len(obligations)} founder-gated "
-        "event obligations are open - G2 may not be recorded discharged until they are decided"
+
+    assert not _g2_status_errors(audit), (
+        "the G2 status record is not fail-closed:\n  " + "\n  ".join(_g2_status_errors(audit))
     )
-    assert audit["meta"]["canonical_events_F1_F13"] == 98
+    assert audit["meta"]["canonical_events_F1_F13"] == len(
+        {e["name"] for e in g2["registry"]["owned"]}
+    ), "the audit's canonical event total disagrees with events/registry.md sec 3"
 
 
 def test_the_event_required_set_is_frozen_by_identity_and_never_by_count():
@@ -1257,24 +1749,62 @@ def test_the_event_required_set_is_frozen_by_identity_and_never_by_count():
     The guard above proves the specs and the obligation registry AGREE with each other. It cannot
     prove either is TRUE, and a coordinated edit satisfies both while removing a member - which is
     exactly what happened: open_founder_gated_obligations went 7 -> 6 unchallenged. This node binds
-    the population to the ADJUDICATED SEVEN by exact set equality in BOTH directions, reads the
-    frozen record from a named, dated, adjudication-attributed record in the audit, and requires any
-    departure to carry a discharge whose route is then RE-PROVEN from structured data.
+    the population to the ADJUDICATED SEVEN by exact set equality, reads the frozen record from a
+    named, dated, adjudication-attributed record in the audit, and requires any departure to carry a
+    discharge whose route is then RE-PROVEN from structured data.
+
+    ### AMENDED (R3-B), AND THE ANCHOR IS UNMOVED. The previous form asserted
+    `computed == ADJUDICATED_EVENT_REQUIRED == registered` UNCONDITIONALLY. That made BOTH authorized
+    discharge routes dead code: no discharge of any kind could ever pass, however properly recorded
+    and however completely re-proven, so the routes the adjudication defined could never be used and
+    the audit's own `authorized_discharge_routes` were decorative. The amendment is precisely scoped:
+
+        computed == ADJUDICATED_EVENT_REQUIRED - {re-proven recorded discharges}
+
+    ### `ADJUDICATED_EVENT_REQUIRED` IS STILL THE ANCHOR AND IS STILL LITERAL. It is not recomputed,
+    not read from the audit, and not reduced by anything the audit says on its own: a member leaves
+    ONLY by a discharge that `_event_required_set_errors` has already RE-PROVEN from
+    events/registry.md sec 3 in the assertion above this one - which runs FIRST, so no subtraction
+    happens until every claimed discharge has survived its own re-derivation. A row that simply
+    disappears from the specs still trips "LEFT EVENT_REQUIRED WITH NO RECORDED DISCHARGE", and a row
+    that JOINS still trips the converse. The unlocked route is the authorized one; nothing else moved.
 
     The count is asserted last, and only as a CONSEQUENCE of the membership."""
     g2 = _g2_state()
     audit = _audit()
     ctx = _consumes_context(g2)
+
+    # (1) every recorded discharge is RE-PROVEN here, and a silent departure is still a failure.
     errors = _event_required_set_errors(g2["result"]["classified"], audit, ctx, g2["states"])
     assert not errors, "the frozen EVENT_REQUIRED set is not intact:\n  " + "\n  ".join(errors)
 
-    computed = {k for k, v in g2["result"]["classified"].items() if v["class"] == "EVENT_REQUIRED"}
-    registered = {str(o["transition"]) for o in audit["founder_gated_event_obligations"]}
-    assert computed == set(ADJUDICATED_EVENT_REQUIRED) == registered, (
-        f"three-way set identity broke: computed={sorted(computed)}, "
-        f"adjudicated={sorted(ADJUDICATED_EVENT_REQUIRED)}, registered={sorted(registered)}"
+    # (2) the anchor, minus only what (1) just re-proved. Discharges are read from the record, but
+    #     the record buys nothing that (1) has not already independently verified.
+    discharged = set(_recorded_discharges(audit))
+    assert discharged <= set(ADJUDICATED_EVENT_REQUIRED), (
+        f"a discharge names a transition that was never in the adjudicated set: "
+        f"{sorted(discharged - set(ADJUDICATED_EVENT_REQUIRED))}"
     )
-    assert len(computed) == audit["meta"]["open_founder_gated_obligations"] == 7
+    expected_open = set(ADJUDICATED_EVENT_REQUIRED) - discharged
+    computed = {k for k, v in g2["result"]["classified"].items() if v["class"] == "EVENT_REQUIRED"}
+    registered_open = {str(o["transition"]) for o in audit["founder_gated_event_obligations"]
+                       if str(o.get("status", "OPEN")).upper() != "DISCHARGED"}
+    assert computed == expected_open == registered_open, (
+        f"three-way set identity broke: computed={sorted(computed)}, "
+        f"anchored-minus-discharged={sorted(expected_open)}, registered-open={sorted(registered_open)}"
+    )
+
+    # (3) the register still holds ALL SEVEN, discharged or not. The anchor may not be shrunk by
+    #     deleting the history of a member that left it.
+    assert {str(o["transition"]) for o in audit["founder_gated_event_obligations"]} == set(
+        ADJUDICATED_EVENT_REQUIRED
+    ), (
+        "the obligation register no longer covers the adjudicated seven. A DISCHARGED obligation is "
+        "RETAINED, with its semantic_obligation and why_it_matters intact - deleting it erases the "
+        "record of what was wrong, which is how a repaired defect regresses unnoticed"
+    )
+    assert len(computed) == audit["meta"]["open_founder_gated_obligations"]
+    assert len(discharged) == audit["meta"]["discharged_founder_gated_obligations"]
 
 
 # ------------------------------------------------------------ audit + control-document truthfulness
@@ -1290,17 +1820,33 @@ def test_transition_event_audit_matches_the_specs():
     for key, rec in g2["result"]["classified"].items():
         computed.setdefault(rec["class"], set()).add(key)
     assert sum(len(v) for v in computed.values()) == audit["meta"]["total_transitions"] == 134
-    recorded_classes = {c["name"]: c["members"] for c in audit["classes"]}
-    for name in ("NON_PRODUCING", "DELEGATES_TO", "EVENT_REQUIRED", "CONSUMES"):
-        members = require_population(recorded_classes.get(name), f"audit class {name}")
+    recorded_classes = {c["name"]: c for c in audit["classes"]}
+    for name in ("NON_PRODUCING", "DELEGATES_TO", "CONSUMES"):
+        members = require_population(recorded_classes.get(name, {}).get("members"),
+                                     f"audit class {name}")
         keys = {m if isinstance(m, str) else m["key"] for m in members}
-        assert computed[name] == keys, (
-            f"class {name} drifted: computed-only={sorted(computed[name] - keys)}, "
-            f"audit-only={sorted(keys - computed[name])}"
+        assert computed.get(name, set()) == keys, (
+            f"class {name} drifted: computed-only={sorted(computed.get(name, set()) - keys)}, "
+            f"audit-only={sorted(keys - computed.get(name, set()))}"
         )
+    # ### EVENT_REQUIRED IS HANDLED SEPARATELY BECAUSE IT IS LEGITIMATELY EMPTY, and an empty class
+    # must not be waved through by a require_population() that would refuse it. Its emptiness is
+    # asserted against the SPECIFICATION, and the seven that left are asserted against the frozen
+    # anchor - so "empty" here is a proven claim about a known population, not an unmeasured one.
+    er = recorded_classes["EVENT_REQUIRED"]
+    assert computed.get("EVENT_REQUIRED", set()) == {m if isinstance(m, str) else m["key"]
+                                                     for m in (er.get("members") or [])}, (
+        "the audit's EVENT_REQUIRED members drifted from the specification"
+    )
+    assert {m["key"] for m in (er.get("discharged_members") or [])} == set(
+        ADJUDICATED_EVENT_REQUIRED
+    ) - computed.get("EVENT_REQUIRED", set()), (
+        "the audit's discharged_members list does not account for exactly the adjudicated members "
+        "that are no longer EVENT_REQUIRED"
+    )
     view = audit["producer_view"]
-    assert view["producer_transitions"] == len(computed["PRODUCER"]) == 110
-    assert view["non_producer_transitions"] == 134 - len(computed["PRODUCER"]) == 24
+    assert view["producer_transitions"] == len(computed["PRODUCER"]) == 117
+    assert view["non_producer_transitions"] == 134 - len(computed["PRODUCER"]) == 17
     assert view["events_with_zero_producers"] == 0
     assert view["declared_producers_absent_from_the_corpus"] == 0
     # the historical measurement stays labelled historical and is not restated as current truth
@@ -1502,29 +2048,272 @@ def test_hostile_delegation_that_resolves_to_zero_or_several_owners_fails():
     g2 = _g2_state()
     rows_by_id, states = g2["rows_by_id"], g2["states"]
     producers = g2["registry"]["producers_of"]
+    wi14 = rows_by_id["WI-14"]                       # the real delegating row, for its real Trig set
 
-    missing = _resolve_delegation("BLOCKED=WI-999", rows_by_id, producers, states)
+    missing = _resolve_delegation(wi14, "BLOCKED=WI-999", rows_by_id, producers, states)
     assert missing["errors"], "a delegation to a non-existent transition was accepted"
 
-    empty = _resolve_delegation("BLOCKED=", rows_by_id, producers, states)
+    empty = _resolve_delegation(wi14, "BLOCKED=", rows_by_id, producers, states)
     assert empty["errors"], "a delegation with zero targets was accepted"
 
-    non_producer = _resolve_delegation("BLOCKED=PL-7a", rows_by_id, producers, states)
-    assert non_producer["errors"], "a delegation to a non-producing target was accepted"
+    # AP-8 is a NON_PRODUCING row: it owns no sec-3 event, so it has nothing to delegate. (PL-7a used
+    # to serve here and no longer can - it became a sec-3 producer when its event was minted, which
+    # is exactly the kind of drift that turns a hostile fixture into a green no-op.)
+    assert "AP-8" not in producers, "AP-8 became a producer - pick another non-producing target"
+    non_producer = _resolve_delegation(wi14, "BLOCKED=AP-8", rows_by_id, producers, states)
+    assert any("not a sec-3 producer" in e for e in non_producer["errors"]), (
+        f"a delegation to a non-producing target was accepted: {non_producer}"
+    )
 
-    ambiguous = _resolve_delegation("BLOCKED=WI-5,WI-7", rows_by_id, producers, states)
+    ambiguous = _resolve_delegation(wi14, "BLOCKED=WI-5,WI-7", rows_by_id, producers, states)
     assert ambiguous["errors"], (
         "a delegation resolving to two different owner events was accepted - duplicate ownership "
         "must fail closed"
     )
-    wrong_state = _resolve_delegation("CLOSED=WI-5", rows_by_id, producers, states)
+    wrong_state = _resolve_delegation(wi14, "CLOSED=WI-5", rows_by_id, producers, states)
     assert wrong_state["errors"], (
         "a delegation whose target does not transition to the declared state was accepted - that "
         "is positional matching wearing a target-state disguise"
     )
-    good = _resolve_delegation("BLOCKED=WI-5,WI-6", rows_by_id, producers, states)
+    good = _resolve_delegation(wi14, "BLOCKED=WI-5,WI-6", rows_by_id, producers, states)
     assert not good["errors"] and good["resolution"] == {"BLOCKED": "WorkBlocked"}, (
         f"the real WI-14 BLOCKED branch does not resolve: {good}"
+    )
+
+
+# ------------------------------------------------------ R3-A: the FALSE-DELEGATION predicate
+
+def test_hostile_a_row_may_not_delegate_to_a_sibling_its_own_trigger_can_never_fire(monkeypatch):
+    """### R3-A, REPRODUCED EXACTLY AND ASSERTED TO FAIL: `PL-7a -> DELEGATES_TO:CHECKPOINT=PL-7b`.
+
+    Both rows end in `CHECKPOINT` on M2 and PL-7b is a declared sec-3 producer (`ApprovalBound`), so
+    the OLD predicate - target exists, is a producer, shares the target state - accepted it in full.
+    It is semantically FALSE. PL-7b's event asserts an approval BOUND BY A HUMAN to this commit_key;
+    PL-7a is the autonomous-within-caps path, where no human acted at all. Delegating would have let
+    the corpus's HIGHEST-GOVERNANCE row claim a human-approval event as its own record.
+
+    ### THE REJECTION IS STRUCTURAL AND GENERAL. `Trig` is the closed code set of
+    state-machines/registry.md sec 1; PL-7a is `S` and PL-7b is `H`, so `{S} n {H}` is empty. No
+    PL-7a special case exists in the predicate and no prose is read - delete the trigger clause and
+    this node fails, which is the only thing that makes it worth having.
+
+    ### AND IT HOLDS INDEPENDENTLY OF THE FROZEN-SET ANCHOR - PROVEN, NOT ASSERTED (F-04). The
+    candidate f01d942 wrote
+    `assert empty_anchor["errors"] and not frozenset() & ADJUDICATED_EVENT_REQUIRED`, in which
+    `empty_anchor` was a BYTE-IDENTICAL recomputation of `got` three lines above and the second
+    conjunct is CONSTANT `True` for any anchor value, under a docstring claiming it "re-runs the
+    whole delegation resolution with ADJUDICATED_EVENT_REQUIRED emptied". It did not. The property is
+    TRUE - the independent review and the separate re-adjudication each verified it - so what follows
+    replaces a FALSE PROOF OF A TRUE CLAIM with the two verifications that were only described:
+
+      (i)  a real `monkeypatch.setattr` of this module's `ADJUDICATED_EVENT_REQUIRED` to
+           `frozenset()`, after which the false delegation must still be refused and both declared
+           branches must still resolve;
+      (ii) a real AST scan of `_resolve_delegation`'s own source, asserting it names no frozen-set
+           anchor at all - which is WHY (i) holds, and is the stronger of the two.
+
+    A predicate that only works while a particular row happens to be under a separate guard is not a
+    predicate at all."""
+    g2 = _g2_state()
+    rows_by_id, states, producers = g2["rows_by_id"], g2["states"], g2["registry"]["producers_of"]
+    pl7a, pl7b = rows_by_id["PL-7a"], rows_by_id["PL-7b"]
+
+    # the fixture must still model the real corpus, or every assertion below is about nothing
+    assert _trigger_types(pl7a) == {"S"}, f"PL-7a's Trig moved: {pl7a['trig']!r}"
+    assert _trigger_types(pl7b) == {"H"}, f"PL-7b's Trig moved: {pl7b['trig']!r}"
+    assert "CHECKPOINT" in _states_in(pl7b["from_to"].split("→", 1)[-1], states)
+    assert "CHECKPOINT" in _states_in(pl7a["from_to"].split("→", 1)[-1], states)
+    assert producers.get("PL-7b") == {"ApprovalBound"}, (
+        "PL-7b no longer owns ApprovalBound - the false delegation would fail for a different, "
+        "incidental reason and this node would stop testing R3-A"
+    )
+
+    got = _resolve_delegation(pl7a, "CHECKPOINT=PL-7b", rows_by_id, producers, states)
+    joined = " ".join(got["errors"])
+    assert got["errors"], (
+        "### R3-A IS BACK: PL-7a delegated to PL-7b. The three old conjuncts - target exists, is a "
+        "sec-3 producer, shares the target state - are ALL satisfied here, and they are not enough: "
+        "the autonomous path would be recorded by an event asserting a human approval"
+    )
+    assert "DISJOINT TRIGGER TYPES" in joined, (
+        f"the delegation failed for some other reason, so the general invariant is not the thing "
+        f"doing the work: {got['errors']}"
+    )
+    assert "does not itself transition to" not in joined, (
+        "the target-state conjunct fired, which means this fixture is not isolating the trigger "
+        "invariant - PL-7b does reach CHECKPOINT, and that is precisely why the old predicate passed"
+    )
+    assert "CROSS-MACHINE" not in joined, (
+        "the same-machine conjunct fired, which means this fixture is not isolating the trigger "
+        "invariant - PL-7a and PL-7b are BOTH on M2, which is exactly why same-machine ALONE is "
+        "insufficient and the trigger conjunct had to be KEPT"
+    )
+
+    # ### (ii) AST SCAN - REAL, over the predicate's own source. If `_resolve_delegation` names no
+    # frozen-set anchor, it CANNOT be borrowing the frozen-set guard's authority, whatever any
+    # monkeypatch shows. This is the claim f01d942's commit record made and its tree did not contain.
+    anchors = {"ADJUDICATED_EVENT_REQUIRED", "ADJUDICATED_UNDECLARED_ACCEPTS",
+               "ADJUDICATED_DELEGATION_ADMITS", "DISCHARGE_ROUTES"}
+    tree = ast.parse(textwrap.dedent(inspect.getsource(_resolve_delegation)))
+    named = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | \
+            {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)} | \
+            {c.value for c in ast.walk(tree) if isinstance(c, ast.Constant)
+             and isinstance(c.value, str)}
+    assert not (named & anchors), (
+        f"### `_resolve_delegation` REFERENCES A FROZEN-SET ANCHOR {sorted(named & anchors)}. Its "
+        "verdict would then depend on which rows are separately adjudicated, so it would not be a "
+        "general predicate over the corpus at all"
+    )
+
+    # ### (i) MONKEYPATCH - REAL. The anchor is emptied on this module for the duration of the call.
+    monkeypatch.setattr(sys.modules[__name__], "ADJUDICATED_EVENT_REQUIRED", frozenset())
+    assert sys.modules[__name__].ADJUDICATED_EVENT_REQUIRED == frozenset(), (
+        "the monkeypatch did not take - the assertion below would be re-running the unpatched code, "
+        "which is precisely the tautology this replaces"
+    )
+    empty_anchor = _resolve_delegation(pl7a, "CHECKPOINT=PL-7b", rows_by_id, producers, states)
+    assert empty_anchor["errors"], (
+        "with `ADJUDICATED_EVENT_REQUIRED` EMPTIED the false delegation is accepted - the refusal "
+        "was borrowing the frozen-set guard's authority rather than deciding anything itself"
+    )
+    assert "DISJOINT TRIGGER TYPES" in " ".join(empty_anchor["errors"]), (
+        f"with the anchor emptied it fails for a different reason: {empty_anchor['errors']}"
+    )
+
+    # POSITIVE CONTROL, ALSO UNDER THE EMPTIED ANCHOR: the two legitimate delegating rows are
+    # accepted by the very same predicate, so the refusal above is not a blanket ban.
+    for key, spec, expected in (
+        ("WI-14", "BLOCKED=WI-5,WI-6", {"BLOCKED": "WorkBlocked"}),
+        ("CF-6", "RESOLVED_BY_HUMAN=CF-4", {"RESOLVED_BY_HUMAN": "ConflictResolved"}),
+    ):
+        ok = _resolve_delegation(rows_by_id[key], spec, rows_by_id, producers, states)
+        assert not ok["errors"] and ok["resolution"] == expected, (
+            f"{key}'s real branch is rejected by the delegation predicate - it would be over-strict "
+            f"and would break legitimate delegation: {ok}"
+        )
+
+
+def test_the_delegation_predicate_is_swept_over_the_whole_corpus_and_its_admitted_set_is_exact():
+    """### THE CORPUS-WIDE SWEEP, DRIVING THE REAL PREDICATE, ASSERTING THE ADMITTED SET EXACTLY.
+
+    ### WHAT THIS REPLACES, AND WHY (F-03). The node this supersedes recomputed the trigger clause
+    INLINE and never called `_resolve_delegation` at all, so deleting the invariant from the
+    predicate left it GREEN - only a single hostile node on one hand-picked pair went red. It also
+    asserted zero false REJECTS and nothing whatever about false ACCEPTS, which is the inverse of the
+    selection-bias correction the CONSUMES re-adjudication demanded: it measured only the half that
+    could not fail. That is what let a predicate admitting 157 of 250 triples, nine of them sourced
+    at the founder-gated seven, ship described as having "close[d] the false-delegation route".
+
+    ### SO: no re-implementation. Every one of the 250 structurally-expressible triples is put
+    through `_resolve_delegation` ITSELF, and four properties are asserted:
+
+      (1) the ADMITTED set equals `ADJUDICATED_DELEGATION_ADMITS` EXACTLY, in BOTH directions.
+          Deleting EITHER conjunct from the predicate makes the set grow and turns this RED
+          (trigger deleted -> 157; same-machine deleted -> 96; both -> 235). Adding an
+          over-strict conjunct makes it shrink and also turns this RED.
+      (2) NOT ONE admitted triple is sourced at a member of `ADJUDICATED_EVENT_REQUIRED`. This is
+          the property the founder gate depends on and it is asserted over the WHOLE corpus, not
+          over the routes anybody thought to name.
+      (3) zero false rejects: every branch the corpus DECLARES is admitted, ground truth being the
+          declaration and never the predicate under test.
+      (4) `PL-7a -> PL-7b` is INSIDE the swept population and is rejected there.
+
+    ### WHAT THIS DOES NOT PROVE. The 51 survivors are NECESSARY CONDITIONS, not a semantic proof;
+    two of them are visibly wrong and are NAMED in `ADJUDICATED_DELEGATION_ADMITS`. This node holds
+    the residual EXACT so it cannot silently grow - it does not claim the residual is empty."""
+    g2 = _g2_state()
+    rows, states = g2["rows"], g2["states"]
+    rows_by_id, producers = g2["rows_by_id"], g2["registry"]["producers_of"]
+    require_population(rows, "transition rows")
+
+    # both conjuncts must be DECIDABLE for every row, or the invariant is unenforceable somewhere
+    undecidable = sorted(r["key"] for r in rows if not _trigger_types(r))
+    assert not undecidable, (
+        f"rows whose Trig cell yields no canonical code from state-machines/registry.md sec 1 - the "
+        f"trigger invariant cannot be decided for them and they fail closed: {undecidable}"
+    )
+    unnumbered = sorted(r["key"] for r in rows if _machine_number(r["machine"]) is None)
+    assert not unnumbered, (
+        f"rows whose machine yields no machine number - the same-aggregate conjunct cannot be "
+        f"decided for them and they fail closed: {unnumbered}"
+    )
+
+    # ---- the complete structurally-expressible population, judged by the REAL predicate
+    expressible, admitted, rejected = [], set(), []
+    for row in rows:
+        row_to = _states_in(row["from_to"].split("→", 1)[-1], states)
+        for tid in sorted(producers):
+            if tid == row["id"]:
+                continue
+            target_to = _states_in(rows_by_id[tid]["from_to"].split("→", 1)[-1], states)
+            for state in sorted(row_to & target_to):
+                triple = (row["key"], state, tid)
+                expressible.append(triple)
+                got = _resolve_delegation(row, f"{state}={tid}", rows_by_id, producers, states)
+                if got["errors"]:
+                    rejected.append(triple)
+                else:
+                    admitted.add(triple)
+    assert len(expressible) > 200, (
+        f"only {len(expressible)} structurally-expressible delegations found - the sweep collapsed "
+        "and every conclusion below would be over a population too small to mean anything"
+    )
+    assert len(set(expressible)) == len(expressible), "the sweep enumerated a triple twice"
+
+    # (1) THE ADMITTED SET IS EXACT, BOTH WAYS.
+    assert admitted == set(ADJUDICATED_DELEGATION_ADMITS), (
+        "### THE DELEGATION PREDICATE'S ADMITTED SET MOVED.\n"
+        f"  NEWLY ADMITTED (the predicate got WEAKER - a conjunct was deleted or narrowed): "
+        f"{sorted(admitted - set(ADJUDICATED_DELEGATION_ADMITS))}\n"
+        f"  NO LONGER ADMITTED (the predicate got STRICTER - check for false rejects first): "
+        f"{sorted(set(ADJUDICATED_DELEGATION_ADMITS) - admitted)}\n"
+        "  ADJUDICATED_DELEGATION_ADMITS is a MEASUREMENT of what the predicate lets through, "
+        "recorded as a residual. It is not a target and it may not be edited to match a weakened "
+        "predicate - re-derive WHY the population moved."
+    )
+
+    # (2) NOT ONE ADMITTED TRIPLE IS SOURCED AT A FOUNDER-GATED ROW.
+    at_the_seven = sorted(t for t in admitted if t[0] in ADJUDICATED_EVENT_REQUIRED)
+    assert not at_the_seven, (
+        "### A FOUNDER-GATED ROW CAN DELEGATE ITS OBLIGATION AWAY. The delegation predicate admits "
+        f"{at_the_seven}, each of which would let one of the adjudicated seven be 'recorded by' "
+        "another row's event. This is the route that rejected f01d942, reopened."
+    )
+
+    # (3) zero false rejects, ground truth read off the corpus's own declarations
+    declared = [(k, v) for k, v in g2["result"]["classified"].items() if v["class"] == "DELEGATES_TO"]
+    require_population(declared, "declared DELEGATES_TO rows")
+    declared_triples = set()
+    for key, rec in declared:
+        for branch in [b for b in rec["arg"].split(";") if b]:
+            state, ids = branch.split("=", 1)
+            for tid in [t for t in ids.split(",") if t]:
+                declared_triples.add((key, state, tid))
+    require_population(declared_triples, "declared delegation branches")
+    false_rejects = sorted(declared_triples - admitted)
+    assert not false_rejects, (
+        f"### the corpus DECLARES {false_rejects} and the predicate refuses it. Either the predicate "
+        "over-rejects - an invariant that refuses the corpus's own legitimate members is worse than "
+        "the hole it closes - OR THE DECLARATION IS FORGED. ### DO NOT RELAX THE PREDICATE TO CLEAR "
+        "THIS. Establish first that the delegating row and its target are the SAME AGGREGATE and are "
+        "reachable by the SAME TRIGGER; a cross-machine or trigger-disjoint 'declaration' newly "
+        "added to a founder-gated row is the laundering this node exists to surface, and property "
+        "(2) above will be red beside it."
+    )
+
+    # (4) the false delegation is INSIDE the swept population and is rejected there
+    false_route = ("02-pipeline-instance:PL-7a", "CHECKPOINT", "PL-7b")
+    assert false_route in expressible, (
+        "PL-7a -> PL-7b is no longer a structurally-expressible delegation, so this sweep has "
+        "stopped covering the case R3-A is about"
+    )
+    assert false_route in set(rejected), (
+        "### the delegation predicate does not reject PL-7a -> PL-7b in the corpus-wide sweep"
+    )
+    # and it is a REAL constraint: it excludes the large majority of the expressible population
+    assert len(admitted) < len(expressible) // 2, (
+        f"the predicate admits {len(admitted)} of {len(expressible)} expressible delegations - at "
+        "that rate it has stopped being a constraint"
     )
 
 
@@ -1539,13 +2328,50 @@ def test_hostile_a_column_short_row_is_detected_rather_than_shifting_silently():
 
 
 def test_hostile_the_g2_status_cannot_be_flipped_to_discharged_while_obligations_are_open():
-    """The fail-closed property, asserted over the file's own contract rather than over prose."""
+    """The fail-closed property, ATTACKED over a mutated audit rather than described over this one.
+
+    ### REPLACED (P5 U5.2), AND THE REPLACEMENT IS STRICTLY STRONGER. The previous form asserted
+    three literals: obligations open > 0, and the status string containing DISCHARGED_FOUNDER_GATED
+    and PARTIALLY. Those described the corpus of the day. All seven obligations are now discharged,
+    so the literals became false - and, worse, the property they stood for ("no discharged status
+    WHILE an obligation is open") was never actually exercised: the condition was true throughout, so
+    the branch that matters never ran.
+
+    This node now feeds `_g2_status_errors` a SYNTHETIC OPEN OBLIGATION beside the discharged status
+    and requires it to bite, then feeds it the live audit and requires silence. The rule is proven in
+    the state that makes it load-bearing, which is the state the repository is not in."""
     audit = _audit()
-    assert audit["meta"]["discharged_status_value_forbidden_while_obligations_open"] is True
-    assert audit["meta"]["open_founder_gated_obligations"] > 0
-    assert "DISCHARGED_FOUNDER_GATED" in audit["meta"]["status"]
-    assert "PARTIALLY" in audit["meta"]["status"], (
-        "G2 records a fully-discharged status while founder-gated obligations remain open"
+    live = _g2_status_errors(audit)
+    assert not live, "the live G2 status record is not fail-closed:\n  " + "\n  ".join(live)
+
+    # positive control: the mutation must actually change the OPEN population, or it tests nothing
+    obligations = audit["founder_gated_event_obligations"]
+    assert all(str(o.get("status", "")).upper() == "DISCHARGED" for o in obligations), (
+        "not every obligation is discharged, so the mutation below would not be introducing the "
+        "condition this node exists to exercise"
+    )
+    reopened = {**audit, "founder_gated_event_obligations": [
+        {**obligations[0], "status": "OPEN"}, *obligations[1:]]}
+    errors = _g2_status_errors(reopened)
+    assert errors, (
+        "### an OPEN founder-gated obligation coexisted with a discharged status value and nothing "
+        "objected - the fail-closed rule is decorative"
+    )
+    assert any("are OPEN" in e for e in errors), (
+        f"the mutation was caught, but not by the status rule - the count mismatch alone would fire "
+        f"even for an honest recount, so it does not prove the status rule works: {errors}"
+    )
+
+    # and the rule may not be switched off by editing its own declaration
+    disarmed = {**audit, "meta": {**audit["meta"],
+                                  "discharged_status_value_forbidden_while_obligations_open": False}}
+    assert _g2_status_errors(disarmed), "the fail-closed declaration was allowed to be turned off"
+
+    # nor by emptying the register so that "no obligation is open" becomes vacuously true
+    erased = {**audit, "founder_gated_event_obligations": []}
+    assert _g2_status_errors(erased), (
+        "deleting the whole obligation register was accepted - an empty register makes every "
+        "'nothing is open' claim vacuously true and erases the record of the finding"
     )
 
 
@@ -1624,24 +2450,38 @@ def test_hostile_an_event_required_and_a_consumes_row_may_not_be_swapped_at_cons
     shape of a legitimate builder commit. Then every set-equality guard is satisfied, because
     computed == recorded, and the arithmetic still closes.
 
-    Here AP-9 (EVENT_REQUIRED) and PL-6 (CONSUMES) trade places, so the totals are byte-identical -
-    110 / 9 / 6 / 2 / 7 = 134 before and after. ### A CANDIDATE MUST NOT BE ACCEPTED BECAUSE ITS
-    CLASSES RECONCILE: set equality between a specification and its audit proves the two AGREE, never
-    that either is TRUE. Two independent predicates must reject the swap."""
+    ### REPOINTED (P5 U5.2), SAME EXPLOIT, SAME TWO INDEPENDENT REFUSALS. The original swapped AP-9
+    (then EVENT_REQUIRED) with PL-6 (CONSUMES). AP-9 is now the sec-3 producer of `ApprovalFrozen`,
+    so that exact pair no longer exists - but the exploit does, and it survives the discharge in a
+    sharper form: EVENT_REQUIRED is now EMPTY, so a launderer's move is to push a row INTO it (a
+    plausible-looking "newly discovered obligation") in exchange for pulling one out, keeping the
+    totals square. PL-6 stands in as the row pushed in, and AP-9 as the row whose GR-2 discharge is
+    attacked from the other side by relabelling it a consumer.
+
+    ### A CANDIDATE MUST NOT BE ACCEPTED BECAUSE ITS CLASSES RECONCILE: set equality between a
+    specification and its audit proves the two AGREE, never that either is TRUE."""
     g2 = _g2_state()
     ctx = _consumes_context(g2)
     audit = _audit()
     live = {k: v["class"] for k, v in g2["result"]["classified"].items()}
-    assert live["04-approval:AP-9"] == "EVENT_REQUIRED"
+    assert live["04-approval:AP-9"] == "PRODUCER", (
+        "AP-9 is not a producer - its discharge is the premise of this node"
+    )
     assert live["02-pipeline-instance:PL-6"] == "CONSUMES"
 
+    # the swap: PL-6 joins EVENT_REQUIRED, AP-9 leaves PRODUCER for CONSUMES. Totals are preserved
+    # exactly, which is what defeated eighteen earlier membership mutations.
     swapped = dict(live)
     swapped["04-approval:AP-9"] = "CONSUMES"
     swapped["02-pipeline-instance:PL-6"] = "EVENT_REQUIRED"
-    before = {c: sum(1 for v in live.values() if v == c) for c in set(live.values())}
-    after = {c: sum(1 for v in swapped.values() if v == c) for c in set(swapped.values())}
-    assert before == after == audit["computed_classification"], (
-        "the swap is not total-preserving, so this node would not be testing what it claims"
+    every = ("PRODUCER", *CLASS_TOKENS)
+    before = {c: sum(1 for v in live.values() if v == c) for c in every}
+    after = {c: sum(1 for v in swapped.values() if v == c) for c in every}
+    assert before["CONSUMES"] == after["CONSUMES"], "the CONSUMES total moved - not the exploit shape"
+    assert before["PRODUCER"] - 1 == after["PRODUCER"], "the swap did not remove exactly one producer"
+    assert before == audit["computed_classification"], (
+        "the live classification and the audit already disagree, so this node would be measuring "
+        "that disagreement rather than the swap"
     )
 
     # (1) the relational contract rejects the new consumer, whatever event it nominates.
@@ -1649,8 +2489,24 @@ def test_hostile_an_event_required_and_a_consumes_row_may_not_be_swapped_at_cons
         assert _consumes_relationship_errors(_ap9(g2), [event], ctx), (
             f"AP-9 discharged GR-2 by consuming {event} at constant class totals"
         )
-    # (2) the obligation registry rejects the new EVENT_REQUIRED row: every registered obligation
-    #     names the transition that carries it, so an id cannot migrate to a different row.
+    # (1b) and it may not consume its OWN newly minted event either - rule 2 owns that case, and a
+    #      row that produces an event cannot also claim to be receiving it from somewhere else.
+    assert _consumes_relationship_errors(_ap9(g2), ["ApprovalFrozen"], ctx), (
+        "AP-9 was allowed to declare it CONSUMES the event it actually OWNS"
+    )
+    # (2) PL-6 cannot JOIN the frozen EVENT_REQUIRED set. Registering a new founder-gated obligation
+    #     is an adjudicated act, and the anchor refuses an addition exactly as it refuses a silent
+    #     departure - the direction that only became reachable once the class emptied.
+    joined = _event_required_set_errors(
+        {**g2["result"]["classified"],
+         "02-pipeline-instance:PL-6": {**g2["result"]["classified"]["02-pipeline-instance:PL-6"],
+                                       "class": "EVENT_REQUIRED", "arg": "G2-OB-INVENTED"}},
+        audit, ctx, g2["states"])
+    assert any("JOINED EVENT_REQUIRED" in e for e in joined), (
+        f"PL-6 joined the frozen EVENT_REQUIRED set unchallenged: {joined}"
+    )
+    # (3) the obligation registry rejects it too: every registered obligation names the transition
+    #     that carries it, so an id cannot migrate to a different row.
     by_id = {o["id"]: o for o in audit["founder_gated_event_obligations"]}
     for oid, obligation in by_id.items():
         assert obligation["transition"] != "02-pipeline-instance:PL-6", (
@@ -1823,19 +2679,35 @@ def test_hostile_an_open_obligation_may_not_annex_another_rows_co_commit_declara
     declaration written for PL-10's benefit.
 
     ### WHY IT NOW FAILS. The reverse leg is row-bound: EF-3 names `EXECUTED`, the state PL-10
-    enters, not `CHECKPOINT`. And the frozen-set guard refuses the departure independently. Both
-    are asserted, because either alone would leave the other unproven."""
+    enters, not `CHECKPOINT`. And the frozen-set guard refuses an UNPROVEN departure independently.
+    Both are asserted, because either alone would leave the other unproven.
+
+    ### AMENDED (P5 U5.2), AND THE AMENDMENT IS WHERE THE CARE GOES. PL-7a's obligation is now
+    LEGITIMATELY discharged - by a minted canonical event, re-proven from events/registry.md sec 3 -
+    so "PL-7a left EVENT_REQUIRED" is no longer by itself a defect, and asserting that it is would be
+    asserting something false. The laundering property is preserved by attacking the DISCHARGE RECORD
+    instead of the departure:
+
+      (2) DELETE the recorded discharge and leave the row out of EVENT_REQUIRED -> the departure is
+          now silent, and must fail. This is the exact original defect, one indirection along.
+      (3) FORGE a PRE_EXISTING_STRUCTURAL_PROOF discharge for the laundered CONSUMES row -> must fail,
+          because the structural proof is re-derived and does not hold.
+      (4) FORGE a MINTED_CANONICAL_EVENT discharge naming an event PL-7a does not produce -> must
+          fail, which is the route this unit actually used and therefore the one most worth attacking.
+    """
     g2 = _g2_state()
     ctx = _consumes_context(g2)
     audit = _audit()
     states = g2["states"]
     pl7a = g2["rows_by_id"]["PL-7a"]
-    assert g2["result"]["classified"]["02-pipeline-instance:PL-7a"]["class"] == "EVENT_REQUIRED"
     assert _durable_write(pl7a, states) and _bare(pl7a["writes"]), (
         "PL-7a is no longer the durable, field-less M2 row the exploit needs - this node has "
         "stopped testing the case"
     )
     assert ctx["owners_of"]["EffectExecuted"] == ["EF-3"], "EffectExecuted/EF-3 moved"
+    assert ctx["producers_of"].get("PL-7a") == {"AutonomousAdmissionRecorded"}, (
+        "PL-7a's own minted event moved - the discharge this node attacks is not the one recorded"
+    )
 
     # (1) the annexation itself, with PL-7a's own forward token added exactly as the exploit adds it
     laundered = {**pl7a, "writes": "co-commit M3 `ATTEMPTED`"}
@@ -1858,28 +2730,51 @@ def test_hostile_an_open_obligation_may_not_annex_another_rows_co_commit_declara
         f"the fixture no longer models 'the candidate can satisfy its own forward leg': {errors}"
     )
 
-    # (2) independently, the obligation may not simply disappear from the frozen set
     laundered_classes = dict(g2["result"]["classified"])
     laundered_classes["02-pipeline-instance:PL-7a"] = {
         "class": "CONSUMES", "arg": "EffectExecuted", "row": laundered}
-    errors = _event_required_set_errors(laundered_classes, audit, ctx, states)
-    assert errors and any("PL-7a" in e for e in errors), (
-        "PL-7a left the frozen EVENT_REQUIRED set unchallenged - the population is being held by a "
-        f"count again: {errors}"
+    record = audit["frozen_event_required_set"]
+    others = [d for d in record["discharges"] if d["transition"] != "02-pipeline-instance:PL-7a"]
+    assert len(others) == len(record["discharges"]) - 1, "PL-7a's discharge record is missing"
+
+    def with_discharges(entries):
+        return {**audit, "frozen_event_required_set": {**record, "discharges": [*others, *entries]}}
+
+    # (2) SILENT DEPARTURE. Strip PL-7a's discharge and leave it out of EVENT_REQUIRED: exactly the
+    #     shape of the original laundering, and it must still be a build failure.
+    errors = _event_required_set_errors(laundered_classes, with_discharges([]), ctx, states)
+    assert any("PL-7a" in e and "NO RECORDED DISCHARGE" in e for e in errors), (
+        "PL-7a left the frozen EVENT_REQUIRED set with no recorded discharge and nothing objected - "
+        f"the population is being held by a count again: {errors}"
     )
-    # (3) and writing a discharge record does not make the discharge real
-    forged = {**audit, "frozen_event_required_set": {
-        **audit["frozen_event_required_set"],
-        "discharges": [{"transition": "02-pipeline-instance:PL-7a",
-                        "route": "PRE_EXISTING_STRUCTURAL_PROOF",
-                        "authority": "asserted by this edit"}]}}
-    errors = _event_required_set_errors(laundered_classes, forged, ctx, states)
-    assert errors and any("does not hold" in e for e in errors), (
-        f"a SELF-WRITTEN discharge record was accepted as the discharge: {errors}"
+    # (3) A SELF-WRITTEN STRUCTURAL PROOF does not make the discharge real.
+    forged_structural = with_discharges([{"transition": "02-pipeline-instance:PL-7a",
+                                          "route": "PRE_EXISTING_STRUCTURAL_PROOF",
+                                          "authority": "asserted by this edit"}])
+    errors = _event_required_set_errors(laundered_classes, forged_structural, ctx, states)
+    assert any("does not hold" in e for e in errors), (
+        f"a SELF-WRITTEN structural discharge record was accepted as the discharge: {errors}"
     )
-    # positive control: the real seven, unmutated, pass
+    # (4) ### THE ROUTE THIS UNIT ACTUALLY USED, ATTACKED. A minted-event discharge that names an
+    #     event this row does not produce - or a name that is not canonical at all - must fail. The
+    #     record is a claim; sec 3 decides.
+    for event, why in (("ApprovalBound", "an event owned by PL-7b, the human-gated sibling"),
+                       ("EffectExecuted", "an event owned by EF-3 on another machine"),
+                       ("NotACanonicalEventName", "a name that is not in the corpus at all")):
+        forged_mint = with_discharges([{"transition": "02-pipeline-instance:PL-7a",
+                                        "route": "MINTED_CANONICAL_EVENT", "event": event,
+                                        "authority": "founder/architect, allegedly"}])
+        errors = _event_required_set_errors(laundered_classes, forged_mint, ctx, states)
+        assert errors, f"PL-7a discharged itself by naming {event} - {why}"
+    # (5) and an UNKNOWN route is not a third route.
+    forged_route = with_discharges([{"transition": "02-pipeline-instance:PL-7a",
+                                     "route": "ADJUDICATED_AS_FINE", "authority": "x"}])
+    errors = _event_required_set_errors(laundered_classes, forged_route, ctx, states)
+    assert any("NO THIRD ROUTE" in e for e in errors), f"an invented route was accepted: {errors}"
+
+    # positive control: the real seven, unmutated, with their real discharges, pass
     assert not _event_required_set_errors(g2["result"]["classified"], audit, ctx, states), (
-        "the unmutated seven-member set does not pass - the guard would be vacuous"
+        "the unmutated adjudicated set does not pass - the guard would be vacuous"
     )
 
 
@@ -1969,8 +2864,11 @@ def test_hostile_a_consumer_whose_relationship_is_undeclared_or_dangling_fails()
     assert _consumes_relationship_errors(consumer, ["SomeEvent"], dangling), (
         "a consumed event whose declared producer is absent from the corpus was accepted"
     )
-    assert "ApprovalFrozen" not in ctx["corpus"], "pick a name that is genuinely not canonical"
-    assert _consumes_relationship_errors(consumer, ["ApprovalFrozen"], ctx), (
+    # (`ApprovalFrozen` used to stand here as the obviously-non-canonical name. It is canonical now -
+    # AP-9's minted event - which would have made this the only kind of test failure worse than a
+    # false green: an assertion that silently stopped testing anything.)
+    assert "NotACanonicalEventName" not in ctx["corpus"], "pick a name that is genuinely not canonical"
+    assert _consumes_relationship_errors(consumer, ["NotACanonicalEventName"], ctx), (
         "a consumer naming a NONEXISTENT event was accepted"
     )
 

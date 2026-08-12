@@ -85,7 +85,7 @@ human-owned states, and escalation carries the evidence needed to decide.
 
 ## 10. Events
 
-**98 emitted event contracts** across families F1–F13, derived mechanically from the machines.
+**105 emitted event contracts** across families F1–F13, derived mechanically from the machines.
 
 > ### **Events are FACTS. They are never commands, and they never carry authority.**
 
@@ -100,8 +100,8 @@ owner afterwards, and the test that validates it.
 
 **The G2 event contract, adjudicated.** A *producer transition* of an event is one declared in that
 event's producer field in [`events/registry.md`](docs/specifications/events/registry.md) §3 — that
-table, not a machine's Event column, is the producer map. **110 of the 134 rows are producer
-transitions; the remaining 24 are non-producer transitions**, because a row may co-transition with,
+table, not a machine's Event column, is the producer map. **117 of the 134 rows are producer
+transitions; the remaining 17 are non-producer transitions**, because a row may co-transition with,
 cause, or reflect an event another machine owns
 ([`state-machines/registry.md`](docs/specifications/state-machines/registry.md) §5, line 182: one
 producer, the others consume).
@@ -124,15 +124,31 @@ unrelated *brake* event while every guard stayed green. **Count arithmetic recon
 evidence: set equality between a specification and its audit proves they agree, not that either is
 true.**
 
-*Open finding, PARTIALLY discharged:* **seven durable writes are recorded by no canonical event** —
-`PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`. Each violates `GR-2` as written and each is
-recorded open, with its semantic obligation stated and **no event name invented**, in
-[`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml). ### **Naming those
-events changes the frozen 98-event registry and is founder/architect authority, so P5's event
-content stays blocked.** The two safety-relevant ones: `AP-9` writes `frozen=true`, a guard input to
-an ILLEGAL determination, so a full-history rebuild reconstructs an approval that is **not** frozen —
-less safe than the original; and `PL-7a` is the sole autonomous entry into `CHECKPOINT`, so the one
-transition that proceeds without a human is the one with no audit record.
+### **`DELEGATES_TO` is bounded by the TRIGGER TYPE, not only by the target state.** A row may hand
+its event to another row that reaches the same state — but reaching the same state is not the same as
+performing the same transition. `Trig` is a closed code set (`H` human · `S` system · `X` observed ·
+`T` timer · `P` policy · `B` brake · `R` recovery), and a delegating row's trigger set must
+**intersect** every target's. Without that clause `PL-7a → PL-7b` is accepted: both end in
+`CHECKPOINT` and `PL-7b` is a declared producer, yet `PL-7b` is `H` and asserts a **bound human
+approval**, while `PL-7a` is `S`, the autonomous-within-caps path where no human acted. The
+constraint is structural and general — the two legitimate delegating rows, `WI-14` and `CF-6`, are
+both `S|H` and intersect every target they name.
+
+*Closed (2026-08-12), and the record kept:* seven durable writes were recorded by no canonical
+event — `PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`. Each violated `GR-2` as written.
+### **Seven canonical events were minted under founder/architect authority** —
+`AutonomousAdmissionRecorded`, `ApprovalFrozen`, `ConflictPartyAttached`,
+`ExceptionSeverityChanged`, `PolicySubmitted`, `PolicyApproved`, `RuleExpired` — taking the registry
+from 98 to **105**, and each row is now its event's declared `§3` producer. The two safety-relevant ones and how they were resolved: `AP-9` writes
+`frozen=true`, a guard input to an ILLEGAL determination, so `ApprovalFrozen` is **EMITTED, never
+derived** — a rebuild sets `frozen` from the event's PRESENCE, because inferring it from the absence
+of a `RealityEstablished` would make the rebuilt approval *reusable*, less safe than the original; and
+`PL-7a`, the sole autonomous entry into `CHECKPOINT`, now carries the audit record the one transition
+that proceeds without a human previously lacked. `PO-1` keeps `PolicyProposed` — `PO-2` was given a
+new name rather than taking the old one, so no historical event changed meaning. The obligations are
+**retained, not deleted**, each marked discharged with its authority, in
+[`TRANSITION-EVENT-AUDIT.yaml`](docs/implementation/TRANSITION-EVENT-AUDIT.yaml). Still open there:
+the recorded G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9` and `G2-D10`.
 
 ## 12. Tenant model
 

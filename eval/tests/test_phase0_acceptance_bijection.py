@@ -108,17 +108,28 @@ def test_events_exact_set_equality_enumerated_vs_registered():
         f"  enumerated but not registered: {sorted(enumerated - registered)}\n"
         f"  registered but not enumerated: {sorted(registered - enumerated)}"
     )
-    assert len(enumerated) == 98, "diagnostic only"
+    # DIAGNOSTIC ONLY - the set equality above is the oracle. 98 -> 105 on 2026-08-12: seven events
+    # minted under founder/architect authority to discharge the seven recorded GR-2 obligations.
+    assert len(enumerated) == 105, "diagnostic only"
 
 
-def test_g2_requires_the_98_event_coverage_set():
-    """REGRESSION 13: G2 must never require 92 again."""
+def test_g2_requires_the_full_event_coverage_set():
+    """REGRESSION 13: G2 must never require 92 again - and must require the CURRENT full set.
+
+    Re-pointed 98 -> 105 with the 2026-08-12 mint. The gate's required-case cell is compared against
+    the ENUMERATED corpus rather than a second hand-typed literal, so the gate cannot drift from the
+    registry the way it drifted at 92: if a future amendment changes the corpus and forgets the gate,
+    this fails. The old wrong value stays asserted-absent, because that is the regression."""
     from phase0.markdown import clean, find_table
     from phase0.sources import ACCEPTANCE
+    n = len({k.split(":")[1] for k in spec_corpus.emitted_events()})
+    assert n > 90, "the event corpus did not parse - the assertion below would be about nothing"
     gates = find_table(ACCEPTANCE / "release-gates.md", "Gate", "Required cases")
     g2 = next(r for r in gates["rows"] if clean(r[0]) == "G2")
     required = clean(g2[2])
-    assert "98/98" in required, f"G2 no longer requires 98/98 events: {required!r}"
+    assert f"{n}/{n}" in required, (
+        f"G2 requires {required!r} but the canonical corpus enumerates {n} emitted events"
+    )
     assert "(92/92)" not in required, f"G2 still requires 92 events: {required!r}"
 
 
@@ -213,6 +224,6 @@ def test_the_corrected_totals_are_recorded_with_exact_set_digests():
     """Counts are diagnostics; the digest pins the MEMBERS."""
     counts = manifest.spec_counts()
     assert counts["transitions_declared"] == counts["transitions_enumerated"] == 134
-    assert counts["emitted_events_declared"] == counts["emitted_events_enumerated"] == 98
+    assert counts["emitted_events_declared"] == counts["emitted_events_enumerated"] == 105
     assert counts["transitions_exact_set_digest"]
     assert counts["emitted_events_exact_set_digest"]

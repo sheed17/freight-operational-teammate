@@ -32,22 +32,57 @@
 #       second `EffectAttempted` is not emitted and silently omitted the event the row does own.
 #
 # ---------------------------------------------------------------------------------------------
-# STATUS. G2 is PARTIALLY discharged. The architecture question is settled and mechanised; seven
-# transitions still perform durable writes that no canonical event records, and naming those
-# events is founder/architect design authority that no builder, reviewer or adjudicator holds.
-# Those seven are enumerated in `founder_gated_event_obligations` and are FAIL-CLOSED: while any
-# remains open, `meta.status` may not be changed to a discharged value, and P5's event content
-# stays blocked. Nothing below discharges them.
+# STATUS. G2's SEVEN EVENT OBLIGATIONS ARE DISCHARGED. The architecture question was settled and
+# mechanised by P5 U5.1; the seven durable writes that no canonical event recorded have now been
+# given canonical events under EXPLICIT FOUNDER/ARCHITECT AUTHORITY (P5 U5.2). Every one of the seven
+# left the EVENT_REQUIRED class through the MINTED_CANONICAL_EVENT route, and every departure is
+# RE-PROVEN MECHANICALLY on each run - the discharge record is a CLAIM, and `_discharge_route_errors`
+# in eval/tests/test_bootstrap_hermeticity.py re-derives it from events/registry.md sec 3. Writing the
+# record is still not the discharge.
+#
+# ### THE SEVEN OBLIGATIONS ARE NOT DELETED. They remain enumerated below in
+# `founder_gated_event_obligations`, each marked DISCHARGED with the event that discharged it, its
+# route and its authority. Silent deletion is still a build failure: the record of what was wrong, and
+# why it mattered, survives its own repair.
+#
+# STILL FAIL-CLOSED. If any obligation is ever reopened - or a NEW one registered - `meta.status` may
+# not carry a discharged value while it is open. That predicate is unchanged, and it is now asserted
+# over a MUTATED audit as well as over this one, so it cannot pass merely because the corpus is clean.
 
 meta:
   total_transitions: 134
-  canonical_events_F1_F13: 98
+  canonical_events_F1_F13: 105
+  canonical_events_F1_F13_before_the_2026_08_12_mint: 98
   adjudication_gate: G2
   adjudicated_at: 6e8127dab02e3443183d06825836f5a805f53de0
   partially_discharged_by: P5 U5.1 (G2 specification/control correction)
-  status: G2_PARTIALLY_DISCHARGED_FOUNDER_GATED
-  open_founder_gated_obligations: 7
+  event_obligations_discharged_by: P5 U5.2 (founder/architect canonical event mint)
+  status: G2_EVENT_OBLIGATIONS_DISCHARGED_RESIDUALS_RECORDED
+  open_founder_gated_obligations: 0
+  discharged_founder_gated_obligations: 7
+  total_founder_gated_obligations: 7
   discharged_status_value_forbidden_while_obligations_open: true
+  # The G2 RESIDUALS below (G2-D4, G2-D6, G2-D8, G2-D9, G2-D10) stay OPEN and are NOT discharged by
+  # this unit. The status token says exactly that: the EVENT OBLIGATIONS closed; the residuals did not.
+  founder_architect_decisions_2026_08_12:
+    D1_mint_all_five: >-
+      PL-7a, CF-7, EC-7, PO-3 and RU-8 each receive their OWN canonical fact. The rule applied: a
+      durable state change that cannot be truthfully and replay-safely represented by an existing
+      canonical event must receive its own canonical fact. None was folded into an existing event to
+      keep the total smaller.
+    D2_ap9_is_emit_not_derive: >-
+      AP-9 EMITS `ApprovalFrozen`. `frozen` is NOT derived from (OutcomeUnknown AND NOT
+      RealityEstablished). Reason: it is safety-critical quarantine state, and replay must reconstruct
+      it from POSITIVE canonical evidence rather than from an absence whose truth depends on fold
+      completeness and ordering. The event carries `unknown_outcome_ref` and `effect_grant_id` so the
+      freeze is bound to the correct approval / unknown-outcome chain. ### The fail-closed RUNTIME
+      default for an unresolved approval reality is UNCHANGED and unweakened - ER-16 governs what
+      REPLAY may rely on, not what the live guard does.
+    D3_po2_mints_rather_than_re_attributes: >-
+      PO-2 receives a NEW canonical fact, `PolicySubmitted`. PO-1's existing `PolicyProposed` is NOT
+      re-attributed: its historical semantics, its sec-3 producer and its consumers are preserved
+      exactly, because re-attribution would silently change the meaning of every `PolicyProposed`
+      already in history (S8 / ER-7) - a correction that rewrites the past is the defect, not the fix.
   # P5 U5.1's first content candidate, 38b4bda, was REJECTED by a separate targeted governance
   # adjudication: its CONSUMES class was self-certifying (F-01, with F-07 merged in), PL-15x and
   # IB-5x diverged from an adjudicated per-row disposition, PHASE-OUTPUTS.md carried a live control
@@ -67,7 +102,8 @@ contract:
     (events/registry.md sec 3) and the completeness predicate is THE PRESENCE OF A DURABLE WRITE
     (GR-2). Interpretation A (every row must name an event) is refuted mechanically: it
     misclassifies the 11 correct co-transition/causation rows and would require inflating the
-    frozen 98-event registry. Interpretation B (explicitly documented non-producing) is refused
+    event registry wholesale (the ruling said "the frozen 98"; the total is now 105, and the
+    objection is unchanged in kind - interpretation A would require an event for EVERY row, not seven). Interpretation B (explicitly documented non-producing) is refused
     because its predicate is PROSE-DEPENDENT AND SELF-CERTIFYING - CF-7 and EC-7 both exempted
     themselves with "(no state change)" while performing durable writes.
 
@@ -167,7 +203,9 @@ contract:
         data that already existed: at the certified predecessor EF-2 carried
         "`claimed_at`; co-commit M2 `CLAIMED`, M4 `CONSUMED`" and PL-9 the reciprocal. This unit added
         the same cell content to the seven under-declared durable consumers and their owner rows. It
-        MINTED NO EVENT and did not touch the frozen 98.
+        MINTED NO EVENT and did not touch the 98-event total THEN IN FORCE. (The seven events minted
+        on 2026-08-12 are a SEPARATE, later, founder/architect act; they added no CONSUMES member and
+        changed no co-commit declaration.)
       prose_is_never_a_predicate: >-
         ### The narrative "## M2<->M3 co-transition rule" sections in the machine files may NEVER be
         the predicate, in any class. A narrative section is exactly what the G2 adjudication sec F
@@ -194,9 +232,19 @@ contract:
         machine M inherited every declaration any row on M's partner machine ever wrote. Measured
         cost: 23 false-accepting (consumer, event) pairs across the 8 durable consumers. The state
         token was always present in all twenty declarations in the corpus; it was simply not read.
-        ### THE REVERSE LEG IS THE NON-CIRCULAR ONE - the owner row lives on a different machine,
-        was written for a different purpose, and PRE-EXISTS the claim, so a candidate row can no
-        longer prove its own exemption with a token it added to its own cell.
+        ### THE REVERSE LEG IS THE NON-CIRCULAR ONE - the owner's declaration IS AUTHORED ON A
+        DIFFERENT ROW OF A DIFFERENT MACHINE, written for that row's own purpose, so a candidate row
+        can no longer prove its own exemption with a token it added to its own cell.
+        ### CORRECTED (R2-A). An earlier version of this sentence also claimed the reverse leg
+        "PRE-EXISTS the claim". THAT WAS FALSE OF THIS CORPUS AND IS STRUCK. Rows carrying `co-commit`
+        declarations went from 5 at the certified parent 6e8127d to 20 at d59b740: FIFTEEN reverse legs
+        were authored by the SAME COMMIT whose CONSUMES claims they justify. What the guard actually
+        proves is DIFFERENT-ROW authorship, not temporal precedence, and this file now says only that.
+        The non-circularity that survives is real and is the one the guard rests on: a row cannot
+        satisfy the reverse leg by editing its OWN cell. It is NOT a proof that the counterpart cell
+        predates the claim, and nothing here may be read as one. Widening this into a redesign of
+        CONSUMES-VALID (for instance requiring provenance or a commit identity on the declaration) is
+        OUT OF SCOPE and was not done.
       "5a_undecidable_is_a_failure": >-
         if either row names no canonical To state, or declares the machine at issue with NO
         canonical state beside it, the relationship is UNDECIDABLE and the build FAILS (rule 7).
@@ -280,12 +328,20 @@ contract:
 # ---------------------------------------------------------------------------------------------
 # WHAT THE CORPUS COMPUTES NOW. Recomputed on every run; exact members below.
 computed_classification:
-  PRODUCER: 110
+  PRODUCER: 117
   CONSUMES: 9
   NON_PRODUCING: 6
   DELEGATES_TO: 2
-  EVENT_REQUIRED: 7
-  # 110 + 9 + 6 + 2 + 7 = 134
+  EVENT_REQUIRED: 0
+  # 117 + 9 + 6 + 2 + 0 = 134
+  #
+  # ### THE MOVE FROM 110/7 TO 117/0 IS THE SEVEN MINTED EVENTS AND NOTHING ELSE. Each of the seven
+  # rows became a sec-3 PRODUCER because sec 3 now declares it the producer of a canonical event; not
+  # one of them was reclassified into CONSUMES, DELEGATES_TO or NON_PRODUCING, and those three classes
+  # are byte-identical in membership to the certified predecessor. EVENT_REQUIRED is now EMPTY, which
+  # is a CONSEQUENCE of seven re-proven discharges, never a target: the class is still asserted by
+  # exact set equality against the frozen adjudicated seven, and a member that left without a
+  # mechanically re-proven discharge still fails the build.
   #
   # ### THE NUMBER 11 IS NOT PRESERVED, AND THAT IS THE POINT. The targeted adjudication of candidate
   # 38b4bda corrected the class membership: PL-15x and IB-5x were classified CONSUMES against G2
@@ -297,11 +353,16 @@ computed_classification:
   # constant.
 
 producer_view:
-  producer_transitions: 110
-  non_producer_transitions: 24
-  # NOTE (G2-D7): this 24 is NOT the retired "24 of 134". The retired figure claimed to count
-  # transitions that NAME NO EVENT. This one counts corpus rows that are not declared producers in
-  # events/registry.md sec 3 - a different question that happens to have the same answer.
+  producer_transitions: 117
+  non_producer_transitions: 17
+  # NOTE (G2-D7): the non-producer count was 24 until the 2026-08-12 mint and is now 17. The COLLISION
+  # that G2-D7 recorded - the computed non-producer count coincidentally equalling the RETIRED "24 of
+  # 134" figure - has therefore ENDED as a coincidence, because the computed value moved and the
+  # retired figure did not. The distinction it recorded still stands and must not be forgotten: the
+  # retired figure claimed to count transitions that NAME NO EVENT; this one counts corpus rows that
+  # are not declared producers in events/registry.md sec 3. The anti-"24" guard and its clause-scoped
+  # carve-out are RETAINED unchanged - a future edit could reintroduce the collision, and removing a
+  # guard because its subject is quiet today is how the subject comes back.
   events_with_zero_producers: 0
   declared_producers_absent_from_the_corpus: 0
   canonical_events_declared_more_than_once: 0
@@ -334,14 +395,31 @@ retired_figures:
 # test_bootstrap_hermeticity.py::test_a_retired_g2_status_token_never_appears_as_a_live_claim,
 # which reads this list rather than a hard-coded one, so retiring a token registers its own guard.
 retired_status_tokens:
+  - token: G2_PARTIALLY_DISCHARGED_FOUNDER_GATED
+    retired_as: >-
+      this file's meta.status while the seven founder-gated event obligations were open
+    superseded_by: G2_EVENT_OBLIGATIONS_DISCHARGED_RESIDUALS_RECORDED
+    reason: >-
+      THE SEVEN OBLIGATIONS ARE DISCHARGED. Each was given a canonical event under explicit
+      founder/architect authority on 2026-08-12, and each departure from EVENT_REQUIRED is re-proven
+      mechanically on every run. A control document still telling an agent that P5's event content is
+      blocked on founder/architect event NAMING would direct it to wait for work that has been done,
+      and would hide what actually remains - the recorded G2 residuals (G2-D4/D6/D8/D9/D10) and P5's
+      own unbuilt event infrastructure. This is the SAME failure mode as COUNT_NEEDS_ADJUDICATION,
+      one turn later, and it is registered here for the same reason.
+    found_live_at: >-
+      not as this literal token. Its PROSE form - "PARTIALLY DISCHARGED", "seven durable writes still
+      have no canonical event", "naming them is founder/architect authority", "the frozen 98-event
+      registry" - was live in CLAUDE.md, README.md, ARCHITECTURE.md, docs/implementation/CURRENT.md
+      and docs/implementation/PHASE-OUTPUTS.md, and every one of those rows was corrected by P5 U5.2.
   - token: COUNT_NEEDS_ADJUDICATION
     retired_as: this file's meta.status before the G2 architecture adjudication
-    superseded_by: G2_PARTIALLY_DISCHARGED_FOUNDER_GATED
+    superseded_by: G2_EVENT_OBLIGATIONS_DISCHARGED_RESIDUALS_RECORDED
     reason: >-
-      G2 WAS ADJUDICATED, at certified predecessor 6e8127d. The open question is no longer the count
-      and no longer the interpretation - it is the seven founder/architect event names. A control
-      document still telling an agent to adjudicate the count directs it to redo settled work and
-      hides the real block.
+      G2 WAS ADJUDICATED, at certified predecessor 6e8127d. The open question was no longer the count
+      and no longer the interpretation - it was the seven founder/architect event names, which have
+      since been decided (2026-08-12). A control document still telling an agent to adjudicate the
+      count directs it to redo settled work and hides the real state.
     found_live_at: >-
       docs/implementation/PHASE-OUTPUTS.md P5 "Blocked on" row - reported as F-02 by the independent
       review of candidate 38b4bda, UPHELD and NARROWED by the targeted adjudication, and CORRECTED by
@@ -435,16 +513,24 @@ classes:
 
   - name: EVENT_REQUIRED
     meaning: >-
-      a durable write with no canonical event recording it. GR-2 is VIOLATED by each of these rows
-      as written. They are recorded open, not exempted. See founder_gated_event_obligations.
-    members:
-      - 02-pipeline-instance:PL-7a
-      - 04-approval:AP-9
-      - 07-conflict:CF-7
-      - 09-exception:EC-7
-      - 11-policy:PO-2
-      - 11-policy:PO-3
-      - 12-rule:RU-8
+      a durable write with no canonical event recording it. GR-2 is VIOLATED by each such row as
+      written; they are recorded open, never exempted. See founder_gated_event_obligations.
+    members: []
+    membership_note: >-
+      ### EMPTY, AND EMPTY IS NOT THE SAME AS UNGUARDED. The class is asserted by EXACT SET EQUALITY
+      against `frozen_event_required_set`, in both directions: a row that JOINS it without amending
+      the adjudicated record fails the build, and a row that LEAVES it without a mechanically
+      re-proven discharge fails the build. The seven that used to be here are listed below with the
+      canonical event that discharged each, and they are ALSO still listed in
+      founder_gated_event_obligations - deleting either record is a build failure, not housekeeping.
+    discharged_members:
+      - {key: 02-pipeline-instance:PL-7a, event: AutonomousAdmissionRecorded, route: MINTED_CANONICAL_EVENT}
+      - {key: 04-approval:AP-9, event: ApprovalFrozen, route: MINTED_CANONICAL_EVENT}
+      - {key: 07-conflict:CF-7, event: ConflictPartyAttached, route: MINTED_CANONICAL_EVENT}
+      - {key: 09-exception:EC-7, event: ExceptionSeverityChanged, route: MINTED_CANONICAL_EVENT}
+      - {key: 11-policy:PO-2, event: PolicySubmitted, route: MINTED_CANONICAL_EVENT}
+      - {key: 11-policy:PO-3, event: PolicyApproved, route: MINTED_CANONICAL_EVENT}
+      - {key: 12-rule:RU-8, event: RuleExpired, route: MINTED_CANONICAL_EVENT}
 
   - name: CONSUMES
     meaning: >-
@@ -591,8 +677,12 @@ consumes_relation_matrix:
     test_bootstrap_hermeticity.py::test_the_relation_matrix_over_every_consumer_and_every_canonical_event_is_exact.
   consumers: 9
   durable_consumers: 8
-  canonical_contracts_evaluated: 111
-  durable_evaluations: 888
+  canonical_contracts_evaluated: 118
+  durable_evaluations: 944
+  # 111 -> 118 and 888 -> 944 because the corpus gained the seven minted events (F1-F13 105 + F14 13).
+  # Every durable consumer is now evaluated against the seven new contracts as well, and every one of
+  # those 56 new evaluations is a REJECT: no consumer declares a co-commit with any of the seven new
+  # owner rows. False accepts stay 0 and false rejects stay 0.
   measured_against_rejected_candidate_1ae365a:
     false_accepts: 23
     false_rejects: 0
@@ -631,7 +721,11 @@ consumes_relation_matrix:
         producers and are PL-11c's declared partners, so this is NOT a proven false accept; it is an
         imprecision inherited from a frozen producer map.
       closures_considered_and_refused:
-        - "narrow sec 3's producer list to {EF-3u} - FORBIDDEN: a producer-map change; the 98 is frozen"
+        - "narrow sec 3's producer list to {EF-3u} - FORBIDDEN AT THE TIME: a producer-map change,
+           and the event registry was frozen to U5.1. The 2026-08-12 mint did NOT revisit it: that
+           authorization was to MINT SEVEN NEW EVENTS, not to re-cut an existing event's producer
+           list, and OutcomeUnknown's three-producer list is byte-unchanged. The residual therefore
+           stays OPEN and still belongs to whichever unit is authorized to narrow sec 3."
         - "add the `From` state to co-commit declarations - REFUSED: no declaration carries one;
            this invents a convention and is not mechanically necessary"
         - "require each (owner, machine, state) to resolve to exactly one consumer row - REFUSED,
@@ -680,7 +774,77 @@ frozen_event_required_set:
         actually satisfies - for CONSUMES that is consumes_valid rules 1,2,3,5a-5d and 7 in full,
         with the 5a REVERSE leg row-bound. Re-proven mechanically, so writing the record is not the
         discharge.
-  discharges: []
+  # ### THE SEVEN DISCHARGES. Every one is route MINTED_CANONICAL_EVENT, and every one is RE-PROVEN
+  # on each run by _discharge_route_errors: the named event must exist in events/registry.md sec 3
+  # AND sec 3 must declare THIS row its producer. Writing the entry proves nothing; the entry is the
+  # RECORD of a discharge whose truth is recomputed from the specification.
+  #
+  # NOT ONE of these is a PRE_EXISTING_STRUCTURAL_PROOF. That route remains available and unused, and
+  # it is the route the PL-7a laundering attempted - the hostile battery still asserts that forging it
+  # for a row whose structural proof does not hold FAILS.
+  discharges:
+    - transition: 02-pipeline-instance:PL-7a
+      route: MINTED_CANONICAL_EVENT
+      event: AutonomousAdmissionRecorded
+      obligation: G2-OB-PL-7A-AUTONOMOUS-ADMISSION-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D1 (2026-08-12), authorizing P5 U5.2 to mint one canonical fact for
+        each of PL-7a, CF-7, EC-7, PO-3 and RU-8 under the stated rule: a durable state change that
+        cannot be truthfully and replay-safely represented by an existing canonical event must receive
+        its own canonical fact. PL-7a's admission under AUTONOMOUS_WITHIN_CAPS is not PL-7b's bound
+        human approval, so `ApprovalBound` could not carry it without asserting a human who was absent.
+    - transition: 04-approval:AP-9
+      route: MINTED_CANONICAL_EVENT
+      event: ApprovalFrozen
+      obligation: G2-OB-AP-9-FREEZE-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D2 (2026-08-12) - EMIT, not derive. The emit-vs-derive choice the
+        obligation reserved is decided in favour of an explicit canonical fact, because `frozen` is
+        safety-critical quarantine state and replay must reconstruct it from POSITIVE evidence rather
+        than from the ABSENCE of a RealityEstablished, whose truth depends on fold completeness and
+        ordering. The event binds the freeze to its chain via `unknown_outcome_ref` and
+        `effect_grant_id`. The fail-closed runtime treatment of unresolved approval reality is
+        unchanged (registry ER-16 governs replay, not the live guard).
+    - transition: 07-conflict:CF-7
+      route: MINTED_CANONICAL_EVENT
+      event: ConflictPartyAttached
+      obligation: G2-OB-CF-7-PARTY-ATTACH-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D1 (2026-08-12). The appended party carries its own
+        `provenance_class`, which `ConflictRaised` cannot retroactively carry, so the append needs its
+        own fact for a rebuild to reproduce the full party set.
+    - transition: 09-exception:EC-7
+      route: MINTED_CANONICAL_EVENT
+      event: ExceptionSeverityChanged
+      obligation: G2-OB-EC-7-SEVERITY-CHANGE-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D1 (2026-08-12). The reassessment preserves the old value, the new
+        value and the actor, which `ExceptionRaised` (a creation fact) structurally cannot.
+    - transition: 11-policy:PO-2
+      route: MINTED_CANONICAL_EVENT
+      event: PolicySubmitted
+      obligation: G2-OB-PO-2-PROPOSAL-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D3 (2026-08-12) - MINT, do NOT re-attribute. The obligation offered
+        two remedies and the decision selects the one that leaves PO-1's `PolicyProposed` semantics,
+        producer and consumers untouched: re-attribution would rewrite the meaning of every historical
+        `PolicyProposed` (S8 / ER-7).
+    - transition: 11-policy:PO-3
+      route: MINTED_CANONICAL_EVENT
+      event: PolicyApproved
+      obligation: G2-OB-PO-3-APPROVAL-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D1 (2026-08-12), with the event declared CONSEQUENTIAL in
+        events/registry.md sec 5 so it pins the approval identity and evidence a replay needs to prove
+        the change was human-gated - the "no admin path" evidence.
+    - transition: 12-rule:RU-8
+      route: MINTED_CANONICAL_EVENT
+      event: RuleExpired
+      obligation: G2-OB-RU-8-EXPIRY-FACT-UNRECORDED
+      authority: >-
+        FOUNDER/ARCHITECT DECISION D1 (2026-08-12). Symmetric with M11's PolicyExpired (PO-7); the
+        human-confirmation Exception records a DIFFERENT aggregate and never recorded that THIS rule
+        left the ACTIVE set.
   no_third_route: true
   silent_deletion_is_a_build_failure: true
   self_certification_prohibited: >-
@@ -690,16 +854,33 @@ frozen_event_required_set:
     forward leg of 5a and nothing more.
   enforced_by: >-
     test_bootstrap_hermeticity.py::test_the_event_required_set_is_frozen_by_identity_and_never_by_count
-    (three-way exact set equality: specification, this record, and the registered obligations) and
-    test_hostile_an_open_obligation_may_not_annex_another_rows_co_commit_declaration (the exact
-    PL-7a laundering, asserted to FAIL, with a positive control that the unmutated seven PASS).
+    - three-way exact set equality between the specification, this record and the registered
+    obligations, taken over ADJUDICATED_EVENT_REQUIRED MINUS the discharges the SAME node has already
+    RE-PROVEN from events/registry.md sec 3. ### AMENDED (R3-B, P5 U5.2), AND THE AMENDMENT IS THE
+    POINT: the previous form asserted that equality UNCONDITIONALLY, which made BOTH authorized
+    discharge routes DEAD CODE - no discharge, however properly recorded and however completely
+    re-proven, could ever have passed. The anchor is unmoved: it is still the literal adjudicated
+    seven, it is not read from this file, and a member still leaves ONLY through a re-proven recorded
+    discharge. Also enforced by
+    test_hostile_an_open_obligation_may_not_annex_another_rows_co_commit_declaration - the exact PL-7a
+    laundering asserted to FAIL, plus a SILENT departure, a forged structural proof, a forged
+    minted-event discharge naming an event the row does not produce, and an invented third route, each
+    asserted to FAIL, with a positive control that the real record PASSES.
 
 # ---------------------------------------------------------------------------------------------
-# THE FOUNDER/ARCHITECT BOUNDARY. Seven durable writes that no canonical event records.
+# THE FOUNDER/ARCHITECT BOUNDARY. Seven durable writes that no canonical event recorded.
 #
-# ### NO SESSION BELOW FOUNDER/ARCHITECT AUTHORITY MAY MINT A CANONICAL EVENT NAME, CHANGE THE
-# ### FROZEN 98-EVENT TOTAL, OR MARK ANY OF THESE DISCHARGED. Each entry states the SEMANTIC
-# ### OBLIGATION - the fact that must become recordable - and deliberately states NO NAME.
+# ### ALL SEVEN ARE NOW DISCHARGED, BY THE FOUNDER/ARCHITECT DECISIONS OF 2026-08-12 (meta
+# ### .founder_architect_decisions_2026_08_12), AND EVERY ENTRY IS RETAINED HERE IN FULL.
+# ### DELETING ONE IS A BUILD FAILURE, NOT TIDYING. `semantic_obligation` and `why_it_matters` are
+# ### preserved verbatim: they are the record of WHAT WAS WRONG, and a repaired defect whose
+# ### description has been erased teaches nobody and can silently regress. Each entry now additionally
+# ### carries `status`, the `discharging_event`, its `discharge_route` and its authority.
+#
+# ### THE BOUNDARY ITSELF IS UNCHANGED AND STILL BINDS. No session below founder/architect authority
+# ### may mint a canonical event name, change the canonical event total, or mark an obligation
+# ### discharged. What changed is that the authority was exercised - explicitly, on the record, for
+# ### these seven and no others.
 founder_gated_event_obligations:
 
   - id: G2-OB-PL-7A-AUTONOMOUS-ADMISSION-UNRECORDED
@@ -716,9 +897,19 @@ founder_gated_event_obligations:
       makes the emitted event the audit record, so the one transition where the system proceeds
       WITHOUT a human is the one with no audit record.
     live_exposure: >-
-      NONE TODAY. Bounded autonomy is BLOCKED at P14 and ships dark. This is a specification defect
-      to fix BEFORE that path is built.
+      NONE TODAY. Bounded autonomy is BLOCKED at P14 and ships dark. This was a specification defect
+      to fix BEFORE that path is built, and it was fixed before that path was built.
     decision_required: founder/architect - a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: AutonomousAdmissionRecorded
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D1 (2026-08-12) - mint one canonical fact per obligation
+    how_the_obligation_is_now_met: >-
+      `AutonomousAdmissionRecorded`(PL-7a) carries `gate_decision` (= AUTONOMOUS_WITHIN_CAPS),
+      `caps_evaluated`, `policy_version` and `brake_version` - the gate decision and the caps the
+      obligation named. PL-7b keeps `ApprovalBound` and never emits this event, so the one admission
+      path with no human in it now has its own audit record and cannot borrow the human path's.
 
   - id: G2-OB-AP-9-FREEZE-FACT-UNRECORDED
     transition: 04-approval:AP-9
@@ -741,8 +932,26 @@ founder_gated_event_obligations:
       The row as written violates GR-2 under BOTH remedies. Choosing between them is design
       authority. ### DO NOT IMPROVISE THE EVENT DESIGN.
     fail_closed_default_until_decided: >-
-      treat any approval with an unresolved OutcomeUnknown as frozen.
+      treat any approval with an unresolved OutcomeUnknown as frozen. ### STILL IN FORCE AT RUNTIME.
+      The discharge decided what REPLAY reconstructs from; it did not relax the live guard.
     decision_required: founder/architect - emit-vs-derive, then (if emit) a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: ApprovalFrozen
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D2 (2026-08-12) - EMIT, explicitly NOT derive
+    remedy_selected: >-
+      the FIRST admissible remedy - AP-9 emits a new canonical Approval* event. ### THE SECOND REMEDY
+      (derive `frozen` from OutcomeUnknown AND NOT RealityEstablished) WAS CONSIDERED AND REFUSED BY
+      NAME: an absence is only as true as the fold is complete and correctly ordered, and a
+      safety-critical quarantine may not rest on either. Deriving would have reproduced the very
+      failure this obligation records - a rebuilt approval that is REUSABLE - whenever the fold was
+      partial.
+    how_the_obligation_is_now_met: >-
+      `ApprovalFrozen`(AP-9) carries `frozen=true`, `unknown_outcome_ref` (the `event_id` of the
+      OutcomeUnknown that froze it), `effect_grant_id` and `frozen_at`. A full-history rebuild sets
+      `frozen=true` because the event is PRESENT (registry ER-16), so the rebuilt approval is no
+      longer less safe than the original.
 
   - id: G2-OB-CF-7-PARTY-ATTACH-FACT-UNRECORDED
     transition: 07-conflict:CF-7
@@ -757,6 +966,16 @@ founder_gated_event_obligations:
       "still an event, never silence"). The old cell answered the From -> To column, not the Event
       column - a category error.
     decision_required: founder/architect - a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: ConflictPartyAttached
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D1 (2026-08-12)
+    how_the_obligation_is_now_met: >-
+      `ConflictPartyAttached`(CF-7) carries `party_ref`, the attaching party's `provenance_class`
+      (carried, never strengthened - ER-14) and the resulting `parties[]`, so a rebuild reproduces the
+      full party set rather than the set as it stood at CF-1. It remains ONE conflict: the dedup index
+      still refuses a second ConflictRaised.
 
   - id: G2-OB-EC-7-SEVERITY-CHANGE-FACT-UNRECORDED
     transition: 09-exception:EC-7
@@ -770,6 +989,15 @@ founder_gated_event_obligations:
       EC-4/EC-5 ageing and escalation thresholds and, per M9 sec 30, Sev-0 exceptions auto-engage
       the brake - so a rebuilt projection can UNDER-STATE severity relative to live state.
     decision_required: founder/architect - a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: ExceptionSeverityChanged
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D1 (2026-08-12)
+    how_the_obligation_is_now_met: >-
+      `ExceptionSeverityChanged`(EC-7) carries `previous_severity` (old), `severity` (new),
+      `changed_by` (the actor the obligation required) and `reason`. Carrying the OLD value as well as
+      the new one makes a missing link DETECTABLE in a fold instead of silently absorbed.
 
   - id: G2-OB-PO-2-PROPOSAL-FACT-UNRECORDED
     transition: 11-policy:PO-2
@@ -789,6 +1017,21 @@ founder_gated_event_obligations:
       Both remedies change the frozen registry (one re-attributes an existing name and adds one;
       the other adds one). Neither is available below founder/architect authority.
     decision_required: founder/architect - re-attribution and/or a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: PolicySubmitted
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D3 (2026-08-12) - MINT for PO-2, do NOT re-attribute PO-1
+    remedy_selected: >-
+      the SECOND admissible remedy - mint a new event for PO-2 and leave PO-1's attribution
+      unchanged. ### THE FIRST (re-attribute `PolicyProposed` to PO-2 and mint for PO-1) WAS REFUSED
+      BY NAME: it would silently change the meaning of every `PolicyProposed` already in history and
+      of every consumer reading it, which is the S8 / ER-7 prohibition on correcting the past by
+      rewriting it. PO-1 keeps `PolicyProposed`, unchanged in name, producer, payload and consumers.
+    how_the_obligation_is_now_met: >-
+      `PolicySubmitted`(PO-2) carries `policy_version` and the `gate_decision` that had to be non-null
+      for the draft to proceed - exactly the two the obligation named. The naming COLLISION is closed
+      by giving the DRAFT -> PROPOSED transition its own name, not by moving the older one.
 
   - id: G2-OB-PO-3-APPROVAL-FACT-UNRECORDED
     transition: 11-policy:PO-3
@@ -802,6 +1045,18 @@ founder_gated_event_obligations:
       A POLICY CHANGE WAS HUMAN-GATED. M11 sec 39's own list omits "approve" as well - the same gap
       in two places.
     decision_required: founder/architect - a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: PolicyApproved
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D1 (2026-08-12)
+    how_the_obligation_is_now_met: >-
+      `PolicyApproved`(PO-3) carries `approval_id`, `policy_version`, `diff_fingerprint` (the
+      material_facts_fingerprint of the diff), `approved_by` and `evidence_refs`, and it is declared
+      CONSEQUENTIAL in events/registry.md sec 5 - so it pins the entity_versions / fingerprint /
+      policy_version / brake_version set needed to reproduce the approval context. Replay can now
+      prove a policy change was human-gated. The M11 sec 39 list gap is a separate documentation
+      residual and is NOT claimed closed here.
 
   - id: G2-OB-RU-8-EXPIRY-FACT-UNRECORDED
     transition: 12-rule:RU-8
@@ -816,6 +1071,16 @@ founder_gated_event_obligations:
       evaluation - a fact replay cannot currently reconstruct. The raised Exception records a
       DIFFERENT aggregate and does not record that this rule expired.
     decision_required: founder/architect - a new canonical event type
+    status: DISCHARGED
+    discharged_on: "2026-08-12"
+    discharging_event: RuleExpired
+    discharge_route: MINTED_CANONICAL_EVENT
+    discharge_authority: FOUNDER/ARCHITECT DECISION D1 (2026-08-12)
+    how_the_obligation_is_now_met: >-
+      `RuleExpired`(RU-8) carries `rule_id`, `rule_version` and `expired_at`, restoring the symmetry
+      with M11's PolicyExpired(PO-7) that F12 lacked. Replay can now reconstruct which rules were
+      ACTIVE at a checkpoint. The human-confirmation Exception is unchanged and still fires - it is a
+      different aggregate's fact and was never a substitute for this one.
 
 # ---------------------------------------------------------------------------------------------
 # RECORDED, NOT DISCHARGED. Carried out of the G2 adjudication and out of this unit.
@@ -914,3 +1179,89 @@ recorded_residuals:
       is now scoped to the MATCHED CLAUSE (24 and non-producer within one clause) and the
       retired-label carve-out to the ENCLOSING SENTENCE, with a hostile node asserting the exact
       reproduction sentence above FAILS.
+
+  - id: G2-D11
+    surface: spec (M4 + events)
+    status: OPEN - RECORDED, NOT FIXED
+    opened_by: >-
+      P5 U5.2 REPLACEMENT candidate, closing F-06 of the independent review of the rejected first
+      candidate f01d942 and of the separate targeted re-adjudication that upheld it.
+    statement: >-
+      THE UNFREEZE DIRECTION OF AP-9's `frozen` FLAG IS UNMODELLED. AP-9 sets `frozen=true` and
+      `ApprovalFrozen` now records it (D2, ER-16). NOTHING in the corpus clears it: M4 carries no
+      transition row whose Writes cell clears `frozen`, there is no `ApprovalUnfrozen` event, and
+      `RealityEstablished` is an M3 fact on a different aggregate whose declared payload does not
+      mention the flag. A full-history rebuild can therefore reconstruct that an approval WAS
+      frozen and cannot reconstruct that it stopped being frozen.
+    what_the_rejected_candidate_did: >-
+      f01d942's new `ApprovalFrozen` row in events/04-approval-events.md asserted "Unfreezing is not
+      a field edit either: it happens through `RealityEstablished` on the bound chain." That sentence
+      was the ONLY mention of unfreezing in the corpus and it asserted a mechanism the repository has
+      not established. THE SENTENCE IS DELETED by this replacement rather than restated.
+    why_it_is_recorded_rather_than_registered_as_an_obligation: >-
+      ### THE HONEST ANSWER IS AUTHORITY, AND IT IS STATED PLAINLY. The re-adjudication offered two
+      remedies: delete the sentence, or register the `frozen`-clearing durable write as a new OPEN
+      GR-2 obligation. The second is NOT AVAILABLE to this session. A `founder_gated_event_obligations`
+      entry must name a `transition` that the classifier computes as EVENT_REQUIRED; no such row
+      exists, so registering the obligation would require ADDING A TRANSITION ROW TO M4 - a change to
+      the frozen 134-row corpus and to the adjudicated EVENT_REQUIRED set, both founder/architect
+      acts this session did not receive. Improvising either to make a residual look closed is the
+      exact failure mode this program has been rejected for. So: the false sentence is removed, the
+      gap is named here, and it stays OPEN.
+    fail_closed_today: >-
+      YES, and that is why it is NONBLOCKING. An approval whose `frozen` cannot be cleared on replay
+      is reconstructed as STILL FROZEN, i.e. UNUSABLE. The rebuilt state is strictly SAFER than the
+      original, which is the correct direction of error - the inverse of the AC-EVT-008 defect that
+      created AP-9's obligation in the first place. Nothing live depends on it: M4 sec 13/15 keep the
+      runtime fail-closed treatment unchanged and no production write path is enabled.
+    admissible_remedies:
+      - "add an M4 transition row that clears `frozen` on established reality, with its own canonical
+         event (a corpus change - founder/architect); or"
+      - "declare in events/registry.md that `frozen` is a MONOTONIC quarantine flag that is never
+         cleared, and reconcile M4 sec 13's 'until reality established' with it (a semantics
+         decision - founder/architect); or"
+      - "extend `RealityEstablished`'s sec-5 payload to carry the approval reference it releases, and
+         declare M4 a consumer of it (a payload + coordination change - founder/architect)."
+
+  - id: G2-D12
+    surface: test/guard
+    status: OPEN - RECORDED, NOT FIXED
+    opened_by: >-
+      P5 U5.2 REPLACEMENT candidate, on the express instruction of the targeted re-adjudication of
+      f01d942 ("it is a necessary-conditions filter, not a semantic proof, and must be recorded as
+      such - in the existing ADJUDICATED_UNDECLARED_ACCEPTS style").
+    statement: >-
+      THE DELEGATION PREDICATE IS A CONJUNCTION OF NECESSARY CONDITIONS, NOT A SEMANTIC PROOF.
+      `_resolve_delegation` proves the target exists, is a sec-3 producer, transitions to the
+      delegated state, shares a trigger type with the delegating row, and lives on the SAME MACHINE
+      (= the same aggregate under state-machines/registry.md sec 1's ordering key). Nothing in it
+      reads what the target's event ASSERTS. Over the 250 structurally-expressible triples in the
+      corpus it admits 51.
+    what_is_still_admitted: >-
+      Two of the 51 are visibly semantically wrong and are NAMED in the guard's own record:
+      `EF-1 -> GRANTED=EF-2f`, where EF-2f owns `ClaimRefused` - the IDEMPOTENT REFUSAL of a second
+      claim - and would stand as the record of EF-1's grant; and `IB-1 -> PROPOSED=IB-3`, the same
+      shape on M6. The other 49 are same-machine sibling pairs reaching a shared state (the WI, BR,
+      EX, EC, OB and PL clusters). NONE of the 51 is DECLARED by the corpus beyond the seven real
+      branches, and NONE is sourced at a member of the adjudicated EVENT_REQUIRED seven - the second
+      property is asserted separately and is what the founder gate depends on.
+    why_this_is_acceptable_and_what_is_not: >-
+      This is the standard the repository already accepted for CONSUMES-VALID, whose four conjuncts
+      are likewise necessary conditions carrying the recorded ADJUDICATED_UNDECLARED_ACCEPTS
+      residual. What the re-adjudication refused was not the imprecision but ANNOUNCING IT AS
+      CLOSURE: f01d942's subject line said it had "close[d] the false-delegation route" while its
+      predicate admitted 157 of 250 triples, nine of them sourced at the seven. ### THIS RECORD IS
+      THE REFUSAL TO ROUND A RESIDUAL UP TO A CLOSURE.
+    held_by: >-
+      eval/tests/test_bootstrap_hermeticity.py::ADJUDICATED_DELEGATION_ADMITS, asserted EXACTLY in
+      both directions by
+      test_the_delegation_predicate_is_swept_over_the_whole_corpus_and_its_admitted_set_is_exact.
+      The set is a MEASUREMENT of what the predicate lets through, not a target: it may not be
+      edited to match a weakened predicate, and deleting either conjunct makes it grow (trigger
+      deleted -> 157 admits / 9 at the seven; same-machine deleted -> 96 / 2; both -> 235 / 13).
+    admissible_remedies:
+      - "declare, per event, what its fact ASSERTS in a structured column, so a delegation can be
+         checked against meaning rather than against shape (an events-registry schema change -
+         founder/architect); or"
+      - "leave it: the population is held EXACT, so it cannot grow silently, and the property the
+         founder gate needs - zero admits sourced at the adjudicated seven - is asserted directly."

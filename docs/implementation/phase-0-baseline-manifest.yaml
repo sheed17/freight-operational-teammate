@@ -120,6 +120,10 @@ expected_current_defects:
     deletion_condition: >-
       CLOSED: the corpus was amended to its own enumeration (98). No events were invented to preserve
       the old total. The probe now asserts EXACT SET EQUALITY over event names.
+      LATER AND SEPARATELY (2026-08-12, P5 U5.2): seven canonical events were MINTED under explicit
+      founder/architect authority to discharge the seven recorded GR-2 obligations, taking the F1..F13
+      total from 98 to 105. That is a DELIBERATE AUTHORIZED AMENDMENT, not a recurrence of DEF-5: DEF-5
+      was a DECLARED total disagreeing with its own enumeration, and declared still equals enumerated.
 
   - id: DEF-6
     fact: >-
@@ -914,9 +918,14 @@ spec_counts:
   transitions_enumerated: 134
   transitions_declared: 134
   transitions_exact_set_digest: de13ddea5a448a0b
-  emitted_events_enumerated: 98
-  emitted_events_declared: 98
-  emitted_events_exact_set_digest: 6deb2ccecdfa8b3f
+  # 2026-08-12 (P5 U5.2): 98 -> 105. Seven canonical events minted under founder/architect authority
+  # to discharge the seven recorded GR-2 obligations. Declared still equals enumerated, which is the
+  # property DEF-5 was about. Digest = sha256 of the newline-joined sorted event names, first 16 hex
+  # (the same construction as the 2026-07-16 value it replaces).
+  emitted_events_enumerated: 105
+  emitted_events_declared: 105
+  emitted_events_exact_set_digest: 1485bd6f0f6dd02b
+  emitted_events_exact_set_digest_retired_2026_07_16: 6deb2ccecdfa8b3f
   security_events_enumerated: 13
   domain_entities: 40
   adapters: 18
