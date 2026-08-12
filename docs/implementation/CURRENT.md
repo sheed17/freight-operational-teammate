@@ -30,10 +30,10 @@ version of this block goes stale within one commit and nothing notices.
 
 ```yaml
 # status-block: maintained by scripts/finalize_status.py - do not edit by hand
-recorded_authoring_branch: p4/adapter-containment-completion   # advisory; not verified across bundles/clones
-content_commit: a31a94aa8239113ec8ea3c02b5ef6fad922a1b24
-content_tree: 637580b64ca666695d0811c4119e866de6100ce9
-suite_passed: 2072
+recorded_authoring_branch: p5/u5-1-g2-spec-correction   # advisory; not verified across bundles/clones
+content_commit: d59b7400a472cc72d522d3f14a365710b9ba6bf0
+content_tree: a88921c636df406c5137bc3178e8f01de122ab31
+suite_passed: 2104
 suite_failed: 0
 suite_skipped: 1
 ```
