@@ -145,6 +145,7 @@ Every transition specifies all 26 fields from the brief. To keep the tables dete
 | `PolicyEvaluated` | M2 | `policy_version, gate_decision, decision, reason` |
 | `IntentValidated` · `PipelineRejected` | M2 | `reason?` |
 | `ApprovalRequested` | M4 | `fingerprint, gate_decision` |
+| `AutonomousAdmissionRecorded` | M2 | `gate_decision, caps_evaluated, policy_version, brake_version` |
 | `ApprovalBound` | M2 | `approval_id` |
 | `CheckpointPassed` | M2 | `checkpoint_id` |
 | `CheckpointFailed` | M2 | `step, reason` |
@@ -164,18 +165,24 @@ Every transition specifies all 26 fields from the brief. To keep the tables dete
 | `ApprovalExpired` | M4 | — |
 | `ApprovalVoided` | M4 | `cause ∈ {drift, policy, brake}, drift_diff?` |
 | `ApprovalConsumed` | M4 | — |
+| `ApprovalFrozen` | M4 | `frozen=true, unknown_outcome_ref, effect_grant_id, frozen_at` |
 | `ObservationReceived` · `ObservationConfirmed` · `ObservationParsed` · `ObservationUnparseable` | M5 | `natural_key` |
 | `ObservationBound` · `ObservationUnbound` · `ObservationSuperseded` | M5 | `provenance_class?` |
 | `ClaimProposed` · `ClaimConfirmed` · `ClaimEvidenced` · `ClaimAmbiguous` · `ClaimCorrected` · `ClaimSuperseded` | M6 | `provenance_class, match_method` |
 | `ConflictRaised` · `ConflictOpened` · `ConflictEscalated` | M7 | `kind` |
+| `ConflictPartyAttached` | M7 | `party_ref, provenance_class, parties[]` |
 | `ConflictResolved` | M7 | `rule_id \| decision_ref` |
 | `ExpectationRaised` · `ExpectationDischarged` · `ExpectationOverdue` · `ExpectationIndeterminate` · `ExpectationReVersioned` · `ExpectationCancelled` · `ExpectationExpired` | M8 | `deadline?, coverage_ref?` |
 | `ExceptionRaised` | M9 | `severity, exposure?, source_ref` |
 | `ExceptionAcknowledged` · `ExceptionEscalated` | M9 | — |
+| `ExceptionSeverityChanged` | M9 | `severity, previous_severity, changed_by, reason` |
 | `ExceptionResolved` | M9 | `decision_ref` |
 | `CompensationRequired` · `CompensationRefused` · `CompensationApproved` · `CompensationStarted` · `CompensationCompleted` · `CompensationFailed` · `CompensationImpossible` | M10 | `exposure, original_effect_id` |
 | `PolicyProposed` · `PolicyActivated` · `PolicySuperseded` · `PolicyRevoked` · `PolicyExpired` · `PolicyVersionChanged` | M11 | `policy_version` |
+| `PolicySubmitted` | M11 | `policy_version, gate_decision` |
+| `PolicyApproved` | M11 | `policy_version, approval_id, diff_fingerprint` |
 | `RuleProposed` · `RuleCompiled` · `RuleNotEnforceable` · `RuleConfirmed` · `RuleActivated` · `RuleSuperseded` · `RuleRevoked` | M12 | `rule_id, missing?` |
+| `RuleExpired` | M12 | `rule_id, rule_version, expired_at` |
 | `BrakeEngaged` · `BrakeWidened` · `BrakeNarrowed` · `BrakeReleased` | M13 | `scope, actor, reason, brake_version, decision_ref?` |
 | **`IllegalTransitionAttempted`** | **all** | `machine, state, trigger` — audit **and** security |
 

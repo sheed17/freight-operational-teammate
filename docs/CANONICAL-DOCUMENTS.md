@@ -109,7 +109,7 @@ its names.
 | [`specifications/entities/`](specifications/entities/) | 18 | `00-conventions.md` | 17 platform primitives |
 | [`specifications/domain-entities/`](specifications/domain-entities/) | 12 | `registry.md` | 40 freight entities in families |
 | [`specifications/state-machines/`](specifications/state-machines/) | 14 | `registry.md` | 13 machines, **134 transitions** |
-| [`specifications/events/`](specifications/events/) | 16 | `registry.md` | **98 event contracts**, F1–F13 |
+| [`specifications/events/`](specifications/events/) | 16 | `registry.md` | **105 event contracts**, F1–F13 |
 | [`specifications/adapters/`](specifications/adapters/) | 14 | `registry.md` | 18 adapter boundary contracts |
 | [`specifications/workflows/`](specifications/workflows/) | 12 | `registry.md` | **the eleven loops W1–W11** |
 | [`specifications/acceptance/`](specifications/acceptance/) | 24 | `registry.md` | **ACCEPTANCE_ORACLE** — the contracts + `release-gates.md` + `traceability.md` |

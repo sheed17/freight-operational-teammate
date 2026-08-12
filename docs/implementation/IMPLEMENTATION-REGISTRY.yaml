@@ -1188,7 +1188,7 @@ units:
   - unit_id: P5
     name: Canonical events, outbox/inbox, replay isolation, and production persistence
     objective: >-
-      Implement the 98 event contracts with a transactional outbox and a dedup inbox, prove
+      Implement the 105 event contracts with a transactional outbox and a dedup inbox, prove
       replay is sandboxed and structurally inert, and make persistence production-grade:
       PostgreSQL as the production transactional store with schema migrations and durable
       timers/scheduler (ADR-016). SQLite remains for local development and deterministic tests.
@@ -1202,11 +1202,13 @@ units:
     # this transition did not begin P5, and CLAUDE.md sec 11 / PROGRESS-PROTOCOL.md sec 9 require
     # stopping at this control boundary rather than rolling on.
     #
-    # ### P5 CARRIES ITS OWN INDEPENDENT VALIDATION BLOCKER, UNDISCHARGED. G2 - the transition/event
-    # completeness adjudication - is recorded below and is NOT discharged by P4's completion. The
-    # final adjudication states this explicitly (sec G.6): the G2 obligation "is independent of P4
-    # and this adjudication does not discharge it". P5 is selectable; its event content may not be
-    # written until G2 is adjudicated.
+    # ### P5 CARRIED ITS OWN INDEPENDENT VALIDATION BLOCKER. G2 - the transition/event completeness
+    # adjudication - was NOT discharged by P4's completion; the P4 final adjudication says so
+    # explicitly (sec G.6): the G2 obligation "is independent of P4 and this adjudication does not
+    # discharge it". G2 was adjudicated by U5.1, and its SEVEN founder-gated event obligations were
+    # discharged by U5.2's founder/architect mint on 2026-08-12. ### THAT UNBLOCKED THE SPECIFICATION
+    # AND BUILT NOTHING. P5's execution_state is still NOT_STARTED, it records no landed checkpoint,
+    # and all 14 criteria are PENDING.
     status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
@@ -1218,7 +1220,7 @@ units:
       - docs/specifications/events/registry.md
     allowed_scope: [outbox, inbox, event contracts, replay sandbox, the GC-1 digest]
     prohibited_scope: [entities (P6), provenance (P7)]
-    expected_production_outputs: ["98 event contracts", transactional outbox, dedup inbox, sandboxed replay, "PostgreSQL production store + migrations (ADR-016)", "durable timers and scheduler"]
+    expected_production_outputs: ["105 event contracts", transactional outbox, dedup inbox, sandboxed replay, "PostgreSQL production store + migrations (ADR-016)", "durable timers and scheduler"]
     expected_capability: >-
       System: state can be rebuilt from history, and rebuilding it can never re-execute an effect.
     boundaries_affected: [new event infrastructure]
@@ -1229,10 +1231,11 @@ units:
     legacy_dispositions_affected: [legacy_state_management]
     rollback_posture: "Ships dark."
     validation_blockers:
-      - "G2 IS ADJUDICATED AND PARTIALLY DISCHARGED - IT STILL BLOCKS P5's EVENT CONTENT. The
-         adjudication ruled interpretation C (HYBRID): a producer transition is one declared in
-         events/registry.md sec 3 (110 of the 134 rows; the other 24 are non-producer
-         transitions), and completeness is GR-2 over durable writes. P5 U5.1 landed that contract:
+      - "G2 IS ADJUDICATED AND ITS SEVEN EVENT OBLIGATIONS ARE DISCHARGED - IT NO LONGER BLOCKS
+         P5's EVENT CONTENT. The adjudication ruled interpretation C (HYBRID): a producer transition
+         is one declared in events/registry.md sec 3 (117 of the 134 rows; the other 17 are
+         non-producer transitions), and completeness is GR-2 over durable writes. P5 U5.1 landed that
+         contract:
          all 134 rows carry structured classification, prose is never a classifier, an undecidable
          row fails the build, and EF-3 is re-attributed to the EXISTING canonical event
          EffectExecuted. A STRUCTURED MARKER IS NOT A PROOF EITHER: a durable-writing CONSUMES row
@@ -1240,18 +1243,24 @@ units:
          machine, no mutual exclusivity with the owner, and sec-5 payload coverage of every persisted
          field - because the first U5.1 candidate's version of the class let AP-9 be relabelled as
          consuming an unrelated brake event while every guard stayed green.
-         ### WHAT IS NOT DISCHARGED: seven transitions - PL-7a, AP-9, CF-7, EC-7,
-         PO-2, PO-3, RU-8 - perform durable writes that no canonical event records. Each is a live
-         GR-2 violation, recorded open with its semantic obligation and NO invented name in
-         docs/implementation/TRANSITION-EVENT-AUDIT.yaml. ### NAMING THEM CHANGES THE FROZEN
-         98-EVENT REGISTRY AND IS FOUNDER/ARCHITECT AUTHORITY. No builder, reviewer or adjudicator
-         may mint them, and no session may raise the canonical event total above 98. AP-9
-         additionally requires an emit-vs-derive decision and PO-2 a re-attribute-vs-mint decision.
-         The prior '24 of 134' claim and the prior '121 / 13' split are BOTH RETIRED - neither was
-         ever correct - and no replacement completeness claim is invented here."
-      - "P5's event content (event contracts, outbox, inbox, replay sandbox) remains blocked by the
-         seven open G2 obligations above. Non-event P5 surfaces are not authorized by this
-         instantiation either: READY is selection, and this unit's acceptance criteria are
+         ### WHAT WAS NOT DISCHARGED BY U5.1, AND HAS SINCE BEEN: seven transitions - PL-7a, AP-9,
+         CF-7, EC-7, PO-2, PO-3, RU-8 - performed durable writes that no canonical event recorded.
+         Each was a live GR-2 violation, recorded open with its semantic obligation and NO invented
+         name. On 2026-08-12, under EXPLICIT FOUNDER/ARCHITECT AUTHORITY, P5 U5.2 minted seven
+         canonical events - AutonomousAdmissionRecorded, ApprovalFrozen, ConflictPartyAttached,
+         ExceptionSeverityChanged, PolicySubmitted, PolicyApproved, RuleExpired - taking the F1-F13
+         total 98 -> 105. AP-9's emit-vs-derive decision is EMIT; PO-2's re-attribute-vs-mint decision
+         is MINT, so PolicyProposed stays PO-1's. Every discharge is re-proven mechanically on each
+         run, and the seven obligations are RETAINED, marked discharged, never deleted. The prior
+         '24 of 134' claim and the prior '121 / 13' split are BOTH RETIRED - neither was ever correct
+         - and no replacement completeness claim is invented here."
+      - "STILL OPEN, AND NOT DISCHARGED BY THE MINT: the recorded G2 residuals G2-D4, G2-D6, G2-D8,
+         G2-D9 and G2-D10, plus the PL-11c -> OutcomeUnknown carried residual whose root is sec 3's
+         three-producer list. NONE of these blocks P5's event content; each belongs to whichever unit
+         is authorized for its surface."
+      - "P5's event content is no longer blocked by the specification - it is simply NOT BUILT. No
+         event contract implementation, outbox, inbox or replay sandbox exists. Non-event P5 surfaces
+         are not authorized either: READY is selection, and this unit's acceptance criteria are
          instantiated PENDING, scored by nobody."
     # ---------------------------------------------------------------- P5 weighted acceptance contract
     # INSTANTIATED BY P5 U5.1 - the first P5 content commit - from the FROZEN PROGRAM-WEIGHTS.yaml
@@ -1339,7 +1348,12 @@ units:
     sub_units:
       - sub_unit_id: U5.1
         name: G2 specification/control correction and P5 acceptance-contract instantiation
-        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        # ### R4-A CORRECTION (by P5 U5.2). This record read
+        # `CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW` after the review, the separate
+        # re-adjudication and the finalization had all been performed and preserved. That is a live
+        # falsehood in an IMPLEMENTATION_CONTROL document - the F-02 failure mode - and it would tell
+        # the next session that a completed review is still owed.
+        record_type: CONTENT_COMMIT_INDEPENDENTLY_REVIEWED_ADJUDICATED_AND_FINALIZED
         candidate_generation: >-
           REPLACEMENT. The first candidate, 38b4bda, was REJECTED by a separate targeted governance
           adjudication and is preserved permanently, unmodified, at
@@ -1378,20 +1392,126 @@ units:
           F-04 (INFORMATIONAL) - the untracked p4-r07-third-finalization-pass-report-6e8127d.md makes
           one on-disk document-classification node fail in the PRIMARY WORKTREE, identically at 6e8127d
           and at both U5.1 candidates. It was NOT deleted, modified or committed; canonical results come
-          from the clean-clone path. F-05 - AP-9 remains EVENT_REQUIRED under its fail-closed default;
-          emit-vs-derive is founder/architect authority. F-06 - the README R-07 blockquote is a
+          from the clean-clone path. F-05 - AP-9 remained EVENT_REQUIRED under its fail-closed default,
+          because emit-vs-derive was founder/architect authority; that decision has since been made
+          (EMIT) and F-05 is discharged by P5 U5.2, not by U5.1. F-06 - the README R-07 blockquote is a
           FORBIDDEN surface for this unit and was correctly left untouched. F-04's and F-06's residuals
           belong to the next R-07-adjacent correction.
         explicitly_not_done: >-
-          ### NO event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. ### NO
-          canonical event name was minted and the canonical event total is unchanged at 98. ### NO
-          criterion was scored. G2 is NOT fully discharged - seven founder/architect-gated event
-          obligations remain open. ### NO self-review, NO self-adjudication and NO finalizer run.
+          ### AS OF U5.1's OWN CONTENT COMMIT d59b740, and true of it: NO event contract, outbox,
+          inbox, replay sandbox or PostgreSQL work existed; NO canonical event name was minted and the
+          canonical event total was unchanged at 98; NO criterion was scored; G2's seven
+          founder/architect-gated event obligations remained open; and there was NO self-review, NO
+          self-adjudication and NO finalizer run by the building session. (The seven obligations were
+          discharged later, by P5 U5.2, under founder/architect authority - which is recorded there
+          and does not change what U5.1 did.)
+        review_and_adjudication_evidence:
+          content_commit: d59b7400a472cc72d522d3f14a365710b9ba6bf0
+          independent_review:
+            ref: refs/preserve/p5-u51-independent-review-d59b740
+            commit: 005f3ba57537ca2b19bddbfa830c0b13989bad65
+            verdict: ACCEPT WITH NONBLOCKING FINDINGS
+            performed_by: >-
+              a session that did not build this candidate, did not build 38b4bda or 1ae365a, and did
+              not write either of their adjudications.
+          targeted_readjudication:
+            ref: refs/preserve/p5-u51-targeted-readjudication-d59b740
+            commit: 08b4d0d5b90d39b80fcfbc0875fcfcbb07463fc2
+            verdict: UPHOLD ACCEPT WITH RECORDED RESIDUALS
+            performed_by: a further separate session that did not implement, remediate or review this unit.
+          finalization:
+            status_metadata_commit: eda3a6d95c972cc3a0855dcd326229cad861d5ba
+            note: >-
+              exactly one finalizer-generated status-metadata commit, first finalization pass, written
+              entirely by scripts/finalize_status.py.
+        residuals_carried_out_of_u51: >-
+          The independent review and the re-adjudication recorded NONBLOCKING findings and residuals
+          rather than closing everything. Those the successor unit P5 U5.2 addressed are R2-A (the
+          CONSUMES "PRE-EXISTS the claim" documentation overclaim), R3-A (the false-delegation
+          predicate), R3-B (the unconditional frozen-set assertion that made both discharge routes
+          dead code) and R4-A (this record's own stale record_type). Others - notably the PL-11c ->
+          OutcomeUnknown carried residual, whose root is sec 3's three-producer list - remain OPEN and
+          are recorded in TRANSITION-EVENT-AUDIT.yaml, not here.
         owed_next: >-
-          a COMPLETELY fresh independent targeted review by a session that did not build either
-          candidate, did not review 38b4bda and did not write its adjudication; then a separate
-          targeted re-adjudication by a further session; then exactly one finalizer-generated
-          metadata commit.
+          NOTHING FROM U5.1 ITSELF - its review, its separate re-adjudication and its single
+          finalization are all done and preserved above. The residuals it carried out belong to
+          successor units, and U5.2 is the first of them.
+
+      - sub_unit_id: U5.2
+        name: >-
+          G2 founder/architect event mint - seven canonical events, the false-delegation predicate,
+          and the discharge machinery
+        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        candidate_generation: >-
+          FIRST candidate. A single content commit whose sole parent is the certified U5.1 lineage at
+          eda3a6d9 (status metadata for content commit d59b740). Not a replacement of anything: U5.1
+          was reviewed, re-adjudicated and finalized, and this unit begins from that accepted state.
+        landed_checkpoints: []
+        scored_criteria: []
+        authority: >-
+          ### FOUNDER/ARCHITECT DECISIONS, MADE AND RECORDED BEFORE THIS UNIT BEGAN, and transcribed
+          into TRANSITION-EVENT-AUDIT.yaml meta.founder_architect_decisions_2026_08_12:
+          D1 MINT ALL FIVE (PL-7a, CF-7, EC-7, PO-3, RU-8) on the rule that a durable state change
+          which cannot be truthfully and replay-safely represented by an existing canonical event must
+          receive its own canonical fact;
+          D2 AP-9 = EMIT, not derive - `frozen` is safety-critical quarantine state and replay must
+          reconstruct it from POSITIVE evidence, never from an absence;
+          D3 PO-2 = MINT, not re-attribute - PO-1 keeps `PolicyProposed` with its semantics, producer
+          and consumers untouched.
+          ### THE BUILDER EXERCISED NO AUTHORITY OVER WHETHER TO MINT. It chose the seven NAMES and
+          SCHEMAS from the repository's own naming and schema conventions, which is the discretion the
+          decisions delegated and the surface a reviewer should attack hardest.
+        scope: >-
+          Specification, control and guard surfaces. (1) Minted seven canonical events in
+          events/registry.md sec 3 with their producer transitions, sec-5 payloads, family-file
+          contracts and one new global rule ER-16 (a quarantine fact is reconstructed from positive
+          evidence, never from an absence): AutonomousAdmissionRecorded(PL-7a), ApprovalFrozen(AP-9),
+          ConflictPartyAttached(CF-7), ExceptionSeverityChanged(EC-7), PolicySubmitted(PO-2),
+          PolicyApproved(PO-3), RuleExpired(RU-8). The canonical F1-F13 total moved 98 -> 105 and the
+          classification 110/9/6/2/7 -> 117/9/6/2/0 = 134; the 134-row corpus is unchanged.
+          (2) Reclassified the seven transition rows from EVENT_REQUIRED to sec-3 PRODUCER, preserving
+          every other column including Writes.
+          (3) Recorded seven discharges under route MINTED_CANONICAL_EVENT, each re-proven
+          mechanically, and marked the seven founder-gated obligations DISCHARGED WITHOUT DELETING
+          THEM.
+          (4) R3-B - amended the frozen-set guard so a properly recorded and mechanically re-proven
+          discharge is admitted while a SILENT departure remains a build failure. ADJUDICATED_EVENT_
+          REQUIRED remains the literal anchor; it is reduced only by discharges the same node has
+          already re-derived from sec 3.
+          (5) R3-A - closed the false-delegation predicate with a general structured invariant: a
+          delegating row's `Trig` set must INTERSECT each target's (state-machines/registry.md sec 1's
+          closed code set). This refuses PL-7a -> PL-7b ({S} n {H} = empty) while admitting WI-14 and
+          CF-6, and it holds independently of the frozen-set anchor.
+          (6) R2-A - struck the false claim that a CONSUMES reverse leg "PRE-EXISTS the claim"; the
+          guard proves DIFFERENT-ROW authorship, and fifteen of the corpus's twenty co-commit
+          declarations were authored by the very commit whose claims they justify.
+          (7) R4-A - corrected U5.1's stale record_type and recorded its review/adjudication/
+          finalization evidence.
+          (8) Registered this sub-unit and regenerated TEST-NODE-MANIFEST.json by
+          scripts/regenerate_test_manifest.py.
+        explicitly_not_done: >-
+          ### NO ACCEPTANCE CRITERION WAS SCORED. All 14 P5 criteria remain PENDING and P5 stays
+          READY / NOT_STARTED / NO_CHECKPOINT - this unit does not begin, advance or complete P5.
+          ### NO event INFRASTRUCTURE exists: no contract implementation, no transactional outbox, no
+          dedup inbox, no replay sandbox, no PostgreSQL work, no upcaster, no GC-1 corpus. The seven
+          events are SPECIFICATION contracts, not code, and nothing in src/ changed.
+          ### NO PRODUCTION BEHAVIOUR CHANGED: production writes stay dark, the production
+          GateRegistry stays EMPTY, the Phase-8 gate-registration deferral is intact, P4 stays
+          COMPLETE and R-07 stays CONTAINED with its bound.
+          ### THE G2 RESIDUALS ARE NOT CLOSED: G2-D4, G2-D6, G2-D8, G2-D9 and G2-D10 remain OPEN, as
+          does the PL-11c -> OutcomeUnknown carried residual, whose root is sec 3's three-producer
+          list for OutcomeUnknown - a surface this mint deliberately did not re-cut.
+          ### NO EXISTING EVENT CHANGED MEANING: PolicyProposed is still PO-1's, with its producer,
+          payload and consumers untouched, and no other name was re-attributed.
+          ### NO self-review, NO self-adjudication, NO finalizer run, NO commit, nothing pushed.
+        owed_next: >-
+          a COMPLETELY fresh independent targeted review by a session that did not build this
+          candidate; then a SEPARATE targeted adjudication by a further session; then exactly one
+          finalizer-generated status-metadata commit. The reviewer should attack, in order: whether
+          each minted NAME and PAYLOAD is truthful and non-overclaiming against its transition's
+          actual durable write; whether the AP-9 replay reconstruction really rests on positive
+          evidence; whether the trigger-intersection invariant over-rejects anywhere in the corpus;
+          and whether the amended frozen-set guard still refuses a silent departure.
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     rebaseline_contract:
       user_visible_capability: none

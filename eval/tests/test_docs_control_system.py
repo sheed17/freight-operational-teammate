@@ -832,7 +832,7 @@ REQUIRED_CONCEPTS = {
     "Adapter containment boundary (P4)", "Work Item",
     "Pipeline Instance", "Expectation", "Obligation", "Evidence (content-addressed)",
     "Provenance classes", "Policy (typed, compile-or-refuse)", "Brake (admission control)",
-    "Canonical events (98 contracts)", "Outbox / inbox", "Replay isolation",
+    "Canonical events (105 contracts)", "Outbox / inbox", "Replay isolation",
     "Reconciliation (canonical)", "The eleven operational loops",
     # U-REBASELINE-1: the wedge slice renamed, plus the five rebaseline surface concepts
     'Delivered Load Closure shadow slice (formerly "first vertical slice W6 -> W8")',

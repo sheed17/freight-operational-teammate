@@ -86,6 +86,9 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     # Added by the P4 F-01 remediation: it reads the deployed entry point, so the central inventory
     # discovers it as a control guard.
     "test_p4_deployed_governed_route.py": (RETAIN, "the deployed entry point's governed-write wiring: the lookup boundary is wired, the callback cannot construct an operation, and the execution kernel seam stays blocked pending adjudication of AC-CKPT-6-missing"),
+    # Added by P5 U5.2: it reads TRANSITION-EVENT-AUDIT.yaml and IMPLEMENTATION-REGISTRY.yaml, so
+    # the central inventory discovers it as a control guard.
+    "test_p5_canonical_event_mint.py": (RETAIN, "the seven MINTED canonical events proven rather than announced: exactly one producer each with no duplicate, zero-owner or overclaimed ownership; payload coverage of every persisted field; AP-9's frozen state reconstructed from POSITIVE emitted evidence and never from an absence; PO-1's PolicyProposed semantics, producer and consumers unchanged by PO-2's mint; no pre-existing contract re-attributed; no new EVENT_REQUIRED obligation introduced; and the recorded program invariants - P4 COMPLETE, R-07 CONTAINED, all fourteen P5 criteria PENDING - untouched"),
     # Added by the R-07 closure REPLACEMENT candidate, closing F-03.
     "test_evidence_binding.py": (RETAIN, "the R-07 evidence chain bound at CONTENT level rather than citation level: every load-bearing report is enumerated FROM the containment record and bound to the IMMUTABLE preserved blob at its refs/preserve ref - recorded digest, sidecar, preservation parent and recorded verdict - with banner-aware body isolation, so the required disarm banner is respected rather than circumvented and a mutable worktree report can never substitute for accepted evidence. Its hostile battery reproduces the ACCEPT-to-REJECT verdict flip that previously left 1957 tests green"),
 }
