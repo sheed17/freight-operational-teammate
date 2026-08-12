@@ -11,8 +11,8 @@
 | ID | From → To | Trig | Preconditions / guards | Writes | Event | Test |
 |---|---|---|---|---|---|---|
 | **PO-1** | — → `DRAFT` | H | authored by the Policy Owner or delegate (a model may propose text) | `scope, gate_decision, caps, predicate` | `PolicyProposed` | `test_po_draft` |
-| **PO-2** | `DRAFT` → `PROPOSED` | H | ### **`gate_decision` NOT NULL (F-20)**; ### **predicate references only MODELLED, NON-INFERRED fields (GR-8)**; ### tenant policy may only NARROW the product ceiling | — | `EVENT_REQUIRED:G2-OB-PO-2-PROPOSAL-FACT-UNRECORDED` | `test_po_predicate_cannot_reference_model_inferred` |
-| **PO-3** | `PROPOSED` → `APPROVED` | H | the change ran through an M2 pipeline with the **diff** as material facts | `approval_id` | `EVENT_REQUIRED:G2-OB-PO-3-APPROVAL-FACT-UNRECORDED` | `test_po_change_is_gated_no_admin_path` |
+| **PO-2** | `DRAFT` → `PROPOSED` | H | ### **`gate_decision` NOT NULL (F-20)**; ### **predicate references only MODELLED, NON-INFERRED fields (GR-8)**; ### tenant policy may only NARROW the product ceiling | — | `PolicySubmitted{policy_version,gate_decision}` | `test_po_predicate_cannot_reference_model_inferred` |
+| **PO-3** | `PROPOSED` → `APPROVED` | H | the change ran through an M2 pipeline with the **diff** as material facts | `approval_id` | `PolicyApproved{approval_id,diff_fingerprint}` | `test_po_change_is_gated_no_admin_path` |
 | **PO-4** | `APPROVED` → `ACTIVE` | H | ### **an AUTHENTICATED human activates — NEVER a model, NEVER automation** | `activated_by, policy_version, effective_from` | `PolicyActivated{policy_version}` + `PolicyVersionChanged` | `test_po_only_human_activates` |
 | **PO-5** | `ACTIVE` → `SUPERSEDED` | H | a new version activated | `superseded_by` | `PolicySuperseded` | `test_po_supersede_retains_old_version` |
 | **PO-6** | `ACTIVE` → `REVOKED` | H\|S | ### **immediate if it NARROWS; the Policy Owner if it BROADENS** | `revoked_reason` | `PolicyRevoked` + `PolicyVersionChanged` | `test_po_narrowing_revoke_immediate_broadening_needs_owner` |

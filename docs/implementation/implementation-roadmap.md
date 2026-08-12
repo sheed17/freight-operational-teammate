@@ -34,7 +34,7 @@
 | **2** | Tenant-safe Effect Ledger foundation | `tenant_id` first in all 9 surfaces; the one ledger, 8 states, 2 partial indexes | ### **P1 green** | → G4 |
 | **3** | Checkpoint Witness + claim CAS | the 7-step atomic checkpoint; unconstructable `CheckpointPassed`; grant mint+claim; brake admission | P2 | → G4 |
 | **4** | Adapter containment | the 13 import sites converted/removed; CI import gate ON; orphan detection; verification taxonomy | ### **P3** *(a gate with nothing behind it is theatre)* | → G4 |
-| **5** | Outbox/inbox + replay isolation + production persistence | transactional outbox, dedup inbox, ### **98 event contracts**, `GC-1` digest, sandboxed replay; ### **PostgreSQL as the production transactional store (ADR-016; SQLite stays dev/test-only)**, durable timers/scheduler | P4 | **G2** |
+| **5** | Outbox/inbox + replay isolation + production persistence | transactional outbox, dedup inbox, ### **105 event contracts**, `GC-1` digest, sandboxed replay; ### **PostgreSQL as the production transactional store (ADR-016; SQLite stays dev/test-only)**, durable timers/scheduler | P4 | **G2** |
 | **6** | Foundational entities + machines | Work Item (ownership!), Pipeline Instance, the 13 machines, ### **134 transitions** | P5 | **G1** + → G4 *(`AC-SAFE-028`)* |
 | **7** | Provenance, Evidence, Observation, Claims, Identity Binding | the 6 provenance classes, R-P1/2/3, content-addressed Evidence, the deterministic linker + Conflict | P6 | G1 + → G4 *(`AC-SAFE-015/016`)* |
 | ### **8** | Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation | typed policy, compile-or-refuse rules, the real brake, M7–M10 | P7 | ### **G4 QUALIFIES HERE** *(not at P4 — see the gate plan's correction)* |
