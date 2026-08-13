@@ -39,6 +39,16 @@ until the lease lapses. Ordering is then preserved by construction on the send s
 parks a gap on the receive side. Two independent mechanisms, because delivery ordering is exactly
 the kind of guarantee that quietly stops holding.
 
+WHAT IT REFUSES TO COMMIT (U5.3)
+
+`emit` validates the envelope against its canonical contract before the INSERT, inside the caller's
+open transaction. So a non-canonical fact does not merely fail to publish — the state change it was
+travelling with is rolled back too, because the commit that would have made both real never happens.
+An event that is not a fact cannot take a state change with it. PRODUCER mode: this IS the producer,
+and an emitter of ours that invents a payload field is a defect to catch in the commit that writes
+it. (A CONSUMER reading that same event ignores unknown fields, per `events/registry.md` §6 — the
+asymmetry is the specification's, and it lives in `event_contracts.py`.)
+
 WHAT THIS MODULE DOES NOT DO
 
 It does not publish anywhere by itself. `OutboxRelay` requires a `publish` callable from its
@@ -57,6 +67,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from .event_contracts import ValidationMode, validate
 from .event_envelope import EventEnvelope, format_instant
 from .migrations.phase5_event_transport import STRICT_ORDER_ABORT
 from .tenant import require_tenant
@@ -211,6 +222,16 @@ class TransactionalOutbox:
                 f"the envelope names tenant {envelope.tenant_id!r}; this outbox is bound to "
                 f"{self._tenant!r}. An event never crosses a tenant [C-1]."
             )
+        # THE CONTRACT GATE (U5.3). Checked HERE, inside the caller's open transaction and before
+        # the INSERT, so a non-canonical fact cannot reach the durable log at all: the caller's
+        # commit is what would make it real, and this raises before that commit can happen. PRODUCER
+        # mode, because this IS the producer — an emitter of ours that invents a payload field is a
+        # defect to catch in the commit that writes it, not a fact to publish and regret.
+        #
+        # Fail-closed by construction rather than by option: there is no `validate=False`, for the
+        # same reason `emit` has no `allow_autocommit=True`. A flag is how a guarantee gets turned
+        # off on a Friday.
+        validate(envelope, mode=ValidationMode.PRODUCER)
         # MAX+1 under the caller's write lock — the same per-tenant allocation idiom
         # `WorkflowStore._next_id` uses, and safe for the same reason: BEGIN IMMEDIATE serializes
         # writers, so no second allocator can be between the read and the insert.

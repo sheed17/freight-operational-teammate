@@ -1,0 +1,3877 @@
+{
+  "_generated_by": "scripts/generate_event_contracts.py",
+  "_derived_from": [
+    "docs/specifications/events/registry.md (§3 names, §5 consequential, §8 ordering)",
+    "docs/specifications/events/NN-*.md (F1-F14 family files: payloads, defaults, actor constraints)"
+  ],
+  "_authority": "events/registry.md §6 is the sole canonical list of event names and versions. This file is its mechanical projection; a guard re-derives it on every suite run. The `gate_decision` fixed value AUTONOMOUS_WITHIN_CAPS on AutonomousAdmissionRecorded (PL-7a) is ADR-010's typed gate ladder, named here because that event RECORDS which decision admitted autonomous work. This file declares; it evaluates nothing, and being JSON it cannot.",
+  "_counts": {
+    "total": 118,
+    "emitted_corpus_f1_f13": 105,
+    "audit_security_f14": 13
+  },
+  "contracts": [
+    {
+      "name": "ApprovalBound",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-7b"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "approval_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "material_facts_fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalConsumed",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalDenied",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-2d"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalExpired",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalFrozen",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-9"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "frozen",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "true"
+        },
+        {
+          "name": "unknown_outcome_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "effect_grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "frozen_at",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalGranted",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "granted_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "signatures",
+          "required": false,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalRequested",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "rendered_facts",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "expires_at",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalRevoked",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ApprovalVoided",
+      "family": "F4",
+      "source": "04-approval-events.md",
+      "current_version": 1,
+      "producers": [
+        "AP-4",
+        "AP-4p",
+        "AP-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "approval",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "cause",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "drift",
+            "policy",
+            "brake"
+          ],
+          "fixed": null
+        },
+        {
+          "name": "drift_diff",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "AttemptFailed",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "AutonomousAdmissionRecorded",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-7a"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "AUTONOMOUS_WITHIN_CAPS"
+        },
+        {
+          "name": "caps_evaluated",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "BrakeEngaged",
+      "family": "F13",
+      "source": "13-brake-events.md",
+      "current_version": 1,
+      "producers": [
+        "BR-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "brake",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "actor",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "BrakeNarrowed",
+      "family": "F13",
+      "source": "13-brake-events.md",
+      "current_version": 1,
+      "producers": [
+        "BR-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "brake",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "BrakeReleased",
+      "family": "F13",
+      "source": "13-brake-events.md",
+      "current_version": 1,
+      "producers": [
+        "BR-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "brake",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "released_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "release_decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "BrakeWidened",
+      "family": "F13",
+      "source": "13-brake-events.md",
+      "current_version": 1,
+      "producers": [
+        "BR-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "brake",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CheckpointFailed",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-8f"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "step",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CheckpointPassed",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-8"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "checkpoint_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "material_facts_fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "entity_versions",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "approval_id",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "projected_observations_used",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "native_claims_used",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimAmbiguous",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "model_inferred",
+            "multiple",
+            "single_weak"
+          ],
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimConfirmed",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-2",
+        "IB-2r",
+        "IB-2h"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": true,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "LINKER_INFERRED",
+            "RECONCILED",
+            "OWNER_ASSERTED"
+          ],
+          "fixed": null
+        },
+        {
+          "name": "rule_id",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "decision_ref",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "evidence_ref",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimCorrected",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "prior",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "new",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "OWNER_ASSERTED"
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimEvidenced",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "MODEL_EXTRACTED"
+        },
+        {
+          "name": "evidence_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "span",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimProposed",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "subject_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "match_method",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimRefused",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-2f"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "cause",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "already_claimed",
+            "expired",
+            "revoked",
+            "brake",
+            "policy"
+          ],
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ClaimSuperseded",
+      "family": "F6",
+      "source": "06-identity-binding-claim-events.md",
+      "current_version": 1,
+      "producers": [
+        "IB-5",
+        "IB-8"
+      ],
+      "coordination": false,
+      "aggregate_type": "identity_binding_claim",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "superseded_by",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationApproved",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "approval_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationCompleted",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "CompensationFailed",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-4f"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "exposure",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationImpossible",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-2n"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "exposure",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationRefused",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-1r"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "original_effect_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "cause",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "unknown_outcome"
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationRequired",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "original_effect_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "exposure",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CompensationStarted",
+      "family": "F10",
+      "source": "10-compensation-events.md",
+      "current_version": 1,
+      "producers": [
+        "CM-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "compensation",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "pipeline_instance_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ConflictEscalated",
+      "family": "F7",
+      "source": "07-conflict-events.md",
+      "current_version": 1,
+      "producers": [
+        "CF-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "conflict",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ConflictOpened",
+      "family": "F7",
+      "source": "07-conflict-events.md",
+      "current_version": 1,
+      "producers": [
+        "CF-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "conflict",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ConflictPartyAttached",
+      "family": "F7",
+      "source": "07-conflict-events.md",
+      "current_version": 1,
+      "producers": [
+        "CF-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "conflict",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "party_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "parties",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "field",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ConflictRaised",
+      "family": "F7",
+      "source": "07-conflict-events.md",
+      "current_version": 1,
+      "producers": [
+        "CF-1",
+        "IB-6",
+        "EF-4c"
+      ],
+      "coordination": true,
+      "aggregate_type": "conflict",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "kind",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "SYSTEM_VS_SYSTEM",
+            "CLAIM_VS_CLAIM",
+            "CLAIM_VS_OBSERVATION",
+            "INFERRER_VS_OWNER",
+            "READBACK_VS_APPROVED",
+            "RULE_VS_RULE"
+          ],
+          "fixed": null
+        },
+        {
+          "name": "entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "field",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "parties",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "owner_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ConflictResolved",
+      "family": "F7",
+      "source": "07-conflict-events.md",
+      "current_version": 1,
+      "producers": [
+        "CF-3",
+        "CF-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "conflict",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": [
+        {
+          "members": [
+            "rule_id",
+            "decision_ref"
+          ],
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "CounterpartySelfAuthorizationDetected",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "source_observation_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "claimed_action",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "CrossTenantAccessAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "from_tenant",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "to_tenant",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "consumer_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "DuplicateProposalAbsorbed",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-1b"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "commit_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "absorbed_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "EffectAttempted",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "EffectExecuted",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "EffectFailed",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-3f"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "failure_proof",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "EffectGranted",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "checkpoint_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "commit_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "material_facts_fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "entity_versions",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "brake_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "approval_id",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "expires_at",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "EffectRecorded",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-12"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "EffectVerified",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "verification_outcome",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "VERIFIED_SUCCESS"
+        },
+        {
+          "name": "health_signal",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "matched_fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionAcknowledged",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "acknowledged_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionAgeing",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionEscalated",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionRaised",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "severity",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "exposure",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "source_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "specific_question",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "sub_status",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionResolved",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-3",
+        "EC-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExceptionSeverityChanged",
+      "family": "F9",
+      "source": "09-exception-events.md",
+      "current_version": 1,
+      "producers": [
+        "EC-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "exception",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "severity",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "previous_severity",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "changed_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationCancelled",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationDischarged",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-2",
+        "EX-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "discharge_observation_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "late",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationExpired",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationIndeterminate",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-3i"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "coverage_gap",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationOverdue",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "coverage_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationRaised",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "deadline_utc",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "originating_timezone",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "expected_source",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "expectation_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ExpectationReVersioned",
+      "family": "F8",
+      "source": "08-expectation-events.md",
+      "current_version": 1,
+      "producers": [
+        "EX-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "expectation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "deadline_history",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "FraudSignalRaised",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "pattern",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "refs",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "GrantClaimed",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "GrantDoubleClaimAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "GrantExpired",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-2x"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "GrantRevoked",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-2r"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "cause",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "HumanDecided",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-9"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "HumanRequested",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "question",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "IllegalTransitionAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": true,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "machine",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "state",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "trigger",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "attempted_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "IntentValidated",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ObservationBound",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-3",
+        "OB-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "provenance_class",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "bound_entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "binding_claim_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ObservationConfirmed",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-1c"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "natural_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "as_of",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ObservationParsed",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "parsed_value",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "evidence_refs",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ObservationReceived",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "natural_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "as_of",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ObservationSuperseded",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "superseded_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ObservationUnbound",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-3u"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "ObservationUnparseable",
+      "family": "F5",
+      "source": "05-observation-events.md",
+      "current_version": 1,
+      "producers": [
+        "OB-2f"
+      ],
+      "coordination": false,
+      "aggregate_type": "observation",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "OrphanAdapterInvocation",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "grant_ref",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "target",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "OutcomeUnknown",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-3u",
+        "EF-4c",
+        "EF-4u"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "exposure",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "unknown_reason",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "UNKNOWN_OUTCOME",
+            "OBSERVATION_UNAVAILABLE",
+            "OBSERVATION_CONFLICTING"
+          ],
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "OwnerAssertedOverwriteAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "binding_claim_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "OwnershipTransferred",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-11"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "from_owner",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "to_owner",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PipelineClosed",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-14"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "PipelineRejected",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-3",
+        "PL-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PipelineStarted",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "commit_key",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PipelineVoided",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-7v",
+        "PL-9v"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyActivated",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "activated_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "effective_from",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyApproved",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "approval_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "diff_fingerprint",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "approved_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "evidence_refs",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyEvaluated",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "rules_matched",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyExpired",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "PolicyProposed",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "caps",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "predicate",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyRevoked",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "revoked_reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "direction",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "narrow",
+            "broaden"
+          ],
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicySubmitted",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "gate_decision",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "predicate_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicySuperseded",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "superseded_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PolicyVersionChanged",
+      "family": "F11",
+      "source": "11-policy-events.md",
+      "current_version": 1,
+      "producers": [
+        "PO-4",
+        "PO-6"
+      ],
+      "coordination": true,
+      "aggregate_type": "policy",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "policy_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ProjectionRebuildDiverged",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "field",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "live",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "rebuilt",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ProjectionUpdated",
+      "family": "F2",
+      "source": "02-pipeline-instance-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-13"
+      ],
+      "coordination": false,
+      "aggregate_type": "pipeline_instance",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "entity_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "from_effect_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "PromptInjectionSignal",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "surface",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "signal",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "ProvenanceStrengtheningAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "field",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "from",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "to",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RealityEstablished",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-5",
+        "CM-5"
+      ],
+      "coordination": true,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": true,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "outcome",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "VERIFIED",
+            "FAILED"
+          ],
+          "fixed": null
+        },
+        {
+          "name": "subject",
+          "required": true,
+          "listed": false,
+          "enum": [
+            "effect",
+            "compensation"
+          ],
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "Reopened",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-13"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "prior_closure_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": [
+        {
+          "members": [
+            "phase_seq",
+            "linked_work_item_id"
+          ],
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "RuleActivated",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-5"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": true,
+      "fields": [
+        {
+          "name": "rule_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "rule_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "activated_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleCompiled",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "rule_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "compiled_predicate",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "test_vectors",
+          "required": true,
+          "listed": true,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleConfirmed",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-4"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "RuleExpired",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-8"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "rule_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "rule_version",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "expired_at",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleNotEnforceable",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-2f"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "missing",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleProposed",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "source_instruction",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "scope",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "kind",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleRevoked",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-7"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "revoked_reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "direction",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "RuleSuperseded",
+      "family": "F12",
+      "source": "12-rule-events.md",
+      "current_version": 1,
+      "producers": [
+        "RU-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "rule",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "superseded_by",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "StaleWitnessUsed",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "checkpoint_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "grant_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "UnauthorizedBrakeReleaseAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "brake_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "actor_type",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "UnauthorizedPolicyActivationAttempted",
+      "family": "F14",
+      "source": "14-audit-security-events.md",
+      "current_version": 1,
+      "producers": [],
+      "coordination": false,
+      "aggregate_type": null,
+      "emitted_corpus": false,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "policy_or_rule_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "actor_type",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "VerificationConflict",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-4c"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "unknown_reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "OBSERVATION_CONFLICTING"
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "VerificationDeferred",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "PL-11d"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "recheck_at",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "VerificationUnavailable",
+      "family": "F3",
+      "source": "03-external-effect-grant-events.md",
+      "current_version": 1,
+      "producers": [
+        "EF-4u"
+      ],
+      "coordination": false,
+      "aggregate_type": "effect_grant",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": true,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "unknown_reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": "OBSERVATION_UNAVAILABLE"
+        },
+        {
+          "name": "channel",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "WorkBlocked",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-5",
+        "WI-6"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "reason",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "WorkEscalated",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-10"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "WorkItemCancelled",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-12"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "WorkItemClosed",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-3"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "decision_ref",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "WorkItemCreated",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-1"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [
+        {
+          "name": "owner_id",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "type",
+          "required": true,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        },
+        {
+          "name": "entity_ref",
+          "required": false,
+          "listed": false,
+          "enum": null,
+          "fixed": null
+        }
+      ],
+      "one_of": []
+    },
+    {
+      "name": "WorkStarted",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-2"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    },
+    {
+      "name": "WorkUnblocked",
+      "family": "F1",
+      "source": "01-work-item-events.md",
+      "current_version": 1,
+      "producers": [
+        "WI-8"
+      ],
+      "coordination": false,
+      "aggregate_type": "work_item",
+      "emitted_corpus": true,
+      "consequential": false,
+      "consequential_conditional": false,
+      "strict_order": false,
+      "human_only": false,
+      "fields": [],
+      "one_of": []
+    }
+  ]
+}

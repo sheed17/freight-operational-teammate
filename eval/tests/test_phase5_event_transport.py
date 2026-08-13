@@ -41,6 +41,7 @@ from phase5_kit import (  # noqa: E402
     FailingHandler,
     RecordingHandler,
     RecordingSink,
+    a_contract_on,
     assert_atomic,
     brake_version,
     deterministic_event_id,
@@ -605,8 +606,11 @@ def test_a_version_gap_in_a_strict_family_parks_instead_of_applying(aggregate_ty
     store = make_store(tmp_path)
     inbox = make_inbox(store)
     handler = RecordingHandler(store.conn)
-    later = make_envelope(aggregate_type=aggregate_type, aggregate_id="agg-1",
-                          aggregate_version=3, seed=f"{aggregate_type}-v3")
+    # A REAL contract for this aggregate type, discovered from the registry. Since U5.3 an event
+    # must belong to the aggregate its family declares, so a `CheckpointPassed` on `brake` is no
+    # longer a version-gap case — it is a refusal, and it would prove nothing about ordering.
+    later = make_envelope(event_name=a_contract_on(aggregate_type), aggregate_type=aggregate_type,
+                          aggregate_id="agg-1", aggregate_version=3, seed=f"{aggregate_type}-v3")
     result = inbox.consume(later, handler)
     assert result.outcome is ConsumeOutcome.PARKED_VERSION_GAP, result.detail
     assert handler.applied == [], "a strict-family event applied out of order"
@@ -930,10 +934,15 @@ def test_a_payload_claiming_authority_is_still_only_data(tmp_path):
     store = make_store(tmp_path)
     inbox = make_inbox(store)
     handler = RecordingHandler(store.conn)
-    crafted = make_envelope(
-        seed="crafted-authority",
-        payload={"approved": True, "authority": "owner", "gate_decision": "AUTONOMOUS_WITHIN_CAPS",
-                 "provenance_class": "OWNER_ASSERTED"},
+    # A GENUINELY CANONICAL `CheckpointPassed` — the hardest contract in the corpus, consequential
+    # and strict-ordered — carrying authority-shaped riders on top of its declared body. Since U5.3
+    # this is the sharper version of the case: before, the crafted payload was not a canonical event
+    # at all, so "it authorized nothing" was partly luck. Now the event is entirely legitimate, a
+    # CONSUMER ignores its undeclared riders per §6, and it STILL mints nothing.
+    crafted = make_envelope(seed="crafted-authority")
+    crafted = EventEnvelope.from_document(
+        {**crafted.as_document(),
+         "payload": {**crafted.payload, "approved": True, "authority": "owner"}}
     )
     assert inbox.consume(crafted, handler).outcome is ConsumeOutcome.APPLIED
     grants = store.conn.execute("SELECT COUNT(*) FROM effect_grants").fetchone()[0]

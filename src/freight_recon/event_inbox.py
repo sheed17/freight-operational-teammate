@@ -10,19 +10,27 @@ An instruction to be idempotent is complied with by whoever remembers. A shared 
 UNIQUE constraint is complied with by everyone, including the handler written in a hurry eighteen
 months from now. That is the whole design: the handler is not asked to be careful.
 
-THE FIVE THINGS THAT HAPPEN TO AN ARRIVING EVENT, IN ORDER
+THE SIX THINGS THAT HAPPEN TO AN ARRIVING EVENT, IN ORDER
 
-1. **Cross-tenant ⇒ REJECTED, before anything.** The tenant check runs before the transaction
+1. **Malformed ⇒ REJECTED.** A missing or unparseable envelope field never reaches a handler.
+   Validation lives in `EventEnvelope`; this module refuses what it will not construct.
+2. **Cross-tenant ⇒ REJECTED, before anything else.** The tenant check runs before the transaction
    opens and before the handler is reachable, and it writes NOTHING — not even an inbox row,
    because writing a row keyed by the foreign tenant would itself be the cross-tenant write. [C-1]
-2. **Malformed ⇒ REJECTED.** A missing or unparseable envelope field never reaches a handler.
-   Validation lives in `EventEnvelope`; this module refuses what it will not construct.
-3. **Already in the inbox ⇒ NO-OP.** Not an error. Not a second effect. `AC-RACE-007`,
+   ### It runs BEFORE the contract check on purpose: whose event this is outranks what it says.
+3. **Not a canonical fact ⇒ REJECTED** *(U5.3)*. The event is upcast to its contract's current
+   version and checked against that contract — name, producer transition, aggregate, body, decision
+   pins, actor authority. A handler is only ever handed a current, canonical representation. §6's
+   mixed-version rule is honoured here: an additive field from a newer producer is IGNORED, not
+   refused. ### A refusal writes NO inbox row, so a corrected redelivery of the same `event_id` can
+   still apply — recording a rejection as a consumption would make the event permanently
+   unconsumable, which is event loss wearing an idempotency guarantee.
+4. **Already in the inbox ⇒ NO-OP.** Not an error. Not a second effect. `AC-RACE-007`,
    `AC-RACE-009`, `AC-ADPT-010` and §4 field 21 all land here.
-4. **A reference that does not exist yet, or a version gap in a STRICT family ⇒ PARKED** in
+5. **A reference that does not exist yet, or a version gap in a STRICT family ⇒ PARKED** in
    `pending_references`, with its arrival order and a TTL — neither dropped nor failed (M-26).
    Drained in arrival order the moment the referent appears; TTL expiry surfaces an owned problem.
-5. **Otherwise ⇒ APPLIED**: the handler runs and the inbox row is inserted IN ONE COMMIT.
+6. **Otherwise ⇒ APPLIED**: the handler runs and the inbox row is inserted IN ONE COMMIT.
 
 WHY THE HANDLER RUNS INSIDE THE TRANSACTION
 
@@ -58,6 +66,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+from .event_contracts import UpcasterRegistry
+from .event_contracts import read as read_canonical
 from .event_envelope import (
     STRICT_ORDER_AGGREGATE_TYPES,
     EnvelopeError,
@@ -185,6 +195,7 @@ class DedupInbox:
         reference_resolver: ReferenceResolver | None = None,
         strict_aggregate_types: Iterable[str] = STRICT_ORDER_AGGREGATE_TYPES,
         observer: Callable[[dict[str, Any]], None] | None = None,
+        upcasters: UpcasterRegistry | None = None,
     ) -> None:
         if conn.row_factory is not sqlite3.Row:
             raise InboxError(
@@ -210,6 +221,11 @@ class DedupInbox:
         self._resolver = reference_resolver
         self._strict = frozenset(strict_aggregate_types)
         self._observer = observer or (lambda event: None)
+        # The upcaster set this consumer reads history through. Defaulting to the process-wide
+        # registry (`event_contracts.UPCASTERS`) is deliberate: a consumer that quietly used its own
+        # empty registry would reject historical versions the rest of the system can read perfectly
+        # well. Injectable so a test can exercise an evolution the canonical corpus has not had yet.
+        self._upcasters = upcasters
 
     @property
     def tenant(self) -> str:
@@ -279,6 +295,30 @@ class DedupInbox:
                     f"event names tenant {event.tenant_id!r}; this inbox serves "
                     f"{self._tenant!r}. Rejected before the handler and before any write."
                 ),
+            )
+
+        # THE CONTRACT GATE, and §6's "applied on read" (U5.3). AFTER the tenant check on purpose:
+        # a foreign-tenant event must be refused before this consumer spends any judgement on what
+        # it says, and [C-1] outranks every other question about it.
+        #
+        # `read_canonical` upcasts the event to its contract's current version and then validates in
+        # CONSUMER mode — so a handler is only ever handed a current, canonical representation, and
+        # an additive field from a newer producer is ignored rather than refused (§6's mixed-version
+        # rule). Everything from here on uses the upcast event: parking, the inbox row and the
+        # handler must all see the same representation, or a parked event would drain into a handler
+        # in a form the pre-park checks never examined.
+        try:
+            event = read_canonical(event, upcasters=self._upcasters)
+        except EnvelopeError as exc:
+            # Refused before the transaction and before the handler, exactly like a malformed
+            # envelope: an event that is not the fact its name promises is not a fact we consumed.
+            self.observe({
+                "kind": "NonCanonicalEventRejected", "consumer_id": self._consumer_id,
+                "tenant": self._tenant, "event_id": event.event_id,
+                "event_name": event.event_name, "reason": str(exc),
+            })
+            return ConsumeResult(
+                outcome=ConsumeOutcome.REJECTED_MALFORMED, event_id=event.event_id, detail=str(exc),
             )
 
         result = self._consume_validated(
