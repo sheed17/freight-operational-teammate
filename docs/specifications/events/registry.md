@@ -1,7 +1,8 @@
 # Event Specification Registry — Canonical Envelope, Events, Rules
 
 **Layer:** Event Specification. **Derived mechanically from:** the 13 state machines + `state-machines/registry.md` §5 (the emitted-event list) + the 134 transitions + ADR-002/004/005/006/007/008/009/010/011 + the Semantic Model.
-*(Errata 2026-07-16: corrected from 141. This file's §3 canonical list enumerates **98** emitted contracts across F1–F13 — itself correct and unchanged.)*
+*(Errata 2026-07-16: corrected from 141. This file's §3 canonical list enumerated **98** emitted contracts across F1–F13 at that time — itself correct and unchanged by that errata.)*
+*(Amendment 2026-08-12 — **FOUNDER/ARCHITECT AUTHORITY**, P5 U5.2. Seven canonical events were **MINTED** to discharge the seven recorded `GR-2` obligations in `docs/implementation/TRANSITION-EVENT-AUDIT.yaml`: `AutonomousAdmissionRecorded`(PL-7a), `ApprovalFrozen`(AP-9), `ConflictPartyAttached`(CF-7), `ExceptionSeverityChanged`(EC-7), `PolicySubmitted`(PO-2), `PolicyApproved`(PO-3), `RuleExpired`(RU-8). ### **§3 now enumerates 105 emitted contracts across F1–F13.** No existing contract was renamed, re-attributed or changed in meaning — in particular `PolicyProposed` remains PO-1's, exactly as before.)*
 **Binding:** ### **This registry is the sole canonical list of event names and versions.** Every family file uses these names verbatim; a family file introducing an unlisted name or a local synonym is defective.
 
 > ### **An event records a FACT that occurred. An event is NEVER a command, and NEVER authorizes a future action.** Consumers react according to **their own deterministic transition guards** (the 13 machines); the event does not instruct them. Replay of any event produces **zero** Checkpoint Witnesses, **zero** Effect Grants, **zero** external effects (GR-11).
@@ -88,17 +89,17 @@ Each event's contract has the 40 fields from the brief. To stay deterministic **
 *(One producer transition per event unless marked ‡ — a **coordination event** with structurally-identical producers, permitted by the brief's Coordination section; see §9.)*
 
 **F1 Work Item:** `WorkItemCreated`(WI-1) · `WorkStarted`(WI-2) · `WorkItemClosed`(WI-3) · `AttemptFailed`(WI-4) · `WorkBlocked`(WI-5/6) · `WorkUnblocked`(WI-8) · `HumanRequested`(WI-7) · `HumanDecided`(WI-9) · `WorkEscalated`(WI-10) · `OwnershipTransferred`(WI-11) · `WorkItemCancelled`(WI-12) · `Reopened`(WI-13)
-**F2 Pipeline:** `PipelineStarted`(PL-1) · `DuplicateProposalAbsorbed`(PL-1b) · `PolicyEvaluated`(PL-2) · `IntentValidated`(PL-4) · `PipelineRejected`(PL-3/5) · `ApprovalBound`(PL-7b) · `CheckpointPassed`(PL-8) · `CheckpointFailed`(PL-8f) · `PipelineVoided`(PL-7v/9v) · `EffectRecorded`(PL-12) · `ProjectionUpdated`(PL-13) · `PipelineClosed`(PL-14)
+**F2 Pipeline:** `PipelineStarted`(PL-1) · `DuplicateProposalAbsorbed`(PL-1b) · `PolicyEvaluated`(PL-2) · `IntentValidated`(PL-4) · `PipelineRejected`(PL-3/5) · `AutonomousAdmissionRecorded`(PL-7a) · `ApprovalBound`(PL-7b) · `CheckpointPassed`(PL-8) · `CheckpointFailed`(PL-8f) · `PipelineVoided`(PL-7v/9v) · `EffectRecorded`(PL-12) · `ProjectionUpdated`(PL-13) · `PipelineClosed`(PL-14)
 **F3 External Effect / Grant:** `EffectGranted`(EF-1) · `GrantClaimed`(EF-2) · `EffectAttempted`(EF-2) · `ClaimRefused`(EF-2f) · `GrantRevoked`(EF-2r) · `GrantExpired`(EF-2x) · `EffectExecuted`(EF-3) · `EffectFailed`(EF-3f) · `OutcomeUnknown`(EF-3u/EF-4c/EF-4u) · `EffectVerified`(EF-4) · `VerificationConflict`(EF-4c) · `VerificationUnavailable`(EF-4u) · `VerificationDeferred`(PL-11d) · `RealityEstablished`‡(EF-5/CM-5)
-**F4 Approval:** `ApprovalRequested`(AP-1) · `ApprovalGranted`(AP-2) · `ApprovalDenied`(AP-2d) · `ApprovalExpired`(AP-3) · `ApprovalVoided`(AP-4/4p/5) · `ApprovalRevoked`(AP-6) · `ApprovalConsumed`(AP-7)
+**F4 Approval:** `ApprovalRequested`(AP-1) · `ApprovalGranted`(AP-2) · `ApprovalDenied`(AP-2d) · `ApprovalExpired`(AP-3) · `ApprovalVoided`(AP-4/4p/5) · `ApprovalRevoked`(AP-6) · `ApprovalConsumed`(AP-7) · `ApprovalFrozen`(AP-9)
 **F5 Observation:** `ObservationReceived`(OB-1) · `ObservationConfirmed`(OB-1c) · `ObservationParsed`(OB-2) · `ObservationUnparseable`(OB-2f) · `ObservationBound`(OB-3/4) · `ObservationUnbound`(OB-3u) · `ObservationSuperseded`(OB-5)
 **F6 Identity Binding Claim:** `ClaimProposed`(IB-1) · `ClaimConfirmed`(IB-2/2r/2h) · `ClaimEvidenced`(IB-3) · `ClaimAmbiguous`(IB-4) · `ClaimSuperseded`(IB-5/8) · `ClaimCorrected`(IB-7)
-**F7 Conflict:** `ConflictRaised`‡(CF-1/IB-6/EF-4c-conflict) · `ConflictOpened`(CF-2) · `ConflictEscalated`(CF-5) · `ConflictResolved`(CF-3/4)
+**F7 Conflict:** `ConflictRaised`‡(CF-1/IB-6/EF-4c-conflict) · `ConflictOpened`(CF-2) · `ConflictPartyAttached`(CF-7) · `ConflictEscalated`(CF-5) · `ConflictResolved`(CF-3/4)
 **F8 Expectation:** `ExpectationRaised`(EX-1) · `ExpectationDischarged`(EX-2/4) · `ExpectationOverdue`(EX-3) · `ExpectationIndeterminate`(EX-3i) · `ExpectationReVersioned`(EX-5) · `ExpectationCancelled`(EX-6) · `ExpectationExpired`(EX-7)
-**F9 Exception:** `ExceptionRaised`(EC-1) · `ExceptionAcknowledged`(EC-2) · `ExceptionAgeing`(EC-4) · `ExceptionEscalated`(EC-5) · `ExceptionResolved`(EC-3/6)
+**F9 Exception:** `ExceptionRaised`(EC-1) · `ExceptionAcknowledged`(EC-2) · `ExceptionAgeing`(EC-4) · `ExceptionEscalated`(EC-5) · `ExceptionSeverityChanged`(EC-7) · `ExceptionResolved`(EC-3/6)
 **F10 Compensation:** `CompensationRequired`(CM-1) · `CompensationRefused`(CM-1r) · `CompensationApproved`(CM-2) · `CompensationImpossible`(CM-2n) · `CompensationStarted`(CM-3) · `CompensationCompleted`(CM-4) · `CompensationFailed`(CM-4f)
-**F11 Policy:** `PolicyProposed`(PO-1) · `PolicyActivated`(PO-4) · `PolicySuperseded`(PO-5) · `PolicyRevoked`(PO-6) · `PolicyExpired`(PO-7) · `PolicyVersionChanged`‡(PO-4/6)
-**F12 Rule:** `RuleProposed`(RU-1) · `RuleCompiled`(RU-2) · `RuleNotEnforceable`(RU-2f) · `RuleConfirmed`(RU-4) · `RuleActivated`(RU-5) · `RuleSuperseded`(RU-6) · `RuleRevoked`(RU-7)
+**F11 Policy:** `PolicyProposed`(PO-1) · `PolicySubmitted`(PO-2) · `PolicyApproved`(PO-3) · `PolicyActivated`(PO-4) · `PolicySuperseded`(PO-5) · `PolicyRevoked`(PO-6) · `PolicyExpired`(PO-7) · `PolicyVersionChanged`‡(PO-4/6)
+**F12 Rule:** `RuleProposed`(RU-1) · `RuleCompiled`(RU-2) · `RuleNotEnforceable`(RU-2f) · `RuleConfirmed`(RU-4) · `RuleActivated`(RU-5) · `RuleSuperseded`(RU-6) · `RuleRevoked`(RU-7) · `RuleExpired`(RU-8)
 **F13 Brake:** `BrakeEngaged`(BR-1) · `BrakeWidened`(BR-2) · `BrakeNarrowed`(BR-3) · `BrakeReleased`(BR-4)
 **F14 Audit & Security:** `IllegalTransitionAttempted`‡(any machine, GR-1) · `CrossTenantAccessAttempted` · `OrphanAdapterInvocation` · `StaleWitnessUsed` · `GrantDoubleClaimAttempted` · `ProvenanceStrengtheningAttempted` · `OwnerAssertedOverwriteAttempted` · `UnauthorizedPolicyActivationAttempted` · `UnauthorizedBrakeReleaseAttempted` · `CounterpartySelfAuthorizationDetected` · `PromptInjectionSignal` · `ProjectionRebuildDiverged` · `FraudSignalRaised`
 **F15 Coordination** *(no new contracts — a lens over cross-machine consumption; §9):* `CheckpointPassed`, `PolicyVersionChanged`, `BrakeEngaged`, `ApprovalGranted`, `OutcomeUnknown`, `ConflictOpened`, `ExpectationIndeterminate`, `CompensationRequired`, `RealityEstablished`.
@@ -119,7 +120,8 @@ Each event's contract has the 40 fields from the brief. To stay deterministic **
 
 ## 5. WHICH EVENTS ARE CONSEQUENTIAL *(carry fields 14–17 + policy/brake/fingerprint pins)*
 
-`ApprovalRequested`, `ApprovalGranted`, `ApprovalConsumed`, `CheckpointPassed`, `EffectGranted`, `GrantClaimed`, `EffectAttempted`, `EffectExecuted`, `EffectVerified`, `EffectFailed`, `OutcomeUnknown`, `RealityEstablished`, `CompensationApproved`, `CompensationStarted`, `CompensationCompleted`, `ClaimConfirmed`(when it backs a money action), `PolicyActivated`, `PolicyVersionChanged`, `BrakeEngaged`, `BrakeReleased`.
+`ApprovalRequested`, `ApprovalGranted`, `ApprovalConsumed`, `CheckpointPassed`, `EffectGranted`, `GrantClaimed`, `EffectAttempted`, `EffectExecuted`, `EffectVerified`, `EffectFailed`, `OutcomeUnknown`, `RealityEstablished`, `CompensationApproved`, `CompensationStarted`, `CompensationCompleted`, `ClaimConfirmed`(when it backs a money action), `PolicyApproved`, `PolicyActivated`, `PolicyVersionChanged`, `BrakeEngaged`, `BrakeReleased`.
+*(`PolicyApproved` joined this list with the 2026-08-12 amendment: PO-3's approval runs through a gated M2 pipeline with the policy **diff** as its material facts, so the event that records it must be able to reproduce that decision context — this is the "no admin path" evidence.)*
 ### **Each MUST pin the SD-3 `entity_versions` set, the `material_facts_fingerprint` where an amount is involved, `policy_version`, and `brake_version` — sufficient to reproduce the decision context at that time** (audit reproducibility, §11 of the brief).
 
 ---
@@ -151,6 +153,7 @@ Each event's contract has the 40 fields from the brief. To stay deterministic **
 - **Cross-aggregate order** is encoded through `causation_id` + the consumer's own transition guards (a consumer acts only when its own preconditions hold). ### **Consumers MUST tolerate out-of-order delivery.**
 - **An event referencing an aggregate that does not exist yet is PARKED** (`pending_references`), retaining arrival order + attempt metadata; drained in order on creation; TTL ⇒ Exception (T18).
 - **Strict per-aggregate ordering REQUIRED:** F2 Pipeline, F3 Effect/Grant, F4 Approval, F11 Policy, F13 Brake *(their version-monotonic transitions depend on it)*. **Order-tolerant:** F5 Observation (natural-key idempotent), F7 Conflict (parties attach), F9 Exception, F14 Security (each is independently meaningful).
+- **Order-tolerant does NOT mean order-free for a field-mutating fact.** `ExceptionSeverityChanged` (EC-7) and `ConflictPartyAttached` (CF-7) are order-tolerant *across* aggregates only. Within one aggregate the universal ordering key `(tenant_id, aggregate_id, aggregate_version)` still holds, and it is what a rebuild folds: the severity a rebuild reproduces is the one carried by the **highest `aggregate_version`** severity-change event, and the party set is the union of `ConflictRaised`'s `parties[]` with every subsequent attach (an append is idempotent under redelivery, so the union is order-independent anyway). `ExceptionSeverityChanged` additionally carries `previous_severity`, so a fold can detect a gap rather than silently accept one.
 
 ---
 
@@ -181,6 +184,7 @@ The F15 events are **already defined in their home families**; F15 is a **lens**
 | **ER-13** | Every consequential event carries enough refs (§5) to reproduce its decision context at that time. |
 | **ER-14** | No consumer may strengthen provenance; no consumer may treat `MODEL_INFERRED` as authoritative evidence. |
 | **ER-15** | Every event carries `tenant_id`; cross-tenant consumption is rejected before any handler (⇒ `CrossTenantAccessAttempted`). |
+| **ER-16** | ### **A quarantine fact is reconstructed from POSITIVE evidence, never from an absence.** `ApprovalFrozen` is the sole canonical evidence that an approval is frozen (AP-9): a full-history rebuild sets `frozen=true` because that event is present, and **never** by inferring it from `OutcomeUnknown` **AND NOT** `RealityEstablished`. An absence is only as true as the fold is complete and correctly ordered, and a safety-critical quarantine may not depend on either. The event carries the `unknown_outcome_ref` that binds the freeze to the chain that caused it. *(This does not weaken the fail-closed default: an approval with an unresolved `OutcomeUnknown` is still treated as frozen at runtime — the rule is about what REPLAY may rely on.)* |
 
 ---
 
