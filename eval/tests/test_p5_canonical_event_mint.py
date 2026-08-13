@@ -9,9 +9,13 @@ were removed - which was verified by mutating each rule in a throwaway copy of t
 the node go red.
 
 ### WHAT IT DELIBERATELY DOES NOT DO. Nothing here executes an event, an outbox, an inbox or a real
-replay: no such code exists, and asserting over a runtime that has not been built is exactly the kind
-of false green this repository has been burned by. The REPLAY nodes therefore work the way replay
-itself works - they FOLD THE DECLARED PAYLOADS over the durable writes the machines declare, and ask
+replay. *(Correction, P5 U5.7+U5.8: this paragraph used to say "no such code exists". A transactional
+outbox and a dedup inbox now DO exist — `src/freight_recon/event_outbox.py` and `event_inbox.py`,
+exercised by `test_phase5_event_transport.py`. What still does not exist is a replay sandbox (U5.5)
+or an implementation of the 105 contracts (U5.3), and this module remains deliberately
+specification-level: it asserts over the REGISTRIES, not over that runtime.)* Asserting over a
+runtime that has not been built is exactly the kind of false green this repository has been burned
+by. The REPLAY nodes therefore work the way replay itself works - they FOLD THE DECLARED PAYLOADS over the durable writes the machines declare, and ask
 whether the fold can reconstruct each write. That is a specification-level property, it is stated as
 one, and it is the property AC-EVT-008 will later be implemented against.
 
@@ -623,9 +627,28 @@ def test_the_recorded_program_invariants_are_untouched_by_this_unit():
     p4, p5 = units["P4"], units["P5"]
     assert p4["status"] == "COMPLETE" and p4["checkpoint_state"] == "PHASE_ACCEPTANCE_COMPLETE"
     assert all(c["result"] == "PASS" for c in p4["acceptance_criteria"])
-    assert (p5["status"], p5["execution_state"], p5["checkpoint_state"]) == (
-        "READY", "NOT_STARTED", "NO_CHECKPOINT"
-    ), "P5's three-field status moved - this unit does not start, advance or complete P5"
+    # ### WHAT THIS ACTUALLY GUARDS: a SPECIFICATION amendment quietly advancing a phase. It used to
+    # pin P5 to READY/NOT_STARTED/NO_CHECKPOINT, which was true of the mint and became false when
+    # U5.7+U5.8 landed the outbox and inbox as WORKING CODE. Pinning the literal triple would have
+    # made it structurally impossible for any runtime unit to record that it had built something -
+    # a true statement frozen into a permanent rule. The property that survives is the one the
+    # docstring names: P5 may not be COMPLETE, and it may only have advanced on LANDED EVIDENCE,
+    # which a specification amendment cannot manufacture.
+    assert p5["status"] == "READY", "P5 left the selector - the repository must always name one"
+    assert p5["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
+        f"P5's execution_state is {p5['execution_state']} - this unit does not complete P5"
+    )
+    if p5["execution_state"] != "NOT_STARTED":
+        landed = require_population(p5.get("landed_checkpoints", []), "P5 landed checkpoints")
+        for cp in landed:
+            assert cp["checkpoint_state"] == "CHECKPOINT_ACCEPTED_FOR_CONTINUATION", (
+                f"{cp['id']} claims {cp['checkpoint_state']} - only CONTINUATION is available "
+                "while criteria are unscored"
+            )
+            assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
+                f"{cp['id']} advanced P5 without on-disk evidence AND an on-disk review - a "
+                "specification amendment could manufacture the claim but not these"
+            )
     results = [c["result"] for c in p5["acceptance_criteria"]]
     assert len(results) == 14 and set(results) == {"PENDING"}, (
         f"a P5 acceptance criterion was scored: {results}"

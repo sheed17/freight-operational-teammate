@@ -47,6 +47,16 @@ from .migrations.phase3_checkpoint import (
     phase3_readiness_problems,
     stamp_phase3_version,
 )
+from .migrations.phase5_event_transport import (
+    P5_EXEMPT_TABLES,
+    P5_INDEXES,
+    P5_REPLACED_INDEXES,
+    P5_TARGET_SCHEMA,
+    P5_TENANT_TABLES,
+    create_phase5_schema,
+    phase5_readiness_problems,
+    stamp_phase5_version,
+)
 
 TENANT_COLUMN = "tenant"
 
@@ -64,13 +74,17 @@ REQUIRED_INDEXES: tuple[str, ...] = (
 # Their presence proves a migration was never run, or died half-way. Either way: not ready.
 LEGACY_TABLES: tuple[str, ...] = ("operation_commit_claims",)
 
-# The complete canonical DDL: the Phase-2 shape plus the Phase-3 checkpoint tables. One merged
-# view so the readiness oracle and the fresh-database builder cannot disagree about what
-# canonical means.
-_ALL_TARGET_SCHEMA: dict[str, str] = {**TARGET_SCHEMA, **P3_TARGET_SCHEMA}
+# The complete canonical DDL: the Phase-2 shape, the Phase-3 checkpoint tables and the Phase-5
+# event transport. One merged view so the readiness oracle and the fresh-database builder cannot
+# disagree about what canonical means.
+_ALL_TARGET_SCHEMA: dict[str, str] = {**TARGET_SCHEMA, **P3_TARGET_SCHEMA, **P5_TARGET_SCHEMA}
 
-# Tenant-owned tables across both phases: the readiness loop validates every one identically.
-ALL_TENANT_TABLES: tuple[str, ...] = (*CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES)
+# Tenant-owned tables across all three phases: the readiness loop validates every one identically.
+# The P5 event tables are in this list and not beside it, deliberately: an outbox that was exempt
+# from the tenant-first oracle would be the one store in the system where [C-1] was a comment.
+ALL_TENANT_TABLES: tuple[str, ...] = (
+    *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES,
+)
 
 # Every table a canonical database is allowed to contain. A new table must be added here
 # deliberately, which is the point (REG-1).
@@ -80,6 +94,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *TENANT_EXEMPT_TABLES,
     *P3_TENANT_TABLES,
     *P3_EXEMPT_TABLES,
+    *P5_TENANT_TABLES,
+    *P5_EXEMPT_TABLES,
 )
 
 
@@ -129,8 +145,8 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
         if name not in present:
             conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
-    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES}.items()
-                      if n not in REPLACED_INDEXES}
+    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES}.items()
+                      if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -147,6 +163,11 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase3_schema(conn, now=_now())
     if not phase3_readiness_problems(conn):
         stamp_phase3_version(conn, now=_now())
+    # P5's event transport: its append-only triggers, like P3's, exist in one text on both entry
+    # paths, and its marker is written LAST and only if the structure just built proves ready.
+    create_phase5_schema(conn, now=_now())
+    if not phase5_readiness_problems(conn):
+        stamp_phase5_version(conn, now=_now())
     conn.commit()
 
 
@@ -217,6 +238,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
         problems.extend(_column_problems(conn, "effect_grants"))
 
     problems.extend(phase3_readiness_problems(conn))
+    problems.extend(phase5_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

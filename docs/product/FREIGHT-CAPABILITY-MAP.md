@@ -24,8 +24,10 @@ capability is not implemented. The post-P2 work completed to date is the **safet
 the P3 checkpoint kernel (**COMPLETE, and shipping dark**) and the P4 adapter containment
 (**COMPLETE — ADJUDICATED**; **R-07 recorded CONTAINED**, and *contained* means external-effect
 paths are structurally forced through the governed boundary or fail closed — **not** that any
-production write is enabled). **`P5` is the sole READY unit and has NOT STARTED; P6–P14 are
-BLOCKED.** So no freight capability here is a live product capability. Read
+production write is enabled). **`P5` is the sole READY unit and is IN_PROGRESS** — its event
+transport landed at `P5-CP-1` (transactional outbox, dedup inbox) as a continuation checkpoint, with
+no acceptance criterion scored and the event contracts, replay sandbox and PostgreSQL still unbuilt.
+**P6–P14 are BLOCKED.** So no freight capability here is a live product capability. Read
 [`CURRENT.md`](../implementation/CURRENT.md) for the machine-verified status. "Target phase" is the earliest phase where the capability is
 scheduled to appear (shadow, then supervised, then possibly bounded-autonomous) — **not a claim that
 it exists.** Autonomy ceiling uses the canonical gate decisions of

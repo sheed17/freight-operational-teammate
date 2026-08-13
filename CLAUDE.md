@@ -77,7 +77,7 @@ artificial ceilings and no assumed rip-and-replace.
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
 | **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
-| **Next approved unit** | ### **`P5` — Canonical events, outbox/inbox, replay isolation and production persistence. THE ONE AND ONLY READY UNIT — SELECTED ONLY. IT HAS NOT BEGUN, AND IT IS NOT COMPLETE.** Its `execution_state` is `NOT_STARTED`, its `checkpoint_state` is `NO_CHECKPOINT`, and it records no landed checkpoint: no event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. When it does begin it implements the 105 event contracts with a transactional outbox and a dedup inbox, proves replay is sandboxed and structurally inert, and makes persistence production-grade (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016; SQLite stays for local development and deterministic tests). ### **Its own blocker — G2's seven founder-gated event obligations — is DISCHARGED (2026-08-12):** the seven canonical events were minted under founder/architect authority, so the specification no longer blocks P5's event content. ### **NOTHING WAS BUILT BY THAT.** No event contract, outbox, inbox, replay sandbox or PostgreSQL work exists, every P5 criterion is `PENDING`, and the G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open. `P6`–`P14` stay BLOCKED behind P5. |
+| **Next approved unit** | ### **`P5` — Canonical events, outbox/inbox, replay isolation and production persistence. THE ONE AND ONLY READY UNIT — NOW IN PROGRESS, AND IT IS NOT COMPLETE.** Its `execution_state` is `IN_PROGRESS`, its `checkpoint_state` is `CHECKPOINT_ACCEPTED_FOR_CONTINUATION`, and it records one landed checkpoint, `P5-CP-1`: U5.7+U5.8 landed the transactional outbox and the dedup inbox — durable, atomic event emission and idempotent consumption. That is a **continuation** checkpoint, not phase acceptance. Still unbuilt: the 105 event contracts (U5.3), the GC-1 corpus (U5.4), the replay sandbox (U5.5), audit reconstruction (U5.6), and production-grade persistence (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016) — the landed transport is SQLite only. ### **Its own blocker — G2's seven founder-gated event obligations — is DISCHARGED (2026-08-12):** the seven canonical events were minted under founder/architect authority, so the specification no longer blocks P5's event content. ### **NOTHING IS SCORED.** All 14 P5 acceptance criteria are `PENDING`, and the G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open. `P6`–`P14` stay BLOCKED behind P5. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -245,9 +245,11 @@ These are not style preferences. Each one is a defect this repository actually s
 Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
 - ⛔ **Do not begin Implementation Phase 6** (foundational entities and state machines) — its
-  dependency `P5` has not started. **`P5` (events, outbox/inbox, replay isolation, PostgreSQL) is
-  now the READY unit**; it is no longer forbidden here. Its event content is still blocked on the
-  **G2** transition/event adjudication, which P4's completion did not discharge.
+  dependency `P5` is **IN_PROGRESS, not complete**. **`P5` (events, outbox/inbox, replay isolation,
+  PostgreSQL) is the sole READY unit**; it is no longer forbidden here. `P5-CP-1` landed the
+  transactional outbox and the dedup inbox as a **continuation** checkpoint; the event contracts,
+  the replay sandbox, audit reconstruction and PostgreSQL are not built, and all 14 P5 acceptance
+  criteria are still `PENDING`.
 - ⛔ **Do not adjudicate any phase COMPLETE from within the session that implemented or remediated
   it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
@@ -276,8 +278,10 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
 **The next approved program is
 [P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION AND PRODUCTION PERSISTENCE](docs/implementation/CURRENT.md)**
-— the one and only `READY` unit. `READY` is a **selection**: P5 has **not begun**, records no landed
-checkpoint, and is **NOT COMPLETE**. P4 (adapter containment) is now **adjudicated COMPLETE**: its
+— the one and only `READY` unit, and now **IN_PROGRESS**: `P5-CP-1` landed the transactional outbox
+and the dedup inbox as a **continuation** checkpoint. `READY` is a **selection** and a landed
+checkpoint is not acceptance — no P5 criterion is scored, all 14 stay `PENDING`, and P5 is **NOT
+COMPLETE**. P4 (adapter containment) is now **adjudicated COMPLETE**: its
 first INDEPENDENT review **rejected** candidate `95cf5af7`, a separate session remediated it, a
 **FRESH** INDEPENDENT re-review of candidate `0891d1a` returned ACCEPT FOR SEPARATE FINAL
 ADJUDICATION, a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria

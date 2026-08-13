@@ -255,10 +255,30 @@ concepts:
     note: a legacy audit_events trail exists (implemented, P2-scoped); it is not the event corpus
 
   - name: Outbox / inbox
-    status: SPECIFICATION_ONLY
+    status: PARTIALLY_IMPLEMENTED
     specification: docs/architecture/decisions/ADR-008-durable-workflows.md
-    absent_symbols: [TransactionalOutbox, dedup_inbox]
+    evidence:
+      - path: src/freight_recon/event_outbox.py
+        symbol: TransactionalOutbox
+      - path: src/freight_recon/event_outbox.py
+        symbol: OutboxRelay
+      - path: src/freight_recon/event_inbox.py
+        symbol: DedupInbox
+      - path: src/freight_recon/event_envelope.py
+        symbol: EventEnvelope
+      - path: src/freight_recon/migrations/phase5_event_transport.py
+        symbol: create_phase5_schema
     owning_unit: P5
+    note: >-
+      P5 U5.7+U5.8 built the mechanism on SQLite. The outbox row is written in the producing
+      transition's OWN commit (M-23, enforced rather than instructed - `emit` refuses to run
+      outside an open transaction); a leasing relay publishes at-least-once and marks published;
+      the inbox dedups on (tenant, consumer_id, event_id) with processing and inbox-insert in ONE
+      commit (M-24); M-26 parking carries arrival order and a TTL. PARTIAL, and the residue is
+      named: the canonical 105 event contracts and their upcasters are U5.3, replay isolation is
+      U5.5, the GC-1 digest is U5.4, and ADR-016's PostgreSQL production store does not exist -
+      this runs on SQLite only. Ships DARK: the relay has no default sink, the modules import no
+      adapter, and consuming an event mints no witness and no grant.
 
   - name: Replay isolation
     status: SPECIFICATION_ONLY

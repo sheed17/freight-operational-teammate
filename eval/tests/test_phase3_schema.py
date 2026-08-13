@@ -96,6 +96,23 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step.startswith("create-table:checkpoint_witnesses") for step in performed)
     assert any(step == "drop-index:ix_effect_grants_tenant_commit_key" for step in performed)
     assert phase3_readiness_problems(conn) == []
+    # ### P5 CORRECTION. "Canonical" is ONE shape and that shape moved: since the event transport
+    # landed, a database carrying only P2+P3 is still refused, and correctly so - a store whose
+    # outbox does not exist cannot honour M-23. This node keeps asserting that the P3 migration
+    # closes the P3 gap (above), and now also that P3 followed by P5 reaches the FRESH shape
+    # (below) - which is the property that actually matters here and is unchanged: a migrated
+    # database and a fresh database agree about what canonical means.
+    from freight_recon.migrations.phase5_event_transport import (  # noqa: E402
+        create_phase5_schema,
+        phase5_readiness_problems,
+    )
+
+    assert any("phase5_event_transport" in p for p in schema_readiness_problems(conn)), (
+        schema_readiness_problems(conn))
+    p5_performed = create_phase5_schema(conn, now=utc_now())
+    assert any(step == "create-table:event_outbox" for step in p5_performed)
+    assert any(step == "create-trigger:trg_event_inbox_append_only_delete" for step in p5_performed)
+    assert phase5_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

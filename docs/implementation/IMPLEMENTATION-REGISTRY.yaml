@@ -97,8 +97,9 @@ meta:
         control-system hole, not a tidy-up. This is why P4 stayed READY for the whole time it was
         executing (execution was recorded in execution_state, not by vacating the selector), and
         why the P4 -> P5 handover is a single commit in which P4 becomes COMPLETE and P5 becomes
-        the sole READY unit. Being READY is a SELECTION, never a claim that work has begun: P5's
-        execution_state is NOT_STARTED and P5 work has not started.
+        the sole READY unit. Being READY is a SELECTION, never a claim that work has begun - and
+        equally never a claim that it has NOT. P5 is READY and IN_PROGRESS: it remains the selected
+        unit, and U5.7+U5.8 landed the transactional outbox and the dedup inbox as working code.
     execution_state:
       question: "Has implementation work actually landed inside this unit?"
       values: [NOT_STARTED, IN_PROGRESS, COMPLETE]
@@ -1196,22 +1197,50 @@ units:
     # dependency is satisfied and P5 becomes the SINGLE READY UNIT in the same commit that completes
     # P4 - the selector never holds zero or two entries (meta.status_model.status).
     #
-    # ### READY IS SELECTION, NOT EXECUTION. P5 HAS NOT STARTED. execution_state is NOT_STARTED,
-    # checkpoint_state is NO_CHECKPOINT, there are no landed checkpoints, and no P5 code, event
-    # contract, outbox, inbox, replay sandbox or PostgreSQL work exists. The session that recorded
-    # this transition did not begin P5, and CLAUDE.md sec 11 / PROGRESS-PROTOCOL.md sec 9 require
-    # stopping at this control boundary rather than rolling on.
+    # ### P5 HAS NOW STARTED, and this record says so. Until 2026-08-13 execution_state was
+    # NOT_STARTED on a STATED PREDICATE - "has work actually landed INSIDE this phase?" - which held
+    # while U5.1 and U5.2 touched specification and control only. U5.7+U5.8 landed the transactional
+    # outbox and the dedup inbox as WORKING CODE, so the predicate is false and leaving NOT_STARTED
+    # would manufacture exactly the live-falsehood defect this registry cites against itself twice
+    # (R4-A / F-02). execution_state is IN_PROGRESS, checkpoint_state is
+    # CHECKPOINT_ACCEPTED_FOR_CONTINUATION, and P5-CP-1 is landed with on-disk implementer evidence
+    # and an on-disk independent review report. ### NO CRITERION IS SCORED: all 14 remain PENDING,
+    # status stays READY, and this is CONTINUATION, not phase acceptance. The event contracts (U5.3),
+    # GC-1 (U5.4), the replay sandbox (U5.5), audit reconstruction (U5.6) and PostgreSQL do not exist.
     #
     # ### P5 CARRIED ITS OWN INDEPENDENT VALIDATION BLOCKER. G2 - the transition/event completeness
     # adjudication - was NOT discharged by P4's completion; the P4 final adjudication says so
     # explicitly (sec G.6): the G2 obligation "is independent of P4 and this adjudication does not
     # discharge it". G2 was adjudicated by U5.1, and its SEVEN founder-gated event obligations were
     # discharged by U5.2's founder/architect mint on 2026-08-12. ### THAT UNBLOCKED THE SPECIFICATION
-    # AND BUILT NOTHING. P5's execution_state is still NOT_STARTED, it records no landed checkpoint,
-    # and all 14 criteria are PENDING.
+    # AND BUILT NOTHING - the first unit to build anything was U5.7+U5.8, one day later.
     status: READY
-    execution_state: NOT_STARTED
-    checkpoint_state: NO_CHECKPOINT
+    execution_state: IN_PROGRESS
+    checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    landed_checkpoints:
+      - id: P5-CP-1
+        summary: >-
+          The transactional outbox and the dedup inbox as ONE deliverable - AC-RACE-006 spans both
+          halves. A state change and the events it emits commit atomically or not at all; a relay
+          publishes at-least-once under lease exclusivity; consumption is idempotent on
+          (tenant, consumer_id, event_id) so a redelivery is a no-op, not a second effect. Strict
+          per-aggregate ordering is enforced by a trigger asserting no two DIFFERENT producer
+          transitions own one version - a UNIQUE index would have made EF-2's legitimate
+          GrantClaimed + EffectAttempted co-emission UNINSERTABLE at P6, a defect found and fixed
+          during the build along with its inbox mirror.
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        implementer_evidence: docs/implementation/u5-7-8-event-transport-evidence.md
+        independent_review_report: docs/implementation/u5-7-8-independent-review.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED AND FULLY EVIDENCED IN-REPOSITORY. The review REJECTED the first
+          candidate d807261 on a false green - the canonical suite was red at that commit while its
+          message asserted green, because the builder validated while the new guard module was still
+          untracked and control-guard discovery reads git ls-files. Both material defects (D1 the
+          unregistered guard and its hand-enumerated module list, D2 a registry claim describing a
+          UNIQUE index the build had already replaced with a trigger) were remediated in the
+          replacement candidate, and the canonical suite is 2267 passed / 0 failed / 3 skipped at the
+          evidenced tree. Seven nonblocking residuals are recorded in the review report, not actioned.
+        criteria_scored: []
     dependencies: [P4]
     unlocked_by: [P4]
     blocks: [P6]
@@ -1841,6 +1870,163 @@ units:
           transition's actual durable write, and whether the AP-9 replay reconstruction really rests
           on positive evidence.
 
+      # ### U5.7 AND U5.8 ARE ONE RECORD, TWICE. They were built together, in one session, as one
+      # deliverable, because `AC-RACE-006` ("the relay re-sends the identical `event_id` ⇒ INBOX
+      # NO-OP") is a single sentence spanning both halves and neither half can satisfy it alone.
+      # The two ids are kept distinct because two planning authorities name them, and each record
+      # states its own half's scope; the shared evidence is identical because the evidence is
+      # shared.
+      - sub_unit_id: U5.7
+        name: the transactional outbox - one commit for the state change and the events it emits
+        plan_phrase: "transactional outbox"
+        depends_on: [U2.1]
+        reassigned_from: >-
+          U5.1, on 2026-08-12. U5.1 is the BUILT G2 specification/control correction recorded
+          above and may not be reused. This deliverable was unbuilt at that reassignment and is
+          built by THIS record.
+        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        candidate_generation: >-
+          FIRST CANDIDATE. No prior U5.7 candidate exists and none has been rejected.
+        landed_checkpoints: []
+        scored_criteria: []
+        # ### DELIBERATELY EMPTY, AND NOT AN OVERSIGHT. Scoring a P5 acceptance criterion is the
+        # reviewer's and the finalizer's act, never the builder's (CLAUDE.md sec 11: no session
+        # adjudicates work it implemented). All 14 P5 criteria stay PENDING.
+        scope: >-
+          ### THE FIRST RUNTIME CAPABILITY IN P5. Everything P5 landed before this was
+          specification and control; this is working code.
+          Built: `src/freight_recon/migrations/phase5_event_transport.py` (the `event_outbox`
+          table, its per-tenant monotonic `sequence`, the UNIQUE transition-natural
+          `idempotency_identity`, the `trg_event_outbox_strict_version_owner` trigger enforcing
+          strict per-aggregate ordering over the five families events/registry.md sec 8 names, and
+          the append-only triggers that make the stored envelope immutable against an admin with a
+          connection). A TRIGGER and not a UNIQUE index: EF-2 legitimately emits GrantClaimed AND
+          EffectAttempted on one effect_grant at one version, so uniqueness over
+          (tenant, aggregate_type, aggregate_id, aggregate_version) would have made the canonical
+          claim path UNINSERTABLE at P6. The invariant that actually holds - no two DIFFERENT
+          producer transitions may own one version - is not expressible as an index;
+          `src/freight_recon/event_envelope.py` (the sec 1 canonical envelope, its three derived
+          keys, and the `ev_v1` canonical serialization - the fp_v1 RULES of ADR-005 sec 3.4
+          applied to a JSON document tree, reusing `fingerprint.Money` so the no-floats rule is
+          enforced at construction);
+          `src/freight_recon/event_outbox.py` (`TransactionalOutbox.emit`, which REFUSES to run
+          outside an open transaction - M-23 as a mechanism rather than an instruction;
+          `transactional_emit`, the one-transaction context manager; and `OutboxRelay`, which
+          leases WHOLE AGGREGATES so two relays cannot reorder a version-monotonic family, then
+          publishes and marks published in separate commits so every crash window has a defined
+          recovery).
+          Wired into `src/freight_recon/schema.py` at the six composition points, so the P5 tables
+          are validated by the SAME tenant-first readiness oracle as every other tenant-owned
+          table - the outbox is not exempt from [C-1].
+        explicitly_not_done: >-
+          ### NOTHING HERE IS AN EVENT CONTRACT. `event_name` is validated for SHAPE only; there is
+          no whitelist of the canonical 105, no per-event payload schema and no upcaster - that is
+          U5.3, and a half-version written here would be a second authority for the same list.
+          No GC-1 corpus or pinned digest (U5.4). No replay sandbox (U5.5). No audit reconstruction
+          (U5.6). ### NO POSTGRESQL: ADR-016's production transactional store does not exist and
+          this runs on SQLite only, so P5's persistence half is untouched.
+          ### THE CAPABILITY SHIPS DARK. The relay has no default sink and refuses construction
+          without an explicit `publish` callable; the three modules import no adapter and no
+          network client; consuming an event mints ZERO checkpoint witnesses and ZERO effect
+          grants; the production `GateRegistry` is untouched and stays EMPTY; R-07 stays CONTAINED
+          and the Phase-8 deferral is intact. No production write and no external effect is
+          enabled by this unit.
+        review_and_adjudication_evidence:
+          content_commit: PENDING - the controller commits this candidate; the builder does not.
+          independent_review:
+            status: OWED
+            note: >-
+              ### NOT PERFORMED, AND NOT PERFORMABLE BY THE BUILDER. A fresh session that neither
+              implemented nor remediated this unit must attack it. Suggested attack surface, in
+              the builder's own order of doubt: (a) the whole-aggregate lease - is there an
+              interleaving in which two relays publish one aggregate's rows out of version order,
+              and does the lease behave correctly when a relay's clock differs from another's;
+              (b) the drain cascade in `DedupInbox._drain_for` - it restarts its scan after every
+              apply and is bounded by `DEFAULT_DRAIN_LIMIT`, so does a park graph exist that
+              exhausts the bound and silently reports `drain_limit_reached` where a real system
+              would need an Exception; (c) ANSWERED DURING THE BUILD, recorded so it is not
+              re-litigated: a strict-order partial UNIQUE index over
+              (tenant, aggregate, version) WOULD have been wrong at P6 - EF-2 emits GrantClaimed
+              and EffectAttempted on one effect_grant at one version - so the index was replaced
+              by `trg_event_outbox_strict_version_owner`, which asserts only that no two DIFFERENT
+              producer transitions own one version, and the inbox cursor's mirror bug (treating a
+              co-emitted sibling at `version <= applied` as stale) was fixed with it. The
+              independent review confirmed both halves and found the fix complete;
+              (d) `ev_v1` diverges from `fp_v1`'s flat form deliberately
+              (fp_v1 sorts list members and refuses a dict inside a list) - is that divergence
+              defensible, and are the two now two serializers that can drift; (e) the
+              transition-natural identity appends `event_name` to sec 4's four-field tuple - is
+              that a correction or a weakening; (f) TTL expiry returns `ExpiredReference` objects
+              instead of raising a canonical `ExceptionRaised`, which is honest about M9 being P6
+              but leaves M-26's "it gets a human" contingent on the caller.
+          final_adjudication:
+            status: NOT_APPLICABLE_UNLESS_ESCALATED
+            note: >-
+              Tier 2. A separate adjudication is owed only if repository authorities genuinely
+              conflict or a fix would change canonical architecture. Neither happened here.
+        residuals_recorded_not_owed_by_this_unit: >-
+          (1) `docs/implementation/current-to-target-gap-matrix.md` row 23 cites `AC-ADPT-010`
+          against U7.3/U7.1 (Observation natural-key idempotency). The inbox half of that criterion
+          - duplicate delivery deduplicated - is now built; the Observation-side natural-key upsert
+          that turns a duplicate webhook into an `ObservationConfirmed` is NOT, and remains U7.x.
+          The row was left alone rather than edited, because editing another unit's row to describe
+          this unit's work is how a matrix stops meaning anything.
+          (2) `eval/tests/test_p5_canonical_event_mint.py`'s docstring asserted "no such code
+          exists" of the outbox and inbox. That sentence became false with this unit and was
+          corrected in place; nothing else in that module changed.
+      - sub_unit_id: U5.8
+        name: the dedup inbox - redelivery is a no-op, and ordering is a mechanism
+        plan_phrase: "dedup inbox"
+        depends_on: [U2.1]
+        reassigned_from: >-
+          U5.2, on 2026-08-12. U5.2 is the BUILT G2 founder/architect event mint recorded above and
+          may not be reused. This deliverable was unbuilt at that reassignment and is built by THIS
+          record.
+        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        candidate_generation: >-
+          FIRST CANDIDATE. Built in the SAME session and the SAME content commit as U5.7, because
+          `AC-RACE-006/007` span both halves and an outbox reviewed without its inbox would be
+          reviewed against half a criterion.
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          `src/freight_recon/event_inbox.py`: `DedupInbox`, bound to ONE (tenant, consumer_id) at
+          construction. Consumption is one transaction carrying the handler's own writes, the inbox
+          row keyed `(tenant, consumer_id, event_id)` and the per-aggregate cursor - M-24's "process
+          the event and insert the inbox row in one transaction", so a crash before the commit
+          leaves nothing and a crash after it leaves a row that makes redelivery a no-op.
+          Cross-tenant events are rejected BEFORE the transaction opens and before the handler is
+          reachable, writing nothing at all - not even an inbox row, which keyed by the foreign
+          tenant would itself be the cross-tenant write. Malformed envelopes are refused by the same
+          path, as one exception family, so a blank or sentinel tenant cannot escape as a bare
+          `ValueError` past the malformed-event refusal.
+          Ordering: `inbox_aggregate_cursor` is the per-aggregate high-water mark. For the five
+          STRICT families a version gap PARKS and drains in order; order-tolerant families converge
+          and a superseded version is recorded as `STALE_NOOP` rather than re-applied.
+          M-26 parking: `pending_references` retains arrival order, attempt metadata and a TTL;
+          drains in arrival order when the referent appears; on TTL expiry `expire_overdue` marks
+          the row EXPIRED and RETURNS it naming its accountable owner.
+        explicitly_not_done: >-
+          Reference existence is answered by a caller-supplied `reference_resolver`, because
+          entities are P6 and this unit does not know what exists; with no resolver, reference
+          parking is OFF and the inbox SAYS so (`reference_parking_enabled`) rather than pretending
+          every reference resolves.
+          TTL expiry does NOT mint a canonical `ExceptionRaised` (EC-1): that contract is U5.3's and
+          M9 is P6. It returns the owner and the evidence to a caller who can raise it.
+          No projection, no rebuild, no digest pinning (U5.4/U5.6). Consuming an event produces zero
+          witnesses and zero grants - asserted, not assumed.
+        review_and_adjudication_evidence:
+          content_commit: PENDING - the controller commits this candidate; the builder does not.
+          independent_review:
+            status: OWED
+            note: >-
+              Same fresh-session requirement and the same attack surface as U5.7's record, which is
+              the one to read: the two halves were reviewed as one criterion or not at all.
+          final_adjudication:
+            status: NOT_APPLICABLE_UNLESS_ESCALATED
+        residuals_recorded_not_owed_by_this_unit: >-
+          Recorded on U5.7's record, which covers both halves.
+
     # ------------------------------------------------- P5 PLANNED (still-unbuilt) sub-units
     # ### THE COLLISION THIS BLOCK EXISTS TO END, STATED PLAINLY. Until 2026-08-12 two repository
     # authorities disagreed about what U5.1 and U5.2 ARE. This registry recorded them as the two G2
@@ -1894,20 +2080,6 @@ units:
         name: audit reconstruction - 18-field explainability, beliefs-of-that-day
         plan_phrase: "audit reconstruction"
         depends_on: [U5.3]
-      - sub_unit_id: U5.7
-        name: transactional outbox
-        plan_phrase: "transactional outbox"
-        depends_on: [U2.1]
-        reassigned_from: >-
-          U5.1, on 2026-08-12. U5.1 is the BUILT G2 specification/control correction recorded in
-          `sub_units` above and may not be reused; this deliverable has never been built.
-      - sub_unit_id: U5.8
-        name: dedup inbox
-        plan_phrase: "dedup inbox"
-        depends_on: [U2.1]
-        reassigned_from: >-
-          U5.2, on 2026-08-12. U5.2 is the BUILT G2 founder/architect event mint recorded in
-          `sub_units` above and may not be reused; this deliverable has never been built.
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     rebaseline_contract:
       user_visible_capability: none

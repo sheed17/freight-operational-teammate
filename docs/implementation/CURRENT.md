@@ -8,7 +8,9 @@
 > PASS: thirteen set by a separate final adjudication of implementation candidate `0891d1a` from a
 > fresh independent re-review, and `canonical_finalizer` on the one finalizer run that executed
 > (exit 0 on `0891d1a`, metadata commit `86306d5`). **P5 (events, outbox/inbox, replay isolation,
-> PostgreSQL) is now the sole READY unit — SELECTED ONLY. P5 has not started and is NOT COMPLETE.**
+> PostgreSQL) is the sole READY unit and is now IN_PROGRESS: `P5-CP-1` landed the transactional
+> outbox and the dedup inbox as a CONTINUATION checkpoint. Nothing is scored — all 14 P5 criteria
+> stay PENDING — and P5 is NOT COMPLETE.**
 > ### **R-07 is now CONTAINED.** Completing P4's weighted acceptance did **not** close it — the
 > CONTAINED record belongs in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml),
 > which is not a status-metadata file, so it required its own separate content commit **after** both
@@ -61,7 +63,7 @@ suite_skipped: 1
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
 | **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark. ### **Completing P3 did not close R-07 — and neither did completing P4:** R-07 closed only when a separate content commit, made after both P4 finalization passes, wrote the CONTAINED record into `phase-0-baseline-manifest.yaml` |
 | **P4** — adapter containment | ### **COMPLETE** | [`p4-independent-review-report.md`](p4-independent-review-report.md) — the first INDEPENDENT review, which candidate `95cf5af7` **did not pass** (REJECT — remediation required) · [`p4-independent-rereview-report-0891d1a.md`](p4-independent-rereview-report-0891d1a.md) — the FRESH INDEPENDENT re-review of the remediated candidate `0891d1a`, **ACCEPT FOR SEPARATE FINAL ADJUDICATION** · [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P4 recorded COMPLETE** · [`p4-first-finalization-pass-report-86306d5.md`](p4-first-finalization-pass-report-86306d5.md) — the one canonical finalizer run. ### **This did NOT close R-07** — see the open-risks table |
-| **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **SELECTED (`READY`) — NOT STARTED, NOT COMPLETE** | selection only; no P5 code, event contract, outbox, inbox, replay sandbox or PostgreSQL work exists. Also carries its own undischarged **G2** validation blocker. See the P5 unit block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) |
+| **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **SELECTED (`READY`) — `IN_PROGRESS`, NOT COMPLETE** | one landed checkpoint, `P5-CP-1` (`CHECKPOINT_ACCEPTED_FOR_CONTINUATION`): the transactional outbox and the dedup inbox — durable, atomic event emission and idempotent consumption. Not built: the 105 event contracts, the GC-1 corpus, the replay sandbox, audit reconstruction, PostgreSQL (ADR-016) — SQLite only. All 14 criteria `PENDING`; nothing scored. See the P5 unit block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) |
 | **P6–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
@@ -79,13 +81,14 @@ suite_skipped: 1
 
 | Quantity | Count |
 |---|---|
-| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 = 14)* | |
+| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 + 4 = 18)* | |
 | — Phase-2 **migrated** tenant-owned tables | **7** — `workflow_runs`, `audit_events`, `security_events`, `operation_action_claims`, `delivery_action_claims`, `effect_grants`, `operation_token_amounts` |
 | — **Already tenant-first before P2** (the eighth tenant-first table, migrated by nobody) | **1** — `autonomous_run_counters` |
 | — Tenant-**exempt** bookkeeping tables | **3** — `schema_migrations`, `migration_quarantine`, `owner_assertions` |
 | — **Phase-3** tenant-owned tables | **2** — `checkpoint_witnesses` (append-only by trigger), `brakes` |
 | — **Phase-3** tenant-exempt table | **1** — `platform_brake` (the ONE global admission brake, SD-12 — by definition nobody's tenant data) |
-| — Canonical tables **total** | **14** — exactly the union of the five sets above |
+| — **Phase-5** tenant-owned tables *(the durable event transport, U5.7+U5.8)* | **4** — `event_outbox` (envelope columns immutable by trigger), `event_inbox` (fully append-only), `inbox_aggregate_cursor`, `pending_references`. ### **P5 adds NO tenant-exempt table** — tenant is the FIRST partition dimension of every store, stream and inbox [C-1], so "whose event is this" has no honest answer other than a tenant |
+| — Canonical tables **total** | **18** — exactly the union of the six sets above |
 | `WorkflowStore` methods, tenant-scoped + readiness-gated | **22 / 22** |
 | `WorkflowStore` construction sites *(the AC-SEC-001 sweep)* | **168** — 166 with an explicit tenant, 2 registered refusal probes |
 | Guard files / guard tests *(discovered by `guard_files()`, never enumerated — the transcribed "25 / 367" figure is retired: no executable source ever computed it. **Method, stated so the figure is reproducible:** files = `len(test_phase2_guard_registry.guard_files())`; tests = the AST count of `def test_*` functions across those files — test FUNCTIONS, not collected nodes, so parametrization does not inflate it)* | **42 / 631** *(was 38 / 578, then 41 / 624 after the P3 findings remediation added three guard files — ledger compatibility, step order, observability — and 46 test functions; the N-1 receipt-consistency correction then added one guard file — the BUILD-STATUS receipt-consistency guard — and 7 test functions)* |
@@ -516,21 +519,24 @@ transport truncation disclosed, in
 
 ## ✅ The exact next approved work program
 
-### **P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION, AND PRODUCTION PERSISTENCE. IT IS THE SOLE `READY` UNIT. IT HAS NOT STARTED, AND IT IS NOT COMPLETE.**
+### **P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION, AND PRODUCTION PERSISTENCE. IT IS THE SOLE `READY` UNIT. IT IS `IN_PROGRESS`, AND IT IS NOT COMPLETE.**
 
 ### **The next approved unit is `P5`.** The adapter-containment phase is COMPLETE — all 14 weighted
 criteria PASS on independent evidence — so P5's sole dependency is satisfied and P5 is the selected
-unit. **`READY` is the SELECTION state and nothing more.** P5's `execution_state` is `NOT_STARTED`
-and its `checkpoint_state` is `NO_CHECKPOINT`: no P5 code, event contract, outbox, inbox, replay
-sandbox or PostgreSQL work exists, and the session that recorded this transition did not begin any.
+unit. **`READY` is the SELECTION state and nothing more.** P5's `execution_state` is `IN_PROGRESS`
+and its `checkpoint_state` is `CHECKPOINT_ACCEPTED_FOR_CONTINUATION`: U5.7+U5.8 landed the
+transactional outbox and the dedup inbox — durable, atomic event emission and idempotent
+consumption — as the single landed checkpoint `P5-CP-1`. A **continuation** checkpoint is permission
+to carry on, not phase acceptance: **no acceptance criterion is scored and all 14 stay `PENDING`.**
 The three fields are defined in `meta.status_model` of
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
 
 Unit `P5` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
-READY unit.** It implements the 105 event contracts with a transactional outbox and a dedup inbox,
-proves replay is sandboxed and structurally inert, and makes persistence production-grade
-(PostgreSQL, schema migrations, durable timers and scheduler per ADR-016; SQLite stays for local
-development and deterministic tests).
+READY unit.** Still to build: the 105 event contracts (U5.3), the GC-1 corpus (U5.4), the replay
+sandbox proving replay structurally inert (U5.5), audit reconstruction (U5.6), and production-grade
+persistence (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016). **The landed
+transport is SQLite only** — no PostgreSQL work exists, and SQLite stays for local development and
+deterministic tests.
 
 > ### **P5's OWN BLOCKER: G2's SEVEN EVENT OBLIGATIONS ARE DISCHARGED.** The G2 contract is settled
 > and mechanised, `EF-3` is re-attributed to the existing `EffectExecuted`, all 134 transitions are
@@ -539,9 +545,10 @@ development and deterministic tests).
 > founder/architect authority** on 2026-08-12, taking the registry 98 → **105**. Each departure from
 > `EVENT_REQUIRED` is re-proven mechanically from `events/registry.md` §3 on every run; the seven
 > obligations are **retained** in the audit, marked discharged with their authority, never deleted.
-> ### **WHAT THIS DOES NOT MEAN.** No event infrastructure exists: no contract implementation, no
-> outbox, no inbox, no replay sandbox, no PostgreSQL work. P5 is still `READY / NOT_STARTED /
-> NO_CHECKPOINT` with all 14 criteria `PENDING`. The G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9`
+> ### **WHAT THIS DOES NOT MEAN.** The discharge built nothing. What exists is the U5.7+U5.8
+> transport — the outbox and the inbox — and no event-contract implementation, no replay sandbox, no
+> audit reconstruction and no PostgreSQL work. P5 is `READY / IN_PROGRESS /
+> CHECKPOINT_ACCEPTED_FOR_CONTINUATION` with all 14 criteria `PENDING`. The G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9`
 > and `G2-D10` remain OPEN and are recorded, not closed, in
 > [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml) — as do `G2-D15` (AP-9's **unfreeze**
 > direction is unmodelled; the sentence asserting it is deleted, not restated) and `G2-D16` (the
@@ -582,8 +589,8 @@ corrected N-1.
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 6** (foundational entities and state machines) | Requires `P5` COMPLETE. ### **P5 itself is now READY** — it is deliberately no longer in this table, though it has not started and must not be started by the session that recorded this transition |
-| **Writing the event contracts, outbox, inbox or replay sandbox** | The READY unit is a *selection*; this specific content is still blocked on the **G2** transition/event completeness adjudication, which P4's completion did not discharge |
+| ### **Implementation Phase 6** (foundational entities and state machines) | Requires `P5` COMPLETE. ### **P5 itself is READY and `IN_PROGRESS`** — it is deliberately no longer in this table, but it is one continuation checkpoint in, with every acceptance criterion still `PENDING` |
+| **Writing the event contracts, the GC-1 corpus, the replay sandbox or audit reconstruction** | Not built. The outbox and inbox landed at `P5-CP-1`; this remaining content is P5's own U5.3–U5.6 work and is not authorized to be declared done by the session that writes it |
 | Treating R-07 CONTAINED as production enablement | ### **Containment is not enablement.** External-effect paths are structurally forced through the governed boundary or fail closed. No production write is enabled, the deployed route answers `ROUTE_NOT_CONFIGURED`, the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** Live supervised writes are P12, behind the undischarged **RR-01** |
 | Running a finalizer on the R-07 closure content commit | It must first receive a **fresh targeted independent review** and a **separate targeted adjudication**. No finalizer receipt exists for it and none may be fabricated |
 | Freight workflow implementation | Requires P6–P9 foundations |

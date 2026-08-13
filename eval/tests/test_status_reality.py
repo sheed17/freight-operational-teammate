@@ -330,12 +330,33 @@ def test_the_status_record_still_states_the_canonical_facts():
         assert by[dep]["status"] == "COMPLETE", (
             f"P5 is READY while dependency {dep} is {by[dep]['status']}"
         )
-    # READY is SELECTION, never execution: P5 must not have started.
-    assert by["P5"]["execution_state"] == "NOT_STARTED", (
-        f"P5 is READY and already {by['P5']['execution_state']} - the closure commit was allowed "
-        "to begin the next phase, which the control boundary forbids"
+    # READY is SELECTION, never a claim that work has begun - but it is equally never a claim that
+    # work has NOT begun. meta.status_model.status is explicit: "P4 stayed READY for the whole time
+    # it was executing (execution was recorded in execution_state, not by vacating the selector)".
+    # This assertion previously pinned P5 to NOT_STARTED, which was TRUE when it was written and
+    # became false the moment U5.7+U5.8 landed the outbox and inbox as working code. A guard that
+    # freezes a moment into a rule forbids the repository from ever recording that the selected unit
+    # started - so it asserts the RELATIONSHIP the status model actually states.
+    assert by["P5"]["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
+        f"P5 is READY and {by['P5']['execution_state']} - a READY unit is either not yet started or "
+        "executing; COMPLETE execution without leaving READY would strand the selector"
     )
-    assert not by["P5"].get("landed_checkpoints"), "P5 records landed work while NOT_STARTED"
+    if by["P5"]["execution_state"] == "NOT_STARTED":
+        assert not by["P5"].get("landed_checkpoints"), "P5 records landed work while NOT_STARTED"
+    else:
+        assert by["P5"].get("landed_checkpoints"), (
+            "P5 is IN_PROGRESS but records no landed checkpoint - execution without evidence is the "
+            "claim this guard exists to refuse"
+        )
+        for cp in by["P5"]["landed_checkpoints"]:
+            assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
+                f"{cp.get('id')} lands without on-disk implementer evidence AND an on-disk "
+                "independent review report - P4-CP-1's null review report is a recorded gap, "
+                "not a precedent to copy"
+            )
+            assert not cp.get("criteria_scored"), (
+                f"{cp.get('id')} scores acceptance criteria - a continuation checkpoint may not"
+            )
     later_phases = [u["unit_id"] for u in units
                     if re.fullmatch(r"P\d+", u["unit_id"]) and int(u["unit_id"][1:]) >= 6]
     assert later_phases, "no post-P5 phases found - the BLOCKED sweep would be vacuous"
