@@ -9,9 +9,13 @@ were removed - which was verified by mutating each rule in a throwaway copy of t
 the node go red.
 
 ### WHAT IT DELIBERATELY DOES NOT DO. Nothing here executes an event, an outbox, an inbox or a real
-replay: no such code exists, and asserting over a runtime that has not been built is exactly the kind
-of false green this repository has been burned by. The REPLAY nodes therefore work the way replay
-itself works - they FOLD THE DECLARED PAYLOADS over the durable writes the machines declare, and ask
+replay. *(Correction, P5 U5.7+U5.8: this paragraph used to say "no such code exists". A transactional
+outbox and a dedup inbox now DO exist — `src/freight_recon/event_outbox.py` and `event_inbox.py`,
+exercised by `test_phase5_event_transport.py`. What still does not exist is a replay sandbox (U5.5)
+or an implementation of the 105 contracts (U5.3), and this module remains deliberately
+specification-level: it asserts over the REGISTRIES, not over that runtime.)* Asserting over a
+runtime that has not been built is exactly the kind of false green this repository has been burned
+by. The REPLAY nodes therefore work the way replay itself works - they FOLD THE DECLARED PAYLOADS over the durable writes the machines declare, and ask
 whether the fold can reconstruct each write. That is a specification-level property, it is stated as
 one, and it is the property AC-EVT-008 will later be implemented against.
 

@@ -3467,22 +3467,37 @@ def test_hostile_a_live_retired_status_token_is_detected():
 # ============================================================ M-4: table partition
 
 def test_the_canonical_table_partition_is_exact_and_disjoint():
-    """P3 widened the partition from three classes to five. The doctrine is unchanged: the classes
-    must be PAIRWISE disjoint and must together explain EVERY canonical table, by membership and
-    not by count - a same-count substitution must still fail. The counts below are asserted only
-    after the membership equality, so they document the shape rather than standing in for it."""
+    """P3 widened the partition from three classes to five; P5 adds a sixth. The doctrine is
+    unchanged: the classes must be PAIRWISE disjoint and must together explain EVERY canonical
+    table, by membership and not by count - a same-count substitution must still fail. The counts
+    below are asserted only after the membership equality, so they document the shape rather than
+    standing in for it.
+
+    P5 contributes NO exempt class, and that is why its emptiness is asserted rather than omitted:
+    every table the event transport adds is tenant-owned, so there is no seventh class and nothing
+    to defend. An outbox exempt from the tenant partition would be the one store in the system
+    where [C-1] was a comment.
+    """
     from freight_recon.migrations.phase2_tenant_first import (
         CANONICAL_TENANT_TABLES, TENANT_EXEMPT_TABLES,
     )
     from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES, P3_TENANT_TABLES
+    from freight_recon.migrations.phase5_event_transport import (
+        P5_EXEMPT_TABLES, P5_TENANT_TABLES,
+    )
     from freight_recon.schema import CANONICAL_TABLES
 
+    assert set(P5_EXEMPT_TABLES) == set(), (
+        f"P5 declared a tenant-exempt table {sorted(P5_EXEMPT_TABLES)}: an event nobody owns is an "
+        f"event that will eventually be read by the wrong brokerage. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
         "exempt": set(TENANT_EXEMPT_TABLES),
         "p3_tenant": set(P3_TENANT_TABLES),
         "p3_exempt": set(P3_EXEMPT_TABLES),
+        "p5_tenant": set(P5_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3496,7 +3511,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     )
     shape = {name: len(members) for name, members in classes.items()}
     assert shape == {"migrated": 7, "already_tenant_first": 1, "exempt": 3,
-                     "p3_tenant": 2, "p3_exempt": 1}, f"the partition shape drifted: {shape}"
+                     "p3_tenant": 2, "p3_exempt": 1,
+                     "p5_tenant": 4}, f"the partition shape drifted: {shape}"
 
     text = read(IMPL / "CURRENT.md")
     assert "autonomous_run_counters" in text, (

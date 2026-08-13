@@ -1032,6 +1032,18 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase3:{step}")
         conn.commit()
 
+        # ---- STEP 10 (P5): the same argument, one phase later. Since P5 the canonical shape also
+        # includes the durable event transport - outbox, inbox, per-aggregate cursor and M-26
+        # parking - with its append-only triggers. Stopping at the P3 shape would leave a MIGRATED
+        # database the readiness oracle refuses while a FRESH one passes, which is exactly the
+        # fresh-vs-migrated drift this file's single-TARGET_SCHEMA design exists to prevent.
+        # Create-only and idempotent, like its predecessor.
+        from .phase5_event_transport import create_phase5_schema
+
+        for step in create_phase5_schema(conn, now=_now()):
+            _mark(conn, f"phase5:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1043,10 +1055,13 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
                 "SELECT COUNT(*) FROM effect_grants").fetchone()[0]
         if rep.outcome in (CANONICAL_READY, MIGRATION_COMPLETE_RESTART_SAFE):
             _mark(conn, f"version:{SCHEMA_VERSION}", "readiness proven")
-            # The P3 stamp under the SAME proven-readiness condition, refusing internally too.
+            # The P3 and P5 stamps under the SAME proven-readiness condition; each refuses
+            # internally too, so neither marker can appear on a shape that did not prove itself.
             from .phase3_checkpoint import stamp_phase3_version
+            from .phase5_event_transport import stamp_phase5_version
 
             stamp_phase3_version(conn, now=_now())
+            stamp_phase5_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

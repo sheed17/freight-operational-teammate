@@ -48,9 +48,17 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     structure is built first (create_phase3_schema is create-only) and the requested mutation is
     then applied to whichever phase's object it names — keeping 'exactly one thing wrong' true
     across both phases.
+
+    P5: and since the event transport landed, 'canonical' also includes the outbox, the inbox, the
+    per-aggregate cursor and M-26 parking. Built the same way and for the same reason: a helper
+    that stopped at the P3 shape would make EVERY case in this module fail for a reason that has
+    nothing to do with the one thing it deliberately broke.
     """
     from freight_recon.migrations.phase3_checkpoint import (
         P3_INDEXES, P3_TENANT_TABLES, create_phase3_schema,
+    )
+    from freight_recon.migrations.phase5_event_transport import (
+        P5_INDEXES, P5_TENANT_TABLES, create_phase5_schema,
     )
 
     conn = sqlite3.connect(path)
@@ -87,6 +95,13 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     if drop in P3_TENANT_TABLES or drop == "platform_brake":
         create_phase3_schema(conn, now="1970-01-01T00:00:00+00:00")
         conn.execute(f"DROP TABLE IF EXISTS {drop}")
+    # The P5 event transport, then any P5-targeted mutation. It declares no foreign key into the
+    # ledger, so unlike P3 it is built regardless of what was dropped.
+    create_phase5_schema(conn, now="1970-01-01T00:00:00+00:00")
+    if drop in P5_TENANT_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {drop}")
+    if skip_index and skip_index in P5_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {skip_index}")
     if extra_table:
         conn.execute(extra_table)
     if orphan:
