@@ -1355,10 +1355,19 @@ units:
     # phase?" and P5's phase work - event contracts, outbox, inbox, replay sandbox, PostgreSQL -
     # has landed nothing. U5.1 corrected SPECIFICATION AND CONTROL surfaces and instantiated this
     # unit's contract; it executed no P5 phase content. IN_PROGRESS would also be structurally
-    # false: it requires a landed checkpoint, and U5.1 has none - it is an unreviewed candidate.
+    # false: it requires a landed checkpoint, and neither U5.1 nor U5.2 has one. (This comment used
+    # to end "- it is an unreviewed candidate", which was true when written and is not now: U5.1 and
+    # U5.2 have both been independently reviewed, separately adjudicated and finalized. The same
+    # record-accuracy defect as R4-A and A-3, in the comment above the block rather than inside it.)
     sub_units:
       - sub_unit_id: U5.1
         name: G2 specification/control correction and P5 acceptance-contract instantiation
+        # The literal that must appear beside `U5.1` in pr-sequence.md's `**P5:**` line. It is what
+        # makes the id mean the SAME WORK in the plan and in this registry, and it is asserted per id
+        # by eval/tests/test_phase0_identifiers.py::
+        # test_the_p5_unit_ids_name_the_same_work_in_the_registry_and_in_the_plan.
+        plan_phrase: "the G2 specification/control correction"
+        depends_on: []
         # ### R4-A CORRECTION (by P5 U5.2). This record read
         # `CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW` after the review, the separate
         # re-adjudication and the finalization had all been performed and preserved. That is a live
@@ -1452,7 +1461,23 @@ units:
         name: >-
           G2 founder/architect event mint - seven canonical events, the false-delegation predicate,
           and a default-deny chokepoint over the discharge machinery
-        record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+        plan_phrase: "the G2 founder/architect event mint"
+        depends_on: [U5.1]
+        # ### A-3 CORRECTION. This record read `CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW`
+        # after the fresh independent review, the separate targeted adjudication and the single
+        # finalization had all been performed and preserved. That is R4-A recurring in the same
+        # structural position on two consecutive units, and it was found by the controller during
+        # post-finalization verification and recorded at
+        # refs/preserve/p5-u52-controller-finalization-record-c74407a. The cause is topological, not
+        # careless: the correct value is unknowable until certification completes, which is after the
+        # content commit is sealed, and PROGRESS-PROTOCOL.md sec 10 permits no second content commit
+        # on the unit. So it is corrected here, by the next unit, exactly as U5.2 corrected R4-A.
+        # ### THE STRUCTURAL FIX IS NOT ATTEMPTED HERE AND IS NOT CLAIMED. Making the certification
+        # state a finalizer-derived field, or recording it only in the preserved governance refs
+        # where it already lives truthfully, changes scripts/finalize_status.py and
+        # STATUS_METADATA_FILES - surfaces this correction is not authorized for. The residual stays
+        # open, owed to whichever unit is authorized for the finalizer.
+        record_type: CONTENT_COMMIT_INDEPENDENTLY_REVIEWED_ADJUDICATED_AND_FINALIZED
         candidate_generation: >-
           ### SECOND REPLACEMENT. TWO PRIOR U5.2 CANDIDATES HAVE BEEN REJECTED, both on the same
           defect, and both rejections are recorded here rather than summarised away.
@@ -1545,6 +1570,12 @@ units:
           bijection, the retired 121/13 split, and two more), so two closed defects and two open
           residuals were sharing ids in an audit trail whose whole purpose is traceability. The two
           new ids returned zero hits repository-wide before this change, verified by grep.
+          ### F-5 CORRECTION. The commit record for 2ccf5e1 said the renumbering touched "the
+          registry (13 sites)". THE COUNT IS 12: `G2-D15` and `G2-D16` occur six times each in this
+          file, twelve occurrences over ten lines. Confirmed by the independent review and by the
+          separate adjudication, which also re-measured the repository totals as `G2-D15` x10 and
+          `G2-D16` x11, both previously zero, no collision. Immaterial to the mechanism and recorded
+          only because a count stated as a measurement must be the measurement.
           (5) R-05 - `authorized_discharge_routes` was FALSE IN BOTH CLAUSES and is corrected to state
           what the chokepoint implements. The NON_PRODUCING inconsistency (the record advertised a
           route that N-01 had barred and that the obligation register's canonical-discharging_event
@@ -1706,17 +1737,77 @@ units:
           IS CATCHABLE BY THIS SUITE. Reverting the N-01 bar was run as a mutation and is reported as
           a MISS. It is KEPT anyway, on the express ruling of the a6005a8 adjudication: it is what the
           chokepoint generalises, and what would still stand if the chokepoint were narrowed or its
-          caller widened. The register's non-empty `durable_write` requirement in
-          `_event_required_set_errors` is a separate, LIVE assertion and is caught by mutation.
+          caller widened.
+          ### F-3 CORRECTION - THIS RECORD OVERSTATED ONE MORE THING, AND THE DISTINCTION IS BETWEEN
+          A DATUM AND AN ASSERTION. It said the register's non-empty `durable_write` requirement in
+          `_event_required_set_errors` "is a separate, LIVE assertion and is caught by mutation".
+          The independent review raised it and the separate adjudication confirmed it exactly: the
+          DATUM is caught - emptying AP-9's registered `durable_write` fails four nodes - but the
+          REQUIREMENT is NOT held, because deleting the check itself (mutation `mutF3`: 4 failed,
+          the same count as the control) is a MISS. It is redundant defence in depth, not an
+          independently load-bearing check, and it may not be reported as mutation-proven.
           ### NO SELF-CERTIFICATION: this candidate was not reviewed, adjudicated or finalized by its
           builder, and its own defence claims are stated as measurements a reviewer can re-run.
           ### NO EXISTING EVENT CHANGED MEANING: PolicyProposed is still PO-1's, with its producer,
           payload and consumers untouched, and no other name was re-attributed.
           ### NO self-review, NO self-adjudication, NO finalizer run, NO commit, nothing pushed.
+        # ### A-3 CORRECTION, PART 2. `owed_next` demanded a fresh independent review, a separate
+        # adjudication and a finalizer. All three were performed and preserved before this record was
+        # touched; leaving the demand standing would tell the next session that a completed
+        # certification is still owed. The evidence is recorded here in the same shape U5.1's record
+        # uses, and the pre-review attack direction is kept below, labelled as the history it is.
+        review_and_adjudication_evidence:
+          content_commit: 2ccf5e1ff88302703834d68706a7e4b221a43d89
+          independent_review:
+            ref: refs/preserve/p5-u52r2-independent-review-2ccf5e1
+            commit: 8e423263e6bffa80a921e34dd609c5bdf791de5b
+            verdict: ACCEPT WITH NONBLOCKING FINDINGS
+            performed_by: >-
+              a completely fresh session that built nothing, reviewed nothing prior and remediated
+              nothing - not this candidate, not f01d942, not a6005a8. It refused 28 of 28 launderings
+              across 7 rows x 4 shapes, attributed by inversion, and returned four nonblocking
+              findings, all record or coverage, none mechanism.
+          targeted_adjudication:
+            ref: refs/preserve/p5-u52r2-targeted-adjudication-2ccf5e1
+            commit: d1cbf1175e5f1363bc546195bba4b0ec5c7f9a42
+            verdict: UPHOLD ACCEPT
+            performed_by: >-
+              a further separate session that did not implement, remediate or review this unit. It
+              proved the admissible-discharge set equals the founder authorization table over 5880
+              expressible records, ruled F-2 a residual (A-2), and added A-1 - a defect the builder,
+              the reviewer and the controller all missed.
+            note: >-
+              ### THIS DOCUMENT IS THE AUTHORITATIVE CARRIER OF THE UNIT'S RESIDUALS.
+              PROGRESS-PROTOCOL.md sec 10 forbids a second content commit on the unit, so A-1, A-2,
+              F-3, F-4 and F-5 were recorded there and owed forward rather than fixed in place.
+          finalization:
+            status_metadata_commit: c74407aec874a55c6145a18b5d1a2a0fa891581c
+            note: >-
+              exactly one finalizer-generated status-metadata commit, sole parent 2ccf5e1, first
+              finalization pass, written entirely by scripts/finalize_status.py. The controller's
+              record of the whole chain - five candidates, four rejections, three fresh reviewers and
+              three separate adjudicators, no role reused - is preserved at
+              refs/preserve/p5-u52-controller-finalization-record-c74407a, and A-3 was found there.
         owed_next: >-
-          a COMPLETELY fresh independent targeted review by a session that did not build this
-          candidate, f01d942 or a6005a8; then a SEPARATE targeted adjudication by a further session;
-          then exactly one finalizer-generated status-metadata commit.
+          NOTHING FROM U5.2's OWN CERTIFICATION - its fresh independent review, its separate targeted
+          adjudication and its single finalization are all done and preserved above. What it owes
+          forward are the residuals its adjudication and its controller recorded, and the
+          governance-consistency correction that reassigned the P5 planned ids discharges the ones
+          addressed to "the next G2-adjacent unit": A-3 (this record's own stale record_type and this
+          field), A-1 (the guard quoting the audit as saying something the audit does not say), F-3
+          (restated precisely, in the guard and above) and F-5 (the renumbering site count: 12, not
+          13).
+          ### STILL OPEN AND NOT THAT UNIT'S TO CLOSE: A-2 and F-4, owed by the FIRST unit that
+          amends ADJUDICATED_EVENT_REQUIRED or FOUNDER_AUTHORIZED_DISCHARGES, BEFORE it amends
+          either - the correction amended neither; the STRUCTURAL half of A-3, owed by whichever unit
+          is authorized for scripts/finalize_status.py and STATUS_METADATA_FILES; and R-02, G2-D15,
+          G2-D16, G2-D4/D6/D8/D9/D10 and the PL-11c -> OutcomeUnknown residual, carried forward
+          unchanged.
+        review_attack_surface_as_directed_before_the_review_happened: >-
+          ### HISTORICAL. This is what the builder asked its reviewer to attack, written before the
+          review existed. The review and the adjudication recorded above have since happened and
+          returned ACCEPT / UPHOLD ACCEPT. It is kept, unedited, because it records what the unit
+          believed its own weakest points were, which is evidence about the unit.
           ### THE REVIEWER SHOULD ATTACK, IN ORDER - and the FIRST item is the one that rejected the
           last four candidates:
           (a) ### FIND THE FIFTH ROUTE. Build a fully coordinated laundering of one of the seven that
@@ -1749,6 +1840,74 @@ units:
           (h) whether each minted NAME and PAYLOAD is truthful and non-overclaiming against its
           transition's actual durable write, and whether the AP-9 replay reconstruction really rests
           on positive evidence.
+
+    # ------------------------------------------------- P5 PLANNED (still-unbuilt) sub-units
+    # ### THE COLLISION THIS BLOCK EXISTS TO END, STATED PLAINLY. Until 2026-08-12 two repository
+    # authorities disagreed about what U5.1 and U5.2 ARE. This registry recorded them as the two G2
+    # units above - built, independently reviewed, separately adjudicated and finalized, with
+    # permanent governance refs (refs/preserve/p5-u51-*, refs/preserve/p5-u52*) naming those ids -
+    # while pr-sequence.md and current-to-target-gap-matrix.md used the same two ids for the
+    # transactional outbox and the dedup inbox, neither of which has been built. The consequence was
+    # not cosmetic: the outbox and the inbox had NO id at all, and U5.3 declared as prerequisites two
+    # units that do not exist as planned.
+    #
+    # ### THE RESOLUTION PRINCIPLE: CERTIFIED HISTORY IS IMMUTABLE; UNBUILT PLANNED WORK IS REMAPPED.
+    # U5.1 and U5.2 are NOT renumbered and NOT reopened. The two unbuilt deliverables that had been
+    # carrying those ids were reassigned to U5.7 (outbox) and U5.8 (dedup inbox). Both returned ZERO
+    # hits repository-wide before the reassignment - working tree and full commit history, across
+    # every ref - which is the same evidence standard R-04 applied when it renumbered G2-D15/G2-D16
+    # off four already-taken ids.
+    #
+    # ### DEPENDENCY CORRECTNESS OUTRANKS ID ORDERING, AND THE INVERSION IS DELIBERATE. U5.3 depends
+    # on U5.7 and U5.8: a lower-numbered unit depending on higher-numbered ones. The alternative -
+    # renumbering U5.3..U5.6 as well so the digits ascend - is a strictly larger edit to planning
+    # documents for a purely cosmetic gain, and every renumbering is itself a chance to create the
+    # defect being fixed here. The dependency is made explicit instead, in this block and in both
+    # planning documents.
+    #
+    # ### WHAT `plan_phrase` IS FOR. It is the literal that must appear beside the id in
+    # pr-sequence.md's `**P5:**` line. Both sides of the correspondence are derived mechanically -
+    # these records, and that line - and asserted per id, in both directions, by
+    # eval/tests/test_phase0_identifiers.py::
+    # test_the_p5_unit_ids_name_the_same_work_in_the_registry_and_in_the_plan. That node also holds
+    # the built ids disjoint from the planned ids, so no id can ever again name certified work in one
+    # authority and unbuilt work in another, and holds each gap-matrix P5 row's `Depends on` cell
+    # equal to the `depends_on` recorded here.
+    #
+    # ### NOTHING HERE IS A STATUS CLAIM. These units have no record_type, no candidate, no
+    # checkpoint and no scored criterion. P5 stays READY / NOT_STARTED / NO_CHECKPOINT with all 14
+    # criteria PENDING. This block enumerates PLANNED WORK AND ITS IDS - nothing more.
+    planned_sub_units:
+      - sub_unit_id: U5.3
+        name: the 105 event contracts and the upcaster
+        plan_phrase: "the 105 event contracts"
+        depends_on: [U5.7, U5.8]
+      - sub_unit_id: U5.4
+        name: the GC-1 golden corpus and its pinned digest
+        plan_phrase: "the `GC-1` golden corpus + pinned digest"
+        depends_on: [U5.3]
+      - sub_unit_id: U5.5
+        name: sandboxed replay - effects structurally unreachable in replay
+        plan_phrase: "sandboxed replay"
+        depends_on: [U5.3]
+      - sub_unit_id: U5.6
+        name: audit reconstruction - 18-field explainability, beliefs-of-that-day
+        plan_phrase: "audit reconstruction"
+        depends_on: [U5.3]
+      - sub_unit_id: U5.7
+        name: transactional outbox
+        plan_phrase: "transactional outbox"
+        depends_on: [U2.1]
+        reassigned_from: >-
+          U5.1, on 2026-08-12. U5.1 is the BUILT G2 specification/control correction recorded in
+          `sub_units` above and may not be reused; this deliverable has never been built.
+      - sub_unit_id: U5.8
+        name: dedup inbox
+        plan_phrase: "dedup inbox"
+        depends_on: [U2.1]
+        reassigned_from: >-
+          U5.2, on 2026-08-12. U5.2 is the BUILT G2 founder/architect event mint recorded in
+          `sub_units` above and may not be reused; this deliverable has never been built.
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     rebaseline_contract:
       user_visible_capability: none

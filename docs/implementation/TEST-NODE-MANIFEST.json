@@ -1,8 +1,8 @@
 {
  "config": "pytest-canonical.ini",
  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
- "manifest_sha256": "89054a7e152916a487342acf677770b12c2acd44b1a3bb32ce21e49c7da454df",
- "node_count": 2136,
+ "manifest_sha256": "2c1a6bef2bbce67566d4260f6e688fe65c06806d4afef6d9b702e8e35ffb5c2b",
+ "node_count": 2137,
  "node_ids": [
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty",
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers",
@@ -1216,6 +1216,7 @@
   "eval/tests/test_phase0_identifiers.py::test_every_referenced_unit_is_declared_by_the_pr_sequence",
   "eval/tests/test_phase0_identifiers.py::test_no_duplicate_or_conflicting_unit_namespace",
   "eval/tests/test_phase0_identifiers.py::test_the_invented_id_appears_only_as_a_reported_finding",
+  "eval/tests/test_phase0_identifiers.py::test_the_p5_unit_ids_name_the_same_work_in_the_registry_and_in_the_plan",
   "eval/tests/test_phase0_identifiers.py::test_the_probes_evaluate_real_populations",
   "eval/tests/test_phase0_identifiers.py::test_u03_completion_oracle_resolves",
   "eval/tests/test_phase0_migration_guards.py::test_a_consequential_effect_without_identity_fails_closed_and_never_returns_none",

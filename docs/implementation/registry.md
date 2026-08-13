@@ -75,7 +75,7 @@
 | **2** Tenant-safe ledger | U2.1–U2.5 | → G4 |
 | **3** Checkpoint + witness | U3.1–U3.5 | → G4 |
 | **4** Adapter containment | U4.1–U4.11 | → G4 · **G3** |
-| **5** Outbox + replay | U5.1–U5.6 | **G2** |
+| **5** Outbox + replay | U5.1–U5.8 *(U5.7/U5.8 are the outbox and the dedup inbox, reassigned from U5.1/U5.2 on 2026-08-12)* | **G2** |
 | **6** Entities + machines | U6.1–U6.4 | **G1** · → G4 |
 | **7** Provenance + binding | U7.1–U7.5 | G1 · → G4 |
 | ### **8** Policy, brake, M7–M10 | U8.1–U8.6 | ### **G4 QUALIFIES** |

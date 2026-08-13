@@ -6,9 +6,9 @@
 |---|---|---|---|---|
 | **G0** | P0 → **P1** | U0.1–U0.4, ### **U1.2/U1.3** | the conformance report; ### **AC-SAFE-012/013 flip red→green** | ### **the two migration guards are GREEN — the amount is out of the key and every effect has one** |
 | **G1** | P6, P7, P9 | U6.3, U9.\* | ### **`AC-MACH-*` 134/134**, `AC-DOM-*` 40/40 | pure logic is correct with no I/O in the loop |
-| **G2** | P5 | U5.1–U5.5 | the pinned `GC-1` digest | ### **a rebuild reproduces the digest, and replay emits ZERO effects** |
+| **G2** | P5 | U5.3–U5.5, U5.7/U5.8 *(the SAME five deliverables this cell always named — the outbox and the dedup inbox moved from U5.1/U5.2 to U5.7/U5.8 on 2026-08-12; no work was added or removed)* | the pinned `GC-1` digest | ### **a rebuild reproduces the digest, and replay emits ZERO effects** |
 | **G3** | P4 (simulators from P3/U3.5) | U3.5, U4.\* | simulator call logs | ### **the simulators were written from the SPEC, not the implementation** (else L-9: a false pass) |
-| ### **G4** | ### **P2 → P8 (ALL of it)** | ### **U2.\*, U3.\*, U4.\*, U5.1/U5.2, U6.1–U6.4, U7.1–U7.4, U8.1–U8.4** | ### **race logs (10k interleavings/race) + crash matrices at every crash point** | ### **THE SAFETY KERNEL EXISTS AND IS UNBYPASSABLE. This is the gate the entire plan is built to reach: NO live effect of any kind is permitted before it.** ### **Its scope is set by the FROZEN gate, not by convenience — see the correction below.** |
+| ### **G4** | ### **P2 → P8 (ALL of it)** | ### **U2.\*, U3.\*, U4.\*, U5.7/U5.8, U6.1–U6.4, U7.1–U7.4, U8.1–U8.4** | ### **race logs (10k interleavings/race) + crash matrices at every crash point** | ### **THE SAFETY KERNEL EXISTS AND IS UNBYPASSABLE. This is the gate the entire plan is built to reach: NO live effect of any kind is permitted before it.** ### **Its scope is set by the FROZEN gate, not by convenience — see the correction below.** |
 | **G5** | P10 | U9.\*, the slice | loop traces + `AC-FC-*` | the loop is correct in a sandbox with ### **zero live effects** |
 | **G6** | P11a | — | the shadow-vs-human diff | ### **live reads, ZERO effects — observe and propose only** |
 | **G7** | P11b | — | evidence-capture proof | ### **the HUMAN executes; Neyma prepares and captures. `AC-DEG` assertion 5: Neyma NEVER claims it executed.** |

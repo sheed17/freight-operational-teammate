@@ -1130,9 +1130,20 @@ def _registered_durable_writes(audit: dict) -> dict[str, str]:
 #
 # ### ZERO FALSE REJECTS, AND THE REASON IS STRUCTURAL RATHER THAN MEASURED. All seven recorded
 # discharges are route MINTED_CANONICAL_EVENT (TRANSITION-EVENT-AUDIT.yaml,
-# `frozen_event_required_set.discharges`), and the audit's own note records that
-# PRE_EXISTING_STRUCTURAL_PROOF "remains available and unused". Nothing legitimate uses the route
-# this bars, so barring it refuses nothing the corpus asserts.
+# `frozen_event_required_set.discharges`), and the audit's own note records that "NOT ONE of these
+# is a PRE_EXISTING_STRUCTURAL_PROOF, and since the P5 U5.2 second replacement that route is
+# UNAVAILABLE to these seven rather than merely unused". Nothing legitimate uses the route this
+# bars, so barring it refuses nothing the corpus asserts.
+#
+# ### A-1 CORRECTION. Until this correction the two lines above quoted the audit as saying
+# PRE_EXISTING_STRUCTURAL_PROOF "remains available and unused". That sentence occurs ZERO times in
+# TRANSITION-EVENT-AUDIT.yaml: the U5.2 second replacement's own R-05 remediation deleted it and
+# replaced it with the stronger claim now quoted, so this guard carried a direct quotation
+# attributed to a document that does not contain it. Found by the separate targeted adjudication
+# of 2ccf5e1, missed by the builder, the reviewer and the controller. The underlying argument was
+# and is true - the quotation was the defect, and the replacement quotation is stronger than the
+# one it replaces, because "unavailable" is what the chokepoint enforces and "unused" is only what
+# the corpus happens to do today.
 #
 # ### THIS TABLE IS AN AUTHORIZATION, NOT A MEASUREMENT, AND THAT IS WHY IT IS A LITERAL. Every other
 # frozen population in this file is re-derived from structured data and asserted; this one may not
@@ -1234,7 +1245,16 @@ def _adjudicated_discharge_authorization_errors(key: str, entry: dict) -> list:
 # register-authority defence in depth are to be KEPT, because they are what the chokepoint
 # generalises and they are what would still stand if the chokepoint were ever narrowed or its caller
 # widened. `_event_required_set_errors` separately requires every adjudicated member to carry a
-# non-empty registered `durable_write`, and THAT assertion is live and is caught by mutation.
+# non-empty registered `durable_write`.
+#
+# ### F-3 CORRECTION, AND IT IS A DISTINCTION BETWEEN A DATUM AND AN ASSERTION. That last sentence
+# used to continue "and THAT assertion is live and is caught by mutation". It is not, and the
+# imprecision mattered because the sentence read as mutation-proven. The DATUM is caught: emptying
+# AP-9's registered `durable_write` fails four nodes. The ASSERTION is NOT held: deleting the
+# requirement itself (mutation `mutF3`) leaves the suite at the control's 4 failures - a MISS. It is
+# redundant defence in depth, kept for the same reason N-01's bar is kept, and it may not be
+# reported as an independently load-bearing check. Raised by the independent review of 2ccf5e1 and
+# confirmed exactly by the separate targeted adjudication.
 # `_consumes_relationship_errors` and `_resolve_delegation` themselves remain fully live as the
 # CLASSIFICATION predicates over the whole corpus, which is a different call path entirely.
 def _discharge_route_errors(key: str, entry: dict, rec: dict, ctx: dict, states: set[str],
