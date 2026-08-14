@@ -1247,7 +1247,25 @@ units:
     canonical_references:
       - docs/architecture/decisions/ADR-008-durable-workflows.md
       - docs/specifications/events/registry.md
-    allowed_scope: [outbox, inbox, event contracts, replay sandbox, the GC-1 digest]
+    # ### IR-R4 CORRECTION (record correction, 2026-08-14). This list read
+    # `[outbox, inbox, event contracts, replay sandbox, the GC-1 digest]` and OMITTED the production
+    # PostgreSQL store, its schema migrations, the durable timers/scheduler and audit reconstruction
+    # - all four of which this same unit's `objective`, `expected_production_outputs` and
+    # `rebaseline_contract` require, and all four of which have landed. The omission never
+    # authorized anything and never withheld authorization: the objective and the expected outputs
+    # are the authorizing fields, and CURRENT.md agreed with them. It was an internal inconsistency
+    # in ONE record, and correcting it grants NO new scope - every item added below was already
+    # required by this unit's own objective. `prohibited_scope` is UNCHANGED.
+    allowed_scope:
+      - outbox
+      - inbox
+      - event contracts
+      - replay sandbox
+      - the GC-1 digest
+      - audit reconstruction
+      - "the PostgreSQL production transactional store (ADR-016)"
+      - schema migrations
+      - "durable timers and scheduler (ADR-016)"
     prohibited_scope: [entities (P6), provenance (P7)]
     expected_production_outputs: ["105 event contracts", transactional outbox, dedup inbox, sandboxed replay, "PostgreSQL production store + migrations (ADR-016)", "durable timers and scheduler"]
     expected_capability: >-
@@ -1298,10 +1316,26 @@ units:
          not a semantic proof; it admits 51 of 250 expressible triples, none of them sourced at the
          adjudicated seven, and the exact surviving population is held by
          ADJUDICATED_DELEGATION_ADMITS so it cannot grow silently."
-      - "P5's event content is no longer blocked by the specification - it is simply NOT BUILT. No
-         event contract implementation, outbox, inbox or replay sandbox exists. Non-event P5 surfaces
-         are not authorized either: READY is selection, and this unit's acceptance criteria are
-         instantiated PENDING, scored by nobody."
+      - "### IR-R1 CORRECTION (record correction, 2026-08-14). This entry read: 'P5's event content
+         is no longer blocked by the specification - it is simply NOT BUILT. No event contract
+         implementation, outbox, inbox or replay sandbox exists. Non-event P5 surfaces are not
+         authorized either.' It is preserved here in its own words because a finding must survive
+         its own repair, and it was TRUE when written - it became false as U5.3 through U5.9 landed,
+         and the independent review of the P5 surface recorded the drift as IR-R1.
+         ### WHAT IS TRUE NOW: P5's event content is neither specification-blocked nor unbuilt. On
+         disk: the 118 canonical event contracts and the upcaster (U5.3, 105 machine-emitted F1-F13
+         plus 13 audit/security F14), the GC-1 golden corpus and its pinned digest (U5.4), the
+         sandboxed replay (U5.5), audit reconstruction (U5.6), the transactional outbox and the
+         dedup inbox (U5.7/U5.8), and the durable timers plus the production PostgreSQL store and
+         its migrations (U5.9).
+         ### BUILT IS NOT ACCEPTED, AND THIS ENTRY SCORES NOTHING. All 14 acceptance criteria remain
+         instantiated PENDING, scored by nobody. A FRESH INDEPENDENT REVIEW of the whole P5 surface
+         at content commit 1216254 returned ACCEPT FOR SEPARATE FINAL ADJUDICATION with NO material
+         blocking defect - docs/implementation/p5-independent-review-report-1216254.md, preserved
+         byte-exactly at refs/preserve/p5-independent-review-1216254. The SEPARATE FINAL
+         ADJUDICATION that sets the fourteen results is OWED, and CLAUDE.md sec 11 forbids it to any
+         session that implemented, remediated, reviewed or finalized this unit - including the
+         session that made this correction."
     # ---------------------------------------------------------------- P5 weighted acceptance contract
     # INSTANTIATED BY P5 U5.1 - the first P5 content commit - from the FROZEN PROGRAM-WEIGHTS.yaml
     # acceptance_template (14 criteria, weights sum EXACTLY 100), verbatim and in template order.
@@ -1378,16 +1412,27 @@ units:
     # P5 had no committed sub-unit enumeration. U5.1 is the first, recorded by the builder that
     # performed it, exactly as the G2 adjudication sec L directed.
     #
-    # ### THE THREE-FIELD STATUS MODEL IS DELIBERATELY NOT USED HERE, AND P5's OWN TRIPLE IS
-    # ### UNCHANGED: status READY / execution_state NOT_STARTED / checkpoint_state NO_CHECKPOINT.
-    # That is correct, not an omission. execution_state asks "has work actually landed INSIDE this
-    # phase?" and P5's phase work - event contracts, outbox, inbox, replay sandbox, PostgreSQL -
-    # has landed nothing. U5.1 corrected SPECIFICATION AND CONTROL surfaces and instantiated this
-    # unit's contract; it executed no P5 phase content. IN_PROGRESS would also be structurally
-    # false: it requires a landed checkpoint, and neither U5.1 nor U5.2 has one. (This comment used
-    # to end "- it is an unreviewed candidate", which was true when written and is not now: U5.1 and
-    # U5.2 have both been independently reviewed, separately adjudicated and finalized. The same
-    # record-accuracy defect as R4-A and A-3, in the comment above the block rather than inside it.)
+    # ### THE THREE-FIELD STATUS MODEL IS DELIBERATELY NOT USED ON THE SUB-UNIT RECORDS BELOW.
+    # A sub-unit carries `record_type` and its own evidence; the three status fields are the UNIT's,
+    # and duplicating them per sub-unit would create a second place for a phase state to be claimed.
+    #
+    # ### IR-R2 CORRECTION (record correction, 2026-08-14). This comment used to continue:
+    # "AND P5's OWN TRIPLE IS UNCHANGED: status READY / execution_state NOT_STARTED /
+    # checkpoint_state NO_CHECKPOINT. That is correct, not an omission. ... P5's phase work - event
+    # contracts, outbox, inbox, replay sandbox, PostgreSQL - has landed nothing. ... IN_PROGRESS
+    # would also be structurally false: it requires a landed checkpoint, and neither U5.1 nor U5.2
+    # has one." It is preserved in its own words because a finding must survive its own repair.
+    # ### IT WAS TRUE OF U5.1 AND U5.2 AND IS FALSE NOW, AND IT CONTRADICTED THE LIVE FIELDS THREE
+    # LINES ABOVE IT. P5's actual triple is `status: READY` / `execution_state: IN_PROGRESS` /
+    # `checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION`, with `P5-CP-1` landed. The
+    # MACHINE-READ FIELDS WERE ALWAYS RIGHT - only this prose was stale, which is exactly the R4-A /
+    # A-3 record-accuracy class, in the comment above the block rather than inside it. The
+    # independent review recorded the drift as IR-R2 and it is corrected here.
+    # ### THIS CORRECTION CHANGES NO FIELD. status, execution_state and checkpoint_state are
+    # untouched by it, no criterion is scored, and no checkpoint is added: it deletes a false
+    # sentence about them and states the true one. (An earlier revision of this comment ended
+    # "- it is an unreviewed candidate", corrected once already for the same reason: U5.1 and U5.2
+    # have both been independently reviewed, separately adjudicated and finalized.)
     sub_units:
       - sub_unit_id: U5.1
         name: G2 specification/control correction and P5 acceptance-contract instantiation
@@ -2027,7 +2072,265 @@ units:
         residuals_recorded_not_owed_by_this_unit: >-
           Recorded on U5.7's record, which covers both halves.
 
-    # ------------------------------------------------- P5 PLANNED (still-unbuilt) sub-units
+      # ------------------------------------------------------------------ IR-R3 CORRECTION
+      # ### RECORD CORRECTION, 2026-08-14. The five records below - U5.3, U5.4, U5.5, U5.6 and
+      # U5.9 - were BUILT, finalized and independently reviewed, and this registry carried four of
+      # them as bare four-field stubs under `planned_sub_units` while the fifth had NO RECORD AT
+      # ALL. The independent review of the P5 surface recorded that as IR-R3 and observed why it
+      # matters: `accepted_scope_and_design` is the first thing an adjudicator reads, and it was
+      # being read off a stub. The stubs are replaced by the records below; the STUB IDS, NAMES,
+      # `plan_phrase` LITERALS AND `depends_on` EDGES ARE CARRIED OVER UNCHANGED, so no id is
+      # renumbered and no dependency edge moves - the gap matrix and pr-sequence.md still agree.
+      # ### THIS CORRECTION SCORES NOTHING AND LANDS NOTHING. Every record below carries
+      # `scored_criteria: []` and `landed_checkpoints: []`; all 14 P5 criteria stay PENDING; P5's
+      # own three fields are untouched; and no runtime, test, fixture or migration file changed.
+      - sub_unit_id: U5.3
+        name: the 118 canonical event contracts and the upcaster
+        plan_phrase: "the 105 event contracts"
+        depends_on: [U5.7, U5.8]
+        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        content_commit: 1036b34
+        candidate_generation: >-
+          REPLACEMENT. The first candidate was REJECTED by its independent review on FIVE blocking
+          defects - three derivation errors that made canonical contracts unsatisfiable, and two
+          authority holes. The remediation followed, including the decision to hold the corpus as
+          JSON DATA so that NO safety guard needed amending. The rejection and the remediation are
+          recorded in docs/implementation/u5-3-event-contracts-evidence.md.
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          `src/freight_recon/event_contracts.py` plus `src/freight_recon/event_contracts_data.json`:
+          ### 118 canonical event contracts - 105 machine-emitted F1-F13 plus 13 audit/security F14
+          - DERIVED MECHANICALLY from events/registry.md sec 3 / sec 5 / sec 8 and the F1-F14 family
+          files by `scripts/generate_event_contracts.py`, never transcribed, and re-derivable with
+          `--check`. The bijection against sec 3 is asserted as an EXACT SET IN BOTH DIRECTIONS, so
+          a same-count substitution fails.
+          Enforcement is at the RUNTIME BOUNDARY, inside the caller's transaction: `event_outbox`
+          and `event_inbox` were wired to the contract gate, so a non-canonical event takes the
+          state change down with it rather than being rejected after the fact.
+          Actor authority is DERIVED, not hand-listed: 6 authority-broadening events refuse a
+          machine actor and 98 contracts refuse `actor_type=model`, against 7 model-permitted
+          claim/proposal contracts. Provenance laundering is refused across four evasion shapes
+          (flat value, nested list-of-dicts, Enum member, envelope-level `provenance_refs`), with a
+          positive control proving the guard is not blanket-refusing.
+          The upcaster exists and the corpus registers ZERO upcasters, which is the honest reading:
+          every canonical contract is at v1, and a future `event_version` fails closed on emit AND
+          on read.
+          Evidence: docs/implementation/u5-3-event-contracts-evidence.md; battery
+          eval/tests/test_p5_event_contracts.py; mutants scripts/mutate_phase5_contracts.py.
+        explicitly_not_done: >-
+          ### NO PRODUCTION EVENT VERSION WAS MINTED. Every contract stays at v1; the versioned
+          chain AC-EVT-009 needs is proven at U5.4-U5.6 against a TEST-ONLY contract set.
+          `AC-EVT-011` and the `ProvenanceStrengtheningAttempted` (F14) EMISSION half of
+          `AC-EVT-013` are NOT implemented - provenance is this unit's `prohibited_scope` (P7), so
+          declining to build them is correct scoping and not a gap. ### THE DANGEROUS HALF IS
+          CLOSED: laundering is REFUSED; what is missing is the audit RECORD of an attempt.
+          `AC-EVT-003` - every producer transition emits its required event in the transition's own
+          commit - CANNOT be proven here: the 134 transitions are P6.
+          ### SHIPS DARK: a crafted payload asserting `approved: true` / `authority: grant_effect`
+          produces ZERO grants and ZERO witnesses. An event is data.
+        review_and_adjudication_evidence:
+          independent_review:
+            status: PERFORMED
+            report: docs/implementation/p5-independent-review-report-1216254.md
+            note: >-
+              Covered by the FRESH INDEPENDENT REVIEW of the whole P5 surface at content commit
+              1216254 (verdict ACCEPT FOR SEPARATE FINAL ADJUDICATION, no material blocking
+              defect), preserved at refs/preserve/p5-independent-review-1216254. The reviewer
+              re-derived `event_contracts_data.json` from the specification itself rather than
+              trusting the committed file.
+          final_adjudication:
+            status: OWED
+            note: >-
+              ### NOT PERFORMED AND NOT PERFORMABLE HERE. The fourteen weighted P5 criteria are set
+              by ONE separate final adjudication of the whole unit, by a session that neither
+              implemented, remediated, reviewed nor finalized it (CLAUDE.md sec 11).
+      - sub_unit_id: U5.4
+        name: the GC-1 golden corpus and its pinned digest
+        plan_phrase: "the `GC-1` golden corpus + pinned digest"
+        depends_on: [U5.3]
+        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        content_commit: ecc9d69
+        candidate_generation: >-
+          FIRST CANDIDATE, built as ONE increment with U5.5 and U5.6 because the acceptance
+          specification COUPLES them: AC-EVT-007's oracle IS the corpus and AC-EVT-008's IS a
+          replay. Splitting them would have reviewed each against half a criterion (CLAUDE.md
+          sec 13.5 - one surface, one risk story, one evidence document).
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          `eval/fixtures/gc1-corpus.json` and `eval/fixtures/gc1-pinned-digests.json`, built by
+          `scripts/build_gc1_corpus.py`. The pinned `rebuild_digest` is a pure function of the SET
+          of events, not of any one delivery order: it is stable across independent shuffles and a
+          tampered payload field CHANGES it, so the pin was proven to BIND rather than merely to
+          exist. An arrival-ordered fold - which would have made the pinned digest a property of
+          one delivery - was a real defect this build shipped and its own battery caught; it is
+          recorded rather than quietly fixed.
+        explicitly_not_done: >-
+          ### GC-1 DOES NOT SPAN A SCHEMA VERSION CHANGE, AND THAT IS THE HONEST DISPOSITION, NOT A
+          GAP. Every canonical contract is at v1, so AC-EVT-009's v1 -> v2 -> v3 chain is proven
+          through the REAL replay path against a TEST-ONLY versioned contract set. Minting a
+          production v2 to satisfy a fixture would amend a protected specification under authority
+          this unit does not hold. Recorded in the fixture itself and as debt U546-D1; a guard goes
+          red the day a canonical contract leaves v1.
+        review_and_adjudication_evidence:
+          independent_review:
+            status: PERFORMED
+            report: docs/implementation/p5-independent-review-report-1216254.md
+            note: >-
+              The reviewer re-executed the fold across 40 independent shuffles and confirmed the
+              digest equals the pin and changes under tamper.
+          final_adjudication:
+            status: OWED
+            note: Set with the whole unit by ONE separate final adjudication.
+      - sub_unit_id: U5.5
+        name: sandboxed replay - effects structurally unreachable in replay
+        plan_phrase: "sandboxed replay"
+        depends_on: [U5.3]
+        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        content_commit: ecc9d69
+        candidate_generation: >-
+          FIRST CANDIDATE. Built in the same increment and the same content commit as U5.4 and
+          U5.6, for the reason recorded on U5.4.
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          `src/freight_recon/event_replay.py`: the deterministic per-aggregate fold.
+          ### REPLAY IS STRUCTURALLY INERT, PROVEN BY IMPORT CLOSURE RATHER THAN BY COUNTING ZEROS.
+          `event_replay`'s entire transitive import closure is
+          {event_contracts, event_envelope, fingerprint, migrations.phase5_event_transport, tenant}
+          - it reaches no adapter, no effect boundary, no checkpoint kernel, no brake store, no
+          router and not even a database layer. ### REPLAY CANNOT CALL AN ADAPTER BECAUSE THE
+          CAPABILITY IS NOT REACHABLE, NOT BECAUSE IT DECLINES TO - which is CLAUDE.md rule 11 as a
+          mechanism rather than an instruction. A tenant-bound rebuild REFUSES a foreign event
+          rather than filtering it. Mutants: scripts/mutate_phase5_replay.py.
+        explicitly_not_done: >-
+          `AC-EVT-011` is not implemented; it is provenance-side and provenance is P5's
+          `prohibited_scope` (P7). Replay reports measured zeros for witnesses, grants, adapter
+          calls and consumer emissions - MEASURED, not assumed - but the report is corroboration of
+          the closure proof, never the proof itself.
+        review_and_adjudication_evidence:
+          independent_review:
+            status: PERFORMED
+            report: docs/implementation/p5-independent-review-report-1216254.md
+            note: >-
+              ### THE REVIEWER'S FIRST CLOSURE PROBE WAS ITSELF DEFECTIVE AND SAID SO: it was gated
+              on `node.level`, so an ABSOLUTE `from freight_recon.effect_boundary import ...` would
+              have been invisible to it - the blind spot this repository's own mutant R19 exists to
+              catch. Rewritten to cover relative imports, absolute `freight_recon.*` imports and
+              plain `import` statements, then re-run. All eleven P5 modules were then closure-checked
+              against a 17-module forbidden set: ZERO reach.
+          final_adjudication:
+            status: OWED
+            note: Set with the whole unit by ONE separate final adjudication.
+      - sub_unit_id: U5.6
+        name: audit reconstruction - 18-field explainability, beliefs-of-that-day
+        plan_phrase: "audit reconstruction"
+        depends_on: [U5.3]
+        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        content_commit: ecc9d69
+        candidate_generation: >-
+          FIRST CANDIDATE. Built in the same increment and the same content commit as U5.4 and
+          U5.5, for the reason recorded on U5.4.
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          `src/freight_recon/event_audit.py`: `explain()` reconstructs the eighteen audit fields
+          from the events alone. It is ORDER-INDEPENDENT - identical across 25 shuffles of a
+          14-event chain - and its import closure is the same effect-free set as `event_replay`'s.
+          ### IT ANSWERS FROM THE BELIEFS OF THAT DAY, NOT THE BELIEFS OF TODAY: AC-AUD-002 is held
+          by injecting a LATER policy fact into the corpus and requiring the explanation to stay
+          byte-identical with `policy_version_applied` unmoved.
+        explicitly_not_done: >-
+          ### IT RECONSTRUCTS 15 OF THE 18 FIELDS AND NAMES THE OTHER THREE `UNRECONSTRUCTIBLE`
+          RATHER THAN FILLING THEM IN. A reconstruction that guesses a field it cannot derive is
+          the false green this repository exists to refuse, and reporting the gap BY NAME is the
+          correct behaviour rather than a shortfall.
+        review_and_adjudication_evidence:
+          independent_review:
+            status: PERFORMED
+            report: docs/implementation/p5-independent-review-report-1216254.md
+            note: >-
+              Re-executed by the reviewer across 25 shuffles, plus the AC-AUD-002 later-fact
+              injection; the replay/audit mutation battery re-ran at 24/24 caught.
+          final_adjudication:
+            status: OWED
+            note: Set with the whole unit by ONE separate final adjudication.
+      - sub_unit_id: U5.9
+        name: durable timers and the production PostgreSQL persistence, runtime included
+        plan_phrase: "durable timers + the production PostgreSQL store, migrations and runtime"
+        depends_on: [U5.7, U5.8]
+        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        content_commit: 5a5b5e5
+        # ### WHY THIS RECORD IS NEW AND WHY ITS ID IS U5.9. The work landed with NO SUB-UNIT RECORD
+        # AT ALL - the omission the independent review recorded inside IR-R3. It is authorized by
+        # this unit's own `objective`, `expected_production_outputs` and `rebaseline_contract`
+        # (ADR-016), and by CURRENT.md; only the sub-unit bookkeeping was missing. `U5.9` was
+        # unused repository-wide - working tree and full history across every ref - which is the
+        # same evidence standard the U5.7/U5.8 reassignment applied. NOTHING IS RENUMBERED.
+        candidate_generation: >-
+          FIRST CANDIDATE. No prior candidate for this deliverable exists and none was rejected.
+        landed_checkpoints: []
+        scored_criteria: []
+        scope: >-
+          Durable timers (M-36 - a timeout is a DURABLE TIMER, never a sweep):
+          `src/freight_recon/event_timers.py` and
+          `src/freight_recon/migrations/phase5_durable_timers.py`. `schedule` outside a transaction
+          is REFUSED, so a deadline commits with the obligation it guards; a timer survives a full
+          connection restart, fires once and never again; and a timer cancelled underneath a
+          mid-flight delivery is reported `superseded`, NOT `fired`, with history recording
+          CANCELLED - counts are derived from rowcounts, never from intentions. `TimerFired` is
+          deliberately NOT an `EventEnvelope`: it carries no decision, which is what keeps GR-6 and
+          CLAUDE.md rule 12 (timeout alone never becomes FAILED) enforceable by the machines that
+          own them.
+          Production persistence per ADR-016: `src/freight_recon/persistence.py` and
+          `src/freight_recon/migrations/postgres_p5.py`, with the certified outbox/inbox/timer
+          classes driven against a REAL PostgreSQL server rather than a mock. SQLite stays for
+          local development and deterministic tests, and the SQLite/PostgreSQL divergence is
+          handled at the four points that matter - `?` -> `%s` OUTSIDE string literals, `%` -> `%%`
+          INSIDE them, and two-argument `MAX` -> `GREATEST` only.
+          ### THE DEFECT THIS BUILD FOUND AND THE REASON THE GATE IS A SCRIPT: `BEGIN IMMEDIATE`
+          has no PostgreSQL equivalent, and with the advisory lock removed EIGHT concurrent
+          emitters allocated one sequence SIX TIMES while raising ZERO errors. The proof is
+          `scripts/postgres_p5_gate.py` - 9 schema invariants plus 13 runtime probes against a real
+          server, receipt at docs/implementation/POSTGRES-P5-GATE.json with an explicit
+          `_what_this_does_NOT_prove` field. It is a script and not a skippable pytest node
+          precisely so it cannot pass by being absent.
+          Evidence: docs/implementation/u5-persistence-and-timers-evidence.md; battery
+          eval/tests/test_p5_durable_timers.py.
+        explicitly_not_done: >-
+          ### NO PRODUCTION CALLER EXISTS AND THE CAPABILITY SHIPS DARK. The only consumers of
+          `TransactionalOutbox`, `DedupInbox`, `OutboxRelay`, `DurableTimers`, `TimerRelay` and
+          `connect_postgres` anywhere in src/ or scripts/ are `postgres_p5_gate.py` and
+          `mutate_phase5_replay.py`, both explicitly-invoked evidence tooling. `OutboxRelay` has NO
+          DEFAULT SINK - `publish` is required and must be callable - so the relay cannot reach the
+          outside world on its own. No production write is enabled, the production `GateRegistry`
+          stays EMPTY until U8.1/P8, the governed route still answers `ROUTE_NOT_CONFIGURED`, and
+          R-07 stays CONTAINED with its bound.
+          No scheduler daemon and no production deployment topology: running the relay or the timer
+          relay on a schedule in production is P11 work, not this unit's.
+        review_and_adjudication_evidence:
+          independent_review:
+            status: PERFORMED
+            report: docs/implementation/p5-independent-review-report-1216254.md
+            note: >-
+              ### THE REVIEWER RE-EXECUTED THE POSTGRESQL GATE RATHER THAN READING ITS RECEIPT,
+              against a fresh database on PostgreSQL 16.15, and reproduced the committed receipt
+              exactly: 26 migration steps, replay 0 steps, 8/8 invariants REFUSED, 2 positive
+              controls ACCEPTED, 17 runtime probes PASS. The committed POSTGRES-P5-GATE.json is
+              therefore not a false green. The reviewer also attacked the SQL translator directly
+              (7/7 adversarial cases correct, including `INSERT INTO t VALUES ('MAX(a, b)')` left
+              untouched) and confirmed a caught `DuplicateEmission` does not poison the surrounding
+              PostgreSQL transaction.
+          final_adjudication:
+            status: OWED
+            note: Set with the whole unit by ONE separate final adjudication.
+
+    # --------------------------- P5 PLANNED sub-units (EMPTY - every P5 deliverable is now built)
+    # ### THE HEADING USED TO READ "P5 PLANNED (still-unbuilt) sub-units". Nothing under it is
+    # still unbuilt. The narrative below records the U5.1/U5.2 -> U5.7/U5.8 id collision and its
+    # resolution and is RETAINED UNCHANGED as history; the list it once introduced is now empty,
+    # for the reason recorded immediately above that list.
     # ### THE COLLISION THIS BLOCK EXISTS TO END, STATED PLAINLY. Until 2026-08-12 two repository
     # authorities disagreed about what U5.1 and U5.2 ARE. This registry recorded them as the two G2
     # units above - built, independently reviewed, separately adjudicated and finalized, with
@@ -2060,26 +2363,32 @@ units:
     # authority and unbuilt work in another, and holds each gap-matrix P5 row's `Depends on` cell
     # equal to the `depends_on` recorded here.
     #
-    # ### NOTHING HERE IS A STATUS CLAIM. These units have no record_type, no candidate, no
-    # checkpoint and no scored criterion. P5 stays READY / NOT_STARTED / NO_CHECKPOINT with all 14
-    # criteria PENDING. This block enumerates PLANNED WORK AND ITS IDS - nothing more.
-    planned_sub_units:
-      - sub_unit_id: U5.3
-        name: the 105 event contracts and the upcaster
-        plan_phrase: "the 105 event contracts"
-        depends_on: [U5.7, U5.8]
-      - sub_unit_id: U5.4
-        name: the GC-1 golden corpus and its pinned digest
-        plan_phrase: "the `GC-1` golden corpus + pinned digest"
-        depends_on: [U5.3]
-      - sub_unit_id: U5.5
-        name: sandboxed replay - effects structurally unreachable in replay
-        plan_phrase: "sandboxed replay"
-        depends_on: [U5.3]
-      - sub_unit_id: U5.6
-        name: audit reconstruction - 18-field explainability, beliefs-of-that-day
-        plan_phrase: "audit reconstruction"
-        depends_on: [U5.3]
+    # ### IR-R3 CORRECTION, 2026-08-14 - THIS BLOCK IS NOW EMPTY, AND EMPTY IS THE TRUTHFUL STATE.
+    # It used to hold four-field stubs for U5.3, U5.4, U5.5 and U5.6 under the heading "P5 PLANNED
+    # (still-unbuilt) sub-units", and it used to end: "NOTHING HERE IS A STATUS CLAIM. These units
+    # have no record_type, no candidate, no checkpoint and no scored criterion. P5 stays READY /
+    # NOT_STARTED / NO_CHECKPOINT with all 14 criteria PENDING." That is preserved in its own words
+    # because a finding must survive its own repair. ### IT WAS TRUE WHEN WRITTEN AND IS FALSE NOW:
+    # all four were built and finalized (1036b34, ecc9d69), the durable-timers/PostgreSQL work
+    # landed beside them with no record at all (5a5b5e5), and P5's live triple is
+    # READY / IN_PROGRESS / CHECKPOINT_ACCEPTED_FOR_CONTINUATION. The four stubs are now full
+    # records under `sub_units` above, joined by U5.9 for the work that had none.
+    # ### WHAT IS STILL TRUE, VERBATIM, AND NOT REPEALED BY THIS CORRECTION: no record above is a
+    # status claim either. NONE of them has a landed checkpoint or a scored criterion, and ALL 14 P5
+    # CRITERIA REMAIN PENDING. Moving a record from "planned" to "built" records that CODE EXISTS;
+    # it does not score, adjudicate or complete anything, and only the separate final adjudication
+    # can.
+    # ### THE RESOLUTION PRINCIPLE IS UNCHANGED AND STILL BINDING: certified history is immutable,
+    # unbuilt planned work is remapped. Every id, `plan_phrase` and `depends_on` edge above is
+    # carried over from the stub it replaces, byte-for-byte, so the correspondence with
+    # pr-sequence.md's `**P5:**` line and with the gap matrix's `Depends on` cells is preserved -
+    # asserted in both directions by eval/tests/test_phase0_identifiers.py::
+    # test_the_p5_unit_ids_name_the_same_work_in_the_registry_and_in_the_plan. That node also holds
+    # built ids DISJOINT from planned ids; with this block empty the disjointness is vacuous by
+    # construction, and the population assertion (>= 8 records) is satisfied by `sub_units` alone.
+    # ### IT IS DELIBERATELY KEPT AS AN EMPTY LIST RATHER THAN DELETED: the guard reads this key,
+    # and P6 onward will need somewhere honest to declare planned work again.
+    planned_sub_units: []
     completion_evidence: ["a phase-5 implementation review", "the G2 gate record"]
     rebaseline_contract:
       user_visible_capability: none
