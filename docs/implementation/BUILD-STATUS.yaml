@@ -8,8 +8,8 @@
 
 # derived-block: maintained by scripts/finalize_status.py - do not edit by hand
 derived:
-  content_commit: 42bdcda1786893271a122d057ec588032aeb5dbd
-  content_tree: 910cca981b47228f34f39f6c06e0831f450acefc
+  content_commit: 1216254c1b3e04bad72ff9c4c5aa3718a2a6ae92
+  content_tree: 3914e28b63ed6ce2b8468ec385daecb79eba2b28
   active_phase: P5
   single_ready_unit: P5
   cli_switch_readiness_percent: 100.0
