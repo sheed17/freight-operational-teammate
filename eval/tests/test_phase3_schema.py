@@ -113,6 +113,20 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-table:event_outbox" for step in p5_performed)
     assert any(step == "create-trigger:trg_event_inbox_append_only_delete" for step in p5_performed)
     assert phase5_readiness_problems(conn) == []
+    # ### AND THE SAME CORRECTION AGAIN FOR DURABLE TIMERS (M-36). "Canonical" is one shape and it
+    # moved a second time: a store with no `durable_timers` cannot honour M-36, so a P2+P3+P5
+    # database is still refused. The property under test is unchanged — a migrated database and a
+    # fresh one agree about what canonical means.
+    from freight_recon.migrations.phase5_durable_timers import (  # noqa: E402
+        create_timer_schema,
+        timer_readiness_problems,
+    )
+
+    assert any("durable_timers" in p for p in schema_readiness_problems(conn)), (
+        schema_readiness_problems(conn))
+    timer_performed = create_timer_schema(conn, now=utc_now())
+    assert any(step == "create-table:durable_timers" for step in timer_performed)
+    assert timer_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

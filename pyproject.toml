@@ -23,6 +23,14 @@ dev = [
 browser-agent = [
     "browser-use[core]==0.13.1",
 ]
+# The PostgreSQL backend (ADR-016: "PostgreSQL is the production transactional store"). An EXTRA
+# rather than a base dependency because `persistence.py` imports it lazily and only for that
+# backend - SQLite needs nothing, and ADR-016 explicitly retains SQLite "for local development and
+# deterministic testing". So a clean clone installs no database driver it does not use, and the
+# canonical suite never imports psycopg; `scripts/postgres_p5_gate.py` is what needs it.
+postgres = [
+    "psycopg[binary]>=3.1",
+]
 
 [build-system]
 requires = ["hatchling"]

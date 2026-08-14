@@ -1044,6 +1044,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase5:{step}")
         conn.commit()
 
+        # ...and the durable timers (M-36), for the identical reason. A MIGRATED database without
+        # `durable_timers` is one the readiness oracle refuses while a FRESH one passes - the
+        # fresh-vs-migrated drift this file's single-TARGET_SCHEMA design exists to prevent, and
+        # the exact 17-node failure adding the table produced before this step existed.
+        # Create-only and idempotent, like its predecessors.
+        from .phase5_durable_timers import create_timer_schema
+
+        for step in create_timer_schema(conn, now=_now()):
+            _mark(conn, f"timers:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.

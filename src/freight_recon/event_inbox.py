@@ -197,10 +197,10 @@ class DedupInbox:
         observer: Callable[[dict[str, Any]], None] | None = None,
         upcasters: UpcasterRegistry | None = None,
     ) -> None:
-        if conn.row_factory is not sqlite3.Row:
+        if getattr(conn, "row_factory", None) is not sqlite3.Row:
             raise InboxError(
                 "DedupInbox reads columns by name and requires `row_factory = sqlite3.Row` "
-                "(WorkflowStore sets it)."
+                "(WorkflowStore sets it; PostgresConnection reports it)."
             )
         self._conn = conn
         self._tenant = require_tenant(tenant, context="DedupInbox")
@@ -640,13 +640,20 @@ class DedupInbox:
         return int(row["applied_version"]) if row is not None else 0
 
     def _advance_cursor_locked(self, event: EventEnvelope, *, now: str) -> None:
+        # ### THE TARGET COLUMN IS TABLE-QUALIFIED, AND THAT IS A PORTABILITY REQUIREMENT.
+        # SQLite accepts a bare `applied_version` on the right of `DO UPDATE SET`; PostgreSQL
+        # refuses it as ambiguous between the target row and `excluded`. Qualifying it is valid in
+        # BOTH dialects, so the SQL is portable rather than translated — a rewrite rule for upsert
+        # bodies would be a parser, and a parser is a thing that gets one case wrong later.
+        # (`MAX(a, b)` is the scalar form; `persistence` renders it as PostgreSQL's `GREATEST`.)
         self._conn.execute(
             """
             INSERT INTO inbox_aggregate_cursor
                 (tenant, consumer_id, aggregate_type, aggregate_id, applied_version, updated_at)
             VALUES (?,?,?,?,?,?)
             ON CONFLICT (tenant, consumer_id, aggregate_type, aggregate_id) DO UPDATE SET
-                applied_version = MAX(applied_version, excluded.applied_version),
+                applied_version = MAX(inbox_aggregate_cursor.applied_version,
+                                      excluded.applied_version),
                 updated_at = excluded.updated_at
             """,
             (self._tenant, self._consumer_id, event.aggregate_type, event.aggregate_id,

@@ -112,6 +112,27 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
      "AC-AUD-002's beliefs-of-that-day rather than a promise about it, with the causal chain "
      "walking ancestors as well as descendants so an effect's checkpoint, approval and accountable "
      "owner are reconstructed rather than reported absent"),
+    # Added by P5's timer/PostgreSQL unit: it cites CLAUDE.md's sweep prohibition and reads every
+    # module's SQL to enforce it, so the central inventory discovers it as a control guard.
+    "test_p5_durable_timers.py": (RETAIN, "M-36 held STRUCTURALLY rather than by convention: a "
+     "timeout must be a durable timer emitting TimerFired, never a background sweep, and "
+     "test_no_component_scans_for_staleness parses every module's SQL literals to prove no "
+     "component infers age by scanning. That node exists in its current form because an earlier "
+     "version was shaped until it went GREEN rather than until it DETECTED - it passed nine of ten "
+     "genuine sweeps injected as positive controls, and carved its exemption around a real one, so "
+     "it now normalises whitespace, inspects UPDATE and DELETE rather than SELECT alone, "
+     "distinguishes a SCHEDULE the component owns from a DEADLINE column another mechanism wrote "
+     "(pending_references.expires_at is M-26's prescribed park, not a sweep), and holds "
+     "checkpoint.py:expire_unclaimed in an EXACT-SET exemption so a second sweep or this one moving "
+     "file is a failure rather than a silent inheritance. The battery also fixes the boundary that "
+     "makes GR-6 enforceable - TimerFired is a TRIGGER and not one of the 105, asserted by PARSING "
+     "the module's imports rather than substring-matching them, because the substring form missed "
+     "'from .x import y', the spelling every module here uses - and holds the lease to the only "
+     "arrangement that tests it, a second relay running from inside the first one's handler while "
+     "the lease is held and the row is still SCHEDULED, since running them SEQUENTIALLY passed with "
+     "the leasing mechanism deleted entirely. A cancelled timer reports SUPERSEDED and never fired, "
+     "because history saying CANCELLED while the relay said fired answers 'did this ever go "
+     "overdue?' with NO for a machine already told it did"),
     # Added by P5 U5.7+U5.8: it reads the transport module sources to prove they import no adapter or
     # network client, so the central inventory discovers it as a control guard.
     "test_phase5_event_transport.py": (RETAIN, "P5's first runtime capability held to its durability contract: a state change and the events it emits commit atomically or not at all - emit REFUSES to run outside an open transaction and no autocommit escape parameter exists - a relay publishes at-least-once under lease exclusivity, and consumption is idempotent on (tenant, consumer_id, event_id) so a redelivery is a no-op rather than a second effect. Strict per-aggregate ordering is enforced by a trigger asserting that no two DIFFERENT producer transitions own one version, which admits EF-2's legitimate GrantClaimed + EffectAttempted co-emission that a UNIQUE index would have made uninsertable; cross-tenant events are refused before the handler and before any write; and production stays dark - no default sink, no adapter or network import, zero witnesses and zero grants"),

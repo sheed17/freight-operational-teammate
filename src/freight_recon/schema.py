@@ -47,6 +47,11 @@ from .migrations.phase3_checkpoint import (
     phase3_readiness_problems,
     stamp_phase3_version,
 )
+from .migrations.phase5_durable_timers import (
+    create_timer_schema,
+    stamp_timer_version,
+    timer_readiness_problems,
+)
 from .migrations.phase5_event_transport import (
     P5_EXEMPT_TABLES,
     P5_INDEXES,
@@ -168,6 +173,12 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase5_schema(conn, now=_now())
     if not phase5_readiness_problems(conn):
         stamp_phase5_version(conn, now=_now())
+    # P5's durable timers (M-36, ADR-016 §2). Same marker-last discipline: the structure is built
+    # on both entry paths from one text, and the version stamp is written only where readiness has
+    # been PROVEN — a stamp on a half-migrated database is how a missing trigger goes unnoticed.
+    create_timer_schema(conn, now=_now())
+    if not timer_readiness_problems(conn):
+        stamp_timer_version(conn, now=_now())
     conn.commit()
 
 
@@ -239,6 +250,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
 
     problems.extend(phase3_readiness_problems(conn))
     problems.extend(phase5_readiness_problems(conn))
+    problems.extend(timer_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

@@ -72,6 +72,7 @@ IMPORT_TO_DIST = {
     "dotenv": "python-dotenv", "reportlab": "reportlab", "PIL": "pillow",
     "websocket": "websocket-client",
     "browser_use": "browser-use",  # optional extra [browser-agent]
+    "psycopg": "psycopg",          # optional extra [postgres]; imported lazily, PG backend only
     "pytest": "pytest",            # dev extra
 }
 

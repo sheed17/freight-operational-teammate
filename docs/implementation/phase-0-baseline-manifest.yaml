@@ -184,6 +184,12 @@ expected_noncanonical_schema:
     - event_inbox
     - inbox_aggregate_cursor
     - pending_references
+    # Phase 5 (durable timers, M-36) - born tenant-first, and NOT exempt. A deadline belongs to
+    # exactly one brokerage: "whose deadline is this" has no honest answer other than a tenant, and
+    # a timer that could fire across a tenant boundary would age another brokerage's obligation.
+    # REG-1 adjudication: tenant is the first primary-key column, the due-lookup index is
+    # tenant-first, and the readiness oracle refuses the table otherwise.
+    - durable_timers
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

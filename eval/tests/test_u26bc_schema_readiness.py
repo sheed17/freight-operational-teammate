@@ -44,6 +44,8 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
              extra_table=None, orphan=False, fks_off=False) -> sqlite3.Connection:
     """Build a database from the canonical DDL with exactly one thing wrong.
 
+    P5-timers: 'canonical' now also includes `durable_timers` (M-36).
+
     P3: 'canonical' includes the checkpoint tables and the live-hold ledger index, so the P3
     structure is built first (create_phase3_schema is create-only) and the requested mutation is
     then applied to whichever phase's object it names — keeping 'exactly one thing wrong' true
@@ -57,6 +59,7 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     from freight_recon.migrations.phase3_checkpoint import (
         P3_INDEXES, P3_TENANT_TABLES, create_phase3_schema,
     )
+    from freight_recon.migrations.phase5_durable_timers import create_timer_schema
     from freight_recon.migrations.phase5_event_transport import (
         P5_INDEXES, P5_TENANT_TABLES, create_phase5_schema,
     )
@@ -98,6 +101,10 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     # The P5 event transport, then any P5-targeted mutation. It declares no foreign key into the
     # ledger, so unlike P3 it is built regardless of what was dropped.
     create_phase5_schema(conn, now="1970-01-01T00:00:00+00:00")
+    # ...and the durable timers, for the same reason the P5 note above gives: a helper that stopped
+    # short would make EVERY case in this module fail for a reason that has nothing to do with the
+    # one thing it deliberately broke.
+    create_timer_schema(conn, now="1970-01-01T00:00:00+00:00")
     if drop in P5_TENANT_TABLES:
         conn.execute(f"DROP TABLE IF EXISTS {drop}")
     if skip_index and skip_index in P5_INDEXES:

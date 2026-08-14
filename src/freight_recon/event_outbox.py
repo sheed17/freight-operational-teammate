@@ -68,6 +68,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .event_contracts import ValidationMode, validate
+from .persistence import integrity_errors
 from .event_envelope import EventEnvelope, format_instant
 from .migrations.phase5_event_transport import STRICT_ORDER_ABORT
 from .tenant import require_tenant
@@ -162,10 +163,15 @@ def _require_row_factory(conn: sqlite3.Connection, *, where: str) -> None:
     Checked rather than assumed because the mis-mapping would not raise — it would return the
     wrong string for the right column name, which is the class of bug that survives a test suite.
     """
-    if conn.row_factory is not sqlite3.Row:
+    # Both supported backends satisfy this: `WorkflowStore` sets `sqlite3.Row`, and
+    # `PostgresConnection` reports the same, because on BOTH backends the runtime reads columns by
+    # NAME. A positional row factory would not raise — it would return the wrong string for the
+    # right column name, which is the class of bug that survives a test suite.
+    if getattr(conn, "row_factory", None) is not sqlite3.Row:
         raise OutboxError(
             f"{where} requires a connection whose `row_factory` is `sqlite3.Row` (WorkflowStore "
-            f"sets it); got {conn.row_factory!r}. Columns are read by name."
+            f"sets it; PostgresConnection reports it); got {getattr(conn, 'row_factory', None)!r}. "
+            f"Columns are read by name."
         )
 
 
@@ -259,7 +265,7 @@ class TransactionalOutbox:
                     envelope.recorded_at, envelope.to_json(), envelope.digest(), sequence,
                 ),
             )
-        except sqlite3.IntegrityError as exc:
+        except integrity_errors() as exc:
             if STRICT_ORDER_ABORT in str(exc):
                 raise StrictOrderViolation(
                     f"{exc}. Aggregate {envelope.aggregate_type}:{envelope.aggregate_id} already "
