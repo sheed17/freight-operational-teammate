@@ -252,9 +252,12 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ **Do not begin Implementation Phase 6** (foundational entities and state machines) — its
   dependency `P5` is **IN_PROGRESS, not complete**. **`P5` (events, outbox/inbox, replay isolation,
   PostgreSQL) is the sole READY unit**; it is no longer forbidden here. `P5-CP-1` landed the
-  transactional outbox and the dedup inbox as a **continuation** checkpoint; the event contracts,
-  the replay sandbox, audit reconstruction and PostgreSQL are not built, and all 14 P5 acceptance
-  criteria are still `PENDING`.
+  transactional outbox and the dedup inbox as a **continuation** checkpoint; the 118 event
+  contracts, the GC-1 corpus, replay, audit reconstruction, durable timers and the runtime on
+  production PostgreSQL have since been **built but NOT reviewed or adjudicated**, and all 14 P5
+  acceptance criteria are still `PENDING`. ### **P5 IS WAITING ON AN INDEPENDENT REVIEW, NOT ON
+  MORE CODE.** If you are a fresh session, the useful work is to REVIEW that surface, not to
+  rebuild it and not to begin P6.
 - ⛔ **Do not adjudicate any phase COMPLETE from within the session that implemented or remediated
   it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
