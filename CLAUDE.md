@@ -82,7 +82,8 @@ artificial ceilings and no assumed rip-and-replace.
 | Knowledge base | hardcoded **`tenant="default"`** remains (`ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call)) — sites verified by guard, never by line number |
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
 | **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
-| **Next approved unit** | ### **`P5` — Canonical events, outbox/inbox, replay isolation and production persistence. THE ONE AND ONLY READY UNIT — NOW IN PROGRESS, AND IT IS NOT COMPLETE.** Its `execution_state` is `IN_PROGRESS`, its `checkpoint_state` is `CHECKPOINT_ACCEPTED_FOR_CONTINUATION`, and it records one landed checkpoint, `P5-CP-1`: U5.7+U5.8 landed the transactional outbox and the dedup inbox — durable, atomic event emission and idempotent consumption. That is a **continuation** checkpoint, not phase acceptance. Still unbuilt: the 105 event contracts (U5.3), the GC-1 corpus (U5.4), the replay sandbox (U5.5), audit reconstruction (U5.6), and production-grade persistence (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016) — the landed transport is SQLite only. ### **Its own blocker — G2's seven founder-gated event obligations — is DISCHARGED (2026-08-12):** the seven canonical events were minted under founder/architect authority, so the specification no longer blocks P5's event content. ### **NOTHING IS SCORED.** All 14 P5 acceptance criteria are `PENDING`, and the G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open. `P6`–`P14` stay BLOCKED behind P5. |
+| **Phase 5** | ✅ **COMPLETE — ADJUDICATED.** Canonical events, outbox/inbox, replay isolation and production persistence: the **118 canonical event contracts** (105 machine-emitted F1–F13 + 13 audit/security F14), the transactional outbox, the dedup inbox, the GC-1 golden corpus, deterministic replay, audit reconstruction, durable timers (M-36) and the runtime on **production PostgreSQL** (ADR-016). A **FRESH INDEPENDENT** review returned ACCEPT FOR SEPARATE FINAL ADJUDICATION with **zero material blocking defects** (45/45 hostile probes, eight of which it reported as its *own* defective probes); a **separate FINAL ADJUDICATION** then set all 14 weighted criteria `PASS` → **100/100** ([adjudication](docs/implementation/p5-final-adjudication-report-91ba4e6.md)), re-executing the suite, the clean-clone gate, the PostgreSQL gate, both mutation batteries and its own import-closure probe. ### **Ships dark — zero production callers.** ### **Replay cannot call an adapter because the capability is not reachable:** `event_replay`'s entire transitive import closure is five inert modules. |
+| **Next approved unit** | ### **`P6` — Foundational entities and state machines. THE ONE AND ONLY READY UNIT — NOT STARTED.** The Work Item with a **structurally accountable human owner**, the Pipeline Instance as a durable reservation, the **13 machines** and the **134 transitions**. Acceptance: `foundational-machine-acceptance.md`, gate **G1**, **AC-SAFE-028**. Ships dark. `execution_state` is `NOT_STARTED`, `checkpoint_state` is `NO_CHECKPOINT`, no criterion is scored, and `validation_blockers` is empty. ### **IT MAY NOT BEGIN UNTIL THE CLOSURE COMMIT THAT HANDED IT THE SELECTOR IS FINALIZED** — that commit owes a fresh targeted independent review, a separate targeted adjudication and exactly one finalizer, in that order. `P7`–`P14` stay BLOCKED behind it. The G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open and block nothing. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -249,15 +250,16 @@ These are not style preferences. Each one is a defect this repository actually s
 
 Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
-- ⛔ **Do not begin Implementation Phase 6** (foundational entities and state machines) — its
-  dependency `P5` is **IN_PROGRESS, not complete**. **`P5` (events, outbox/inbox, replay isolation,
-  PostgreSQL) is the sole READY unit**; it is no longer forbidden here. `P5-CP-1` landed the
-  transactional outbox and the dedup inbox as a **continuation** checkpoint; the 118 event
-  contracts, the GC-1 corpus, replay, audit reconstruction, durable timers and the runtime on
-  production PostgreSQL have since been **built but NOT reviewed or adjudicated**, and all 14 P5
-  acceptance criteria are still `PENDING`. ### **P5 IS WAITING ON AN INDEPENDENT REVIEW, NOT ON
-  MORE CODE.** If you are a fresh session, the useful work is to REVIEW that surface, not to
-  rebuild it and not to begin P6.
+- ⛔ **Do not begin Implementation Phase 6 YET — but its dependency is now satisfied.** `P5` is
+  **COMPLETE** (all 14 weighted criteria `PASS`, 100/100, on independent evidence) and **`P6` is the
+  sole `READY` unit**. ### **Exactly one thing gates it, and it is procedural: the P5 closure content
+  commit is NOT FINALIZED.** Repository protocol — executed twice, at the P4 acceptance closure
+  (`42ea24c → c30a43b → d3cf1de → 06ebfdb`) and at the R-07 closure
+  (`a31a94a → c26aeae → 035cb55 → 6e8127d`) — requires a closure commit to receive a **fresh targeted
+  independent review**, then a **separate targeted adjudication**, then **exactly one finalizer**, in
+  that order. P6 begins the moment that finalizer has run. ### **NO FURTHER P5 CODE IS OWED, AND NONE
+  SHOULD BE WRITTEN.** Do not rebuild any P5 surface and do not re-open the phase to polish it
+  (§13.8); the recorded residuals are debt rows, and the debt row is the complete deliverable (§13.3).
 - ⛔ **Do not adjudicate any phase COMPLETE from within the session that implemented or remediated
   it.** `independent_review` and `final_adjudication` require a session that did neither; certifying
   your own fixes is self-adjudication, a defect with a passing status (section 5, rule 20). This is
@@ -285,11 +287,16 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 - ⛔ Do not promote the Delivered Load Closure wedge to validated.
 
 **The next approved program is
-[P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION AND PRODUCTION PERSISTENCE](docs/implementation/CURRENT.md)**
-— the one and only `READY` unit, and now **IN_PROGRESS**: `P5-CP-1` landed the transactional outbox
-and the dedup inbox as a **continuation** checkpoint. `READY` is a **selection** and a landed
-checkpoint is not acceptance — no P5 criterion is scored, all 14 stay `PENDING`, and P5 is **NOT
-COMPLETE**. P4 (adapter containment) is now **adjudicated COMPLETE**: its
+[P6 — FOUNDATIONAL ENTITIES AND STATE MACHINES](docs/implementation/CURRENT.md)** — the one and only
+`READY` unit, and **NOT STARTED**. `READY` is a **selection**, never a claim of progress. Its
+capability, in one line: **every unit of work has an accountable owner — structurally, not by
+documentation**, which turns rule 13 from a written rule into a mechanism. ### **It may not begin
+until the P5 closure commit has been targeted-reviewed, separately targeted-adjudicated and
+finalized.** P5 is now **adjudicated COMPLETE** at 14/14 — a fresh INDEPENDENT review returned
+ACCEPT FOR SEPARATE FINAL ADJUDICATION with zero material blocking defects, and a **separate FINAL
+ADJUDICATION** set the fourteen criteria on evidence it reproduced itself
+([`p5-final-adjudication-report-91ba4e6.md`](docs/implementation/p5-final-adjudication-report-91ba4e6.md)).
+P4 (adapter containment) is likewise **adjudicated COMPLETE**: its
 first INDEPENDENT review **rejected** candidate `95cf5af7`, a separate session remediated it, a
 **FRESH** INDEPENDENT re-review of candidate `0891d1a` returned ACCEPT FOR SEPARATE FINAL
 ADJUDICATION, a **separate FINAL ADJUDICATION** set thirteen of the fourteen weighted criteria

@@ -568,28 +568,29 @@ def test_23b_every_root_control_document_appears_in_the_authority_map():
 # ============================================================ 24. the next approved work
 
 def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
-    """REPLACED at the P4 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md section 5 rule 20 - replaced, not
-    deleted; second replacement of this body).
+    """REPLACED at the P5 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md section 5 rule 20 - replaced, not
+    deleted; third replacement of this body).
 
     The function NAME is frozen to preserve its node identity in TEST-NODE-MANIFEST.json (the same
-    convention as test_24b); the BODY asserts the post-adjudication truth. P4 has now been
-    adjudicated COMPLETE from independent evidence, so the single READY unit is P5. The durable
+    convention as test_24b); the BODY asserts the post-adjudication truth. P5 has now been
+    adjudicated COMPLETE from independent evidence, so the single READY unit is P6. The durable
     invariants are preserved and re-pointed: an ADJUDICATED phase is COMPLETE only with all 14
     weighted criteria PASS - including independent_review and final_adjudication, which its own
     author structurally cannot supply - and the READY unit's gate ancestry stays closed on
-    independent evidence. Both adjudicated phases are now checked, so re-pointing the guard did
-    not drop P3's coverage."""
+    independent evidence. ### RE-POINTING THIS GUARD HAS ONLY EVER WIDENED ITS POPULATION: P3, P4
+    and now P5 are ALL checked, so no earlier phase's coverage was dropped in order to move the
+    pin. A future closure must extend the tuple, never swap it."""
     units = registry_units()
     assert units, "the registry parsed to no units - every assertion here would be vacuous"
     by_id = {u["unit_id"]: u for u in units}
     ready = [u for u in units if u["status"] == "READY"]
     assert len(ready) == 1, f"exactly one unit may be READY, found {[u['unit_id'] for u in ready]}"
     the_ready = ready[0]
-    assert the_ready["unit_id"] == "P5", f"the READY unit is {the_ready['unit_id']}, expected P5"
+    assert the_ready["unit_id"] == "P6", f"the READY unit is {the_ready['unit_id']}, expected P6"
 
     # An adjudicated phase is COMPLETE ONLY on a fully-PASS weighted contract summing to 100 whose
     # independent_review + final_adjudication were supplied by a session other than the author.
-    for phase_id in ("P3", "P4"):
+    for phase_id in ("P3", "P4", "P5"):
         phase = by_id[phase_id]
         assert phase["status"] == "COMPLETE", f"{phase_id} is {phase['status']}, expected COMPLETE"
         crits = phase.get("acceptance_criteria")
@@ -629,7 +630,12 @@ def test_24_the_next_approved_work_is_p3_with_every_gate_closed():
     assert "events" in p4_prohibited, "P4 must still record that it prohibited P5 (events) work"
     # and the READY unit must in turn prohibit the phase AFTER it
     ready_prohibited = " ".join(str(x) for x in the_ready["prohibited_scope"]).lower()
-    assert "entities" in ready_prohibited, "P5 must prohibit P6 (entities) work"
+    # The READY unit must prohibit the phase IMMEDIATELY after it - the one adjacency a
+    # one-unit-at-a-time selector most needs closed. Re-pointed at the P5 closure: the READY unit is
+    # now P6 and the phase after it is P7 (provenance). The prior form pinned the literal "entities"
+    # (P5 prohibiting P6), which was true while P5 held the selector and became unassertable the
+    # moment it did not - CLAUDE.md section 5 rule 20: REPLACED with the new truth, not deleted.
+    assert "provenance" in ready_prohibited, "P6 must prohibit P7 (provenance) work"
     assert re.search(r"P5", read(CURRENT)), "CURRENT.md must name the next approved program"
 
 

@@ -3644,17 +3644,39 @@ def test_the_implementation_graph_is_consistent_and_protects_the_safety_wall():
     assert by_id["P5"]["dependencies"] == ["P4"], (
         "P5 can begin without P4 - the rehearsal's exact bypass finding (P5 deps were [P2])"
     )
+    assert by_id["P6"]["dependencies"] == ["P5"], "P6 can begin without P5"
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    # P3 adjudicated COMPLETE -> P4 READY; P4 then adjudicated COMPLETE -> P5 READY. The safety
-    # wall above is what makes this legal: P5 may only be selected because P4 is genuinely COMPLETE.
-    assert ready == ["P5"], f"READY set drifted: {ready}"
-    assert by_id["P4"]["status"] == "COMPLETE", (
-        f"P5 is READY while P4 is {by_id['P4']['status']} - the containment wall is bypassed"
-    )
-    p4_criteria = by_id["P4"].get("acceptance_criteria")
-    assert p4_criteria and sum(int(c["weight"]) for c in p4_criteria) == 100 and all(
-        str(c["result"]).upper() == "PASS" for c in p4_criteria
-    ), "P4 unlocked P5 without a real, full-weight, fully-PASS weighted acceptance contract"
+    # P3 adjudicated COMPLETE -> P4 READY; P4 -> P5; P5 -> P6. The safety wall above is what makes
+    # each hop legal: a unit may only hold the selector because EVERY dependency is genuinely
+    # COMPLETE on a real, full-weight, fully-PASS weighted contract.
+    # ### GENERALISED AT THE P5 CLOSURE (CLAUDE.md sec 5 rule 20). This asserted the literal
+    # `ready == ["P5"]` and named P4 by hand, so each phase transition made it fail for a reason
+    # that had nothing to do with the wall it guards. It now derives the selector and checks the
+    # wall for WHICHEVER unit holds it - which also means the check no longer silently stops
+    # covering earlier hops as the program advances.
+    assert len(ready) == 1, f"exactly one unit may be READY, found {ready}"
+    selector = ready[0]
+    deps = by_id[selector]["dependencies"]
+    assert deps, f"{selector} holds the selector while recording no dependencies at all"
+    for dep in deps:
+        assert by_id[dep]["status"] == "COMPLETE", (
+            f"{selector} is READY while dependency {dep} is {by_id[dep]['status']} - the "
+            "containment wall is bypassed"
+        )
+        crits = by_id[dep].get("acceptance_criteria")
+        assert crits and sum(int(c["weight"]) for c in crits) == 100 and all(
+            str(c["result"]).upper() == "PASS" for c in crits
+        ), f"{dep} unlocked {selector} without a real, full-weight, fully-PASS weighted contract"
+    # POSITIVE ANCHOR: the wall must actually have been walked, for every adjudicated phase - an
+    # empty or single-element sweep would satisfy the loop above vacuously.
+    for adjudicated in ("P3", "P4", "P5"):
+        crits = by_id[adjudicated].get("acceptance_criteria")
+        assert by_id[adjudicated]["status"] == "COMPLETE" and crits, (
+            f"{adjudicated} is not COMPLETE with a weighted contract - the wall lost a course"
+        )
+        assert sum(int(c["weight"]) for c in crits) == 100 and all(
+            str(c["result"]).upper() == "PASS" for c in crits
+        ), f"{adjudicated} is COMPLETE on an incomplete weighted contract"
 
 
 # ============================================================ H-3 / H-4: authority
