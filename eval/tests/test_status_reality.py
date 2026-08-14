@@ -301,7 +301,7 @@ def test_the_status_record_still_states_the_canonical_facts():
 
     # An adjudicated phase is COMPLETE only on a fully-PASS weighted contract summing to 100, whose
     # independent_review + final_adjudication were supplied by a session other than the author.
-    for phase in ("P3", "P4"):
+    for phase in ("P3", "P4", "P5"):
         assert by[phase]["status"] == "COMPLETE", (
             f"{phase} is {by[phase]['status']} - expected COMPLETE"
         )
@@ -322,33 +322,33 @@ def test_the_status_record_still_states_the_canonical_facts():
             f"{sorted(k for k, v in crits.items() if v != 'PASS')}"
         )
 
-    # the single READY unit is now P5, and its dependency P4 is COMPLETE
+    # the single READY unit is now P6, and its dependency P5 is COMPLETE
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P5"], f"expected P5 as the sole READY unit, found {ready}"
-    assert by["P5"]["dependencies"], "P5 records no dependencies - its readiness proves nothing"
-    for dep in by["P5"]["dependencies"]:
+    assert ready == ["P6"], f"expected P6 as the sole READY unit, found {ready}"
+    assert by["P6"]["dependencies"], "P6 records no dependencies - its readiness proves nothing"
+    for dep in by["P6"]["dependencies"]:
         assert by[dep]["status"] == "COMPLETE", (
-            f"P5 is READY while dependency {dep} is {by[dep]['status']}"
+            f"P6 is READY while dependency {dep} is {by[dep]['status']}"
         )
     # READY is SELECTION, never a claim that work has begun - but it is equally never a claim that
     # work has NOT begun. meta.status_model.status is explicit: "P4 stayed READY for the whole time
     # it was executing (execution was recorded in execution_state, not by vacating the selector)".
-    # This assertion previously pinned P5 to NOT_STARTED, which was TRUE when it was written and
+    # This assertion once pinned the READY unit to NOT_STARTED, which was TRUE when written and
     # became false the moment U5.7+U5.8 landed the outbox and inbox as working code. A guard that
     # freezes a moment into a rule forbids the repository from ever recording that the selected unit
     # started - so it asserts the RELATIONSHIP the status model actually states.
-    assert by["P5"]["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
-        f"P5 is READY and {by['P5']['execution_state']} - a READY unit is either not yet started or "
+    assert by["P6"]["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
+        f"P6 is READY and {by['P6']['execution_state']} - a READY unit is either not yet started or "
         "executing; COMPLETE execution without leaving READY would strand the selector"
     )
-    if by["P5"]["execution_state"] == "NOT_STARTED":
-        assert not by["P5"].get("landed_checkpoints"), "P5 records landed work while NOT_STARTED"
+    if by["P6"]["execution_state"] == "NOT_STARTED":
+        assert not by["P6"].get("landed_checkpoints"), "P6 records landed work while NOT_STARTED"
     else:
-        assert by["P5"].get("landed_checkpoints"), (
-            "P5 is IN_PROGRESS but records no landed checkpoint - execution without evidence is the "
+        assert by["P6"].get("landed_checkpoints"), (
+            "P6 is IN_PROGRESS but records no landed checkpoint - execution without evidence is the "
             "claim this guard exists to refuse"
         )
-        for cp in by["P5"]["landed_checkpoints"]:
+        for cp in by["P6"]["landed_checkpoints"]:
             assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
                 f"{cp.get('id')} lands without on-disk implementer evidence AND an on-disk "
                 "independent review report - P4-CP-1's null review report is a recorded gap, "
@@ -357,21 +357,54 @@ def test_the_status_record_still_states_the_canonical_facts():
             assert not cp.get("criteria_scored"), (
                 f"{cp.get('id')} scores acceptance criteria - a continuation checkpoint may not"
             )
+
+    # P5 left the selector by COMPLETING it, which is the only legal exit: a COMPLETE unit may not
+    # still be READY, or the selector would name a finished phase as the next one to work on. Its
+    # landed continuation checkpoint P5-CP-1 must still carry its evidence - completing a phase
+    # never retroactively excuses a checkpoint from having been evidenced.
+    assert by["P5"]["status"] == "COMPLETE" and by["P5"]["execution_state"] == "COMPLETE", (
+        f"P5 is {by['P5']['status']} / {by['P5']['execution_state']} - expected COMPLETE / COMPLETE"
+    )
+    for cp in by["P5"].get("landed_checkpoints") or []:
+        assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
+            f"{cp.get('id')} lands without on-disk implementer evidence AND an on-disk "
+            "independent review report"
+        )
+        assert not cp.get("criteria_scored"), (
+            f"{cp.get('id')} scores acceptance criteria - a continuation checkpoint may not; the "
+            "fourteen weighted criteria are set by the separate final adjudication alone"
+        )
+
     later_phases = [u["unit_id"] for u in units
-                    if re.fullmatch(r"P\d+", u["unit_id"]) and int(u["unit_id"][1:]) >= 6]
-    assert later_phases, "no post-P5 phases found - the BLOCKED sweep would be vacuous"
+                    if re.fullmatch(r"P\d+", u["unit_id"]) and int(u["unit_id"][1:]) >= 7]
+    assert later_phases, "no post-P6 phases found - the BLOCKED sweep would be vacuous"
     for later in later_phases:
         assert by[later]["status"] == "BLOCKED", (
-            f"{later} is {by[later]['status']} - every phase after the READY P5 must stay BLOCKED"
+            f"{later} is {by[later]['status']} - every phase after the READY P6 must stay BLOCKED"
         )
-    # CURRENT.md must name P5 as the approved next unit and state P5 is not thereby complete.
-    assert re.search(r"the next approved unit is `P5`", text, re.I), (
-        "CURRENT.md must record P5 as the next approved unit - if the program moves on again, "
+    # CURRENT.md must name P6 as the approved next unit and state P6 is not thereby complete.
+    # REPLACED at the P5 closure, not deleted (CLAUDE.md section 5 rule 20): this pinned P5 while P5
+    # held the selector, and became unassertable the moment P5 completed and handed it to P6.
+    assert re.search(r"the next approved unit is `P6`", text, re.I), (
+        "CURRENT.md must record P6 as the next approved unit - if the program moves on again, "
         "this guard must be REPLACED with the new truth, not deleted"
     )
-    assert re.search(r"P5\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
-        "CURRENT.md must state that P5, though READY, is NOT COMPLETE"
+    assert re.search(r"P6\b.{0,200}NOT COMPLETE", text, re.I | re.S), (
+        "CURRENT.md must state that P6, though READY, is NOT COMPLETE"
     )
+    # P5 completing must CITE its two-key evidence by name, never merely assert the conclusion.
+    # ### DELIBERATELY A FILENAME ASSERTION, NOT A PROXIMITY ONE. The first version of this guard was
+    # `P5\b.{0,400}ADJUDICATED` under re.I, and a mutation that stripped the word from the P5 record
+    # still PASSED it - the regex was satisfied by unrelated lowercase "adjudication" prose about P4
+    # elsewhere in the file. That is the substring-guard failure mode CLAUDE.md section 9 names, found
+    # by mutating this guard rather than by reading it. Naming the artifacts cannot be satisfied by
+    # a neighbour's prose.
+    for artifact in ("p5-independent-review-report-1216254.md",
+                     "p5-final-adjudication-report-91ba4e6.md"):
+        assert artifact in text, (
+            f"CURRENT.md records P5 COMPLETE without citing {artifact} - a phase completing on its "
+            "own say-so is exactly what the independent_review + final_adjudication pair forbids"
+        )
     # The record must be spelled out AND bounded. An unqualified "R-07 CONTAINED" next to "P4
     # COMPLETE" invites exactly two wrong inferences: that completing P4 closed it, and that closing
     # it enabled something. Both must be refused in the status authority's own words.

@@ -100,9 +100,11 @@ effects at P12, then multi-loop expansion + customer-authorized authority migrat
 safety foundations that make any live write possible are now built and dark: **P3 kernel COMPLETE
 but dark; P4 adapter containment COMPLETE and adjudicated, with R-07 recorded CONTAINED.**
 **Containment is not enablement** — no production write is enabled, and the production
-`GateRegistry` stays EMPTY until U8.1 / P8. **P5** is the sole READY unit and is **IN_PROGRESS** —
-its event transport (transactional outbox, dedup inbox) landed at `P5-CP-1`, a continuation
-checkpoint with no acceptance criterion scored; P6–P14 are BLOCKED — see [`CURRENT.md`](../implementation/CURRENT.md). Per-capability phase mapping
+`GateRegistry` stays EMPTY until U8.1 / P8. **P5** is **COMPLETE — ADJUDICATED at 14/14** —
+canonical events, outbox/inbox, replay isolation, audit reconstruction, durable timers and
+production PostgreSQL, independently reviewed with zero material blocking defects, separately
+adjudicated, and shipping dark with zero production callers. **P6** is now the sole READY unit and
+has NOT STARTED; P7–P14 are BLOCKED — see [`CURRENT.md`](../implementation/CURRENT.md). Per-capability phase mapping
 is in [`FREIGHT-CAPABILITY-MAP.md`](FREIGHT-CAPABILITY-MAP.md).
 
 > **SUPERSEDED, kept so the old wording is recognisable if it returns.** This paragraph read

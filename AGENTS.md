@@ -36,9 +36,10 @@ eleven canonical operational loops (W1–W11).
 **Do not read status from this file, and do not add it here.**
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md) is the single authority.
 
-At the time of writing it records: Implementation **Phases P0/P1/P2/P3/P4 COMPLETE; `P5` (canonical
-events, outbox/inbox, replay isolation and production persistence) is the sole READY unit and has
-NOT STARTED; P6–P14 BLOCKED; R-07 CONTAINED.** If this line and `CURRENT.md` ever disagree,
+At the time of writing it records: Implementation **Phases P0/P1/P2/P3/P4/P5 COMPLETE; `P6`
+(foundational entities and state machines) is the sole selected unit and has NOT STARTED; P7–P14
+BLOCKED; R-07 CONTAINED.** P5 was adjudicated COMPLETE at 14/14 after a fresh independent review
+found zero material blocking defects; **P6 may not begin until the P5 closure commit is finalized.** If this line and `CURRENT.md` ever disagree,
 **`CURRENT.md` is right and this line is stale.**
 
 > ### **HOW R-07 ACTUALLY CLOSED — corrected, because the wording here was wrong.**

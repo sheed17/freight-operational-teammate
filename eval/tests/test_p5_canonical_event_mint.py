@@ -634,25 +634,53 @@ def test_the_recorded_program_invariants_are_untouched_by_this_unit():
     # a true statement frozen into a permanent rule. The property that survives is the one the
     # docstring names: P5 may not be COMPLETE, and it may only have advanced on LANDED EVIDENCE,
     # which a specification amendment cannot manufacture.
-    assert p5["status"] == "READY", "P5 left the selector - the repository must always name one"
-    assert p5["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
-        f"P5's execution_state is {p5['execution_state']} - this unit does not complete P5"
-    )
-    if p5["execution_state"] != "NOT_STARTED":
-        landed = require_population(p5.get("landed_checkpoints", []), "P5 landed checkpoints")
-        for cp in landed:
-            assert cp["checkpoint_state"] == "CHECKPOINT_ACCEPTED_FOR_CONTINUATION", (
-                f"{cp['id']} claims {cp['checkpoint_state']} - only CONTINUATION is available "
-                "while criteria are unscored"
-            )
-            assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
-                f"{cp['id']} advanced P5 without on-disk evidence AND an on-disk review - a "
-                "specification amendment could manufacture the claim but not these"
-            )
+    # ### RE-POINTED AT THE P5 CLOSURE (CLAUDE.md sec 5 rule 20 - replaced, not deleted). This
+    # asserted `p5["status"] == "READY"` and that all fourteen results were PENDING. Both were true
+    # of the MINT and became false when a SEPARATE FINAL ADJUDICATION scored the contract - which is
+    # precisely the act this guard was never meant to forbid. Pinning them would have made it
+    # structurally impossible for P5 to ever complete, which is the same "true statement frozen into
+    # a permanent rule" defect the comment above already records once.
+    # ### THE PROPERTY THAT SURVIVES, AND IS WHAT THIS ACTUALLY GUARDS: a SPECIFICATION AMENDMENT
+    # cannot advance a phase. P5 may be COMPLETE only on a full-weight, fully-PASS contract whose
+    # independent_review AND final_adjudication are PASS - the two criteria a mint structurally
+    # cannot supply, because they require sessions that did not author it. Anything short of that
+    # and P5 must still be READY with every result PENDING.
     results = [c["result"] for c in p5["acceptance_criteria"]]
-    assert len(results) == 14 and set(results) == {"PENDING"}, (
-        f"a P5 acceptance criterion was scored: {results}"
-    )
+    assert len(results) == 14, f"P5's contract no longer holds 14 criteria: {len(results)}"
+    crits = {c["criterion"]: str(c["result"]).upper() for c in p5["acceptance_criteria"]}
+    if p5["status"] == "COMPLETE":
+        assert sum(int(c["weight"]) for c in p5["acceptance_criteria"]) == 100, (
+            "P5 is COMPLETE on a contract whose weights do not total 100"
+        )
+        assert crits.get("independent_review") == "PASS" and crits.get("final_adjudication") == "PASS", (
+            "P5 is COMPLETE without independent_review + final_adjudication PASS - a specification "
+            "amendment cannot manufacture either, which is exactly why they gate completion"
+        )
+        assert set(crits.values()) == {"PASS"}, (
+            f"P5 is COMPLETE while criteria are unscored: "
+            f"{sorted(k for k, v in crits.items() if v != 'PASS')}"
+        )
+        assert p5["execution_state"] == "COMPLETE" and p5["checkpoint_state"] == "PHASE_ACCEPTANCE_COMPLETE", (
+            f"P5 is COMPLETE but its triple reads {p5['execution_state']} / {p5['checkpoint_state']}"
+        )
+    else:
+        assert p5["status"] == "READY", f"P5 is {p5['status']} - neither READY nor COMPLETE"
+        assert set(results) == {"PENDING"}, f"a P5 acceptance criterion was scored: {results}"
+        assert p5["execution_state"] in ("NOT_STARTED", "IN_PROGRESS"), (
+            f"P5's execution_state is {p5['execution_state']} - this unit does not complete P5"
+        )
+    # A landed checkpoint may never be more than a CONTINUATION, and must always carry its evidence -
+    # true before the adjudication and still true after it. A specification amendment could
+    # manufacture the claim but not these files.
+    for cp in p5.get("landed_checkpoints", []) or []:
+        assert cp["checkpoint_state"] == "CHECKPOINT_ACCEPTED_FOR_CONTINUATION", (
+            f"{cp['id']} claims {cp['checkpoint_state']} - only CONTINUATION is available to a "
+            "checkpoint; phase acceptance is the weighted contract's to record, never a checkpoint's"
+        )
+        assert cp.get("implementer_evidence") and cp.get("independent_review_report"), (
+            f"{cp['id']} advanced P5 without on-disk evidence AND an on-disk review"
+        )
+        assert not cp.get("criteria_scored"), f"{cp['id']} scored acceptance criteria"
     sub_units = require_population(p5["sub_units"], "P5 sub-units")
     for su in sub_units:
         assert su["scored_criteria"] == [], f"{su['sub_unit_id']} scored a criterion"

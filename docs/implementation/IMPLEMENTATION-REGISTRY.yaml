@@ -1204,9 +1204,17 @@ units:
     # would manufacture exactly the live-falsehood defect this registry cites against itself twice
     # (R4-A / F-02). execution_state is IN_PROGRESS, checkpoint_state is
     # CHECKPOINT_ACCEPTED_FOR_CONTINUATION, and P5-CP-1 is landed with on-disk implementer evidence
-    # and an on-disk independent review report. ### NO CRITERION IS SCORED: all 14 remain PENDING,
-    # status stays READY, and this is CONTINUATION, not phase acceptance. The event contracts (U5.3),
-    # GC-1 (U5.4), the replay sandbox (U5.5), audit reconstruction (U5.6) and PostgreSQL do not exist.
+    # and an on-disk independent review report.
+    # ### ADJ-P5-02 CORRECTION (final adjudication, 2026-08-14). This comment used to continue:
+    # "### NO CRITERION IS SCORED: all 14 remain PENDING, status stays READY, and this is
+    # CONTINUATION, not phase acceptance. The event contracts (U5.3), GC-1 (U5.4), the replay sandbox
+    # (U5.5), audit reconstruction (U5.6) and PostgreSQL do not exist." It is preserved in its own
+    # words because a finding must survive its own repair. It was TRUE when written; it is FALSE NOW
+    # in both halves, and it is the same IR-R1 record-accuracy class the independent review recorded.
+    # ### WHAT IS TRUE NOW: all five surfaces EXIST and are finalized (1036b34, ecc9d69, 5a5b5e5),
+    # a FRESH INDEPENDENT REVIEW returned ACCEPT FOR SEPARATE FINAL ADJUDICATION with NO material
+    # blocking defect, and a SEPARATE FINAL ADJUDICATION has since set all fourteen weighted criteria
+    # PASS. P5 computes to 100/100 and its triple is COMPLETE / COMPLETE / PHASE_ACCEPTANCE_COMPLETE.
     #
     # ### P5 CARRIED ITS OWN INDEPENDENT VALIDATION BLOCKER. G2 - the transition/event completeness
     # adjudication - was NOT discharged by P4's completion; the P4 final adjudication says so
@@ -1214,9 +1222,9 @@ units:
     # discharge it". G2 was adjudicated by U5.1, and its SEVEN founder-gated event obligations were
     # discharged by U5.2's founder/architect mint on 2026-08-12. ### THAT UNBLOCKED THE SPECIFICATION
     # AND BUILT NOTHING - the first unit to build anything was U5.7+U5.8, one day later.
-    status: READY
-    execution_state: IN_PROGRESS
-    checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     landed_checkpoints:
       - id: P5-CP-1
         summary: >-
@@ -1328,14 +1336,16 @@ units:
          sandboxed replay (U5.5), audit reconstruction (U5.6), the transactional outbox and the
          dedup inbox (U5.7/U5.8), and the durable timers plus the production PostgreSQL store and
          its migrations (U5.9).
-         ### BUILT IS NOT ACCEPTED, AND THIS ENTRY SCORES NOTHING. All 14 acceptance criteria remain
-         instantiated PENDING, scored by nobody. A FRESH INDEPENDENT REVIEW of the whole P5 surface
-         at content commit 1216254 returned ACCEPT FOR SEPARATE FINAL ADJUDICATION with NO material
-         blocking defect - docs/implementation/p5-independent-review-report-1216254.md, preserved
-         byte-exactly at refs/preserve/p5-independent-review-1216254. The SEPARATE FINAL
-         ADJUDICATION that sets the fourteen results is OWED, and CLAUDE.md sec 11 forbids it to any
-         session that implemented, remediated, reviewed or finalized this unit - including the
-         session that made this correction."
+         ### BUILT IS NOT ACCEPTED - AND IT HAS SINCE BEEN ACCEPTED, SEPARATELY. A FRESH INDEPENDENT
+         REVIEW of the whole P5 surface at content commit 1216254 returned ACCEPT FOR SEPARATE FINAL
+         ADJUDICATION with NO material blocking defect - docs/implementation/
+         p5-independent-review-report-1216254.md, preserved byte-exactly at
+         refs/preserve/p5-independent-review-1216254. A SEPARATE FINAL ADJUDICATION then set the
+         fourteen results - docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+         refs/preserve/p5-final-adjudication-91ba4e6 - performed by a session that neither
+         implemented, remediated, reviewed nor finalized this unit, as CLAUDE.md sec 11 requires.
+         ### 14/14 PASS, 100/100, P5 COMPLETE. The runtime delta between the reviewed tree and the
+         adjudicated tree is ZERO: the two commits in between touched only docs/implementation/."
     # ---------------------------------------------------------------- P5 weighted acceptance contract
     # INSTANTIATED BY P5 U5.1 - the first P5 content commit - from the FROZEN PROGRAM-WEIGHTS.yaml
     # acceptance_template (14 criteria, weights sum EXACTLY 100), verbatim and in template order.
@@ -1343,71 +1353,193 @@ units:
     # weights. Precedent is identical for both completed phases (P3 via U-REBASELINE-1A, P4 from
     # the same frozen template).
     #
-    # ### EVERY RESULT IS PENDING. NOTHING IS SCORED. A builder must not run un-contracted, and a
-    # ### builder must not score itself - independent_review (5) and final_adjudication (4) are
-    # ### structurally un-self-suppliable, which caps any self-assessed phase at 91/100.
-    # P5's phase completion therefore computes to 0.0, which is correct: P5 has not started.
+    # ### THE INSTANTIATION COMMENT ABOVE IS PRESERVED IN ITS OWN WORDS. It used to continue:
+    # "### EVERY RESULT IS PENDING. NOTHING IS SCORED. A builder must not run un-contracted, and a
+    # builder must not score itself - independent_review (5) and final_adjudication (4) are
+    # structurally un-self-suppliable, which caps any self-assessed phase at 91/100. P5's phase
+    # completion therefore computes to 0.0, which is correct: P5 has not started." That was TRUE
+    # when written and is FALSE NOW, and it is kept here because a finding must survive its own
+    # repair.
+    # ### WHAT IS STILL TRUE AND NOT REPEALED: a builder must still not score itself. Nothing below
+    # was scored by a builder. The two structurally un-self-suppliable criteria were supplied by two
+    # DIFFERENT further sessions - the independent review and this final adjudication - which is
+    # exactly why the phase can now exceed 91/100.
+    # ### SET BY THE SEPARATE FINAL ADJUDICATION, 2026-08-14. All fourteen results below are
+    # TRANSCRIBED VERBATIM from p5-final-adjudication-report-91ba4e6.md section E, preserved
+    # byte-exactly at refs/preserve/p5-final-adjudication-91ba4e6 (af1e9b91, parent 4150149), report
+    # SHA-256 691f98c48e5ac01def4723ef5be043362a6441e97697377c17a8b36a9f2f1c28. The adjudicating
+    # session did not implement P5, did not remediate it, did not perform its independent review and
+    # ran no finalizer (CLAUDE.md sec 11). The weights are UNCHANGED and still sum to exactly 100.
+    # ### 14/14 PASS -> P5 computes to 100/100 -> P5 COMPLETE.
     acceptance_criteria:
       - criterion: accepted_scope_and_design
         weight: 6
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.1. Every landed surface falls inside allowed_scope as corrected, and the
+          IR-R4 correction GRANTED NO NEW SCOPE - each added item was already required by this unit's
+          own objective and expected_production_outputs. prohibited_scope is UNTOUCHED: no entity
+          (P6) and no provenance class (P7) was implemented.
       - criterion: required_tests
         weight: 8
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.2. 556 committed nodes across the five P5 modules (333 contracts, 133
+          transport, 44 replay/audit, 27 timers, 19 canonical mint), all registered in
+          TEST-NODE-MANIFEST.json and all executing - 0 unexecuted, 0 rogue, 0 xfail. The contract
+          bijection asserts SET EQUALITY in both directions against events/registry.md sec 3, so a
+          same-count substitution fails.
       - criterion: core_implementation
         weight: 20
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.3. 5,590 lines across event_envelope, event_contracts, event_outbox,
+          event_inbox, event_replay, event_audit, event_timers, persistence and three migration
+          modules. 118 canonical event contracts (105 machine-emitted F1-F13 + 13 audit/security
+          F14), re-derived from the specification by the adjudicator via
+          generate_event_contracts.py --check; a transactional outbox whose contract gate runs INSIDE
+          the caller's transaction so a non-canonical event rolls the state change back with it; a
+          dedup inbox idempotent on (tenant, consumer_id, event_id); deterministic replay whose
+          rebuild digest is a pure function of the event SET, stable across 40 shuffles and equal to
+          the pin; audit reconstruction order-independent across 25 shuffles that names
+          UNRECONSTRUCTIBLE fields rather than inventing them; durable timers surviving a full
+          connection restart.
       - criterion: failure_handling
         weight: 8
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.4. Every failure path fails CLOSED. A crash between the state write and
+          the event write leaves NEITHER. A raising handler records nothing - its writes, the inbox
+          row and the cursor vanish together - so a failed consumption is never recorded as a
+          successful one. A version gap PARKS and drains in version order; a dangling reference parks
+          WITH its accountable human and is drained or expired, never dropped. A future event_version
+          fails closed on emit AND on read. BEGIN IMMEDIATE on a tenant-less PostgreSQL connection
+          fails closed. Rule 12 holds: TimerFired is deliberately not an EventEnvelope and carries no
+          decision.
       - criterion: concurrency_handling
         weight: 8
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.5, reproduced by the adjudicator on a real PostgreSQL 16.15 server:
+          concurrent emitters allocate distinct sequences; a leased outbox row cannot be claimed by a
+          second connection; a lapsed lease is reclaimable; duplicate relay workers deliver exactly
+          once; the inbox applies once and redelivery is a no-op; tenant isolation holds. 16
+          concurrent emitters on real OS threads allocate 16 distinct contiguous sequences under
+          SQLite. Emission under a DEFERRED BEGIN fails closed rather than duplicating, with
+          UNIQUE (tenant, sequence) as the backstop. Strict per-aggregate ordering is a TRIGGER, not
+          a UNIQUE index - deliberately, because a UNIQUE index would have made EF-2's legitimate
+          GrantClaimed + EffectAttempted co-emission UNINSERTABLE at P6 - and two DIFFERENT
+          transitions claiming one version raise StrictOrderViolation rather than being misreported
+          as a duplicate.
       - criterion: authorization_and_security
         weight: 10
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.6. EVENTS CANNOT GRANT AUTHORITY (rule 9): a crafted payload asserting
+          approved:true / authority:grant_effect / execute:tms_write produced ZERO grants and ZERO
+          witnesses. Actor authority is DERIVED, not hand-listed - 6 authority-broadening events
+          refuse a machine actor and 98 contracts refuse actor_type=model, against 7 model-permitted
+          claim/proposal contracts. Provenance laundering is refused across four evasion shapes (flat
+          value, nested list-of-dicts, Enum member, envelope-level provenance_refs) with a positive
+          control proving the guard is not blanket-refusing. Tenant is the FIRST partition dimension
+          of every store, stream and inbox [C-1]; a tenant-bound rebuild REFUSES a foreign event
+          rather than filtering it; tenant-first primary-key column order was verified by the
+          adjudicator on the live PostgreSQL catalog. P5 adds NO tenant-exempt table.
       - criterion: migrations_and_persistence
         weight: 6
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.7 - scripts/postgres_p5_gate.py RE-EXECUTED BY THE ADJUDICATOR against a
+          database it created itself (neyma_adjudicator_p5, PostgreSQL 16.15): 26 migration steps to
+          readiness; replay performed 0 STEPS, a genuine no-op, which is the 'migration replayed
+          twice' hostile case; migration status queryable; SQLite and PostgreSQL catalogs agree
+          column-for-column and key-for-key; eight durable invariants enforced BY TRIGGER all REFUSE,
+          with two positive controls ACCEPTED proving delivery bookkeeping may still legitimately
+          move. The committed POSTGRES-P5-GATE.json is NOT a false green.
       - criterion: observability_and_operational_behavior
         weight: 6
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.8. All four rebaseline_contract observability requirements have real
+          query surfaces: outbox lag (count_unpublished, pending, published,
+          RelayResult.published_count); dedup hits (ConsumeResult.applied/is_noop, seen, and the
+          APPLIED/DUPLICATE_NOOP/STALE_NOOP outcomes); GC-1 rebuild digest vs pinned (mutant R18 'the
+          committed corpus drifts from its builder' is CAUGHT); migration status
+          (postgres_p5.migration_status, exercised by the gate). Counts derive from rowcounts, never
+          intentions - a timer cancelled underneath a mid-flight delivery reports 'superseded', not
+          'fired'. Parked references expose their accountable human by name. ### STATED HONESTLY:
+          these are query primitives, not dashboards or alerting; production monitoring is ADR-016 /
+          P11 scope and is NOT claimed here (debt ADJ-P5-03).
       - criterion: mutation_or_hostile_cases
         weight: 8
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.9 - BOTH BATTERIES RE-EXECUTED BY THE ADJUDICATOR with byte-exact tree
+          restoration: replay/audit 24/24 CAUGHT, contracts 37/37 CAUGHT. The unit's
+          mutation_requirements ('replay must be proven unable to call an adapter') are discharged
+          twice over: mutant R19 re-introduces the node.level gate that would blind the closure proof
+          to ABSOLUTE imports and IS CAUGHT, and the adjudicator wrote its own independent
+          import-closure probe carrying a positive control that FIRES (effect_boundary reaches
+          browser_use_write, checkpoint, operation_router, ops_control, tms_write across a 36-module
+          closure). Plus the independent reviewer's 45-probe hostile battery, 45 PASS.
       - criterion: full_test_suite
         weight: 5
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.10. Canonical suite run by the adjudicator on the final tree: 2674
+          passed, 0 failed, 1 skipped, exit 0. The one skip is the conditional, self-describing
+          AC-SAFE-012/013 skip, the sole entry in APPROVED-SKIPS.yaml. Volatile figures live only in
+          CURRENT.md's status block and SUITE-RESULT.json; this line cites the adjudicated result.
       - criterion: canonical_finalizer
         weight: 3
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          ### NOT the adjudication's own act - a finalizer cannot have run on the candidate being
+          adjudicated, so this criterion is PENDING by construction AT adjudication, exactly as it
+          was for P3 and P4. PASS here on the ONE finalizer run that has ALREADY EXECUTED on the
+          adjudicated content commit: metadata commit 4150149401d42252e7ca5be862f4c66c367f5f70, SINGLE
+          PARENT 91ba4e6, changing EXACTLY the five authorized STATUS_METADATA_FILES - SUITE-RESULT.json,
+          GATE-RESULT.json, CURRENT.md, IMPLEMENTATION-REGISTRY.yaml, BUILD-STATUS.yaml - and no other
+          path, verified by the adjudicator against the object store. Its receipts bind to
+          91ba4e6 / 05baa45 with exit status 0. Adjudication sec E.11.
       - criterion: clean_clone_execution
         weight: 3
-        result: PENDING
-        evidence: "PENDING - not scored. Instantiated from the frozen acceptance_template by P5 U5.1."
+        result: PASS
+        evidence: >-
+          Adjudication sec E.12 - scripts/clean_clone_gate.py RE-EXECUTED BY THE ADJUDICATOR: nine
+          steps exit 0 (clone committed state, python floor host, fresh venv, python floor venv,
+          install declared deps only, complete canonical suite, control guards, AC-SAFE-012/013 +
+          AC-SEC-001, clone tree still clean), reproducing 2674 passed / 0 failed / 1 skipped over
+          2675 collected in a fresh clone with DECLARED DEPENDENCIES ONLY. The green is clean-clone
+          reproducible, not a property of one working copy. The committed receipt was restored
+          byte-exactly afterwards.
       - criterion: independent_review
         weight: 5
-        result: PENDING
+        result: PASS
         evidence: >-
-          PENDING - not scored, and STRUCTURALLY UN-SELF-SUPPLIABLE. It requires a session that did
-          not implement, remediate or review this unit.
+          Adjudication sec E.13. refs/preserve/p5-independent-review-1216254
+          (192aaad56b1c8c63dd1fd92d797fdc28e5f6688d, parent c14014b8), report SHA-256
+          f028696b68235a7700491585b230c3290081138825fa1fa31f860dcacdc533f0 matching its sidecar
+          BYTE-EXACTLY; verdict ACCEPT FOR SEPARATE FINAL ADJUDICATION, material blocking defects
+          NONE. Supplied by a session that did not implement or remediate P5 - its preserved commit
+          adds ONLY the report and its sidecar, touching no runtime file, test, fixture or status
+          record. Its hostile verification ACTUALLY EXECUTED (45 probes) and it reported EIGHT of its
+          own probes as defective rather than only the corrected results. Its gate results were
+          REPRODUCED by the adjudication. ### IT REVIEWED THE P5 SURFACE AT 1216254 - and the runtime
+          delta from there to the adjudicated tree is ZERO (git diff c14014b HEAD -- src/ scripts/
+          eval/ is EMPTY).
       - criterion: final_adjudication
         weight: 4
-        result: PENDING
+        result: PASS
         evidence: >-
-          PENDING - not scored, and STRUCTURALLY UN-SELF-SUPPLIABLE. It requires a session that did
-          not implement, remediate, review or finalize this unit.
+          Adjudication sec E.14 - the adjudication itself, by a session that neither implemented,
+          remediated, reviewed nor finalized P5, on evidence it reproduced itself rather than
+          inherited. refs/preserve/p5-final-adjudication-91ba4e6
+          (af1e9b91d266e20281abcd87d31bd3c06b21b5c4, parent 4150149), report SHA-256
+          691f98c48e5ac01def4723ef5be043362a6441e97697377c17a8b36a9f2f1c28, verdict P5 ACCEPTED.
+          ### IT ADJUDICATED CONTENT COMMIT 91ba4e6 - not this closure commit, which owes its own
+          fresh targeted independent review and its own separate targeted adjudication before any
+          finalizer may run on it.
     # ---------------------------------------------------------------- P5 sub-units
     # P5 had no committed sub-unit enumeration. U5.1 is the first, recorded by the builder that
     # performed it, exactly as the G2 adjudication sec L directed.
@@ -2088,7 +2220,7 @@ units:
         name: the 118 canonical event contracts and the upcaster
         plan_phrase: "the 105 event contracts"
         depends_on: [U5.7, U5.8]
-        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        record_type: CONTENT_COMMIT_FINALIZED_INDEPENDENTLY_REVIEWED_AND_SEPARATELY_ADJUDICATED
         content_commit: 1036b34
         candidate_generation: >-
           REPLACEMENT. The first candidate was REJECTED by its independent review on FIVE blocking
@@ -2140,16 +2272,21 @@ units:
               re-derived `event_contracts_data.json` from the specification itself rather than
               trusting the committed file.
           final_adjudication:
-            status: OWED
+            status: PERFORMED
             note: >-
-              ### NOT PERFORMED AND NOT PERFORMABLE HERE. The fourteen weighted P5 criteria are set
-              by ONE separate final adjudication of the whole unit, by a session that neither
-              implemented, remediated, reviewed nor finalized it (CLAUDE.md sec 11).
+              ### NOT PERFORMED AND NOT PERFORMABLE HERE - and it has since been performed
+              ELSEWHERE, which is the point. The fourteen weighted P5 criteria were set by ONE
+              separate final adjudication of the whole unit, by a session that neither implemented,
+              remediated, reviewed nor finalized it (CLAUDE.md sec 11):
+              docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+              refs/preserve/p5-final-adjudication-91ba4e6. The adjudicator re-derived
+              event_contracts_data.json from the specification itself and re-ran the contract
+              mutation battery at 37/37 caught. 14/14 PASS, 100/100, P5 COMPLETE.
       - sub_unit_id: U5.4
         name: the GC-1 golden corpus and its pinned digest
         plan_phrase: "the `GC-1` golden corpus + pinned digest"
         depends_on: [U5.3]
-        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        record_type: CONTENT_COMMIT_FINALIZED_INDEPENDENTLY_REVIEWED_AND_SEPARATELY_ADJUDICATED
         content_commit: ecc9d69
         candidate_generation: >-
           FIRST CANDIDATE, built as ONE increment with U5.5 and U5.6 because the acceptance
@@ -2181,13 +2318,16 @@ units:
               The reviewer re-executed the fold across 40 independent shuffles and confirmed the
               digest equals the pin and changes under tamper.
           final_adjudication:
-            status: OWED
-            note: Set with the whole unit by ONE separate final adjudication.
+            status: PERFORMED
+            note: >-
+              Set with the whole unit by the ONE separate final adjudication -
+              docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+              refs/preserve/p5-final-adjudication-91ba4e6. 14/14 PASS, 100/100, P5 COMPLETE.
       - sub_unit_id: U5.5
         name: sandboxed replay - effects structurally unreachable in replay
         plan_phrase: "sandboxed replay"
         depends_on: [U5.3]
-        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        record_type: CONTENT_COMMIT_FINALIZED_INDEPENDENTLY_REVIEWED_AND_SEPARATELY_ADJUDICATED
         content_commit: ecc9d69
         candidate_generation: >-
           FIRST CANDIDATE. Built in the same increment and the same content commit as U5.4 and
@@ -2221,13 +2361,17 @@ units:
               plain `import` statements, then re-run. All eleven P5 modules were then closure-checked
               against a 17-module forbidden set: ZERO reach.
           final_adjudication:
-            status: OWED
-            note: Set with the whole unit by ONE separate final adjudication.
+            status: PERFORMED
+            note: >-
+              Set with the whole unit by the ONE separate final adjudication -
+              docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+              refs/preserve/p5-final-adjudication-91ba4e6. ### THE ADJUDICATOR RE-DERIVED THE IMPORT
+              CLOSURE ITSELF with a positive control that fires, reaching the same set. 14/14 PASS.
       - sub_unit_id: U5.6
         name: audit reconstruction - 18-field explainability, beliefs-of-that-day
         plan_phrase: "audit reconstruction"
         depends_on: [U5.3]
-        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        record_type: CONTENT_COMMIT_FINALIZED_INDEPENDENTLY_REVIEWED_AND_SEPARATELY_ADJUDICATED
         content_commit: ecc9d69
         candidate_generation: >-
           FIRST CANDIDATE. Built in the same increment and the same content commit as U5.4 and
@@ -2254,13 +2398,17 @@ units:
               Re-executed by the reviewer across 25 shuffles, plus the AC-AUD-002 later-fact
               injection; the replay/audit mutation battery re-ran at 24/24 caught.
           final_adjudication:
-            status: OWED
-            note: Set with the whole unit by ONE separate final adjudication.
+            status: PERFORMED
+            note: >-
+              Set with the whole unit by the ONE separate final adjudication -
+              docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+              refs/preserve/p5-final-adjudication-91ba4e6. The adjudicator re-ran the replay/audit
+              battery independently: 24/24 caught. 14/14 PASS, 100/100, P5 COMPLETE.
       - sub_unit_id: U5.9
         name: durable timers and the production PostgreSQL persistence, runtime included
         plan_phrase: "durable timers + the production PostgreSQL store, migrations and runtime"
         depends_on: [U5.7, U5.8]
-        record_type: CONTENT_COMMIT_FINALIZED_AND_INDEPENDENTLY_REVIEWED_AWAITING_SEPARATE_FINAL_ADJUDICATION
+        record_type: CONTENT_COMMIT_FINALIZED_INDEPENDENTLY_REVIEWED_AND_SEPARATELY_ADJUDICATED
         content_commit: 5a5b5e5
         # ### WHY THIS RECORD IS NEW AND WHY ITS ID IS U5.9. The work landed with NO SUB-UNIT RECORD
         # AT ALL - the omission the independent review recorded inside IR-R3. It is authorized by
@@ -2323,8 +2471,17 @@ units:
               untouched) and confirmed a caught `DuplicateEmission` does not poison the surrounding
               PostgreSQL transaction.
           final_adjudication:
-            status: OWED
-            note: Set with the whole unit by ONE separate final adjudication.
+            status: PERFORMED
+            note: >-
+              Set with the whole unit by the ONE separate final adjudication -
+              docs/implementation/p5-final-adjudication-report-91ba4e6.md, preserved at
+              refs/preserve/p5-final-adjudication-91ba4e6. ### THE ADJUDICATOR RE-EXECUTED THE
+              POSTGRESQL P5 GATE against a database it created itself (PostgreSQL 16.15): PASS -
+              26 migration steps, 0 on replay, 8 invariants REFUSED, 2 positive controls ACCEPTED,
+              17 runtime probes PASS. 14/14 PASS, 100/100, P5 COMPLETE.
+              ### NOT CLAIMED: the rebaseline_contract's STAGING_READY target for the persistence
+              infrastructure is NOT met - no staging deployment exists. ADR-016 assigns deployment
+              and environments to P11. Carried as debt ADJ-P5-03.
 
     # --------------------------- P5 PLANNED sub-units (EMPTY - every P5 deliverable is now built)
     # ### THE HEADING USED TO READ "P5 PLANNED (still-unbuilt) sub-units". Nothing under it is
@@ -2403,7 +2560,19 @@ units:
 
   - unit_id: P6
     name: Foundational entities and state machines
-    status: BLOCKED
+    # ### P6 BECOMES THE SINGLE READY UNIT IN THE SAME COMMIT THAT COMPLETES P5 - the selector never
+    # holds zero or two entries (meta.status_model.status). Its only dependency, P5, is COMPLETE at
+    # 14/14 weighted criteria PASS on independent evidence, and P6's validation_blockers are EMPTY.
+    # ### READY IS A SELECTION AND NOTHING MORE: no P6 code exists, execution_state is NOT_STARTED,
+    # checkpoint_state is NO_CHECKPOINT and not one P6 criterion is scored. ### P6 MAY NOT BEGIN
+    # UNTIL THE CLOSURE COMMIT THAT RECORDS THIS TRANSITION HAS ITSELF RECEIVED A FRESH TARGETED
+    # INDEPENDENT REVIEW, A SEPARATE TARGETED ADJUDICATION AND EXACTLY ONE FINALIZER - the sequence
+    # the P4 acceptance closure (42ea24c -> c30a43b -> d3cf1de -> 06ebfdb) and the R-07 closure
+    # (a31a94a -> c26aeae -> 035cb55 -> 6e8127d) both executed, in that order.
+    # ### AC-EVT-003 DISCHARGES HERE: P5's IR-R8 recorded that 'every producer transition emits its
+    # required event in the transition's own commit' cannot be proven at P5 because the 134
+    # transitions are P6's. It is P6's to discharge, on the transport P5 certified.
+    status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
@@ -2412,7 +2581,14 @@ units:
     blocks: [P7]
     canonical_references: [docs/specifications/entities/, docs/specifications/state-machines/]
     allowed_scope: [platform primitives, state machines]
-    prohibited_scope: [freight domain projections (P9), policy (P8)]
+    # ### `provenance (P7)` ADDED AT THE P5 CLOSURE. Every other unit's prohibited_scope names the
+    # phase IMMEDIATELY after it - P5's was `[entities (P6), provenance (P7)]` - and P6's omitted P7
+    # entirely while naming P8 and P9. That left the newly-selected unit free to claim the very next
+    # phase's surface, which is the one adjacency a one-unit-at-a-time selector most needs closed.
+    # It GRANTS NO SCOPE and REMOVES NONE: it records a prohibition P7's own unit block already
+    # implies. P5's IR-R9 - AC-EVT-011 and the ProvenanceStrengtheningAttempted (F14) emission half
+    # of AC-EVT-013 - therefore lands at P7, not at P6.
+    prohibited_scope: [freight domain projections (P9), policy (P8), provenance (P7)]
     expected_production_outputs: ["17 platform primitives", "13 machines", "134 transitions"]
     expected_capability: "System: every unit of work has an accountable owner, structurally."
     boundaries_affected: [new entity layer]

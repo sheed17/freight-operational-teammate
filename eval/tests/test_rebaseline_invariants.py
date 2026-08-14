@@ -202,24 +202,32 @@ def test_the_evidence_program_exists_and_fails_closed():
 
 
 def test_exactly_one_ready_unit_and_it_is_p3():
-    """REPLACED at the P4 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md sec 5 rule 20 - name frozen to
-    preserve the node id, same as test_24b; body re-pointed for the second time). P4 has now been
-    adjudicated COMPLETE from independent evidence, so the single READY unit is P5.
+    """REPLACED at the P5 ACCEPTANCE/STATUS CLOSURE (CLAUDE.md sec 5 rule 20 - name frozen to
+    preserve the node id, same as test_24b; body re-pointed for the third time). P5 has now been
+    adjudicated COMPLETE from independent evidence, so the single READY unit is P6.
 
     ### THE R-07 SEPARATION SURVIVES THE TRANSITION, AND THIS GUARD IS WHERE. The rebaseline was
     documentation-only and P3 was kernel-only, so neither could close R-07. P4's weighted acceptance
     reached 14/14 PASS - and it STILL did not close R-07, because the CONTAINED record lives in
     phase-0-baseline-manifest.yaml, which is not a status-metadata file and therefore needed its own
     later content commit, after both finalization passes. That commit has since been made.
-    The manifest assertion below used to fail the instant anyone marked R-07 contained EARLY. It now
-    fails if the record reads CONTAINED WITHOUT the control state that alone authorizes it - P4
-    COMPLETE on a real full-weight fully-PASS contract, and P5 the sole READY unit. That is the same
-    separation, asserted from the other side, and it is why the record cannot be back-dated onto a
-    tree where P4 was not adjudicated."""
+    The manifest assertion below used to fail the instant anyone marked R-07 contained EARLY. It
+    still fails if the record reads CONTAINED WITHOUT the control state that alone authorizes it.
+
+    ### THE SELECTOR CONDITION IS NOW A RELATIONSHIP, NOT A LITERAL. This asserted `ready == ["P5"]`,
+    which froze a MOMENT into a RULE: it became unassertable the instant P5 completed and handed the
+    selector to P6, even though nothing it protects had changed. The durable condition - the one that
+    actually refuses a back-dated record - is that P4 is COMPLETE on a real full-weight fully-PASS
+    contract AND the selector has moved PAST P4. An early record still fails, because on any tree
+    where P4 was not adjudicated the selector is at P4 or earlier."""
     units = yaml.safe_load(read("docs/implementation/IMPLEMENTATION-REGISTRY.yaml"))["units"]
     assert units, "the registry parsed to no units - the READY assertion would be vacuous"
     ready = [u["unit_id"] for u in units if u["status"] == "READY"]
-    assert ready == ["P5"], f"READY set drifted: {ready}"
+    assert len(ready) == 1, f"exactly one unit may be READY, found {ready}"
+    selector = ready[0]
+    assert re.fullmatch(r"P\d+", selector) and int(selector[1:]) >= 5, (
+        f"the selector is {selector} - it must have moved PAST P4 for the R-07 record to stand"
+    )
     by = {u["unit_id"]: u for u in units}
     assert by["U-REBASELINE-1"]["status"] == "COMPLETE"
     assert by["P3"]["status"] == "COMPLETE", f"P3 is {by['P3']['status']}, expected COMPLETE"
@@ -240,7 +248,7 @@ def test_exactly_one_ready_unit_and_it_is_p3():
     assert str(r07["contained_at"]).strip().startswith("P4"), (
         "R-07 is recorded CONTAINED without naming P4 as the phase that earned it"
     )
-    assert by["P4"]["status"] == "COMPLETE" and ready == ["P5"], (
+    assert by["P4"]["status"] == "COMPLETE" and int(selector[1:]) >= 5, (
         "R-07 is recorded CONTAINED outside the control state that alone authorizes it"
     )
 

@@ -4,13 +4,23 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** P4 — Adapter containment **ADJUDICATED COMPLETE.** All 14 weighted P4 criteria
-> PASS: thirteen set by a separate final adjudication of implementation candidate `0891d1a` from a
-> fresh independent re-review, and `canonical_finalizer` on the one finalizer run that executed
-> (exit 0 on `0891d1a`, metadata commit `86306d5`). **P5 (events, outbox/inbox, replay isolation,
-> PostgreSQL) is the sole READY unit and is now IN_PROGRESS: `P5-CP-1` landed the transactional
-> outbox and the dedup inbox as a CONTINUATION checkpoint. Nothing is scored — all 14 P5 criteria
-> stay PENDING — and P5 is NOT COMPLETE.**
+> **Last updated:** P5 — Canonical events, outbox/inbox, replay isolation and production
+> persistence **ADJUDICATED COMPLETE.** ### **All 14 weighted P5 criteria PASS → 100/100 → P5
+> COMPLETE.** A **FRESH INDEPENDENT REVIEW** of the P5 surface at content commit `1216254` returned
+> **ACCEPT FOR SEPARATE FINAL ADJUDICATION** with **NO material blocking defect**
+> ([report](p5-independent-review-report-1216254.md)); a **SEPARATE FINAL ADJUDICATION** — by a
+> session that neither implemented, remediated, reviewed nor finalized P5 — then set the fourteen
+> results from evidence it reproduced itself
+> ([report](p5-final-adjudication-report-91ba4e6.md)). **`P6` (foundational entities and state
+> machines) is now the sole READY unit.**
+> ### **THIS COMMIT IS NOT YET FINALIZED, AND P6 MAY NOT BEGIN UNTIL IT IS.** A closure content
+> commit must first receive a **fresh targeted independent review**, a **separate targeted
+> adjudication**, and then **exactly one finalizer** — the sequence the P4 acceptance closure and the
+> R-07 closure both executed. **No finalizer receipt exists for this commit and none may be
+> fabricated.**
+> ### **P5 SHIPS DARK.** The outbox, inbox, relay, timers and PostgreSQL connector have **zero
+> production callers**; their only consumers are explicitly-invoked evidence tooling. Completing P5
+> enables no external effect.
 > ### **R-07 is now CONTAINED.** Completing P4's weighted acceptance did **not** close it — the
 > CONTAINED record belongs in [`phase-0-baseline-manifest.yaml`](phase-0-baseline-manifest.yaml),
 > which is not a status-metadata file, so it required its own separate content commit **after** both
@@ -63,8 +73,8 @@ suite_skipped: 1
 | **P2** — tenant-safe persistence | ### **COMPLETE** | [`u2-6bc-blocker-6-final-phase-2-review.md`](u2-6bc-blocker-6-final-phase-2-review.md) · `7d72498` |
 | **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark. ### **Completing P3 did not close R-07 — and neither did completing P4:** R-07 closed only when a separate content commit, made after both P4 finalization passes, wrote the CONTAINED record into `phase-0-baseline-manifest.yaml` |
 | **P4** — adapter containment | ### **COMPLETE** | [`p4-independent-review-report.md`](p4-independent-review-report.md) — the first INDEPENDENT review, which candidate `95cf5af7` **did not pass** (REJECT — remediation required) · [`p4-independent-rereview-report-0891d1a.md`](p4-independent-rereview-report-0891d1a.md) — the FRESH INDEPENDENT re-review of the remediated candidate `0891d1a`, **ACCEPT FOR SEPARATE FINAL ADJUDICATION** · [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P4 recorded COMPLETE** · [`p4-first-finalization-pass-report-86306d5.md`](p4-first-finalization-pass-report-86306d5.md) — the one canonical finalizer run. ### **This did NOT close R-07** — see the open-risks table |
-| **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **SELECTED (`READY`) — `IN_PROGRESS`, NOT COMPLETE** | `P5-CP-1` landed the transactional outbox and the dedup inbox (durable atomic emission, idempotent consumption). Since then, and **NOT yet reviewed or adjudicated**: the **118 canonical event contracts** (105 machine-emitted F1–F13 + 13 audit/security F14) with the upcaster; the **GC-1 golden corpus**, deterministic **replay** and **audit reconstruction**; **durable timers** (M-36); and the runtime on **production PostgreSQL** (ADR-016) via `persistence.py`, proven by `scripts/postgres_p5_gate.py` against a real server. ### **BUILT IS NOT ACCEPTED** — all 14 criteria remain `PENDING` and nothing is scored, because `independent_review` and `final_adjudication` require a session that neither implemented nor remediated this work (CLAUDE.md §11). **That review is what P5 is now waiting on.** See the P5 unit block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) |
-| **P6–P14** | **NOT STARTED** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
+| **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **COMPLETE** | [`p5-independent-review-report-1216254.md`](p5-independent-review-report-1216254.md) — the FRESH INDEPENDENT review of the whole P5 surface, **ACCEPT FOR SEPARATE FINAL ADJUDICATION**, **zero material blocking defects**, 45/45 hostile probes (eight of which it reported as its *own* defective probes rather than only the corrected results) · [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, 100/100, P5 recorded COMPLETE.** What it certifies: the **118 canonical event contracts** (105 machine-emitted F1–F13 + 13 audit/security F14) with the upcaster; the **transactional outbox** and **dedup inbox**; the **GC-1 golden corpus**, deterministic **replay** and **audit reconstruction**; **durable timers** (M-36); and the runtime on **production PostgreSQL** (ADR-016). The adjudicator re-executed the canonical suite, the clean-clone gate, the PostgreSQL gate against a database it created, both mutation batteries (24/24 · 37/37) and its own import-closure probe. ### **P5 ships dark — zero production callers.** |
+| **P6–P14** | **NOT STARTED** — `P6` is the sole `READY` unit | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
 
@@ -115,6 +125,9 @@ state, and it changed because a record was written, not because a residual was w
 | — | **AD-01** — `EFFECT-PATH-INVENTORY.yaml` and `LEGACY-DISPOSITION.md` said the deployed callback server leaves `governed_write_provider`/`governed_write_kernel` as `None`. Mechanically false for the **provider**: it is **WIRED** (a bounded lookup, `writer=None`); the **kernel** is `None`, deliberately, pending Phase 8. The operative conclusion — the route is unreachable and fails closed — was and is true. ### **The prose in both files is CORRECTED by the R-07 closure commit; the stale "provider is `None`" wording must not reappear.** The finding is **carried, not discharged**: it stays recorded so a reintroduction is recognisable | ### **CARRIED — prose corrected, finding NOT discharged** | remains recorded; re-verify at P12 wiring |
 | — | **AD-02** — `finalizer_lock.py` is a 188-line safety-critical module with **zero committed test coverage**: no references under `eval/`, no nodes in [`TEST-NODE-MANIFEST.json`](TEST-NODE-MANIFEST.json), no mutant. Verified sound 16/16 twice, but only ad hoc — and it is directly load-bearing for the next finalizer run | OPEN, recorded, non-blocking | a committed hostile battery + manifest regeneration |
 | — | **RR-02 · RR-03 · RR-04 · RR-05 · RR-06 · F-03 · F-06 · F-07 · F-10** — the remaining residuals the independent re-review and the final adjudication retained; each is recorded in full, with its severity and disposition, in the P4 unit's `residual_risks_carried_forward` block in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) | OPEN, recorded, non-blocking | as recorded per finding |
+| — | ### **P5 RESIDUALS — `IR-R5`…`IR-R12`, carried out of the independent review and NOT discharged by the adjudication.** The load-bearing ones: **`IR-R7`** — GC-1 does not span a schema version change, because every canonical contract is at v1, so `AC-EVT-009` is proven through the **real** replay path against a **test-only** versioned contract set. Minting a production v2 to satisfy a fixture would amend a protected specification under authority P5 does not hold; a guard goes red the day a contract leaves v1. ### **That is the honest disposition, not a gap.** **`IR-R8`** — `AC-EVT-003` (every producer transition emits its required event in its own commit) **cannot be proven at P5**; the 134 transitions are P6's. **`IR-R9`** — `AC-EVT-011` and the `ProvenanceStrengtheningAttempted` (F14) **emission** half of `AC-EVT-013` are unimplemented; ### **the dangerous half is CLOSED** (laundering is refused across four evasion shapes) and what is missing is the audit *record* of an attempt — provenance is P5's `prohibited_scope`. `IR-R10`/`IR-R11`/`IR-R12` are prose-overstates-in-the-safe-direction, a discarded advisory timer payload, and unenforced `relay_id` uniqueness whose only consequence is duplicate delivery the dedup inbox makes free | OPEN, recorded, non-blocking | `IR-R8` → **P6** · `IR-R9` → **P7** · `IR-R7` → the day a contract leaves v1 · rest as recorded |
+| — | **ADJ-P5-01 · ADJ-P5-02** — record-accuracy defects the **final adjudication** found, of the same `IR-R1` class the independent review recorded: `BUILD-STATUS.yaml`'s authored `snapshot:` block asserted *"The event contracts, GC-1 corpus, replay sandbox, audit reconstruction and PostgreSQL do not exist"*, *"the transport is SQLite only"* and *"U5.1 … IS STILL UNREVIEWED"*; and two further stale instances survived in this file and in the registry comment above P5's status fields. ### **The finalizer-maintained `derived:` block and every machine-read field were correct throughout** | ### **CORRECTED by the P5 closure commit** — a snapshot asserting P5's infrastructure does not exist cannot ride in the commit that records P5 COMPLETE | ### **CLOSED** |
+| — | ### **ADJ-P5-03 — a scope boundary, stated rather than waived.** P5's `rebaseline_contract` sets `readiness_target: STAGING_READY` for the persistence infrastructure. ### **THAT TARGET IS NOT MET AND IS NOT CLAIMED MET.** The PostgreSQL surface is proven against a real server on a developer machine; it has **not** been deployed to a production-like staging environment with secrets, monitoring and operational controls, and the observability surfaces are query primitives rather than dashboards or alerting. `readiness_target` is a maturity target, **not** one of the 14 weighted acceptance criteria, and ADR-016 assigns deployment and environments to P11 — the gate receipt says so itself | OPEN, recorded, non-blocking | **P11** |
 | — | **Transition/event completeness — G2 ADJUDICATED; ITS SEVEN EVENT OBLIGATIONS DISCHARGED.** The predicate is settled and mechanised (interpretation C, HYBRID): a *producer transition* is one declared in `events/registry.md` §3 — **117 of the 134 rows; the other 17 are non-producer transitions** — and completeness is `GR-2` over durable writes. All 134 rows carry structured classification (117 PRODUCER · 9 CONSUMES · 6 NON_PRODUCING · 2 DELEGATES_TO · 0 EVENT_REQUIRED); prose is never a classifier and an undecidable row fails the build. `EF-3` is re-attributed to the **existing** `EffectExecuted`. ### **`CONSUMES` IS PROVEN, NOT ASSERTED.** A durable-writing consumer must satisfy `CONSUMES-VALID`: a **bidirectionally declared co-commit** in both rows' `Writes` cells, a **different machine**, **not mutually exclusive** with the owner, and every persisted field carried by a consumed event's `state-machines/registry.md` §5 payload — undecidable **fails the build**. The first U5.1 candidate's version of this class was self-certifying and was **rejected**: it let `AP-9` be relabelled `CONSUMES:BrakeReleased` and stay green. `PL-15x` and `IB-5x` are `NON_PRODUCING` (their event's producer is the *rule* `GR-1`, not a transition). ### **`DELEGATES_TO` IS BOUNDED BY TRIGGER TYPE TOO** — a delegating row's `Trig` set must intersect each target's, which is what refuses `PL-7a → PL-7b` (`S` against `H`: the autonomous path may not be recorded by an event asserting a bound human approval). ### **THE RECORDED FINDING — *"7 transitions perform durable writes and name no event outright"* (`PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`) — IS DISCHARGED, AND IS KEPT HERE IN ITS ORIGINAL WORDS SO THE FINDING SURVIVES ITS OWN REPAIR. THE SEVEN NOW HAVE SEVEN MINTED CANONICAL EVENTS** (`AutonomousAdmissionRecorded`, `ApprovalFrozen`, `ConflictPartyAttached`, `ExceptionSeverityChanged`, `PolicySubmitted`, `PolicyApproved`, `RuleExpired`), minted 2026-08-12 under founder/architect authority; the registry moved **98 → 105**, `PolicyProposed` stayed PO-1's, and every discharge is re-proven mechanically on each run. The obligations are **retained**, marked discharged, in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml). The retired "24-name-no-event" figure and the retired "121/13" split were never correct | ### **EVENT OBLIGATIONS DISCHARGED — residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` OPEN** | **G2 residuals; P5 event infrastructure still unbuilt** |
 | — | **PD-02 — the Product Driver's commit-topology warning is a TOOLING defect, not a repository conflict.** The driver reports `topology: BLOCKED_AUTHORITY` and a `max_content_commits` of **7**. The G2 adjudication proved this mechanically: `neyma_product_driver/protocol_sources.py`'s `_CONTENT_COUNT_RE` uses a `\d{1,2}` alternative behind a `\b`, which matches between a hyphen and a digit, so *"CLOSED by the separate **R-07** content commit"* is read as the cardinal **7**. The bad value is **consumed**, not merely displayed. ### **Repository authority is NOT contradictory: the rule is exactly ONE content commit, then exactly ONE finalizer-generated metadata commit** ([`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §10, `integration-topology-procedure.md`). A session must take commit topology from those two documents only and treat the driver's `BLOCKED_AUTHORITY` output as non-authoritative on this point. The fix is a one-line regex hardening **outside this repository** | OPEN — inherited governance/tooling residual, non-blocking; **rank-1 for the Product Driver** | Product Driver, not a product unit |
 | — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
@@ -144,6 +157,59 @@ state, and it changed because a record was written, not because a residual was w
 > and no production write is enabled by any of it. Nothing was pushed, merged, deployed or enabled.
 
 ## Current implementation milestone
+
+**P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION AND PRODUCTION PERSISTENCE** —
+### **ADJUDICATED COMPLETE. 14/14 WEIGHTED CRITERIA PASS. 100/100.**
+Accepted independent review:
+[`p5-independent-review-report-1216254.md`](p5-independent-review-report-1216254.md);
+final adjudication:
+[`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md).
+
+> ### **How P5 reached COMPLETE.** The adjudicated **content commit is `91ba4e6`** (tree
+> `05baa45`). Its weighted acceptance contract was instantiated from the **frozen**
+> `acceptance_template` in [`PROGRAM-WEIGHTS.yaml`](PROGRAM-WEIGHTS.yaml): exactly 14 criteria,
+> weights summing to exactly 100. A **FRESH INDEPENDENT REVIEW** of the P5 surface at content commit
+> `1216254` returned **ACCEPT FOR SEPARATE FINAL ADJUDICATION** with **zero material blocking
+> defects**; a **SEPARATE FINAL ADJUDICATION** — by a session that neither implemented, remediated,
+> reviewed nor finalized P5 — then set all fourteen results. ### **The runtime delta between the
+> reviewed tree and the adjudicated tree is ZERO:** the two commits in between touched only
+> `docs/implementation/`, so the review binds in full.
+>
+> ### **THE ADJUDICATOR REPRODUCED THE EVIDENCE RATHER THAN READING IT.** It ran the canonical suite
+> (**2674 · 0 · 1**); re-executed the **clean-clone gate** (9/9 steps exit 0, reproducing the same
+> counts in a fresh clone with declared dependencies only); re-executed the **PostgreSQL P5 gate**
+> against a database it created itself (26 migration steps, **0 on replay**, 8 invariants REFUSED,
+> 2 positive controls ACCEPTED, 17 runtime probes PASS); re-ran both **mutation batteries**
+> (replay/audit **24/24**, contracts **37/37**, byte-exact tree restoration); re-derived
+> `event_contracts_data.json` from the specification; and wrote its **own import-closure probe** —
+> reporting that its first version was defective and could not have failed, before correcting it and
+> proving it with a positive control that fires.
+>
+> ### **`canonical_finalizer` (weight 3) was `PENDING` at adjudication by construction** — a
+> finalizer cannot have run on the candidate being adjudicated — and is `PASS` on the one finalizer
+> run that had already executed on `91ba4e6` (metadata commit `4150149`, single parent, exactly the
+> five authorized status files). This is the identical pattern by which P4's became `PASS`.
+>
+> ### **WHAT P5's COMPLETION IS NOT.** It is **not** permission to begin P6 yet — this closure commit
+> owes its own targeted review, targeted adjudication and one finalizer first. It is **not** a
+> production enablement: **P5 ships dark with zero production callers**, R-07 stays **CONTAINED**,
+> the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and the deployed governed
+> route still answers `ROUTE_NOT_CONFIGURED`.
+
+**What P5 bought, concretely:** Neyma can now hold durable operational state that survives crashes
+and can be rebuilt from history without ever re-executing an effect. A state change and the events
+it emits commit atomically or not at all — a crash between them leaves **neither**. Consumption is
+idempotent, so a redelivery is a no-op rather than a second effect, and a raising handler records
+nothing at all. Out-of-order events **park** and drain in version order; an event referencing
+something that does not exist yet parks **with its accountable human** and is drained or expired,
+never dropped. State rebuilt from history is a pure function of the event **set** — stable across 40
+shuffles — and an audit can explain a past decision using **the beliefs of that day**, naming the
+fields it cannot reconstruct instead of inventing them. Timers survive a full restart and fire
+exactly once. All of it runs on **production PostgreSQL** with the durable invariants enforced by
+database trigger, and **replay cannot call an adapter because the capability is not reachable** —
+`event_replay`'s entire transitive import closure is five inert modules.
+
+---
 
 **P4 — ADAPTER CONTAINMENT** — ### **ADJUDICATED COMPLETE. 14/14 WEIGHTED CRITERIA PASS.**
 Accepted independent re-review:
@@ -519,24 +585,34 @@ transport truncation disclosed, in
 
 ## ✅ The exact next approved work program
 
-### **P5 — CANONICAL EVENTS, OUTBOX/INBOX, REPLAY ISOLATION, AND PRODUCTION PERSISTENCE. IT IS THE SOLE `READY` UNIT. IT IS `IN_PROGRESS`, AND IT IS NOT COMPLETE.**
+### **P6 — FOUNDATIONAL ENTITIES AND STATE MACHINES. IT IS THE SOLE `READY` UNIT.**
 
-### **The next approved unit is `P5`.** The adapter-containment phase is COMPLETE — all 14 weighted
-criteria PASS on independent evidence — so P5's sole dependency is satisfied and P5 is the selected
-unit. **`READY` is the SELECTION state and nothing more.** P5's `execution_state` is `IN_PROGRESS`
-and its `checkpoint_state` is `CHECKPOINT_ACCEPTED_FOR_CONTINUATION`: U5.7+U5.8 landed the
-transactional outbox and the dedup inbox — durable, atomic event emission and idempotent
-consumption — as the single landed checkpoint `P5-CP-1`. A **continuation** checkpoint is permission
-to carry on, not phase acceptance: **no acceptance criterion is scored and all 14 stay `PENDING`.**
-The three fields are defined in `meta.status_model` of
+### **`P6` is `READY`, which means SELECTED — it has NOT STARTED and it is NOT COMPLETE.**
+
+### **The next approved unit is `P6`.** P5 is COMPLETE — all 14 weighted criteria PASS at 100/100 on
+independent evidence — so P6's sole dependency is satisfied, its `validation_blockers` are empty, and
+P6 is the selected unit. **`READY` is the SELECTION state and nothing more:** P6's
+`execution_state` is `NOT_STARTED`, its `checkpoint_state` is `NO_CHECKPOINT`, no P6 code exists and
+no P6 criterion is scored. The three fields are defined in `meta.status_model` of
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
 
-Unit `P5` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
-READY unit.** Still to build: the 105 event contracts (U5.3), the GC-1 corpus (U5.4), the replay
-sandbox proving replay structurally inert (U5.5), audit reconstruction (U5.6), and production-grade
-persistence (PostgreSQL, schema migrations, durable timers and scheduler per ADR-016). **The landed
-transport is SQLite only** — no PostgreSQL work exists, and SQLite stays for local development and
-deterministic tests.
+Unit `P6` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
+READY unit.** To build: the **Work Item** with a structurally accountable human owner, the
+**Pipeline Instance** as a durable reservation, the **13 machines** and the **134 transitions**.
+Acceptance: `foundational-machine-acceptance.md`, gate **G1**, **AC-SAFE-028**. Ships dark;
+`readiness_target: LOCALLY_IMPLEMENTED`. ### **The capability, in one line: every unit of work has
+an accountable owner — structurally, not by documentation.** That turns CLAUDE.md rule 13 from a
+written rule into a mechanism, and its Sev-0 hostile case is a Work Item with no owner.
+### **`AC-EVT-003` DISCHARGES HERE** — P5 recorded as `IR-R8` that *"every producer transition emits
+its required event in the transition's own commit"* cannot be proven at P5, because the 134
+transitions are P6's. They are now built on a transport that has been certified.
+
+> ### **BUT P6 MAY NOT BEGIN YET.** The commit recording P5 COMPLETE is a **closure content commit**
+> and is **NOT FINALIZED**. Repository protocol — executed twice, at the P4 acceptance closure and at
+> the R-07 closure — requires a closure commit to receive a **fresh targeted independent review**,
+> then a **separate targeted adjudication**, then **exactly one finalizer**, in that order. P6 opens
+> when that finalizer has run and the machine-readable authority records P5 COMPLETE. **No finalizer
+> receipt exists for this commit and none may be fabricated.**
 
 > ### **P5's OWN BLOCKER: G2's SEVEN EVENT OBLIGATIONS ARE DISCHARGED.** The G2 contract is settled
 > and mechanised, `EF-3` is re-attributed to the existing `EffectExecuted`, all 134 transitions are
@@ -545,10 +621,15 @@ deterministic tests.
 > founder/architect authority** on 2026-08-12, taking the registry 98 → **105**. Each departure from
 > `EVENT_REQUIRED` is re-proven mechanically from `events/registry.md` §3 on every run; the seven
 > obligations are **retained** in the audit, marked discharged with their authority, never deleted.
-> ### **WHAT THIS DOES NOT MEAN.** The discharge built nothing. What exists is the U5.7+U5.8
-> transport — the outbox and the inbox — and no event-contract implementation, no replay sandbox, no
-> audit reconstruction and no PostgreSQL work. P5 is `READY / IN_PROGRESS /
-> CHECKPOINT_ACCEPTED_FOR_CONTINUATION` with all 14 criteria `PENDING`. The G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9`
+> ### **WHAT THIS DID NOT MEAN — `ADJ-P5-02`, corrected by the final adjudication.** This paragraph
+> used to continue: *"The discharge built nothing. What exists is the U5.7+U5.8 transport — the
+> outbox and the inbox — and no event-contract implementation, no replay sandbox, no audit
+> reconstruction and no PostgreSQL work. P5 is `READY / IN_PROGRESS /
+> CHECKPOINT_ACCEPTED_FOR_CONTINUATION` with all 14 criteria `PENDING`."* It is kept in its own
+> words because a finding must survive its own repair. **It was true when written and is false now:**
+> the discharge itself still built nothing, but everything it said was missing has since been built,
+> independently reviewed and separately adjudicated. P5 is
+> `COMPLETE / COMPLETE / PHASE_ACCEPTANCE_COMPLETE` at 14/14. The G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9`
 > and `G2-D10` remain OPEN and are recorded, not closed, in
 > [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml) — as do `G2-D15` (AP-9's **unfreeze**
 > direction is unmodelled; the sentence asserting it is deleted, not restated) and `G2-D16` (the
@@ -556,13 +637,15 @@ deterministic tests.
 > opened and recorded by this sub-unit's replacement candidate rather than improvised shut.
 
 > ### **AND THE CONTROL BOUNDARY STOPS HERE.** Recording this transition authorizes the *status
-> change*, not the start of P5 work. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a
-> session must never roll into the next unit merely because the current one finished. The
-> acceptance-closure candidate has since received its fresh targeted independent review, its
-> separate targeted adjudication and exactly one second finalizer, and the **separate R-07 content
-> commit** has been made. ### **The next legal acts on this branch are, in order: a fresh targeted
-> independent review of the R-07 closure content commit, a separate targeted adjudication of it,
-> exactly one third finalizer, P4/R-07 campaign closure verification — and only then may P5 begin.**
+> change*, not the start of P6 work. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a
+> session must never roll into the next unit merely because the current one finished.
+> ### **The next legal acts on this branch are, in order: (1) a fresh targeted independent review of
+> THIS P5 closure content commit, by a session that did not write or adjudicate it; (2) a separate
+> targeted adjudication of it, by a further session; (3) exactly ONE finalizer run
+> (`.venv/bin/python scripts/finalize_status.py`) under an exclusively-held `finalizer_lock`,
+> producing exactly one status-metadata commit; and only then (4) may P6 begin.** That is the
+> sequence the P4 acceptance closure (`42ea24c → c30a43b → d3cf1de → 06ebfdb`) and the R-07 closure
+> (`a31a94a → c26aeae → 035cb55 → 6e8127d`) each executed, in that order and in that commit time.
 > Integration to `main` is fast-forward-only under R-21 and is a separate founder-authorized act.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
@@ -589,8 +672,9 @@ corrected N-1.
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 6** (foundational entities and state machines) | Requires `P5` COMPLETE. ### **P5 itself is READY and `IN_PROGRESS`** — it is deliberately no longer in this table, but it is one continuation checkpoint in, with every acceptance criterion still `PENDING` |
-| **Writing the event contracts, the GC-1 corpus, the replay sandbox or audit reconstruction** | ### **BUILT — do not rebuild them.** U5.3–U5.6 landed, as did durable timers and the PostgreSQL runtime. They are **unreviewed**, so they may be reviewed, attacked or corrected, but they are not authorized to be declared done by any session that wrote or remediated them |
+| ### **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires `P6` COMPLETE. **P6 has not started** — it is `READY`, which is a selection and nothing more. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands here, not earlier: provenance was P5's `prohibited_scope` and is P6's too |
+| ### **Implementation Phase 6 — NOT YET, THOUGH ITS DEPENDENCY IS NOW SATISFIED** | Its dependency is discharged and **`P6` now holds the selector**, so it is no longer dependency-blocked. ### **It is still gated on ONE thing: this P5 closure content commit is NOT FINALIZED.** It owes a fresh targeted independent review, a separate targeted adjudication and exactly one finalizer, in that order. P6 begins the moment that finalizer has run — not before, and no further P5 engineering stands in the way |
+| **Rebuilding any P5 surface** — event contracts, GC-1 corpus, replay sandbox, audit reconstruction, outbox/inbox, durable timers, PostgreSQL | ### **BUILT, REVIEWED, ADJUDICATED — do not rebuild, and do not re-open.** All 14 P5 criteria are `PASS`. Reopening a closed phase to polish it is forbidden by CLAUDE.md §13.8. The recorded nonblocking residuals (`IR-R5`–`IR-R12`, `ADJ-P5-01`–`ADJ-P5-03`) are **debt rows, and the debt row is the complete deliverable** (§13.3) |
 | Treating R-07 CONTAINED as production enablement | ### **Containment is not enablement.** External-effect paths are structurally forced through the governed boundary or fail closed. No production write is enabled, the deployed route answers `ROUTE_NOT_CONFIGURED`, the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** Live supervised writes are P12, behind the undischarged **RR-01** |
 | Running a finalizer on the R-07 closure content commit | It must first receive a **fresh targeted independent review** and a **separate targeted adjudication**. No finalizer receipt exists for it and none may be fabricated |
 | Freight workflow implementation | Requires P6–P9 foundations |
@@ -602,9 +686,9 @@ corrected N-1.
 
 ## Blocked future units
 
-**Every implementation phase from `P6` onward is BLOCKED behind `P5`.** See the registry for the
-full dependency graph; the transitive safety wall (P3 an ancestor of every P≥4, P4 of every P≥5) is
-guarded.
+**`P6` is now `READY`; every implementation phase from `P7` onward is BLOCKED behind `P6`.** See the
+registry for the full dependency graph; the transitive safety wall (P3 an ancestor of every P≥4, P4
+of every P≥5, P5 of every P≥6) is guarded.
 
 <details>
 <summary><b>⛔ HISTORICAL — SUPERSEDED PROGRAMS (NOT current instruction)</b></summary>
@@ -639,15 +723,26 @@ Retained only so the transitions are auditable.
 
 ## Documents required before proceeding
 
-A session picking up `P5` must have read, in order:
+A session picking up `P6` must have read, in order:
 [`CLAUDE.md`](../../CLAUDE.md) → [`PRODUCT.md`](../../PRODUCT.md) →
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) → [`CANONICAL-DOCUMENTS.md`](../CANONICAL-DOCUMENTS.md) →
 this file → [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
-[`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) → the **P5** unit block (scope, prohibited scope,
-acceptance contract, and its undischarged **G2** validation blocker) in
-[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
-[`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml) →
-[`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md).
+[`TOOL-ACCESS-POLICY.md`](TOOL-ACCESS-POLICY.md) → the **P6** unit block (scope, prohibited scope,
+acceptance contract) in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) →
+[`foundational-machine-acceptance.md`](../specifications/acceptance/foundational-machine-acceptance.md) →
+`docs/specifications/entities/` and `docs/specifications/state-machines/` →
+[`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md) → [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md).
+### **It must ALSO confirm that this P5 closure commit has been finalized before writing any P6
+code** — the two-commit convention makes that a `git log` check, not a judgement call.
+
+**A session performing the fresh targeted independent review or the targeted adjudication of the
+P5 closure content commit** must additionally read, in order:
+[`p5-independent-review-report-1216254.md`](p5-independent-review-report-1216254.md) →
+[`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) →
+the P5 unit block's `acceptance_criteria` and sub-unit records in
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
+### **Neither of those two reports reviewed the closure commit itself** — the independent review is
+bound to `1216254` and the adjudication to `91ba4e6`, and both say so in their own headers.
 
 **A session performing the fresh targeted independent review or the targeted adjudication of the
 P4 closure content commit** must additionally read, in order:
