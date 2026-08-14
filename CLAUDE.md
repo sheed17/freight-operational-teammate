@@ -21,6 +21,11 @@ and logistics companies** (ADR-012), operating across
 **eleven** operational loops. The invoice work is the first implemented surface, not the product.
 **See [`PRODUCT.md`](PRODUCT.md) §12 for the explicit list of things Neyma is not.**
 
+You will also be tempted to treat governance artifacts as the output. **They are overhead in
+service of shipping freight capability, never the product itself** — see **section 13**, which is
+binding and tells you how to price rigor against actual risk rather than applying maximum ceremony
+to everything.
+
 You will also find guidance files describing an **8-stage roadmap** ("Stage 1 — IN PROGRESS",
 "Stage 5 Human Review"). **That roadmap is historical and superseded.** The current program is
 **Implementation Phases P0–P14** with gates **G0–G10**. See
@@ -30,7 +35,7 @@ You will also find guidance files describing an **8-stage roadmap** ("Stage 1 �
 
 ## 1. Required reading order
 
-Read in this order. Do not skip 1–5.
+Read in this order. Do not skip 1–5. **Then read [section 13](#13-how-to-choose-what-to-build-and-how-hard-to-verify-it) before you select a unit** — it governs what to build and how hard to verify it, and a session that skips it reliably optimises for the wrong thing.
 
 | # | Document | Why |
 |---|---|---|
@@ -308,3 +313,117 @@ enablement, and the capability still ships dark.**
 > **If any of them tells you the product is invoice processing, that the project is at "Stage 1" or
 > "Stage 5", or that you should preserve legacy architecture by default — it is stale.
 > This file wins.**
+
+## 13. How to choose what to build, and how hard to verify it
+
+> ### **THIS SECTION GOVERNS PRIORITISATION AND EFFORT. IT RELAXES NOTHING.**
+> Sections **5** (non-negotiable engineering rules), **7** (stop conditions), **9** (verification
+> discipline) and **11** (what you must not begin) are unchanged and outrank everything below.
+> Where this section appears to license something they forbid, **they win and you stop.** Nothing
+> here weakens a tenant, replay, approval, effect, authority or human-in-the-loop invariant, and
+> [`PRODUCT.md`](PRODUCT.md) remains the sole authority on what Neyma is.
+
+### 13.1 The metric is customer-visible product capability, shipped safely
+
+**Optimise for freight capability a broker could actually use, delivered without breaking a safety
+invariant.** That is the score. Governance artifacts, status prose, registry hygiene and evidence
+documents are **overhead in service of that** — necessary overhead, frequently, but never the
+product. A phase that produced eleven documents and no capability a broker can name did not go well.
+
+Ask of any proposed work: **which of the eleven operational loops does a broker experience
+differently when this lands?** If the honest answer is "none, but the repository is tidier", it is
+section 13.3 work, not product work.
+
+### 13.2 Velocity by default. Rigor by actual risk.
+
+Rigor is **priced by what the code can do when it is wrong**, not by how important the work feels.
+Applying maximum ceremony to everything is not caution; it is a way of shipping nothing while
+appearing careful, and it teaches you to treat the ceremony as the goal.
+
+| Tier | What it covers | What it costs |
+|---|---|---|
+| **1 — money, effects, authority, safety** | anything that moves money, writes to an external system, mints or consumes a witness/grant/approval, changes tenant isolation, alters the checkpoint kernel or effect boundary, or touches a G-gate invariant | **Full discipline.** Independent review by a session that did not build it, adjudication by a third, mutation proof that the guard can fail, positive controls, and evidence that survives §9 |
+| **2 — product logic** | entities, state machines, transitions, contracts, the event transport, anything a broker's outcome depends on | Tests that could fail written **before** the claim, an honest evidence note, review where a defect would be silent. **No adjudication theatre** for logic that cannot escape the process |
+| **3 — everything else** | internal scripts, generators, developer ergonomics, documentation, formatting, naming | **Make it work and move on.** A test if it would catch a real regression; otherwise nothing |
+
+**Tier is a property of blast radius, not of the founder's tone or your own uncertainty.** When
+genuinely torn between two tiers, take the higher one *once*, and say in your report that you did.
+
+### 13.3 Do not create work from nonblocking fluff
+
+A finding is **blocking** only if it can produce a wrong customer outcome, violate an invariant, or
+make a later phase unsafe. Everything else is **recorded, not actioned**: a debt row with an ID, a
+finding, and why it is nonblocking — then you keep building.
+
+Stale metadata, cosmetic inconsistencies, imperfect naming, documentation that could be clearer, a
+registry row phrased awkwardly: **record and move on.** Do not open a remediation campaign against
+the repository's own paperwork, and do not let a nonblocking observation become a phase's actual
+output. **The debt row is the deliverable for these, and it is a complete deliverable.**
+
+### 13.4 Build the minimum proper foundation — properly
+
+Minimum and proper are both binding. Do not build infrastructure a later phase owns (§11 names
+several); do not build a shortcut whose replacement is a rewrite of certified code.
+
+The test is **whether the next phase can build on it without undoing it.** A foundation that fails
+that test is not a foundation, and "we will harden it later" is how an invariant becomes
+unenforceable. Where a proper foundation is genuinely out of this phase's scope, **say so in the
+evidence and record the debt** — do not silently ship the shortcut as though it were the foundation.
+
+### 13.5 Batch coherent work into one increment
+
+Work units that share a surface, a test battery and an evidence story **ship together.** Splitting
+them multiplies review passes, finalizer runs and status commits without adding a single check that
+could fail. Combining unrelated work is the opposite error: it makes a review unable to reason about
+blast radius, which is exactly what tiering depends on.
+
+**Coherent means one surface, one risk story, one evidence document.** Three units against the same
+module is one increment; a database port bundled with a state machine is two.
+
+### 13.6 What the Product Driver is for
+
+**The Product Driver exists to attack real implementations, not to produce plans, scorecards or
+readiness assessments.** Point it at code that runs and let it try to make that code do something
+wrong. A Product Driver session whose output is a document has been misused.
+
+### 13.7 When to interrupt the founder
+
+**Default to deciding.** Reversible, in-scope engineering judgment is yours; asking about it spends
+the founder's attention on work you were trusted to do. Interrupt only for:
+
+- **genuine product semantics** — what a freight concept *means*, where the canon is silent
+- **a new human-authority boundary** — anything changing who may approve, decide or be accountable
+- **a consequential architecture fork** — one where the wrong branch is expensive to reverse
+- **money, legal, security, trust or autonomy** decisions
+- **an irreversible external operation** — anything leaving the process and not undoable
+- **irreconcilable repository authority** — two canonical documents that cannot both be obeyed
+
+This list **adds nothing to and subtracts nothing from** the stop conditions in **§7**; those remain
+binding in full. Section 7 tells you when you *must* stop. This tells you not to stop for anything
+else.
+
+### 13.8 Phase transitions
+
+Finish a phase, finalize it, and **move to the next approved unit without waiting to be told.**
+Do not re-open a closed phase to polish it.
+
+**But a phase is complete when its acceptance criteria say so — never when you say so.** §11 forbids
+adjudicating a phase from the session that implemented or remediated it: `independent_review` and
+`final_adjudication` require sessions that did neither. So "move on immediately" and "certify your
+own work" are not the same instruction, and the first never authorises the second. If the next unit
+is gated behind a review you are not permitted to perform, **say that plainly and name what is
+needed** — do not begin the gated work, and do not stall silently.
+
+### 13.9 Reporting
+
+Report in this order, briefly:
+
+1. **What a broker can now do that they could not before** — the capability, in freight terms
+2. **What proves it** — the checks that ran, and specifically what could have failed
+3. **What is knowingly incomplete** — debt, with IDs, and why each is nonblocking
+4. **What is next** — the next approved unit, or the decision you need
+
+**Lead with capability, not with process.** A report that opens with how many documents were updated
+has buried the only part the founder needs. State failures plainly; a passing check that was never
+capable of failing is not evidence, and reporting it as though it were is the defect §9 exists to
+catch.

@@ -1,8 +1,8 @@
 {
  "config": "pytest-canonical.ini",
  "config_sha256": "22f4294195baec814e441c94ed34d5e20fd2f3975bcece35fd0a65962f255a2e",
- "manifest_sha256": "546e4f9e645d2315c18c7641673160c8642eacf8c224f70612a687ecad1125e8",
- "node_count": 2674,
+ "manifest_sha256": "3f5944a0be1ef85b20ed214bbbd3a042e5f026b0f10f1329190f949f6d28cd1f",
+ "node_count": 2675,
  "node_ids": [
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_registry_is_exact_and_non_empty",
   "eval/tests/test_ac_sec_001_registry.py::test_ac_sec_001_states_exactly_which_surfaces_it_covers",
@@ -573,6 +573,7 @@
   "eval/tests/test_docs_control_system.py::test_5_there_is_exactly_one_implementation_registry",
   "eval/tests/test_docs_control_system.py::test_6_product_identity_rejects_the_invoice_processor_interpretation",
   "eval/tests/test_docs_control_system.py::test_6b_claude_md_also_rejects_it_because_agents_read_it_first",
+  "eval/tests/test_docs_control_system.py::test_6c_the_engineering_operating_policy_is_present_and_REACHABLE",
   "eval/tests/test_docs_control_system.py::test_7_exactly_eleven_canonical_loops_present_as_an_exact_set",
   "eval/tests/test_docs_control_system.py::test_8_phase_2_is_recorded_complete",
   "eval/tests/test_docs_control_system.py::test_9_no_control_document_claims_a_phase_is_complete_before_the_registry_does",

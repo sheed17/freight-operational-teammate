@@ -140,6 +140,55 @@ def test_6b_claude_md_also_rejects_it_because_agents_read_it_first():
         "CLAUDE.md section 2 defines the product as invoice work"
 
 
+def test_6c_the_engineering_operating_policy_is_present_and_REACHABLE():
+    """### A POLICY A FRESH SESSION NEVER REACHES IS NOT INHERITED.
+
+    Section 13 tells an agent what to optimise for and how to price rigor against actual risk. It
+    only works if a session with NO founder conversational context arrives at it on its own, so
+    this asserts BOTH halves: that the section carries its load-bearing commitments, and that the
+    ordered reading instruction in section 1 - the only part of this file a session is told to read
+    in sequence - actually points at it. Deleting the pointer would leave the policy present,
+    correct, and never read."""
+    text = read(CLAUDE)
+    section = re.search(r"## 13\. How to choose what to build(.+?)\Z", text, re.S)
+    assert section, "CLAUDE.md has lost its engineering operating policy (section 13)"
+    body = section.group(1)
+
+    # (a) It is REACHED. Checked outside section 13, because a self-reference proves nothing.
+    reading_order = re.search(r"## 1\. Required reading order(.+?)\n## 2\.", text, re.S)
+    assert reading_order, "CLAUDE.md has no required reading order"
+    assert re.search(r"section 13", reading_order.group(1), re.I), (
+        "section 1 no longer routes a fresh session to the operating policy: the policy would be "
+        "present and unread, which is indistinguishable from absent"
+    )
+
+    # (b) It SUBORDINATES itself. A prioritisation policy that could be read as relaxing an
+    # invariant is worse than no policy, so the deference must be explicit and in-section.
+    for governing in ("5", "7", "9", "11"):
+        assert re.search(rf"\*\*{governing}\*\*|section {governing}\b|\bsec {governing}\b",
+                         body), \
+            f"section 13 no longer defers to section {governing}"
+
+    # (c) Its load-bearing commitments survive. Naming each one individually, because a policy can
+    # be gutted to a heading while the heading still passes a presence check.
+    for label, pattern in (
+        ("the product-first metric", r"customer-visible\s+product\s+capability"),
+        ("the tier model", r"Tier|tier"),
+        ("blast radius, not felt importance", r"blast\s+radius"),
+        ("record-don't-action for nonblocking findings", r"[Rr]ecorded,\s+not\s+actioned"),
+        ("the Product Driver attacks implementations", r"attack\s+real\s+implementations"),
+        ("default to deciding", r"[Dd]efault\s+to\s+deciding"),
+        ("no self-adjudication", r"certify\s+your\s+own\s+work"),
+        ("capability-first reporting", r"[Ll]ead\s+with\s+capability"),
+    ):
+        assert re.search(pattern, body), f"section 13 has lost {label}"
+
+    # (d) And it never becomes a license. The one reading that would make it dangerous.
+    assert not re.search(r"(skip|waive|bypass|relax) (the )?(independent )?"
+                         r"(review|adjudication|stop conditions)", body, re.I), \
+        "section 13 has acquired language waiving a control that sections 7 and 11 require"
+
+
 LOOPS = {
     "W1": "Quote", "W2": "Procurement", "W3": "Compliance", "W4": "Dispatch",
     "W5": "Tracking", "W6": "Documentation", "W7": "Exceptions", "W8": "Billing",
