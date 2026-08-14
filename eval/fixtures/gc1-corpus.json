@@ -1,0 +1,698 @@
+{
+  "_corpus": "GC-1",
+  "_authority": "docs/specifications/acceptance/event-and-replay-acceptance.md",
+  "_immutable": "GC-1 is an immutable fixture and is NEVER reset between replay tests. Editing it changes the pinned digests, which is a FAILING build until a human explains why.",
+  "_spans": {
+    "tenants": 2,
+    "correction_and_propagation": true,
+    "unknown_outcome": true,
+    "compensation": true,
+    "brake_episode": true,
+    "parked_dangling_reference": true,
+    "duplicate_delivery": true,
+    "schema_version_change": false
+  },
+  "_schema_version_change": "NOT SPANNED BY GC-1, AND PROVEN ELSEWHERE. Every one of the 118 canonical contracts is at v1: a schema version change requires a breaking change to a canonical contract plus a registered upcaster (events/registry.md sec 6), which is a specification amendment under founder/architect authority - the same authority that minted 98 -> 105. Minting one to satisfy a fixture would put a version in the golden corpus that the specification does not declare. ### AC-EVT-009 (v1+v2+v3 in one corpus, one digest, run twice identical) IS SATISFIED, through the real replay path, by the TEST-ONLY versioned fixture in eval/tests/test_p5_replay_and_audit.py section 8 - neither the oracle nor the span requires the versioned contract to be one of the 105, and GC-1 is kept purely canonical because that is what makes IT trustworthy. GC-1 gains the span inline the day a real v2 exists.",
+  "events": [
+    {
+      "event_id": "a1f4638b-9cb4-48c0-9b5b-bd35eb8c1ed8",
+      "event_name": "WorkItemCreated",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:01:00.000Z",
+      "recorded_at": "2026-05-01T09:01:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "work_item",
+      "aggregate_id": "wi-4401",
+      "aggregate_version": 1,
+      "causation_id": null,
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f1",
+      "producer_transition_id": "WI-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-wi-created",
+      "idempotency_identity": "tn_v1|brokerage-northwind|work_item|wi-4401|1|WI-1|WorkItemCreated",
+      "payload": {
+        "owner_id": "dispatcher-amy",
+        "type": "carrier_invoice_review"
+      },
+      "work_item_id": "wi-4401",
+      "accountable_owner_id": "dispatcher-amy"
+    },
+    {
+      "event_id": "71a20d1c-3de5-44d6-8f79-24ecb556518d",
+      "event_name": "PipelineStarted",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:02:00.000Z",
+      "recorded_at": "2026-05-01T09:02:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "pipeline_instance",
+      "aggregate_id": "pi-9001",
+      "aggregate_version": 1,
+      "causation_id": "a1f4638b-9cb4-48c0-9b5b-bd35eb8c1ed8",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f2",
+      "producer_transition_id": "PL-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-pipeline",
+      "idempotency_identity": "tn_v1|brokerage-northwind|pipeline_instance|pi-9001|1|PL-1|PipelineStarted",
+      "payload": {
+        "commit_key": "ck-gc1-0001"
+      },
+      "work_item_id": "wi-4401"
+    },
+    {
+      "event_id": "dc1d8c0f-473f-4043-8eac-d6b450fc07a5",
+      "event_name": "PolicyEvaluated",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:03:00.000Z",
+      "recorded_at": "2026-05-01T09:03:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "pipeline_instance",
+      "aggregate_id": "pi-9001",
+      "aggregate_version": 2,
+      "causation_id": "71a20d1c-3de5-44d6-8f79-24ecb556518d",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f2",
+      "producer_transition_id": "PL-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-policy-eval",
+      "idempotency_identity": "tn_v1|brokerage-northwind|pipeline_instance|pi-9001|2|PL-2|PolicyEvaluated",
+      "payload": {
+        "policy_version": "policy-2026-04",
+        "gate_decision": "HUMAN_APPROVAL_REQUIRED",
+        "decision": "gate",
+        "rules_matched": [
+          "rule-amount-cap"
+        ],
+        "reason": "amount above autonomous cap"
+      },
+      "work_item_id": "wi-4401"
+    },
+    {
+      "event_id": "a6439a12-33c1-44d1-a6e9-39f04aeffd63",
+      "event_name": "ApprovalRequested",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:04:00.000Z",
+      "recorded_at": "2026-05-01T09:04:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "approval",
+      "aggregate_id": "ap-3301",
+      "aggregate_version": 1,
+      "causation_id": "71a20d1c-3de5-44d6-8f79-24ecb556518d",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f4",
+      "producer_transition_id": "AP-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-appr-req",
+      "idempotency_identity": "tn_v1|brokerage-northwind|approval|ap-3301|1|AP-1|ApprovalRequested",
+      "payload": {
+        "fingerprint": "fp_v1:aa11",
+        "gate_decision": "HUMAN_APPROVAL_REQUIRED",
+        "rendered_facts": {
+          "amount_minor": 128450,
+          "currency": "USD"
+        },
+        "expires_at": "2026-05-02T09:00:00.000Z"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "approval:ap-3301": 1
+      }
+    },
+    {
+      "event_id": "f4c3032f-adef-4f8b-8734-ddc8eceaa581",
+      "event_name": "ApprovalGranted",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:05:00.000Z",
+      "recorded_at": "2026-05-01T09:05:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "approval",
+      "aggregate_id": "ap-3301",
+      "aggregate_version": 2,
+      "causation_id": "a6439a12-33c1-44d1-a6e9-39f04aeffd63",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f4",
+      "producer_transition_id": "AP-2",
+      "actor_type": "human",
+      "actor_id": "controller-dana",
+      "trace_id": "trace-a-appr-granted",
+      "idempotency_identity": "tn_v1|brokerage-northwind|approval|ap-3301|2|AP-2|ApprovalGranted",
+      "payload": {
+        "granted_by": "controller-dana"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "approval:ap-3301": 1
+      }
+    },
+    {
+      "event_id": "1f31fa5c-c407-4f01-a733-e0c7a37e664c",
+      "event_name": "CheckpointPassed",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:06:00.000Z",
+      "recorded_at": "2026-05-01T09:06:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "pipeline_instance",
+      "aggregate_id": "pi-9001",
+      "aggregate_version": 3,
+      "causation_id": "f4c3032f-adef-4f8b-8734-ddc8eceaa581",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f2",
+      "producer_transition_id": "PL-8",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-checkpoint",
+      "idempotency_identity": "tn_v1|brokerage-northwind|pipeline_instance|pi-9001|3|PL-8|CheckpointPassed",
+      "payload": {
+        "checkpoint_id": "cp-7701",
+        "material_facts_fingerprint": "fp_v1:aa11",
+        "entity_versions": {
+          "work_item:wi-4401": 1,
+          "load:ld-560003": 4
+        },
+        "policy_version": "policy-2026-04",
+        "brake_version": "brake-7",
+        "approval_id": "ap-3301",
+        "projected_observations_used": [
+          "obs-2201"
+        ],
+        "native_claims_used": [
+          "ib-1101"
+        ]
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "evidence_refs": [
+        "sha256:c0ffee11deadbeef22c0ffee33deadbeef44c0ffee55deadbe"
+      ],
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "pipeline_instance:pi-9001": 1
+      }
+    },
+    {
+      "event_id": "085c5db6-f216-48fb-8820-1890476c09dc",
+      "event_name": "EffectGranted",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:07:00.000Z",
+      "recorded_at": "2026-05-01T09:07:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "effect_grant",
+      "aggregate_id": "eg-5501",
+      "aggregate_version": 1,
+      "causation_id": "1f31fa5c-c407-4f01-a733-e0c7a37e664c",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f3",
+      "producer_transition_id": "EF-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-grant",
+      "idempotency_identity": "tn_v1|brokerage-northwind|effect_grant|eg-5501|1|EF-1|EffectGranted",
+      "payload": {
+        "grant_id": "eg-5501",
+        "checkpoint_id": "cp-7701",
+        "commit_key": "ck-gc1-0001",
+        "material_facts_fingerprint": "fp_v1:aa11",
+        "entity_versions": {
+          "work_item:wi-4401": 1
+        },
+        "policy_version": "policy-2026-04",
+        "brake_version": "brake-7",
+        "approval_id": "ap-3301",
+        "expires_at": "2026-05-01T10:00:00.000Z"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "effect_grant:eg-5501": 1
+      }
+    },
+    {
+      "event_id": "f7cc455d-4247-43b5-baf3-d27f07df8320",
+      "event_name": "GrantClaimed",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:08:00.000Z",
+      "recorded_at": "2026-05-01T09:08:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "effect_grant",
+      "aggregate_id": "eg-5501",
+      "aggregate_version": 2,
+      "causation_id": "085c5db6-f216-48fb-8820-1890476c09dc",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f3",
+      "producer_transition_id": "EF-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-claimed",
+      "idempotency_identity": "tn_v1|brokerage-northwind|effect_grant|eg-5501|2|EF-2|GrantClaimed",
+      "payload": {
+        "grant_id": "eg-5501"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "effect_grant:eg-5501": 1
+      }
+    },
+    {
+      "event_id": "94f5889f-cd63-4cf2-94ed-7558eddfdb7c",
+      "event_name": "EffectAttempted",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:09:00.000Z",
+      "recorded_at": "2026-05-01T09:09:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "effect_grant",
+      "aggregate_id": "eg-5501",
+      "aggregate_version": 2,
+      "causation_id": "f7cc455d-4247-43b5-baf3-d27f07df8320",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f3",
+      "producer_transition_id": "EF-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-attempted",
+      "idempotency_identity": "tn_v1|brokerage-northwind|effect_grant|eg-5501|2|EF-2|EffectAttempted",
+      "payload": {
+        "grant_id": "eg-5501"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "effect_grant:eg-5501": 1
+      }
+    },
+    {
+      "event_id": "1a7c2ea4-3105-4e21-8c9a-afcb4500297c",
+      "event_name": "OutcomeUnknown",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:10:00.000Z",
+      "recorded_at": "2026-05-01T09:10:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "effect_grant",
+      "aggregate_id": "eg-5501",
+      "aggregate_version": 3,
+      "causation_id": "94f5889f-cd63-4cf2-94ed-7558eddfdb7c",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f3",
+      "producer_transition_id": "EF-3u",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-unknown",
+      "idempotency_identity": "tn_v1|brokerage-northwind|effect_grant|eg-5501|3|EF-3u|OutcomeUnknown",
+      "payload": {
+        "exposure": {
+          "amount_minor": 128450,
+          "currency": "USD"
+        },
+        "unknown_reason": "UNKNOWN_OUTCOME"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "effect_grant:eg-5501": 1
+      }
+    },
+    {
+      "event_id": "846c05ec-a5de-4cb5-adff-3433130c99a8",
+      "event_name": "ApprovalFrozen",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:11:00.000Z",
+      "recorded_at": "2026-05-01T09:11:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "approval",
+      "aggregate_id": "ap-3301",
+      "aggregate_version": 3,
+      "causation_id": "1a7c2ea4-3105-4e21-8c9a-afcb4500297c",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f4",
+      "producer_transition_id": "AP-9",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-frozen",
+      "idempotency_identity": "tn_v1|brokerage-northwind|approval|ap-3301|3|AP-9|ApprovalFrozen",
+      "payload": {
+        "frozen": true,
+        "unknown_outcome_ref": "1a7c2ea4-3105-4e21-8c9a-afcb4500297c",
+        "effect_grant_id": "eg-5501",
+        "frozen_at": "2026-05-01T09:12:00.000Z"
+      },
+      "work_item_id": "wi-4401"
+    },
+    {
+      "event_id": "fc3b4c45-174f-4b7d-a768-a68550ec82ae",
+      "event_name": "CompensationRequired",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:12:00.000Z",
+      "recorded_at": "2026-05-01T09:12:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "compensation",
+      "aggregate_id": "cm-6601",
+      "aggregate_version": 1,
+      "causation_id": "1a7c2ea4-3105-4e21-8c9a-afcb4500297c",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f10",
+      "producer_transition_id": "CM-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-comp-req",
+      "idempotency_identity": "tn_v1|brokerage-northwind|compensation|cm-6601|1|CM-1|CompensationRequired",
+      "payload": {
+        "original_effect_id": "eg-5501",
+        "exposure": {
+          "amount_minor": 128450,
+          "currency": "USD"
+        },
+        "reason": "unknown outcome on a payable write",
+        "decision_ref": "dec-9901"
+      },
+      "work_item_id": "wi-4401"
+    },
+    {
+      "event_id": "e8b58791-fa76-42a1-99f8-a5fe4fca6a64",
+      "event_name": "CompensationApproved",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:13:00.000Z",
+      "recorded_at": "2026-05-01T09:13:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "compensation",
+      "aggregate_id": "cm-6601",
+      "aggregate_version": 2,
+      "causation_id": "fc3b4c45-174f-4b7d-a768-a68550ec82ae",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f10",
+      "producer_transition_id": "CM-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-comp-appr",
+      "idempotency_identity": "tn_v1|brokerage-northwind|compensation|cm-6601|2|CM-2|CompensationApproved",
+      "payload": {
+        "approval_id": "ap-3302"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "entity_versions": {
+        "compensation:cm-6601": 1
+      }
+    },
+    {
+      "event_id": "20a51748-6b70-40e0-a465-21e04227577b",
+      "event_name": "BrakeEngaged",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:14:00.000Z",
+      "recorded_at": "2026-05-01T09:14:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "brake",
+      "aggregate_id": "br-01",
+      "aggregate_version": 1,
+      "causation_id": null,
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f13",
+      "producer_transition_id": "BR-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-brake-on",
+      "idempotency_identity": "tn_v1|brokerage-northwind|brake|br-01|1|BR-1|BrakeEngaged",
+      "payload": {
+        "scope": {
+          "tenant": "brokerage-northwind",
+          "action_class": "invoice_write"
+        },
+        "actor": "detector-unknown-outcome",
+        "reason": "unresolved UNKNOWN_OUTCOME on a payable",
+        "brake_version": "brake-8"
+      },
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "entity_versions": {
+        "brake:br-01": 1
+      }
+    },
+    {
+      "event_id": "a60b344d-23ca-40fa-9d2a-19f3e6e9ecef",
+      "event_name": "BrakeReleased",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:15:00.000Z",
+      "recorded_at": "2026-05-01T09:15:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "brake",
+      "aggregate_id": "br-01",
+      "aggregate_version": 2,
+      "causation_id": "20a51748-6b70-40e0-a465-21e04227577b",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f13",
+      "producer_transition_id": "BR-4",
+      "actor_type": "human",
+      "actor_id": "controller-dana",
+      "trace_id": "trace-a-brake-off",
+      "idempotency_identity": "tn_v1|brokerage-northwind|brake|br-01|2|BR-4|BrakeReleased",
+      "payload": {
+        "released_by": "controller-dana",
+        "release_decision_ref": "dec-9902",
+        "brake_version": "brake-9"
+      },
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "entity_versions": {
+        "brake:br-01": 1
+      }
+    },
+    {
+      "event_id": "70d06104-903b-4a9e-9e69-e3f5369ad9bd",
+      "event_name": "ClaimProposed",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:16:00.000Z",
+      "recorded_at": "2026-05-01T09:16:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "identity_binding_claim",
+      "aggregate_id": "ib-2201",
+      "aggregate_version": 1,
+      "causation_id": null,
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f6",
+      "producer_transition_id": "IB-1",
+      "actor_type": "model",
+      "actor_id": "linker-v3",
+      "trace_id": "trace-b-claim-proposed",
+      "idempotency_identity": "tn_v1|brokerage-cascade|identity_binding_claim|ib-2201|1|IB-1|ClaimProposed",
+      "payload": {
+        "provenance_class": "LINKER_INFERRED",
+        "subject_ref": "obs-7701",
+        "entity_ref": "load:ld-880012",
+        "match_method": "reference_exact"
+      },
+      "provenance_refs": {
+        "provenance_class": "LINKER_INFERRED",
+        "lineage": [
+          "obs-7701"
+        ]
+      },
+      "evidence_refs": [
+        "sha256:8f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f"
+      ]
+    },
+    {
+      "event_id": "53cafa2c-2392-42b1-9f82-295ac74ec11e",
+      "event_name": "ClaimConfirmed",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:17:00.000Z",
+      "recorded_at": "2026-05-01T09:17:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "identity_binding_claim",
+      "aggregate_id": "ib-2201",
+      "aggregate_version": 2,
+      "causation_id": "70d06104-903b-4a9e-9e69-e3f5369ad9bd",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f6",
+      "producer_transition_id": "IB-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-b-claim-confirmed",
+      "idempotency_identity": "tn_v1|brokerage-cascade|identity_binding_claim|ib-2201|2|IB-2|ClaimConfirmed",
+      "payload": {
+        "provenance_class": "LINKER_INFERRED",
+        "rule_id": "rule-ref-exact"
+      },
+      "provenance_refs": {
+        "provenance_class": "LINKER_INFERRED",
+        "lineage": [
+          "obs-7701",
+          "70d06104-903b-4a9e-9e69-e3f5369ad9bd"
+        ]
+      },
+      "evidence_refs": [
+        "sha256:8f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f"
+      ]
+    },
+    {
+      "event_id": "b1d57f1a-8232-441b-8382-1f33b5e94d8e",
+      "event_name": "ClaimCorrected",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:18:00.000Z",
+      "recorded_at": "2026-05-01T09:18:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "identity_binding_claim",
+      "aggregate_id": "ib-2201",
+      "aggregate_version": 3,
+      "causation_id": "53cafa2c-2392-42b1-9f82-295ac74ec11e",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f6",
+      "producer_transition_id": "IB-7",
+      "actor_type": "human",
+      "actor_id": "ops-manager-lee",
+      "trace_id": "trace-b-claim-corrected",
+      "idempotency_identity": "tn_v1|brokerage-cascade|identity_binding_claim|ib-2201|3|IB-7|ClaimCorrected",
+      "payload": {
+        "decision_ref": "dec-7702",
+        "prior": "load:ld-880012",
+        "new": "load:ld-880099",
+        "provenance_class": "OWNER_ASSERTED"
+      }
+    },
+    {
+      "event_id": "ffecb295-828f-4ddc-8c6c-08d71e1fa9ad",
+      "event_name": "ExceptionRaised",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:19:00.000Z",
+      "recorded_at": "2026-05-01T09:19:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "exception",
+      "aggregate_id": "ec-3301",
+      "aggregate_version": 1,
+      "causation_id": "b1d57f1a-8232-441b-8382-1f33b5e94d8e",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f9",
+      "producer_transition_id": "EC-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-b-exception",
+      "idempotency_identity": "tn_v1|brokerage-cascade|exception|ec-3301|1|EC-1|ExceptionRaised",
+      "payload": {
+        "severity": "SEV2",
+        "source_ref": "b1d57f1a-8232-441b-8382-1f33b5e94d8e",
+        "specific_question": "re-bind the payable to load ld-880099?"
+      }
+    },
+    {
+      "event_id": "5e545a60-05d9-46d4-b717-a33fa6a3b3de",
+      "event_name": "ObservationBound",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:20:00.000Z",
+      "recorded_at": "2026-05-01T09:20:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "observation",
+      "aggregate_id": "obs-7702",
+      "aggregate_version": 1,
+      "causation_id": null,
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f5",
+      "producer_transition_id": "OB-3",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-b-obs-bound",
+      "idempotency_identity": "tn_v1|brokerage-cascade|observation|obs-7702|1|OB-3|ObservationBound",
+      "payload": {
+        "provenance_class": "RECONCILED",
+        "bound_entity_ref": "work_item:wi-8899",
+        "binding_claim_id": "ib-2202"
+      },
+      "entity_versions": {
+        "work_item:wi-8899": 1
+      }
+    },
+    {
+      "event_id": "164c908a-658b-477c-a1c8-c5eec60e37c6",
+      "event_name": "WorkItemCreated",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:21:00.000Z",
+      "recorded_at": "2026-05-01T09:21:00.000Z",
+      "tenant_id": "brokerage-cascade",
+      "aggregate_type": "work_item",
+      "aggregate_id": "wi-8899",
+      "aggregate_version": 1,
+      "causation_id": null,
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f1",
+      "producer_transition_id": "WI-1",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-b-late-wi",
+      "idempotency_identity": "tn_v1|brokerage-cascade|work_item|wi-8899|1|WI-1|WorkItemCreated",
+      "payload": {
+        "owner_id": "dispatcher-raj",
+        "type": "appointment_followup"
+      },
+      "accountable_owner_id": "dispatcher-raj"
+    },
+    {
+      "event_id": "f7cc455d-4247-43b5-baf3-d27f07df8320",
+      "event_name": "GrantClaimed",
+      "event_version": 1,
+      "schema_version": 1,
+      "occurred_at": "2026-05-01T09:08:00.000Z",
+      "recorded_at": "2026-05-01T09:08:00.000Z",
+      "tenant_id": "brokerage-northwind",
+      "aggregate_type": "effect_grant",
+      "aggregate_id": "eg-5501",
+      "aggregate_version": 2,
+      "causation_id": "085c5db6-f216-48fb-8820-1890476c09dc",
+      "correlation_id": "corr-gc1",
+      "producer_component": "m-f3",
+      "producer_transition_id": "EF-2",
+      "actor_type": "system",
+      "actor_id": "system",
+      "trace_id": "trace-a-claimed",
+      "idempotency_identity": "tn_v1|brokerage-northwind|effect_grant|eg-5501|2|EF-2|GrantClaimed",
+      "payload": {
+        "grant_id": "eg-5501"
+      },
+      "work_item_id": "wi-4401",
+      "policy_version": "policy-2026-04",
+      "brake_version": "brake-7",
+      "material_facts_fingerprint": "fp_v1:aa11",
+      "entity_versions": {
+        "effect_grant:eg-5501": 1
+      }
+    }
+  ]
+}

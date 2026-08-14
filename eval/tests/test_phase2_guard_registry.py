@@ -94,6 +94,24 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     # Added by P5 U5.3: it reads the specification corpus and the event_contracts source, so the
     # central inventory discovers it as a control guard.
     "test_p5_event_contracts.py": (RETAIN, "U5.3's contract layer held to the RUNTIME rather than to the registries: the 118 canonical contracts - 105 machine-emitted (F1-F13) plus 13 audit/security (F14) - DERIVED from events/registry.md sec 3/5/8 and the F1-F14 family files rather than transcribed, with the derivation re-run every build so a specification edit without a regeneration fails rather than silently serving stale contracts. Identity, producer-transition attribution, aggregate binding, version support, payload contract, sec-5 decision-context pins and actor authority (ER-9/10/11/12) are each refused before a fact can be committed or consumed, and sec 6's asymmetry is preserved exactly - a PRODUCER refuses an undeclared payload field, a CONSUMER ignores one. The seven-step transport round trip runs EXHAUSTIVELY over all 118 contracts, and the contract gate sits inside the emitting transaction so a non-canonical fact takes its state change down with it. Section 1b is an INDEPENDENTLY WRITTEN oracle - fixed values, enums, list fields, one-of groups with their required flags, aggregate types and value shapes, hand-transcribed from the markdown - because every other fixture in the battery derives from the generated data and the anti-drift node compares the generator's output to its own, so neither can see a PARSER bug. Five of this unit's nine blocking defects were the validator inventing a rule STRICTER than the specification and refusing events the corpus declares legal; that class is what this file exists to keep closed"),
+    # Added by P5 U5.4+U5.5+U5.6: it reads the replay/audit module sources to prove their import
+    # CLOSURE reaches nothing effect-capable, so the central inventory discovers it as a control guard.
+    "test_p5_replay_and_audit.py": (RETAIN, "reconstruction held to the property that makes it "
+     "safe: M-27 requires replay to be side-effect free STRUCTURALLY, so the load-bearing node "
+     "asserts the IMPORT CLOSURE of event_replay + event_audit reaches no adapter, no effect "
+     "boundary, no checkpoint kernel, no brake store, no WorkflowStore and no network client - "
+     "across EVERY import spelling Python offers, because an earlier version tested node.level and "
+     "so saw only relative from-imports while this package carries 26 absolute ones, leaving the "
+     "registry's mandated 'replay must be proven unable to call an adapter' proven against one "
+     "spelling in four. The rebuild is a pure function of the SET of events (ordered by sec 8's "
+     "key, tie-broken by event_id, shuffled five ways in the suite); a redelivered fact folds once "
+     "and two DIFFERENT bodies under one event_id are refused rather than silently first-won; "
+     "GC-1's pinned rebuild digest is the AC-EVT-008 oracle and re-pinning is an explicit human "
+     "act; replay writes to no durable surface, asserted by row counts across six canonical tables; "
+     "and explain() reads events ONLY - no store, no connection - which is the mechanism behind "
+     "AC-AUD-002's beliefs-of-that-day rather than a promise about it, with the causal chain "
+     "walking ancestors as well as descendants so an effect's checkpoint, approval and accountable "
+     "owner are reconstructed rather than reported absent"),
     # Added by P5 U5.7+U5.8: it reads the transport module sources to prove they import no adapter or
     # network client, so the central inventory discovers it as a control guard.
     "test_phase5_event_transport.py": (RETAIN, "P5's first runtime capability held to its durability contract: a state change and the events it emits commit atomically or not at all - emit REFUSES to run outside an open transaction and no autocommit escape parameter exists - a relay publishes at-least-once under lease exclusivity, and consumption is idempotent on (tenant, consumer_id, event_id) so a redelivery is a no-op rather than a second effect. Strict per-aggregate ordering is enforced by a trigger asserting that no two DIFFERENT producer transitions own one version, which admits EF-2's legitimate GrantClaimed + EffectAttempted co-emission that a UNIQUE index would have made uninsertable; cross-tenant events are refused before the handler and before any write; and production stays dark - no default sink, no adapter or network import, zero witnesses and zero grants"),

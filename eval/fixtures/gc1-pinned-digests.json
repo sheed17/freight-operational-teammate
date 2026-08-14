@@ -1,0 +1,11 @@
+{
+  "_oracle": "rebuild(GC-1) -> D. D is pinned here. Every build, every version, forever: the SAME D. A changed digest is a FAILING build until a human explains why.",
+  "corpus_digest": "22069207f595e3bf152c00d45c5348c44f19875a1b1a280617c841df48e32c0e",
+  "rebuild_digest": "e12a66cbe832dcdc0ec64c97a83dc91bdd1feeaced9d9b6ff38a821ab18db1df",
+  "event_count": 22,
+  "aggregate_count": 10,
+  "tenants": [
+    "brokerage-cascade",
+    "brokerage-northwind"
+  ]
+}

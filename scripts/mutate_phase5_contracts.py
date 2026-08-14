@@ -67,11 +67,18 @@ def run_guard(nodeid: str) -> bool:
 # ambiguous anchor is a SETUP-FAIL, never a MISS.
 # ---------------------------------------------------------------------------------------------
 TEXT_CASES = [
-    ("C1  unknown event names accepted: any string becomes a canonical fact",
+    ("C1  unknown event names accepted by the VALIDATION gate: any string becomes a canonical fact",
+     EC,
+     '    contract = contracts.get(envelope.event_name)\n    if contract is None:\n        raise UnknownEventName(f"{envelope.event_name!r} is not a canonical event contract")',
+     '    contract = contracts.get(envelope.event_name)\n    if contract is None:\n        contract = next(iter(contracts.values()))  # MUTANT',
+     f"{CON}::test_an_unknown_event_name_is_refused_by_the_validator"),
+
+    ("C37 `contract_for` stops refusing an unknown name — the SECOND refusal path, which C1 alone "
+     "no longer isolates now that the validation gate has its own",
      EC,
      "    contract = CONTRACTS.get(event_name)\n    if contract is None:",
      "    contract = CONTRACTS.get(event_name)\n    if contract is None and False:  # MUTANT",
-     f"{CON}::test_an_unknown_event_name_is_refused_by_the_validator"),
+     f"{CON}::test_contract_for_itself_refuses_an_unknown_name"),
 
     ("C2  producer attribution unchecked: BrakeReleased can be attributed to WI-1",
      EC,

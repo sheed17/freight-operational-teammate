@@ -518,6 +518,15 @@ def test_the_round_trip_case_covers_every_contract_and_not_a_sample():
 
 # ============================================================= 3. identity — what is NOT a fact here
 
+def test_contract_for_itself_refuses_an_unknown_name():
+    """The lookup's OWN refusal, distinct from the validation gate's. Both exist — defence in
+    depth — which is why each needs its own guard: a mutant disabling one alone is invisible
+    through the other, and an untested refusal is one refactor from being deleted as dead code."""
+    with pytest.raises(UnknownEventName, match="not a canonical event contract"):
+        contract_for("NotAnEventAnybodyDeclared")
+    assert contract_for("PipelineStarted").name == "PipelineStarted"
+
+
 def test_an_unknown_event_name_is_refused_by_the_validator():
     envelope = make_envelope(event_name="LoadDelivered", payload={})
     with pytest.raises(UnknownEventName, match="not a canonical event contract"):
@@ -781,7 +790,9 @@ def test_a_producer_must_emit_the_current_version():
 
     from freight_recon import event_contracts
 
-    source = inspect.getsource(event_contracts.validate)
+    # `validate` is a thin binding to the canonical registry; the rule lives in the one shared
+    # implementation both it and the reconstruction seam call, so that is what must carry it.
+    source = inspect.getsource(event_contracts._validate_against)
     assert "envelope.event_version != contract.current_version" in source, (
         "the PRODUCER path no longer requires the version to be exactly the contract's current one"
     )

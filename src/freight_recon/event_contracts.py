@@ -695,7 +695,17 @@ def validate(envelope: EventEnvelope, *, mode: ValidationMode = ValidationMode.P
     attribution, then version, then body, then authority. Each answer makes the next question
     meaningful, and the first failure is the most informative one.
     """
-    contract = contract_for(envelope.event_name)
+    _validate_against(CONTRACTS, envelope, mode)
+
+
+def _validate_against(contracts: Mapping[str, CanonicalContract], envelope: EventEnvelope,
+                      mode: ValidationMode) -> None:
+    """The one validation implementation. `validate` binds it to the canonical registry; the
+    reconstruction seam binds it to an explicit set. Written once so the two can never diverge —
+    a second copy is how a rebuild quietly starts accepting what an emitter would refuse."""
+    contract = contracts.get(envelope.event_name)
+    if contract is None:
+        raise UnknownEventName(f"{envelope.event_name!r} is not a canonical event contract")
 
     if contract.producers and envelope.producer_transition_id not in contract.producers:
         raise ProducerTransitionMismatch(
@@ -741,6 +751,41 @@ def validate(envelope: EventEnvelope, *, mode: ValidationMode = ValidationMode.P
 def is_canonical(event_name: str) -> bool:
     """Membership, without raising — for reporting surfaces, never as a gate before an effect."""
     return event_name in CONTRACTS
+
+
+def read_against(
+    contracts: Mapping[str, CanonicalContract],
+    envelope: EventEnvelope,
+    *,
+    upcasters: UpcasterRegistry | None = None,
+) -> EventEnvelope:
+    """`read`, resolved against an EXPLICIT contract set instead of the canonical registry.
+
+    ### THIS IS A RECONSTRUCTION SEAM, NOT A VALIDATION BYPASS, AND THE DIFFERENCE IS THE WHOLE
+    POINT. It changes what a REBUILD will accept; it can never change what may be EMITTED. The
+    outbox's contract gate calls `validate(envelope, mode=PRODUCER)` with no contract parameter and
+    resolves through the module-global registry, so no caller can widen what becomes durable
+    history by passing a permissive set here.
+
+    It exists because `AC-EVT-009` requires a corpus spanning `v1+v2+v3` and ### EVERY CANONICAL
+    CONTRACT IS AT v1 — minting a production v2 to satisfy a fixture would put a version in the
+    corpus that the specification does not declare. The upcaster chain is therefore proven through
+    the REAL replay path against a test-only versioned contract set, which is the smallest thing
+    that proves the mechanism without inventing production history.
+
+    It also fails closed in the same directions the global path does: an unknown name raises
+    `UnknownEventName`, a future version raises `UnsupportedFutureVersion`, and a missing chain link
+    raises `MissingUpcaster`.
+    """
+    registry = upcasters if upcasters is not None else UpcasterRegistry(contracts)
+    contract = contracts.get(envelope.event_name)
+    if contract is None:
+        raise UnknownEventName(
+            f"{envelope.event_name!r} is not in the contract set this rebuild was given"
+        )
+    current = registry.upcast(envelope)
+    _validate_against(contracts, current, ValidationMode.CONSUMER)
+    return current
 
 
 def read(envelope: EventEnvelope, *, upcasters: UpcasterRegistry | None = None) -> EventEnvelope:
