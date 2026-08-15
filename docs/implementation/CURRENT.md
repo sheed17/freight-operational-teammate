@@ -43,9 +43,9 @@ version of this block goes stale within one commit and nothing notices.
 ```yaml
 # status-block: maintained by scripts/finalize_status.py - do not edit by hand
 recorded_authoring_branch: p5/u5-1-g2-spec-correction   # advisory; not verified across bundles/clones
-content_commit: 3ce0f65709a8869279995d54d40d77587d048ee3
-content_tree: 4a4c42ea912eb2e656031af371b62a8084542231
-suite_passed: 2674
+content_commit: 2ed750e67562e156f59534f5e5f17e0813e0807a
+content_tree: ac59b6ddbe30416b33349ceb70fc4d13a1bc7292
+suite_passed: 2852
 suite_failed: 0
 suite_skipped: 1
 ```
