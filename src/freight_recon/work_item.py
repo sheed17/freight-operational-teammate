@@ -76,7 +76,7 @@ from typing import Any
 from .event_contracts import CONTRACTS
 from .event_envelope import EventEnvelope, format_instant
 from .event_inbox import ConsumeResult, DedupInbox
-from .event_outbox import TransactionalOutbox
+from .event_outbox import DuplicateEmission, TransactionalOutbox
 from .migrations.phase6_work_items import (
     AUTHORITY_ROLES,
     DECISION_REF_KINDS,
@@ -106,6 +106,30 @@ CONSUMER_ID = "m1-work-item"
 # itself carries an empty `producers` tuple. `GR-1` is the specification's own answer, not a
 # transition id invented here to satisfy the envelope's format.
 ILLEGAL_TRANSITION_PRODUCER = "GR-1"
+
+# ### THE IDENTITY OF ONE REFUSED ATTEMPT — AND WHY IT IS NOT THE TRANSITION-NATURAL ONE.
+#
+# §4's transition-natural identity is `(tenant, aggregate, aggregate_version, transition, name)`,
+# and it is exactly right for an event a transition EMITS: the transition advanced the version, so
+# the next emission cannot collide with it. `IllegalTransitionAttempted` is the one contract this
+# machine emits for something that did NOT happen — the version does not move, by definition — so
+# every hostile attempt against one Work Item at one version claims one identity. The outbox's
+# UNIQUE constraint then refuses the SECOND attempt as a `DuplicateEmission`, which meant only the
+# first hostile attempt was ever recorded, later ones failed with a transport error instead of a
+# refusal, and through `DedupInbox.consume` the failure rolled the inbox receipt back and turned
+# redelivery into a poison loop.
+#
+# So this identity keeps §4's shape and adds ONE component: the identity of the ATTEMPT. It is
+# `sn_v1`-style — an explicitly supplied identity, which §4 already provides for — rather than a
+# new mechanism.
+#
+#     same attempt (the same hostile event redelivered) ⇒ same identity ⇒ recorded ONCE
+#     different attempt against one Work Item version   ⇒ different identity ⇒ recorded SEPARATELY
+#
+# The attempt identity is never invented where a real one exists: on a consumed trigger it IS the
+# incoming event's `event_id`, so redelivery of one hostile event is idempotent by construction and
+# not by luck.
+ILLEGAL_ATTEMPT_IDENTITY_PREFIX = "ita_v1"
 
 # The timer kind WI-10 fires from. WI-10's trigger type is `T` and its guard says "durable timer, not
 # a sweep" — so the guard resolves an actual `durable_timers` row rather than trusting the caller to
@@ -748,6 +772,21 @@ class TransitionResult:
 
 
 @dataclass(frozen=True)
+class IllegalAttemptRecord:
+    """What recording ONE refused attempt did — including the case where it had already been done.
+
+    `already_recorded` is the difference between *"this attempt is on both surfaces because this
+    call put it there"* and *"this attempt is on both surfaces because an earlier delivery of the
+    SAME attempt put it there"*. Both are correct outcomes and neither is a failure; conflating them
+    is how a redelivery ends up counted as a second hostile attempt.
+    """
+
+    event_id: str
+    idempotency_identity: str
+    already_recorded: bool
+
+
+@dataclass(frozen=True)
 class ConsumedTransition:
     """What consuming one canonical trigger did — including the case where it did nothing.
 
@@ -760,6 +799,9 @@ class ConsumedTransition:
     transition: "TransitionResult | None" = None
     refusal: str | None = None
     refusal_kind: str | None = None
+    # Present exactly when `refusal_kind == "ILLEGAL"`: which record this refusal is, and whether
+    # this delivery wrote it or found the SAME attempt already recorded.
+    illegal_record: "IllegalAttemptRecord | None" = None
 
     @property
     def moved(self) -> bool:
@@ -960,7 +1002,16 @@ class WorkItemMachine:
         event_id: str | None = None,
         **facts: Any,
     ) -> TransitionResult:
-        """ONE transition, in ONE commit: the state row and the event it emits, or neither."""
+        """ONE transition, in ONE commit: the state row and the event it emits, or neither.
+
+        ### `event_id` IS THE IDENTITY OF WHAT THIS CALL RECORDS, WHICHEVER OF THE TWO IT RECORDS.
+        Supplied, it is the id of the emitted transition event — and, when the trigger turns out to
+        be illegal here, of the `IllegalTransitionAttempted` that records the refusal instead. One
+        call records one fact; which fact it is depends on the answer, so pinning the identity pins
+        it either way, and a caller that retries ONE attempt gets ONE refusal record. Left unset, a
+        fresh identity is minted per call, because on this API each call IS a distinct attempt:
+        there is no delivery to be redelivered.
+        """
         self._require_actor(actor_type)
         item = self.require(work_item_id)
         if expected_version is not None and expected_version != item.version:
@@ -997,6 +1048,7 @@ class WorkItemMachine:
                 self._record_illegal_locked(
                     item, trigger, actor_type=actor_type, actor_id=actor_id,
                     correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id,
+                    attempt_id=event_id or str(uuid.uuid4()), event_id=event_id,
                 )
                 self._conn.commit()
             except BaseException:
@@ -1120,13 +1172,29 @@ class WorkItemMachine:
 
         Both come back on the returned `ConsumedTransition` rather than as an exception, so the
         caller can see what happened without the transport being asked to retry a decision.
+
+        ### AND NEITHER REFUSAL MAY POISON THE INBOX — WHICH IS A STRONGER CLAIM THAN "IS AN
+        OUTCOME", AND THE FIRST VERSION OF THIS METHOD ONLY MADE THE WEAKER ONE. Recording the
+        illegal attempt could itself fail: every hostile attempt against one Work Item at one
+        unchanged version claimed §4's transition-natural identity, so the SECOND distinct hostile
+        event hit the outbox's UNIQUE constraint, `DuplicateEmission` escaped the handler, the inbox
+        rolled its own receipt back with it, and the transport redelivered the same event forever —
+        recording nothing on every pass. The refusal was an outcome; the RECORDING of it was not.
+        Both are now: see `_record_illegal_locked`.
+
+        ### AN EVENT THAT WOULD PARK MUST NAME THE HUMAN IT PARKS ON. `accountable_owner_id` is
+        resolved from authoritative state before anything is written, and a consumption that cannot
+        establish an accountable human for a Work Item that does not exist yet is REFUSED rather
+        than parked ownerless. See `_accountable_owner_for`.
         """
         box = inbox or DedupInbox(
             self._conn, tenant=self._tenant, consumer_id=CONSUMER_ID, clock=self._clock,
             reference_resolver=self.reference_resolver,
         )
+        owner = self._accountable_owner_for(box, envelope, work_item_id, accountable_owner_id)
         parsed = _Facts(**_split_facts(facts))
-        outcome: dict[str, Any] = {"transition": None, "refusal": None, "refusal_kind": None}
+        outcome: dict[str, Any] = {"transition": None, "refusal": None, "refusal_kind": None,
+                                   "illegal_record": None}
 
         def handler(event: EventEnvelope) -> None:
             item = self.require(work_item_id)
@@ -1137,23 +1205,85 @@ class WorkItemMachine:
                     trace_id=event.trace_id, event_id=None, facts=parsed,
                 )
             except IllegalTransition as exc:
-                self._record_illegal_locked(
+                # ### THE ATTEMPT IDENTITY IS THE HOSTILE EVENT'S OWN `event_id`, NOT A NEW ONE.
+                # That is what makes the two halves of the invariant true at once: redelivering ONE
+                # hostile event records ONE refusal (and the inbox stops it before the handler
+                # anyway), while a SECOND, DIFFERENT hostile event against the same Work Item at the
+                # same unchanged version is a different attempt and gets its own evidence.
+                record = self._record_illegal_locked(
                     item, trigger, actor_type=event.actor_type, actor_id=event.actor_id,
                     correlation_id=event.correlation_id, causation_id=event.event_id,
-                    trace_id=event.trace_id,
+                    trace_id=event.trace_id, attempt_id=event.event_id,
                 )
                 outcome["refusal"], outcome["refusal_kind"] = str(exc), "ILLEGAL"
+                outcome["illegal_record"] = record
             except GuardNotSatisfied as exc:
                 outcome["refusal"], outcome["refusal_kind"] = str(exc), "GUARD"
 
         result = box.consume(
             envelope, handler,
             requires=((AGGREGATE_TYPE, work_item_id),),
-            accountable_owner_id=accountable_owner_id,
+            accountable_owner_id=owner,
         )
         return ConsumedTransition(
             consume=result, transition=outcome["transition"], refusal=outcome["refusal"],
-            refusal_kind=outcome["refusal_kind"],
+            refusal_kind=outcome["refusal_kind"], illegal_record=outcome["illegal_record"],
+        )
+
+    def _accountable_owner_for(
+        self,
+        box: DedupInbox,
+        envelope: EventEnvelope,
+        work_item_id: str,
+        accountable_owner_id: str | None,
+    ) -> str | None:
+        """The human this consumption would park work on — resolved, or the call refuses.
+
+        ### AN OWNERLESS PARK IS AN OBLIGATION NOBODY OWES, AND IT WAS REACHABLE FROM THIS METHOD.
+        `consume` for a Work Item that does not exist yet parks the event under M-26, and the park
+        row carries the accountable human who will be handed the problem when its TTL expires. With
+        no `accountable_owner_id` supplied and none on the envelope, that column was written NULL:
+        rule 13's one exception, created by the very method whose docstring promises the park
+        surfaces *"with the human accountable for it"*. An expiry with no name is the silent drop
+        M-26 exists to forbid.
+
+        So the owner is ESTABLISHED before anything is written, from authoritative state wherever
+        authoritative state has the answer:
+
+            1. the caller's explicit `accountable_owner_id` — checked against the recorded roster,
+               never taken as a string;
+            2. the Work Item's own `owner_id`, when the item exists — the authoritative answer, and
+               the case in which no park can occur at all;
+            3. the park this event is ALREADY held in — its owner was established when it was
+               parked, and a redelivery only bumps the attempt counter;
+            4. the envelope's `accountable_owner_id` — again checked against the roster.
+
+        ### AND IF NONE OF THE FOUR ANSWERS, THE CALL REFUSES AND WRITES NOTHING. There is no fifth
+        branch: no `system`, no `Neyma`, no ops-team queue, no `unassigned`, no detector and no
+        model. Every one of those is an owner nobody agreed to be, and inventing one would make
+        rule 13 true of a roster this machine wrote for itself.
+        """
+        if str(accountable_owner_id or "").strip():
+            return self._require_active_human(
+                accountable_owner_id, what="the accountable owner of a consumed trigger").human_id
+        item = self.get(work_item_id)
+        if item is not None:
+            return item.owner_id
+        held = next((p for p in box.parked() if p.event_id == envelope.event_id), None)
+        if held is not None:
+            return held.accountable_owner_id
+        if str(envelope.accountable_owner_id or "").strip():
+            return self._require_active_human(
+                envelope.accountable_owner_id,
+                what=f"the accountable owner carried by {envelope.event_name}").human_id
+        raise OwnershipRefused(
+            f"{envelope.event_name} references Work Item {work_item_id!r}, which does not exist "
+            f"for tenant {self._tenant!r}, and names no accountable human — not on the call, not "
+            f"on the envelope. Consuming it would park an obligation under M-26 with NO accountable "
+            f"owner, and every open obligation has exactly one (CLAUDE.md rule 13). Refused with "
+            f"nothing written: supply `accountable_owner_id`, or create the Work Item first. A "
+            f"placeholder owner is not the alternative — 'system', 'ops', 'unassigned' and their "
+            f"neighbours are owners nobody agreed to be."
         )
 
     # --- the write ------------------------------------------------------------------------------
@@ -1239,6 +1369,27 @@ class WorkItemMachine:
 
     # --- GR-1 -------------------------------------------------------------------------------------
 
+    def illegal_attempt_identity(self, item: WorkItem, attempt_id: str) -> str:
+        """The idempotency identity of ONE refused attempt. §4's shape, plus the attempt.
+
+        Exposed rather than private because it is the thing a test — and a reviewer — has to be able
+        to compute independently to check that two distinct attempts really do claim two identities
+        and that one attempt redelivered claims one.
+        """
+        text = _require_attempt_id(attempt_id)
+        return "|".join((
+            ILLEGAL_ATTEMPT_IDENTITY_PREFIX, self._tenant, AGGREGATE_TYPE, item.work_item_id,
+            str(item.version), ILLEGAL_TRANSITION_PRODUCER, "IllegalTransitionAttempted", text,
+        ))
+
+    def _recorded_illegal_attempt(self, identity: str) -> str | None:
+        """The `event_id` this attempt was already recorded under, or None. Never a guess."""
+        row = self._conn.execute(
+            "SELECT event_id FROM event_outbox WHERE tenant = ? AND idempotency_identity = ?",
+            (self._tenant, identity),
+        ).fetchone()
+        return None if row is None else row["event_id"]
+
     def _record_illegal_locked(
         self,
         item: WorkItem,
@@ -1249,7 +1400,9 @@ class WorkItemMachine:
         correlation_id: str | None,
         causation_id: str | None,
         trace_id: str | None,
-    ) -> None:
+        attempt_id: str,
+        event_id: str | None = None,
+    ) -> IllegalAttemptRecord:
         """`IllegalTransitionAttempted` — into the audit backbone AND `security_events`, ONE commit.
 
         ### BOTH, ATOMICALLY, BECAUSE [C-4] SAYS BOTH. Writing them in two commits would leave a
@@ -1258,8 +1411,33 @@ class WorkItemMachine:
 
         The state row is untouched: `persists nothing` is literal. The caller rolls nothing back
         because there is nothing to roll back — and then raises.
+
+        ### THIS PATH MAY NOT POISON A TRANSPORT, AND THAT IS A SEPARATE PROPERTY FROM RECORDING.
+        On a consumed trigger this runs INSIDE the inbox's one transaction (M-24), so anything it
+        raises rolls back the inbox receipt too and the event is redelivered — forever. A
+        `DuplicateEmission` escaping here was therefore not a loud failure but an infinite loop, and
+        the refusal it was reporting was a refusal the API contract already covers.
+        So the already-recorded case is DECIDED, not discovered by exception: the identity is looked
+        up under the write lock this method is always called with, and a second attempt at recording
+        ONE attempt writes nothing and says so on the returned record.
+        ### THE EXCEPTION PATH IS STILL HANDLED, AND IT DOES NOT LIE. If the emit fails anyway, the
+        identity is re-read; a row means the attempt genuinely is recorded, and NO row means the
+        evidence could not be written — which is raised as a `WorkItemError`, never swallowed and
+        never reported as a successful recording. Fail-closed stays fail-closed; what changes is
+        that it fails as this machine's refusal rather than as the transport's.
+
+        ### THE TWO SURFACES CANNOT DIVERGE, WHICH IS WHY THE SKIP SKIPS BOTH. The outbox row and
+        the `security_events` row are written in one transaction and only ever together, so an
+        identity already present in the outbox has its security row already present too. Re-writing
+        the security half on a repeat would be recording one attempt twice on the surface an
+        operator counts.
         """
         now = format_instant(self._clock())
+        identity = self.illegal_attempt_identity(item, attempt_id)
+        already = self._recorded_illegal_attempt(identity)
+        if already is not None:
+            return IllegalAttemptRecord(
+                event_id=already, idempotency_identity=identity, already_recorded=True)
         envelope = self._envelope(
             event_name="IllegalTransitionAttempted", transition_id=ILLEGAL_TRANSITION_PRODUCER,
             work_item_id=item.work_item_id, aggregate_version=item.version,
@@ -1267,9 +1445,23 @@ class WorkItemMachine:
             payload={"machine": "M1", "state": item.state.value, "trigger": trigger.value,
                      "attempted_by": actor_id},
             correlation_id=correlation_id or item.work_item_id, causation_id=causation_id,
-            trace_id=trace_id, event_id=None, now=now,
+            trace_id=trace_id, event_id=event_id, now=now,
+            idempotency_identity=identity,
         )
-        TransactionalOutbox(self._conn, tenant=self._tenant, clock=self._clock).emit(envelope)
+        try:
+            TransactionalOutbox(self._conn, tenant=self._tenant, clock=self._clock).emit(envelope)
+        except DuplicateEmission as exc:
+            repeat = self._recorded_illegal_attempt(identity)
+            if repeat is None:
+                raise WorkItemError(
+                    f"the refusal of {trigger.value} on {item.work_item_id!r} could not be "
+                    f"recorded: {exc}. The attempt identity {identity!r} is NOT in the outbox, so "
+                    f"this is a genuine failure to write the evidence and not the same attempt "
+                    f"arriving twice. Reported as a refusal of this machine — an operator must not "
+                    f"be told the attempt was recorded when it was not."
+                ) from exc
+            return IllegalAttemptRecord(
+                event_id=repeat, idempotency_identity=identity, already_recorded=True)
         next_id = int(self._conn.execute(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM security_events WHERE tenant = ?",
             (self._tenant,),
@@ -1280,10 +1472,13 @@ class WorkItemMachine:
             (self._tenant, next_id, "IllegalTransitionAttempted", actor_id,
              json.dumps({"machine": "M1", "work_item_id": item.work_item_id,
                          "state": item.state.value, "trigger": trigger.value,
-                         "event_id": envelope.event_id, "attempted_by": actor_id},
+                         "event_id": envelope.event_id, "attempted_by": actor_id,
+                         "attempt_id": _require_attempt_id(attempt_id)},
                         sort_keys=True),
              now),
         )
+        return IllegalAttemptRecord(
+            event_id=envelope.event_id, idempotency_identity=identity, already_recorded=False)
 
     # --- guards -----------------------------------------------------------------------------------
 
@@ -1549,8 +1744,14 @@ class WorkItemMachine:
         trace_id: str | None,
         event_id: str | None,
         now: str,
+        idempotency_identity: str | None = None,
     ) -> EventEnvelope:
         """One canonical envelope. ### `accountable_owner_id` IS ALWAYS SET, ON EVERY M1 EVENT.
+
+        `idempotency_identity` is left unset for every transition event, which derives §4's
+        transition-natural identity — the correct one, because a transition advances the version it
+        is keyed on. It is supplied ONLY for `IllegalTransitionAttempted`, whose subject is an
+        attempt that moved nothing; see `ILLEGAL_ATTEMPT_IDENTITY_PREFIX`.
 
         §1 marks it `C` (required-when-applicable), and on a Work Item it is always applicable —
         that is the entity's defining property. Setting it means the accountable owner travels WITH
@@ -1578,6 +1779,7 @@ class WorkItemMachine:
             payload=dict(payload),
             work_item_id=work_item_id,
             accountable_owner_id=owner_id,
+            idempotency_identity=idempotency_identity,
         )
 
 
@@ -1591,6 +1793,24 @@ def _prune(payload: Mapping[str, Any]) -> dict[str, Any]:
     "not applicable" is the meaning; it is never used to quietly drop a required one.
     """
     return {k: v for k, v in payload.items() if v is not None}
+
+
+def _require_attempt_id(attempt_id: str | None) -> str:
+    """An attempt identity is a real identity or it is nothing. Never blank, never derived here.
+
+    Refused rather than defaulted: a blank attempt id would silently collapse every hostile attempt
+    at one Work Item version back onto one identity, which is precisely the defect the explicit
+    identity exists to remove — and it would do it quietly, on the surface a security operator
+    counts.
+    """
+    text = str(attempt_id or "").strip()
+    if not text:
+        raise WorkItemError(
+            "an illegal-transition record requires the identity of the ATTEMPT it records. On a "
+            "consumed trigger that is the incoming event's `event_id`; on the direct API it is the "
+            "caller's `event_id` when one was supplied and a fresh identity for the call otherwise."
+        )
+    return text
 
 
 _FACT_NAMES = frozenset(_Facts.__dataclass_fields__) - {"extra"}

@@ -249,6 +249,65 @@ TEXT_CASES = [
      ")  # MUTANT",
      "eval/tests/test_bootstrap_hermeticity.py"
      "::test_the_canonical_table_partition_is_exact_and_disjoint"),
+
+    # ---- THE TWO DEFECTS AN INDEPENDENT REVIEW REJECTED THIS CANDIDATE FOR --------------------
+    #
+    # ### THE REJECTED CANDIDATE *IS* W27 + W28, AND THE OLD SUITE WAS GREEN ON IT. That is the
+    # only reason these five cases exist, and it is the whole point of them: a battery that cannot
+    # go red on the exact tree a reviewer rejected is a battery that certified the defect. Each
+    # case restores one piece of the rejected behaviour and names the regression that must notice.
+
+    ("W27 IllegalTransitionAttempted goes back to the TRANSITION-NATURAL identity: an illegal "
+     "transition does not advance the version, so two hostile attempts collide (F-01)",
+     WI,
+     "            trace_id=trace_id, event_id=event_id, now=now,\n"
+     "            idempotency_identity=identity,\n",
+     "            trace_id=trace_id, event_id=event_id, now=now,  # MUTANT: identity collides\n",
+     f"{T}::test_two_distinct_illegal_attempts_at_one_version_are_independently_auditable"),
+
+    ("W27a the transport's DuplicateEmission escapes the refusal API again, and inside "
+     "DedupInbox.consume that is an infinite redelivery loop (F-01)",
+     WI,
+     "            repeat = self._recorded_illegal_attempt(identity)\n"
+     "            if repeat is None:\n"
+     "                raise WorkItemError(",
+     "            repeat = self._recorded_illegal_attempt(identity)\n"
+     "            if repeat is None:\n"
+     "                raise exc  # MUTANT: the outbox error escapes instead of refusing\n"
+     "            if repeat is None:\n"
+     "                raise WorkItemError(",
+     f"{T}::test_a_refusal_that_cannot_be_recorded_fails_as_this_machines_error_not_the_transports"),
+
+    ("W28 the structural owner requirement leaves consume(): a park can be created with "
+     "accountable_owner_id NULL again (F-02)",
+     WI,
+     "        owner = self._accountable_owner_for(box, envelope, work_item_id, "
+     "accountable_owner_id)",
+     "        owner = accountable_owner_id  # MUTANT: the ownerless park returns",
+     f"{T}::test_consume_refuses_rather_than_parking_an_obligation_nobody_owns"),
+
+    ("W28a the refusal is bought off with a fabricated owner instead: 'system' owns the parked "
+     "obligation (F-02)",
+     WI,
+     "        raise OwnershipRefused(\n"
+     '            f"{envelope.event_name} references Work Item {work_item_id!r}, which does not '
+     'exist "',
+     '        return "system"  # MUTANT: a fabricated owner nobody agreed to be\n'
+     "        raise OwnershipRefused(\n"
+     '            f"{envelope.event_name} references Work Item {work_item_id!r}, which does not '
+     'exist "',
+     f"{T}::test_consume_refuses_rather_than_parking_an_obligation_nobody_owns"),
+
+    ("W28b the park owner stops being checked against the recorded roster: any string becomes the "
+     "accountable human (F-02)",
+     WI,
+     '        if str(accountable_owner_id or "").strip():\n'
+     "            return self._require_active_human(\n"
+     '                accountable_owner_id, what="the accountable owner of a consumed '
+     'trigger").human_id',
+     '        if str(accountable_owner_id or "").strip():\n'
+     "            return accountable_owner_id  # MUTANT: an owner nobody recorded",
+     f"{T}::test_a_park_owner_is_never_a_fabricated_or_unrecorded_identity"),
 ]
 
 

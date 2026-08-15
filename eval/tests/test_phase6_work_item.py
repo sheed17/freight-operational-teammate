@@ -1374,7 +1374,8 @@ def test_no_two_transitions_claim_one_aggregate_version(tmp_path):
 def _trigger_envelope(store, *, seed: str, clock: Clock, tenant: str = T_A,
                       event_name: str = "PipelineClosed", aggregate_id: str = "pi-1",
                       producer_transition_id: str = "PL-14", actor_type: str = "system",
-                      actor_id: str = "pipeline-service") -> EventEnvelope:
+                      actor_id: str = "pipeline-service",
+                      accountable_owner_id: str | None = None) -> EventEnvelope:
     from phase6_kit import deterministic_event_id, minimal_payload
     now = format_instant(clock())
     return EventEnvelope(
@@ -1387,6 +1388,7 @@ def _trigger_envelope(store, *, seed: str, clock: Clock, tenant: str = T_A,
         # by the real contract gate as REJECTED_MALFORMED, which would make a parking test pass for
         # the wrong reason. It did, on the first run.
         trace_id=f"trace-{seed}", payload=minimal_payload(event_name),
+        accountable_owner_id=accountable_owner_id,
     )
 
 
@@ -1520,6 +1522,369 @@ def test_a_consumed_illegal_trigger_records_once_and_does_not_loop(tmp_path):
     assert second.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP
     assert len(security_rows(store)) == 1, "a redelivery wrote a second security record"
     assert state_digest(store) == after
+    store.close()
+
+
+# ================================================ I-bis. REPEATED HOSTILE ATTEMPTS, AND OWNERLESS
+#                                                          PARKS — the two defects an INDEPENDENT
+#                                                          review REJECTED this candidate for.
+#
+# ### THESE ARE NOT NEW IDEAS. THEY ARE THE REVIEWER'S TWO FINDINGS, REPRODUCED AS TESTS.
+#
+# F-01  `IllegalTransitionAttempted` was keyed on §4's TRANSITION-NATURAL identity, and an illegal
+#       transition does not advance the version that identity contains. So a SECOND distinct hostile
+#       attempt against ONE Work Item at ONE version collided: only the first was ever recorded,
+#       later ones raised `event_outbox.DuplicateEmission` instead of a refusal, and through
+#       `DedupInbox.consume` that exception rolled the inbox receipt back and made the event
+#       redeliver forever, recording nothing on every pass.
+# F-02  `consume()` could create a parked missing-aggregate obligation with `accountable_owner_id`
+#       NULL — rule 13's one exception, created by the method whose own docstring promises the park
+#       surfaces with the human accountable for it.
+#
+# ### EVERY CASE BELOW FAILED ON THE REJECTED CANDIDATE. That is the bar: a regression that passes
+# both before and after is a decoration, and the mutation battery (`scripts/mutate_phase6_work_item`
+# W27/W28) is where each one is shown going red against the old behaviour restored.
+
+def _illegal_outbox_rows(store, *, tenant: str = T_A) -> list[dict[str, object]]:
+    """The refusal records, with the identity they claim. Read from the durable row, not the API."""
+    return [
+        {"event_id": r["event_id"], "aggregate_id": r["aggregate_id"],
+         "aggregate_version": int(r["aggregate_version"]),
+         "idempotency_identity": r["idempotency_identity"]}
+        for r in store.conn.execute(
+            "SELECT * FROM event_outbox WHERE tenant = ? AND event_name = ? ORDER BY sequence",
+            (tenant, "IllegalTransitionAttempted")).fetchall()
+    ]
+
+
+def _inbox_outcomes(store, *, tenant: str = T_A) -> list[str]:
+    return [
+        r["outcome"] for r in store.conn.execute(
+            "SELECT outcome FROM event_inbox WHERE tenant = ? ORDER BY consumed_at, event_id",
+            (tenant,)).fetchall()
+    ]
+
+
+def test_two_distinct_illegal_attempts_at_one_version_are_independently_auditable(tmp_path):
+    """### REGRESSION A — F-01 THROUGH THE DIRECT API.
+
+    A CLOSED Work Item is driven with TWO different illegal triggers. The item does not move, so
+    both attempts sit at ONE aggregate version — which is exactly the collision the rejected
+    candidate had. Each attempt must be its own evidence on BOTH surfaces, and each must refuse as
+    this machine's own refusal rather than as the transport's.
+    """
+    from freight_recon.event_outbox import DuplicateEmission
+
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    item = _drive_to(store, m, clock, WorkItemState.CLOSED)
+    at_version = m.require(item).version
+
+    raised: list[type[BaseException]] = []
+    for n, trigger in enumerate((Trigger.PIPELINE_STARTED, Trigger.EVIDENCE_MISSING), start=1):
+        try:
+            m.apply(item, trigger, actor_type="system", actor_id=f"hostile-{n}", reason="probe")
+        except DuplicateEmission as exc:                       # pragma: no cover - the defect
+            pytest.fail(
+                f"attempt {n} ({trigger.value}) leaked event_outbox.DuplicateEmission through the "
+                f"M1 refusal API: {exc}"
+            )
+        except IllegalTransition as exc:
+            raised.append(type(exc))
+        else:                                                  # pragma: no cover - the defect
+            pytest.fail(f"attempt {n} ({trigger.value}) was not refused at all")
+
+    assert raised == [IllegalTransition, IllegalTransition], raised
+    after = m.require(item)
+    assert (after.state, after.version) == (WorkItemState.CLOSED, at_version), (
+        "an illegal attempt moved the item; the two attempts were not at one version"
+    )
+
+    security = security_rows(store)
+    assert len(security) == 2, (
+        f"two DISTINCT hostile attempts produced {len(security)} security record(s). The second "
+        f"attempt is the one that vanished on the rejected candidate."
+    )
+    assert {r["actor"] for r in security} == {"hostile-1", "hostile-2"}
+
+    records = _illegal_outbox_rows(store)
+    assert len(records) == 2, records
+    assert {r["aggregate_version"] for r in records} == {at_version}, (
+        "the premise of the case is that both attempts are at ONE unchanged version"
+    )
+    identities = [r["idempotency_identity"] for r in records]
+    assert len(set(identities)) == 2, (
+        f"two distinct attempts claimed ONE idempotency identity: {identities}"
+    )
+    assert all(str(i).startswith("ita_v1|") for i in identities), identities
+    store.close()
+
+
+def test_the_same_illegal_attempt_pinned_by_the_caller_records_exactly_once(tmp_path):
+    """The other half of the F-01 invariant, on the direct API: distinguishing attempts must not
+    mean randomising them. A caller that pins the attempt's identity and retries it gets ONE
+    refusal record — otherwise "distinct evidence per attempt" would just be "a row per call"."""
+    import uuid as _uuid
+
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    item = _drive_to(store, m, clock, WorkItemState.CLOSED)
+    pinned = str(_uuid.uuid4())
+
+    for _ in range(2):
+        with pytest.raises(IllegalTransition):
+            m.apply(item, Trigger.PIPELINE_STARTED, **SYS, event_id=pinned)
+
+    assert len(security_rows(store)) == 1, "one pinned attempt, retried, wrote evidence twice"
+    assert len(_illegal_outbox_rows(store)) == 1
+    store.close()
+
+
+def test_a_transition_event_still_carries_the_transition_natural_identity(tmp_path):
+    """### THE EXPLICIT IDENTITY IS CONFINED TO THE ONE CONTRACT THAT NEEDS IT.
+
+    `IllegalTransitionAttempted` is the only M1 event about something that did NOT happen, so it is
+    the only one whose §4 transition-natural key can collide. Every event a transition EMITS still
+    derives that key, and this asserts it over a proven population rather than by reading the code —
+    a remediation that quietly gave every M1 event a bespoke identity would weaken the outbox's
+    identity constraint everywhere while fixing one contract.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    item = _drive_to(store, m, clock, WorkItemState.CLOSED)
+    with pytest.raises(IllegalTransition):
+        m.apply(item, Trigger.PIPELINE_STARTED, **SYS)
+
+    rows = store.conn.execute(
+        "SELECT event_name, idempotency_identity FROM event_outbox WHERE tenant = ? "
+        " AND aggregate_id = ? ORDER BY sequence", (T_A, item)).fetchall()
+    emitted = [r for r in rows if r["event_name"] != "IllegalTransitionAttempted"]
+    refused = [r for r in rows if r["event_name"] == "IllegalTransitionAttempted"]
+    assert len(emitted) >= 3 and len(refused) == 1, (len(emitted), len(refused))
+    assert all(r["idempotency_identity"].startswith("tn_v1|") for r in emitted), (
+        "a transition event stopped using §4's transition-natural identity"
+    )
+    assert refused[0]["idempotency_identity"].startswith("ita_v1|")
+    store.close()
+
+
+def test_two_distinct_hostile_events_are_recorded_and_cannot_poison_the_inbox(tmp_path):
+    """### REGRESSION B — F-01 THROUGH `DedupInbox.consume`, WHICH IS WHERE IT BECAME A LOOP.
+
+    Two DIFFERENT hostile events drive the same illegal trigger against one CLOSED Work Item at one
+    unchanged version. On the rejected candidate the first recorded, the second raised
+    `DuplicateEmission` inside the inbox's transaction, the inbox rolled its own receipt back, and
+    the transport had an event it could never finish consuming — with no evidence written on any
+    pass. Both must now reach a terminal inbox outcome, both must be auditable, and nothing from
+    `event_outbox` may escape the handler.
+
+    Then the SAME hostile event is redelivered, and the idempotency half of the invariant is
+    asserted: no second evidence, no second business effect, no loop.
+    """
+    from freight_recon.event_inbox import DedupInbox
+    from freight_recon.event_outbox import DuplicateEmission
+
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    item = _drive_to(store, m, clock, WorkItemState.CLOSED)
+    at_version = m.require(item).version
+
+    hostile = [
+        _trigger_envelope(store, seed=f"hostile-event-{n}", clock=clock,
+                          event_name="PipelineStarted", producer_transition_id="PL-1",
+                          aggregate_id=f"pi-hostile-{n}")
+        for n in (1, 2)
+    ]
+    assert hostile[0].event_id != hostile[1].event_id, "the two hostile events must be distinct"
+
+    for n, envelope in enumerate(hostile, start=1):
+        try:
+            result = m.consume(envelope, work_item_id=item, trigger=Trigger.PIPELINE_STARTED)
+        except DuplicateEmission as exc:                        # pragma: no cover - the defect
+            pytest.fail(f"hostile event {n} leaked DuplicateEmission out of the handler: {exc}")
+        assert result.refusal_kind == "ILLEGAL" and not result.moved, (n, result.refusal_kind)
+        assert result.consume.outcome is ConsumeOutcome.APPLIED, (
+            f"hostile event {n} did not reach a terminal inbox outcome: "
+            f"{result.consume.outcome} — that is the redelivery loop"
+        )
+        assert result.illegal_record is not None and not result.illegal_record.already_recorded
+
+    # ### NO POISON: both events are RECORDED AS CONSUMED, so the transport never re-offers them.
+    assert _inbox_outcomes(store) == ["APPLIED", "APPLIED"], _inbox_outcomes(store)
+    box = DedupInbox(store.conn, tenant=T_A, consumer_id="m1-work-item", clock=clock,
+                     reference_resolver=m.reference_resolver)
+    assert all(box.seen(e.event_id) == "APPLIED" for e in hostile)
+    assert not box.parked(), "a refusal parked the event instead of consuming it"
+
+    assert len(security_rows(store)) == 2, (
+        f"two DISTINCT hostile events produced {len(security_rows(store))} security record(s)"
+    )
+    records = _illegal_outbox_rows(store)
+    assert len(records) == 2 and len({r["idempotency_identity"] for r in records}) == 2, records
+    assert {r["aggregate_version"] for r in records} == {at_version}
+    after = m.require(item)
+    assert (after.state, after.version) == (WorkItemState.CLOSED, at_version)
+
+    # ### AND THE SAME HOSTILE EVENT REDELIVERED IS STILL A NO-OP. Measured, not asserted: the
+    # digest covers work_items, tenant_humans, event_outbox, event_inbox and security_events.
+    settled = state_digest(store)
+    again = m.consume(hostile[0], work_item_id=item, trigger=Trigger.PIPELINE_STARTED)
+    assert again.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP and not again.moved
+    assert len(security_rows(store)) == 2, "a redelivery wrote a second refusal record"
+    assert len(_illegal_outbox_rows(store)) == 2
+    assert state_digest(store) == settled, "a redelivered hostile event changed durable state"
+    store.close()
+
+
+def test_a_refusal_that_cannot_be_recorded_fails_as_this_machines_error_not_the_transports(
+        tmp_path, monkeypatch):
+    """### THE OTHER HALF OF F-01(2), AND IT MUST NOT BE A SILENT SWALLOW.
+
+    A genuine failure to write the evidence is still a failure — it may not be reported as a
+    successful recording, and it may not escape as `event_outbox.DuplicateEmission` either. The
+    outbox is forced to raise a duplicate for an identity that is NOT in the table, which is exactly
+    the shape "we could not record this" takes, and the machine must convert it into its own
+    `WorkItemError` refusal class.
+    """
+    from freight_recon import work_item as module
+    from freight_recon.event_outbox import DuplicateEmission, TransactionalOutbox
+    from freight_recon.work_item import WorkItemError
+
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    item = _drive_to(store, m, clock, WorkItemState.CLOSED)
+
+    def refusing_emit(self, envelope):                            # noqa: ANN001, ANN202
+        if envelope.event_name == "IllegalTransitionAttempted":
+            raise DuplicateEmission("forced: the evidence could not be written")
+        return real_emit(self, envelope)
+
+    real_emit = TransactionalOutbox.emit
+    monkeypatch.setattr(module.TransactionalOutbox, "emit", refusing_emit)
+    with pytest.raises(WorkItemError) as caught:
+        m.apply(item, Trigger.PIPELINE_STARTED, **SYS)
+    monkeypatch.undo()
+
+    assert not isinstance(caught.value, DuplicateEmission), (
+        "the transport's duplicate error escaped the M1 refusal API"
+    )
+    assert "could not be recorded" in str(caught.value)
+    assert not security_rows(store), (
+        "the security half was written while the audit half was not — the two surfaces diverged"
+    )
+    store.close()
+
+
+def test_consume_refuses_rather_than_parking_an_obligation_nobody_owns(tmp_path):
+    """### REGRESSION C — F-02. A parked obligation with no accountable human is rule 13's one
+    exception, and it was reachable: `consume()` for a Work Item that does not exist yet wrote
+    `accountable_owner_id` NULL when neither the call nor the envelope named one.
+
+    The contract now admits exactly two outcomes, and this asserts both plus the absence of the
+    third: an accountable human is resolved and PERSISTED, or the call REFUSES and writes nothing.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+    before = state_digest(store)
+
+    orphan = _trigger_envelope(store, seed="ownerless-park", clock=clock,
+                               event_name="PipelineStarted", producer_transition_id="PL-1")
+    with pytest.raises(OwnershipRefused) as caught:
+        m.consume(orphan, work_item_id="wi-does-not-exist", trigger=Trigger.PIPELINE_STARTED)
+    assert "accountable" in str(caught.value)
+
+    parked = store.conn.execute(
+        "SELECT * FROM pending_references WHERE tenant = ?", (T_A,)).fetchall()
+    assert not parked, "the refusal still parked the event"
+    assert not _inbox_outcomes(store), "the refusal still recorded an inbox row"
+    assert state_digest(store) == before, "a refused consumption wrote durable state"
+
+    # ### AND THE REFUSAL IS NOT A NEW WALL: NAME THE HUMAN AND THE PARK STILL HAPPENS.
+    owned = m.consume(orphan, work_item_id="wi-does-not-exist", trigger=Trigger.PIPELINE_STARTED,
+                      accountable_owner_id="dispatcher-dana")
+    assert owned.consume.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    held = store.conn.execute(
+        "SELECT * FROM pending_references WHERE tenant = ?", (T_A,)).fetchall()
+    assert len(held) == 1 and held[0]["accountable_owner_id"] == "dispatcher-dana"
+
+    # ### THE STRUCTURAL ASSERTION, OVER A PROVEN POPULATION (CLAUDE.md §9). "No NULL owners" over
+    # an empty table is a check that parsed nothing; the population is asserted non-empty first.
+    ownerless = store.conn.execute(
+        "SELECT COUNT(*) c FROM pending_references WHERE tenant = ? "
+        " AND (accountable_owner_id IS NULL OR trim(accountable_owner_id) = '')",
+        (T_A,)).fetchone()["c"]
+    assert len(held) >= 1 and ownerless == 0, (len(held), ownerless)
+    store.close()
+
+
+def test_a_park_owner_is_never_a_fabricated_or_unrecorded_identity(tmp_path):
+    """The refusal may not be bought off with a placeholder. An `accountable_owner_id` that names
+    nobody the tenant recorded is refused on the call AND on the envelope — a park owned by
+    `system`, `ops`, `unassigned` or a model is an obligation nobody agreed to owe."""
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+    before = state_digest(store)
+
+    for n, ghost in enumerate(("system", "neyma", "ops-team", "unassigned", "never-recorded")):
+        envelope = _trigger_envelope(store, seed=f"ghost-call-{n}", clock=clock,
+                                     event_name="PipelineStarted", producer_transition_id="PL-1")
+        with pytest.raises(OwnershipRefused):
+            m.consume(envelope, work_item_id="wi-absent", trigger=Trigger.PIPELINE_STARTED,
+                      accountable_owner_id=ghost)
+        carried = _trigger_envelope(store, seed=f"ghost-env-{n}", clock=clock,
+                                    event_name="PipelineStarted", producer_transition_id="PL-1",
+                                    accountable_owner_id=ghost)
+        with pytest.raises(OwnershipRefused):
+            m.consume(carried, work_item_id="wi-absent", trigger=Trigger.PIPELINE_STARTED)
+    assert state_digest(store) == before, "a refused park wrote durable state"
+
+    # An offboarded human is not an accountable human either (point 36).
+    a_human(store, "retiring-rae", clock=clock)
+    offboard_human(store.conn, tenant=T_A, human_id="retiring-rae", offboarded_by="founder-sam",
+                   now=clock())
+    with pytest.raises(OwnershipRefused):
+        m.consume(_trigger_envelope(store, seed="ghost-offboarded", clock=clock,
+                                    event_name="PipelineStarted", producer_transition_id="PL-1"),
+                  work_item_id="wi-absent", trigger=Trigger.PIPELINE_STARTED,
+                  accountable_owner_id="retiring-rae")
+
+    # ### AND THE ENVELOPE'S OWN ACCOUNTABLE OWNER IS ACCEPTED WHEN IT IS A RECORDED, ACTIVE HUMAN.
+    # Without this the previous assertions would pass on a machine that simply refused everything.
+    good = _trigger_envelope(store, seed="carried-owner", clock=clock,
+                             event_name="PipelineStarted", producer_transition_id="PL-1",
+                             accountable_owner_id="dispatcher-dana")
+    result = m.consume(good, work_item_id="wi-absent", trigger=Trigger.PIPELINE_STARTED)
+    assert result.consume.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    row = store.conn.execute(
+        "SELECT accountable_owner_id FROM pending_references WHERE tenant = ? AND event_id = ?",
+        (T_A, good.event_id)).fetchone()
+    assert row["accountable_owner_id"] == "dispatcher-dana"
+    store.close()
+
+
+def test_the_park_owner_is_resolved_from_the_work_item_when_the_item_exists(tmp_path):
+    """The other permitted outcome: RESOLVED from authoritative state. When the Work Item exists its
+    own `owner_id` answers the question, so an ordinary consumed trigger needs no extra argument and
+    the remediation costs existing callers nothing."""
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+    an_item(m)
+    envelope = _trigger_envelope(store, seed="resolved-owner", clock=clock,
+                                 event_name="PipelineStarted", producer_transition_id="PL-1")
+    result = m.consume(envelope, work_item_id="wi-4471-billing", trigger=Trigger.PIPELINE_STARTED)
+    assert result.consume.outcome is ConsumeOutcome.APPLIED and result.moved
+    assert m.require("wi-4471-billing").state is WorkItemState.IN_PROGRESS
     store.close()
 
 

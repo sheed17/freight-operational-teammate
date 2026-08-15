@@ -14,6 +14,16 @@
 > replacement commit `de526c1`, which carried its review on disk. **Candidate first; landed when
 > reviewed.** **No P6 acceptance criterion is scored here**, and P6 is **not** complete. What this
 > candidate owes next is named in §8.
+>
+> ### **THE FIRST CANDIDATE (`2ed750e`) WAS REJECTED BY A FRESH INDEPENDENT REVIEW, AND THIS TREE IS
+> ITS REPLACEMENT.** The review upheld the ownership model, the transition table, closure semantics,
+> timer semantics, the OCC write, tenant isolation and the P5 reuse as **sound**, and rejected the
+> candidate on **one material defect class** — evidence of a refusal keyed on the identity of a
+> transition that did not happen. **The root cause, the exact surface changed, the eight regressions
+> and the five new mutants are §9**, and everything above §9 describes the unit as originally built
+> and is preserved in its own words: a finding must survive its own repair. ### **The remediating
+> session did not review or adjudicate its own remediation, and the re-review this candidate owes
+> must be fresh with respect to the remediation too.**
 
 ---
 
@@ -172,9 +182,9 @@ Both guards are stronger than before, and neither was weakened to make a mutant 
 
 | What | Result |
 |---|---|
-| [`test_phase6_work_item.py`](../../eval/tests/test_phase6_work_item.py) | **178 nodes, all passing** |
+| [`test_phase6_work_item.py`](../../eval/tests/test_phase6_work_item.py) | **186 nodes, all passing** — 178 at the rejected candidate, **+8** remediation regressions (§9) |
 | Canonical suite, whole tree | see the status block in [`CURRENT.md`](CURRENT.md) — volatile figures live there only |
-| [`mutate_phase6_work_item.py`](../../scripts/mutate_phase6_work_item.py) | ### **27 / 27 mutants caught**, byte-exact restoration verified per case |
+| [`mutate_phase6_work_item.py`](../../scripts/mutate_phase6_work_item.py) | ### **32 / 32 mutants caught**, byte-exact restoration verified per case — 27 at the rejected candidate, **+5** that restore the rejected behaviour (§9) |
 | Illegal-transition sweep | 7 states × 13 triggers = **91 pairs**; **27 legal**, **64 illegal**, every illegal pair driven to a real Work Item in that state |
 | `AC-MACH-000` | exact-set bijection with §14's fourteen identifiers, plus a positive control proving a same-count substitution FAILS |
 | Product Driver | **ACCEPT** — see §7 |
@@ -203,6 +213,14 @@ Per [`CLAUDE.md`](../../CLAUDE.md) §13.6 the driver was pointed at **code that 
 It operated the machine through a brokerage narrative — load 4471 delivered, billed, aged, handed
 over, the owner offboarded, paid, closed, then short-paid and reopened — with the hostile attempts
 inline. **27 behaviours as specified, 0 wrong.** The evaluator returned **ACCEPT**.
+
+The remediated tree (§9) adds three scenes to that narrative — several **distinct** hostile
+transitions against one CLOSED obligation, two distinct hostile **events** plus a redelivery through
+the real dedup inbox, and an event arriving for work that does not exist and names nobody — taking
+the run to **35 behaviours as specified, 0 wrong**. ### **AND THE PROBE WAS PROVEN ABLE TO FAIL:**
+with the rejected behaviour restored in memory it goes RED (`0 of 3   ### ATTEMPTS WENT
+UNRECORDED`), and byte-exact restoration was verified afterwards. A driver scene that has never been
+seen to fail is a demonstration, not evidence.
 
 Two things about that run are worth recording honestly:
 
@@ -250,3 +268,136 @@ machines**. This candidate builds **14 transitions on one machine**. Still owed:
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml), each with its severity and why it is
 nonblocking. Per [`CLAUDE.md`](../../CLAUDE.md) §13.3 **the debt row is the deliverable** for these,
 and it is a complete one.
+
+---
+
+## 9. REMEDIATION — the first candidate (`2ed750e`) was REJECTED, and this tree is its replacement
+
+> ### **THIS SECTION WAS WRITTEN BY THE REMEDIATING SESSION. IT IS EVIDENCE, NOT ACCEPTANCE, AND IT
+> IS NOT A REVIEW OF ITSELF.** The re-review this candidate owes must be fresh with respect to the
+> remediation as well as to the original implementation ([`CLAUDE.md`](../../CLAUDE.md) §11).
+
+A **fresh independent review of P6 M1** returned **REJECT**. It upheld the ownership model, the
+transition table, closure semantics, timer semantics, the OCC write, tenant isolation and the P5
+reuse as **sound**, and rejected the candidate on **one material defect class**:
+
+> ### **Evidence of a REFUSAL was keyed on the identity of a transition that did not happen.**
+
+### 9.1 The root cause, exactly
+
+`IllegalTransitionAttempted` was emitted with §4's **transition-natural** identity —
+`(tenant, aggregate_type, aggregate_id, aggregate_version, producer_transition_id, event_name)`.
+That identity is correct for an event a transition **emits**, because the transition advances the
+version it is keyed on. It is wrong for the one contract M1 emits about something that did **not**
+happen: an illegal transition leaves the version exactly where it was.
+
+So every hostile attempt against one Work Item at one version claimed **one** identity, and the
+outbox's `UNIQUE (tenant, idempotency_identity)` did what it is for:
+
+| # | Consequence, as the reviewer described it and as it was reproduced against `2ed750e` |
+|---|---|
+| **F-01a** | Only the **first** hostile attempt recorded security/audit evidence. Two distinct attempts → **1** `security_events` row. |
+| **F-01b** | Later attempts raised `event_outbox.DuplicateEmission` — a transport error — instead of `IllegalTransition` / `WorkItemError`. |
+| **F-01c** | Through `DedupInbox.consume` that exception rolled back the inbox receipt with the handler's writes. Two distinct hostile **events** → **0** `event_inbox` rows, **0** security records, and an event the transport can never finish delivering. **Infinite-redelivery poison.** |
+| **F-02** | `consume()` for a Work Item that does not exist yet parked the event with `accountable_owner_id` **NULL** — rule 13's one exception, created by the method whose own contract promises the park surfaces *with* the human accountable for it. |
+
+**All four were reproduced mechanically against the rejected tree before a line was changed.** The
+reproduction is the positive control for every regression below: a regression that passes both
+before and after is a decoration.
+
+### 9.2 What changed — one runtime module
+
+`src/freight_recon/work_item.py`. Nothing else in `src/` was touched, and nothing in P5 was touched.
+
+**F-01, part 1 — an identity that distinguishes the ATTEMPT.** `IllegalTransitionAttempted` now
+carries an **explicit** `idempotency_identity` — the mechanism §4 already provides for
+(`sn_v1|…` source-natural identities are the existing precedent, so this is not a new concept):
+
+```
+ita_v1 | tenant | work_item | <id> | <version> | GR-1 | IllegalTransitionAttempted | <attempt_id>
+```
+
+The attempt identity is **never invented where a real one exists**:
+
+- **consumed trigger** → the **incoming hostile event's `event_id`**. Redelivery of one hostile event
+  is therefore idempotent *by construction*, not by luck;
+- **direct `apply()`** → the caller's `event_id` when one was supplied, and a fresh identity per call
+  otherwise, because on that API **each call IS a distinct attempt** — there is no delivery to be
+  redelivered. A caller that retries one attempt pins it and gets **one** record, which
+  `test_the_same_illegal_attempt_pinned_by_the_caller_records_exactly_once` asserts.
+
+Every event a transition **emits** still derives the transition-natural identity, asserted over a
+proven population by `test_a_transition_event_still_carries_the_transition_natural_identity` — a
+remediation that quietly gave every M1 event a bespoke identity would weaken the outbox's identity
+constraint everywhere while fixing one contract.
+
+**F-01, part 2 — the recording path cannot poison a transport.** The already-recorded case is now
+**decided, not discovered by exception**: the identity is looked up under the write lock the method
+already holds, and a repeat writes nothing and says so on a returned `IllegalAttemptRecord`. The
+exception path is still handled and **does not lie** — on a `DuplicateEmission` the identity is
+re-read; a row means the attempt genuinely is recorded, and **no row means the evidence could not be
+written**, which is raised as a `WorkItemError`. Fail-closed stays fail-closed; what changed is that
+it fails as *this machine's* refusal rather than as the transport's, so nothing from `event_outbox`
+reaches the M1 refusal API or the inbox handler.
+
+The two surfaces cannot diverge, which is why the skip skips both: the outbox row and the
+`security_events` row are written in one transaction and only ever together, so an identity already
+in the outbox has its security row already there too.
+
+**F-02 — structural ownership before anything is written.** `consume()` now **establishes** the
+accountable human before it calls the inbox, from authoritative state wherever authoritative state
+has the answer: the caller's explicit `accountable_owner_id` (checked against the recorded roster,
+never taken as a string) → the Work Item's own `owner_id` when the item exists → the park this event
+is **already** held in → the envelope's `accountable_owner_id` (checked against the roster).
+### **And if none of the four answers, the call REFUSES and writes nothing.** There is no fifth
+branch: no `system`, no `Neyma`, no ops-team queue, no `unassigned`, no detector and no model.
+
+### 9.3 The regressions — 8 new nodes, 178 → **186**
+
+| Node | Reproduces |
+|---|---|
+| `test_two_distinct_illegal_attempts_at_one_version_are_independently_auditable` | **A** — two distinct illegal triggers on one CLOSED item at one unchanged version: 2 security rows, 2 outbox records with **distinct** identities at the **same** version, both refusals `IllegalTransition`, no `DuplicateEmission` |
+| `test_the_same_illegal_attempt_pinned_by_the_caller_records_exactly_once` | the idempotent half on the direct API — distinguishing attempts must not mean randomising them |
+| `test_a_transition_event_still_carries_the_transition_natural_identity` | the explicit identity is **confined** to the one contract that needs it |
+| `test_two_distinct_hostile_events_are_recorded_and_cannot_poison_the_inbox` | **B** — two distinct hostile events through `consume()`: both reach a terminal `APPLIED` inbox outcome, 2 security records, nothing escapes the handler; then the **same** event redelivered → `DUPLICATE_NOOP`, no second evidence, no second effect, byte-identical state digest |
+| `test_a_refusal_that_cannot_be_recorded_fails_as_this_machines_error_not_the_transports` | the genuine-failure half of F-01(2) — a real inability to record surfaces as `WorkItemError`, never as `DuplicateEmission`, and never as a false success |
+| `test_consume_refuses_rather_than_parking_an_obligation_nobody_owns` | **C** — refuses and writes **nothing** (no park row, no inbox row, unchanged digest); then parks correctly once a human is named; ownerless-park count asserted **0 over a proven non-empty population** |
+| `test_a_park_owner_is_never_a_fabricated_or_unrecorded_identity` | the refusal cannot be bought off — `system`, `neyma`, `ops-team`, `unassigned`, an unrecorded id and an **offboarded** human are all refused on the call *and* on the envelope, with a positive control proving a real recorded human is accepted |
+| `test_the_park_owner_is_resolved_from_the_work_item_when_the_item_exists` | the other permitted outcome — **resolved** from authoritative state, so existing callers pay nothing |
+
+### 9.4 The mutation battery — 27 → **32**, all caught
+
+### **THE REJECTED CANDIDATE *IS* `W27` + `W28`, AND THE OLD SUITE WAS GREEN ON IT.** That is the
+only reason these five exist and it is the whole point of them: a battery that cannot go red on the
+exact tree a reviewer rejected is a battery that certified the defect.
+
+| Case | Restores |
+|---|---|
+| `W27` | the transition-natural identity for `IllegalTransitionAttempted` — two hostile attempts collide again |
+| `W27a` | the transport's `DuplicateEmission` escaping the refusal API — the poison loop |
+| `W28` | the structural owner requirement removed from `consume()` — the ownerless park returns |
+| `W28a` | the refusal bought off with a fabricated owner (`system`) instead |
+| `W28b` | the park owner no longer checked against the recorded roster |
+
+Each is caught by the regression named above it, byte-exact restoration is verified per case, and
+`__pycache__` is purged around every mutation.
+
+**Stated honestly:** `W27` restores the colliding identity but not the old *escape class* — with the
+new guard in place the collision surfaces as `WorkItemError` rather than `DuplicateEmission`. The
+material defect it reintroduces is the one that matters and the one the reviewer named: **a second
+distinct hostile attempt produces no evidence and is not refused as an illegal transition.** `W27a`
+restores the escape class separately. The harness mutates one anchor at a time, so the two halves
+are two cases rather than one.
+
+### 9.5 What did NOT change
+
+- **No redesign of M1.** The transition table, the fourteen rows, `AC-MACH-000`'s bijection, the
+  guards, closure semantics, timer semantics, the OCC write and tenant isolation are byte-identical
+  in behaviour: all **178** pre-existing nodes pass unchanged.
+- **No P5 infrastructure change.** `event_outbox`, `event_inbox`, `event_envelope`, the durable
+  timer and persistence are untouched. The explicit identity uses the field `EventEnvelope` already
+  exposes; the park owner is passed through the parameter `DedupInbox.consume` already takes; the
+  existing park is read through `DedupInbox.parked()`, a public accessor.
+- **No broadening of P6, no M2, no nonblocking debt actioned.** `P6-D1`…`P6-D8` are unchanged.
+- **Still dark.** `work_item.py` has zero importers in `src/` and `scripts/`, asserted by the AST
+  scan and the import-closure walk that were already there.

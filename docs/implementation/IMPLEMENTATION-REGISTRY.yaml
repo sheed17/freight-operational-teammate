@@ -2602,13 +2602,50 @@ units:
       what_is_in_the_tree: >-
         Machine M1 in full — `src/freight_recon/work_item.py` and
         `src/freight_recon/migrations/phase6_work_items.py`, wired into `schema.py` and into the P2
-        migration path — with 178 acceptance and hostile nodes in
-        `eval/tests/test_phase6_work_item.py` and a 27-case mutation battery in
-        `scripts/mutate_phase6_work_item.py` at 27/27 caught. The canonical suite is green on the
+        migration path — with 186 acceptance and hostile nodes in
+        `eval/tests/test_phase6_work_item.py` and a 32-case mutation battery in
+        `scripts/mutate_phase6_work_item.py` at 32/32 caught. The canonical suite is green on the
         whole tree. ### NONE OF THAT IS ACCEPTANCE: it is what an independent reviewer is being
         asked to attack.
       implementer_evidence: docs/implementation/p6-u1-work-item-ownership-implementation-record.md
       independent_review_report: null
+      # ### THE FIRST CANDIDATE WAS REJECTED, AND THIS IS THE REPLACEMENT. Kept in the record rather
+      # than overwritten: a finding must survive its own repair, and a candidate block that only
+      # ever describes the current tree cannot tell a reviewer what was already tried and found
+      # wrong. Same shape as the P4 acceptance closure, where the FIRST independent review rejected
+      # candidate `95cf5af7` and a separate session remediated it into `0891d1a`.
+      superseded_candidate:
+        commit: 2ed750e
+        verdict: REJECT
+        reviewed_by: >-
+          A fresh independent review of P6 M1, by a session that neither implemented nor remediated
+          the candidate. It is that review's verdict, not this session's judgement.
+        upheld_sound: >-
+          The ownership model, the transition table, closure semantics, timer semantics, OCC, tenant
+          isolation and the P5 reuse were found SOUND, and the remediation changes none of them.
+        material_defect_class: >-
+          EVIDENCE OF A REFUSAL WAS KEYED ON THE IDENTITY OF A TRANSITION THAT DID NOT HAPPEN.
+          F-01 — `IllegalTransitionAttempted` used §4's transition-natural identity, which contains
+          the aggregate version; an illegal transition does not advance that version, so a SECOND
+          distinct hostile attempt against one Work Item at one version collided on
+          `idempotency_identity`. Only the first attempt was recorded; later ones raised
+          `event_outbox.DuplicateEmission` instead of an IllegalTransition/WorkItemError refusal;
+          and inside `DedupInbox.consume` that exception rolled the inbox receipt back and made the
+          event redeliver forever, recording nothing on any pass.
+          F-02 — `consume()` could create a parked missing-aggregate obligation with
+          `accountable_owner_id` NULL: rule 13's one exception, created by the method whose own
+          contract promises the park surfaces WITH the human accountable for it.
+        reproduced_before_fixing: >-
+          Both were reproduced mechanically against commit 2ed750e before a line was changed: two
+          distinct hostile attempts produced ONE security record and a leaked `DuplicateEmission`;
+          two distinct hostile EVENTS through `consume()` produced ZERO inbox rows and ZERO security
+          records; a park was written with a NULL accountable owner.
+        remediation: >-
+          NARROW. Three files — `src/freight_recon/work_item.py` (the only runtime module),
+          `eval/tests/test_phase6_work_item.py` (+8 regressions) and
+          `scripts/mutate_phase6_work_item.py` (+5 mutants W27/W27a/W28/W28a/W28b, which restore the
+          rejected behaviour and prove the new regressions go red on it). No redesign of M1, no
+          broadening of P6, no M2, no P5 infrastructure change, no nonblocking debt actioned.
       what_it_owes: >-
         ### A FRESH TARGETED INDEPENDENT REVIEW BY A SESSION THAT NEITHER IMPLEMENTED NOR REMEDIATED
         IT, then a separate adjudication. Only then may `execution_state` become IN_PROGRESS,
@@ -2617,9 +2654,15 @@ units:
       product_driver_result: >-
         ACCEPT — the driver OPERATED the machine through a brokerage narrative (load 4471 delivered,
         billed, aged, handed over, the owner offboarded, paid, closed, short-paid and reopened) with
-        the hostile attempts inline: 27 behaviours as specified, 0 wrong. ### THAT IS AN INDEPENDENT
-        JUDGEMENT OF OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT ENGINEERING
-        REVIEW THIS CANDIDATE OWES. Its one FIX was against the scenario, not the product.
+        the hostile attempts inline. The remediated tree adds three scenes to that narrative —
+        several DISTINCT hostile transitions against one CLOSED obligation, two distinct hostile
+        EVENTS plus a redelivery through the real dedup inbox, and an event arriving for work that
+        does not exist and names nobody — for 35 behaviours as specified, 0 wrong. The probe was
+        proven able to fail: with the rejected behaviour restored IN MEMORY it goes RED (0 of 3
+        attempts recorded), and byte-exact restoration was verified afterwards. ### THAT IS AN
+        INDEPENDENT JUDGEMENT OF OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT
+        ENGINEERING REVIEW THIS CANDIDATE OWES. Its one FIX was against the scenario, not the
+        product.
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
