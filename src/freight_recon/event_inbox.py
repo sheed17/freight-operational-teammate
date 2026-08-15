@@ -255,6 +255,7 @@ class DedupInbox:
         handler: Handler,
         *,
         requires: Sequence[tuple[str, str]] = (),
+        requires_existing: Sequence[tuple[str, str]] = (),
         accountable_owner_id: str | None = None,
     ) -> ConsumeResult:
         """Consume ONE event, exactly once, or say precisely why not.
@@ -264,6 +265,21 @@ class DedupInbox:
         envelope's `entity_versions` keys where they are written `type:id` — the SD-3 set is, by
         definition, "every entity referenced by a material fact, the target resource, and any
         gate-precondition entity" (§5), which is exactly the set whose absence should park.
+
+        ### `requires_existing` SAYS THE ONE THING `requires` CANNOT, AND IT IS A SECOND PARAMETER
+        ON PURPOSE. A `requires` pair equal to the event's own aggregate is SKIPPED — the creation
+        event IS its aggregate arriving, and making it wait for itself would park every root event
+        forever. But some events name their own aggregate as a genuine PREREQUISITE: M1's
+        `HumanDecided` is a decision ABOUT a Work Item that must already exist, and it rides on
+        `work_item:<id>` because that is its ordering key. Stated through `requires`, that demand
+        was silently DROPPED — the handler then raised, the receipt rolled back with it, and the
+        event redelivered forever. M-26's exact failure, reached by skipping M-26.
+
+        So the caller states it here instead: these pairs are resolved WITHOUT the self-aggregate
+        skip, and a missing one parks like any other (M-26). Overloading `requires` would have made
+        every already-certified caller's meaning ambiguous — a pair equal to the own aggregate would
+        have changed sense underneath callers who never asked. A caller that passes nothing here is
+        unaffected, which is the whole reason this is a new name and not a new meaning.
         """
         if not callable(handler):
             raise InboxError("consume requires a handler callable")
@@ -323,6 +339,7 @@ class DedupInbox:
 
         result = self._consume_validated(
             event, handler, requires=tuple(requires),
+            requires_existing=tuple(requires_existing),
             accountable_owner_id=accountable_owner_id,
         )
         if result.outcome is not ConsumeOutcome.APPLIED:
@@ -341,6 +358,7 @@ class DedupInbox:
         handler: Handler,
         *,
         requires: tuple[tuple[str, str], ...],
+        requires_existing: tuple[tuple[str, str], ...] = (),
         accountable_owner_id: str | None,
         draining: bool = False,
     ) -> ConsumeResult:
@@ -390,18 +408,35 @@ class DedupInbox:
             # A redelivery of an event we are already holding is counted and otherwise ignored —
             # unless this IS the drain replaying it, which is the one caller allowed past.
             if parked is not None and parked["park_state"] == "PARKED" and not draining:
-                conn.execute(
-                    "UPDATE pending_references SET attempts = attempts + 1, last_attempt_at = ? "
-                    " WHERE tenant = ? AND consumer_id = ? AND event_id = ?",
-                    (now_text, self._tenant, self._consumer_id, event.event_id),
-                )
-                conn.commit()
-                return ConsumeResult(
-                    outcome=ConsumeOutcome.ALREADY_PARKED, event_id=event.event_id,
-                    detail="already parked; the redelivery was counted, nothing else changed",
-                )
+                # ### UNLESS THE REDELIVERY *IS* THE DRAIN, WHICH FOR AN EXPLICIT PREREQUISITE IS
+                # THE ONLY DRAIN THERE IS. `_drain_for` seeds itself from the aggregate of the
+                # event it just APPLIED, so it can only ever release a cohort parked on somebody
+                # ELSE's aggregate. An event held on a `requires_existing` pair is waiting for a
+                # machine that no consumed event of this consumer applies — nothing would ever
+                # seed a drain for it, and M-26's "drained the moment the referent appears" would
+                # decay into "expired onto a human's desk a day later". So when the caller named
+                # explicit prerequisites and every one of them now resolves, the park is closed
+                # and the event goes on to be consumed, exactly once, in THIS transaction.
+                # A caller that named none cannot reach this: the guard is false and the branch
+                # below is the one it has always taken.
+                released = bool(requires_existing) and self._first_unresolved_reference(
+                    event, (), requires_existing,
+                ) is None
+                if not released:
+                    conn.execute(
+                        "UPDATE pending_references SET attempts = attempts + 1, "
+                        "last_attempt_at = ? "
+                        " WHERE tenant = ? AND consumer_id = ? AND event_id = ?",
+                        (now_text, self._tenant, self._consumer_id, event.event_id),
+                    )
+                    conn.commit()
+                    return ConsumeResult(
+                        outcome=ConsumeOutcome.ALREADY_PARKED, event_id=event.event_id,
+                        detail="already parked; the redelivery was counted, nothing else changed",
+                    )
+                self._resolve_park_locked(event.event_id, state="DRAINED", now=now_text)
 
-            blocker = self._first_unresolved_reference(event, requires)
+            blocker = self._first_unresolved_reference(event, requires, requires_existing)
             if blocker is not None:
                 self._park_locked(
                     event, referenced=blocker, reason="MISSING_AGGREGATE", now=now,
@@ -498,16 +533,32 @@ class DedupInbox:
     # --- parking and draining ---------------------------------------------------------------
 
     def _first_unresolved_reference(
-        self, event: EventEnvelope, requires: tuple[tuple[str, str], ...],
+        self,
+        event: EventEnvelope,
+        requires: tuple[tuple[str, str], ...],
+        requires_existing: tuple[tuple[str, str], ...] = (),
     ) -> tuple[str, str] | None:
         if self._resolver is None:
             return None
-        wanted = requires or _references_from_entity_versions(event)
+        for aggregate_type, aggregate_id in requires_existing:
+            # NO self-aggregate skip, and that is the entire point of the parameter: naming a pair
+            # here IS the caller saying "this machine must already exist even though the event
+            # rides on it". Checked first so the caller's own statement outranks any derivation.
+            if not self._resolver(aggregate_type, aggregate_id):
+                return (aggregate_type, aggregate_id)
+        wanted = requires
+        if not wanted and not requires_existing:
+            # The `entity_versions` derivation is a DEFAULT for a caller who named nothing, not an
+            # addition to what a caller did name. A caller that stated its prerequisites has stated
+            # them, and inferring more would park events on references it deliberately did not ask
+            # about.
+            wanted = _references_from_entity_versions(event)
         for aggregate_type, aggregate_id in wanted:
             if (aggregate_type, aggregate_id) == (event.aggregate_type, event.aggregate_id):
                 # An event never waits for its own aggregate: the creation event IS the aggregate
                 # coming into existence, and requiring it to pre-exist would park every root event
-                # forever.
+                # forever. `requires_existing` is how a caller says otherwise for the events whose
+                # own aggregate genuinely IS a prerequisite.
                 continue
             if not self._resolver(aggregate_type, aggregate_id):
                 return (aggregate_type, aggregate_id)

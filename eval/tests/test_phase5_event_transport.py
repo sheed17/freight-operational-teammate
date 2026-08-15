@@ -1151,6 +1151,106 @@ def test_an_event_never_parks_waiting_for_its_own_aggregate(tmp_path):
     store.close()
 
 
+def test_an_explicitly_required_own_aggregate_is_evaluated_where_an_implicit_one_is_skipped(
+        tmp_path):
+    """### THE SAME PAIR MEANS TWO OPPOSITE THINGS, AND ONLY THE CALLER KNOWS WHICH.
+
+    `(work_item, wi-late)` on an event whose aggregate IS `work_item:wi-late` is the aggregate
+    ARRIVING when the event is `WorkItemCreated` — the test above — and a Work Item the decision is
+    ABOUT when it is `HumanDecided`. Stated through `requires`, BOTH were skipped. So the second
+    one's demand evaporated silently: the handler raised inside the inbox's one transaction, the
+    receipt rolled back with it, and the event redelivered forever with no receipt, no park, no
+    owner and no outcome — M-26's exact failure, reached by skipping M-26.
+
+    `requires_existing` is the caller saying which of the two it means. This test asserts BOTH
+    readings at once, because either alone is satisfied by a rule that is simply wrong the other
+    way round.
+    """
+    store = make_store(tmp_path)
+    inbox = make_inbox(store, reference_resolver=lambda t, i: False)
+    handler = RecordingHandler(store.conn)
+
+    creation = make_envelope(aggregate_type="work_item", event_name="WorkItemCreated",
+                             producer_transition_id="WI-1", aggregate_id="wi-late",
+                             aggregate_version=1, seed="implicit-self",
+                             entity_versions={"work_item:wi-late": 1})
+    assert inbox.consume(
+        creation, handler, requires=(("work_item", "wi-late"),),
+    ).outcome is ConsumeOutcome.APPLIED, (
+        "a `requires` pair equal to the event's own aggregate must still be SKIPPED: that is the "
+        "reading every already-certified caller was built against"
+    )
+
+    decision = make_envelope(aggregate_type="work_item", event_name="HumanDecided",
+                             aggregate_id="wi-late", aggregate_version=2, seed="explicit-self",
+                             entity_versions={"work_item:wi-late": 2})
+    parked = inbox.consume(decision, handler,
+                           requires_existing=(("work_item", "wi-late"),),
+                           accountable_owner_id="dispatcher-dana")
+    assert parked.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE, (
+        "an EXPLICIT prerequisite equal to the own aggregate must be evaluated, not skipped"
+    )
+    held = inbox.parked()
+    assert [(p.referenced_type, p.referenced_id) for p in held] == [("work_item", "wi-late")]
+    assert held[0].accountable_owner_id == "dispatcher-dana", "M-26 parks WITH its human"
+    assert held[0].arrival_sequence == 1 and held[0].expires_at, (
+        "arrival order and a TTL, or it is not a park"
+    )
+    assert decision.event_id not in handler.event_ids, "the handler must not have been reached"
+
+    # And the CROSS-aggregate reading is untouched: a `requires` pair naming somebody else's
+    # aggregate parked before this change and parks now, by the same code path.
+    foreign = make_envelope(aggregate_type="pipeline_instance", aggregate_id="pi-9",
+                            aggregate_version=1, seed="cross-aggregate-unchanged")
+    assert inbox.consume(
+        foreign, handler, requires=(("work_item", "wi-late"),),
+        accountable_owner_id="dispatcher-dana",
+    ).outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    store.close()
+
+
+def test_a_park_on_an_explicit_prerequisite_drains_when_the_referent_appears(tmp_path):
+    """### A PARK THAT CANNOT DRAIN IS A DROP WITH A DEADLINE, WHICH IS WHAT M-26 FORBIDS.
+
+    `_drain_for` seeds itself from the aggregate of the event it just APPLIED, so it releases
+    cohorts parked on somebody ELSE's aggregate. An event held on its OWN aggregate has no such
+    seed — nothing this consumer applies would ever wake it — so parking it correctly and stopping
+    there would have converted an infinite loop into a guaranteed TTL expiry. The redelivery is
+    therefore the drain: when every explicit prerequisite resolves, the park is closed and the
+    event is consumed, exactly once, in that transaction.
+    """
+    store = make_store(tmp_path)
+    existing: set[tuple[str, str]] = set()
+    inbox = make_inbox(store, reference_resolver=lambda t, i: (t, i) in existing)
+    handler = RecordingHandler(store.conn)
+    decision = make_envelope(aggregate_type="work_item", event_name="HumanDecided",
+                             aggregate_id="wi-late", aggregate_version=2, seed="drains-on-arrival",
+                             entity_versions={"work_item:wi-late": 2})
+    prereq = (("work_item", "wi-late"),)
+
+    first = inbox.consume(decision, handler, requires_existing=prereq,
+                          accountable_owner_id="dispatcher-dana")
+    assert first.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    again = inbox.consume(decision, handler, requires_existing=prereq)
+    assert again.outcome is ConsumeOutcome.ALREADY_PARKED, "still blocked: counted, not applied"
+    assert handler.applied == [], "nothing ran while the referent was missing"
+
+    existing.add(("work_item", "wi-late"))
+    drained = inbox.consume(decision, handler, requires_existing=prereq)
+    assert drained.outcome is ConsumeOutcome.APPLIED
+    assert handler.event_ids == [decision.event_id], "consumed exactly once, on arrival"
+    assert inbox.parked() == [], "the park must be CLOSED, not merely stepped over"
+    assert [r["park_state"] for r in store.conn.execute(
+        "SELECT park_state FROM pending_references WHERE tenant = ?", (T_A,)).fetchall()
+    ] == ["DRAINED"], "a resolved park is recorded as DRAINED, so nothing expires onto a desk later"
+
+    after = state_digest(store)
+    fourth = inbox.consume(decision, handler, requires_existing=prereq)
+    assert fourth.outcome is ConsumeOutcome.DUPLICATE_NOOP, "M-24 still owns the idempotency"
+    assert state_digest(store) == after, "a redelivery after the drain moved durable state"
+    store.close()
+
+
 # ================================================ 11. immutability and append-only — S8, C-8
 
 def test_the_stored_envelope_cannot_be_edited(tmp_path):

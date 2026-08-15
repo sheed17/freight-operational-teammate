@@ -454,6 +454,35 @@ def legal_transitions(state: WorkItemState, trigger: Trigger) -> tuple[Transitio
     )
 
 
+def rows_for_trigger(trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every non-delegation row this trigger can fire, whatever the state. Data, so it can be swept."""
+    return tuple(
+        row for row in TRANSITIONS if not row.is_delegation and trigger in row.triggers
+    )
+
+
+def work_item_must_exist(trigger: Trigger) -> bool:
+    """Is an existing Work Item a PREREQUISITE of this trigger, or is it the trigger's PRODUCT?
+
+    ### THIS IS DERIVED FROM §14, NOT LISTED. A hand-kept list of "the creation triggers" is a list
+    that is right on the day it is written; `creates` is already on the row because `AC-MACH-000`
+    enumerates the table, so the question is answered by the specification itself and a fourteenth
+    row added tomorrow answers it too.
+
+    A trigger whose every row `creates` brings the Work Item into existence — WI-1 — and demanding
+    that it pre-exist is demanding that it exist before it exists. Everything else is ABOUT a Work
+    Item, and `HumanDecided` is the sharp case: it rides on `work_item:<id>` because that is its
+    ordering key, yet the item it decides must already be there. That pair — own aggregate, genuine
+    prerequisite — is what `DedupInbox.consume(requires_existing=...)` exists to state, and what
+    silently evaporated before it did.
+
+    A trigger with NO row at all answers True: the safe reading of an unmapped trigger is that it
+    is about something, and parking a stranger is recoverable where skipping one is not.
+    """
+    rows = rows_for_trigger(trigger)
+    return not (rows and all(row.creates for row in rows))
+
+
 # ------------------------------------------------------------------------------- recorded authority
 
 @dataclass(frozen=True)
@@ -1149,6 +1178,25 @@ class WorkItemMachine:
         expiry rather than a log line. So the resolver and the `requires` pair are supplied here
         rather than left to whichever caller remembered.
 
+        ### AND THAT CLAIM WAS ONLY TRUE OF THE TRIGGERS SOMEBODY HAPPENED TO TEST. It was asserted
+        with one `PipelineStarted`, whose event rides on `pipeline_instance` — so the Work Item was
+        a reference to somebody ELSE's aggregate and parked correctly. `HumanDecided` rides on
+        `work_item:<id>` itself, and the inbox skips a required reference equal to the incoming
+        event's own aggregate, because a creation event must not be made to wait for itself. The
+        pair was therefore DROPPED, silently, and the whole defect above came back for exactly the
+        triggers carried on the Work Item: raise, roll back, redeliver, forever, with inbox=0
+        parks=0 outbox=0 security=0 on every pass. The population is derived from §14 now instead
+        of sampled — see `work_item_must_exist` — and the demand is stated through
+        `requires_existing`, which the inbox resolves WITHOUT that skip.
+
+        ### THE TWO SELF-CARRIED SHAPES ARE OPPOSITES, WHICH IS WHY ONE FLAG CANNOT SERVE BOTH.
+        `HumanDecided` decides a Work Item that must already exist ⇒ prerequisite ⇒ park it.
+        `WorkItemCreated` IS the Work Item arriving ⇒ product ⇒ it must never wait for itself, and
+        it is not a transition this machine consumes at all (§33; `legal_transitions` excludes
+        every `creates` row; WI-1 is originated through `create()`). Delivered here it is refused
+        as an outcome — `refusal_kind == "NOT_CONSUMABLE"` — consumed exactly once, persisting
+        nothing and emitting nothing.
+
         ### THE IDEMPOTENCY IS NOT REIMPLEMENTED HERE. GR-4's mechanism is
         `(tenant, consumer_id, event_id)` in `event_inbox`, and `DedupInbox.consume` already owns
         the one commit that carries both the handler's writes and the inbox row (M-24). So a
@@ -1191,13 +1239,45 @@ class WorkItemMachine:
             self._conn, tenant=self._tenant, consumer_id=CONSUMER_ID, clock=self._clock,
             reference_resolver=self.reference_resolver,
         )
-        owner = self._accountable_owner_for(box, envelope, work_item_id, accountable_owner_id)
+        # ### THE OWNER IS THE HUMAN A PARK LANDS ON, SO IT IS ESTABLISHED ONLY WHERE A PARK CAN.
+        # `_accountable_owner_for` REFUSES rather than invent one (F-02), and that refusal is a
+        # raise. Demanded of a trigger that can never park, it would be a gate on nothing that
+        # nonetheless left no receipt — the transport would redeliver into the same refusal
+        # forever, which is the very loop this method was corrected to stop. WI-1 creates the
+        # Work Item, so it names no `requires_existing` and cannot park; there is no obligation
+        # to own yet, because there is not yet anything to be obliged about.
+        owner = (
+            self._accountable_owner_for(box, envelope, work_item_id, accountable_owner_id)
+            if work_item_must_exist(trigger) else accountable_owner_id
+        )
         parsed = _Facts(**_split_facts(facts))
         outcome: dict[str, Any] = {"transition": None, "refusal": None, "refusal_kind": None,
                                    "illegal_record": None}
 
         def handler(event: EventEnvelope) -> None:
-            item = self.require(work_item_id)
+            item = self.get(work_item_id)
+            if item is None:
+                # ### ONLY A CREATION TRIGGER REACHES THIS, BECAUSE EVERY OTHER ONE PARKED.
+                # A trigger the Work Item is a prerequisite of named it in `requires_existing` and
+                # the inbox held the event under M-26 before the handler was reachable. So a
+                # missing item here means WI-1: the event whose whole job is to bring the item
+                # into existence, arriving at the CONSUMING path. §33's "Events consumed" does not
+                # list `WorkItemCreated`, `legal_transitions` excludes every `creates` row, and
+                # `create()` is where WI-1 is ORIGINATED — so there is no transition to attempt.
+                #
+                # It is refused as an outcome, not raised: raising is what rolled the receipt back
+                # and looped the event forever. And it is not recorded as an illegal ATTEMPT,
+                # because `IllegalTransitionAttempted` must name the Work Item's state and version
+                # (GR-1, [C-4]) and there is no Work Item to name — inventing one would be a
+                # fabricated security record, which is worse than none.
+                outcome["refusal"], outcome["refusal_kind"] = (
+                    f"{trigger.value} does not transition a Work Item — WI-1 CREATES one, and a "
+                    f"creation is originated through create(), never consumed. There is no "
+                    f"{work_item_id!r} to move and this event does not make one. Consumed once, "
+                    f"nothing persisted, nothing emitted.",
+                    "NOT_CONSUMABLE",
+                )
+                return
             try:
                 outcome["transition"] = self._apply_locked(
                     item, trigger, actor_type=event.actor_type, actor_id=event.actor_id,
@@ -1222,7 +1302,19 @@ class WorkItemMachine:
 
         result = box.consume(
             envelope, handler,
+            # ### STATED AS AN EXPLICIT PREREQUISITE, WHICH IS WHY IT NOW SURVIVES THE INBOX.
+            # Through `requires` this pair was DROPPED for every trigger carried on the Work Item
+            # itself — `HumanDecided` above all — because the inbox skips a required reference
+            # equal to the incoming event's own aggregate. The handler then raised `UnknownWorkItem`
+            # inside the inbox's one transaction, the receipt rolled back with it, and the event
+            # redelivered forever: no receipt, no park, no owner, no security record, no outcome.
+            # `requires_existing` is the affordance that says "must already exist" for exactly that
+            # shape, and the empty tuple for WI-1 is the same sentence read the other way — a
+            # creation does not wait for what it creates.
             requires=((AGGREGATE_TYPE, work_item_id),),
+            requires_existing=(
+                ((AGGREGATE_TYPE, work_item_id),) if work_item_must_exist(trigger) else ()
+            ),
             accountable_owner_id=owner,
         )
         return ConsumedTransition(

@@ -32,8 +32,12 @@ PY = ROOT / ".venv/bin/python"
 WI = "src/freight_recon/work_item.py"
 MIG = "src/freight_recon/migrations/phase6_work_items.py"
 SCHEMA = "src/freight_recon/schema.py"
+# P5's inbox is in range for W29* only, and only for the affordance this unit's defect required.
+# The mutants below attack THAT affordance; nothing else in the module is touched.
+EI = "src/freight_recon/event_inbox.py"
 
 T = "eval/tests/test_phase6_work_item.py"
+T5 = "eval/tests/test_phase5_event_transport.py"
 
 
 def purge_pycache() -> None:
@@ -281,9 +285,10 @@ TEXT_CASES = [
     ("W28 the structural owner requirement leaves consume(): a park can be created with "
      "accountable_owner_id NULL again (F-02)",
      WI,
-     "        owner = self._accountable_owner_for(box, envelope, work_item_id, "
-     "accountable_owner_id)",
-     "        owner = accountable_owner_id  # MUTANT: the ownerless park returns",
+     "            self._accountable_owner_for(box, envelope, work_item_id, accountable_owner_id)\n"
+     "            if work_item_must_exist(trigger) else accountable_owner_id",
+     "            accountable_owner_id  # MUTANT: the ownerless park returns\n"
+     "            if work_item_must_exist(trigger) else accountable_owner_id",
      f"{T}::test_consume_refuses_rather_than_parking_an_obligation_nobody_owns"),
 
     ("W28a the refusal is bought off with a fabricated owner instead: 'system' owns the parked "
@@ -308,43 +313,130 @@ TEXT_CASES = [
      '        if str(accountable_owner_id or "").strip():\n'
      "            return accountable_owner_id  # MUTANT: an owner nobody recorded",
      f"{T}::test_a_park_owner_is_never_a_fabricated_or_unrecorded_identity"),
+
+    # ---- THE DEFECT THE SECOND INDEPENDENT REVIEW REJECTED THIS CANDIDATE FOR (F-03) ----------
+    #
+    # ### F-03 WAS TWO FAULTS MEETING, SO IT TAKES THREE MUTANTS TO HOLD IT DOWN. The inbox
+    # skipped an explicitly required self-aggregate reference (W29); M1's handler demanded that a
+    # CREATION event's product already exist (W30); and a park nothing can drain is a drop with a
+    # deadline (W29b). Each one alone reproduces a shipped, review-rejected behaviour.
+
+    # ### THIS MUTANT'S SYMPTOM IS NOT THE LOOP, AND SAYING SO IS THE POINT. With M1's handler
+    # still corrected, the evaporated requirement lands as a `NOT_CONSUMABLE` refusal: the
+    # canonical human decision is CONSUMED AND DISCARDED, receipt written, nothing parked, nothing
+    # emitted. That is M-26's other forbidden outcome — dropped rather than failed — and it is
+    # strictly harder to notice than the loop was. W29c is where the loop itself comes back.
+    ("W29 DedupInbox skips an EXPLICITLY required self-aggregate reference again: M1's demand "
+     "evaporates and a canonical HumanDecided for an item that has not landed is silently DROPPED "
+     "instead of parked — no park, no owner, no TTL, no second chance (F-03)",
+     EI,
+     "        for aggregate_type, aggregate_id in requires_existing:\n",
+     "        for aggregate_type, aggregate_id in requires_existing:\n"
+     "            if (aggregate_type, aggregate_id) == (event.aggregate_type, "
+     "event.aggregate_id):\n"
+     "                continue  # MUTANT: the explicit prerequisite evaporates again (F-03)\n",
+     f"{T}::test_every_trigger_has_a_converging_missing_work_item_outcome"),
+
+    ("W29a the same skip, watched by the P5 regression rather than the population sweep: the "
+     "shared primitive's own guard must notice its own affordance being neutered (F-03)",
+     EI,
+     "        for aggregate_type, aggregate_id in requires_existing:\n",
+     "        for aggregate_type, aggregate_id in requires_existing:\n"
+     "            if (aggregate_type, aggregate_id) == (event.aggregate_type, "
+     "event.aggregate_id):\n"
+     "                continue  # MUTANT: the explicit prerequisite evaporates again (F-03)\n",
+     f"{T5}::test_an_explicitly_required_own_aggregate_is_evaluated"
+     "_where_an_implicit_one_is_skipped"),
+
+    ("W29b a park on an explicit prerequisite stops draining on redelivery: nothing this consumer "
+     "applies can seed its drain, so the held human decision is guaranteed to reach TTL instead "
+     "of being applied — a drop with a deadline (F-03)",
+     EI,
+     "                released = bool(requires_existing) and self._first_unresolved_reference(",
+     "                released = False and self._first_unresolved_reference(  # MUTANT: no drain",
+     f"{T}::test_a_human_decision_for_a_work_item_that_has_not_landed_parks_and_then_drains"),
+
+    ("W30 M1's handler unconditionally requires the Work Item again, including for the creation "
+     "event whose whole job is to bring it into existence: WorkItemCreated raises "
+     "UnknownWorkItem, the receipt rolls back with it, and it redelivers forever (F-03)",
+     WI,
+     "            item = self.get(work_item_id)\n"
+     "            if item is None:",
+     "            item = self.require(work_item_id)  # MUTANT: WI-1 waits for its own product\n"
+     "            if item is None:",
+     f"{T}::test_a_creation_event_never_waits_for_the_work_item_it_creates"),
 ]
 
 
-def _run_text_case(case) -> tuple[str, str]:
-    label, rel, old, new, guard = case
-    path = ROOT / rel
-    if not path.exists():
-        return "SETUP-FAIL", f"{rel} does not exist"
-    original = path.read_bytes()
-    text = original.decode("utf-8")
-    if text.count(old) != 1:
-        return "SETUP-FAIL", f"anchor appears {text.count(old)}x in {rel} (need exactly 1)"
+# ### ONE CASE NEEDS TWO FILES AT ONCE, AND PRETENDING OTHERWISE WOULD WEAKEN IT.
+# F-03's rejected behaviour was the INTERSECTION of two faults. Restore only the inbox skip and
+# M1's corrected handler absorbs the fallout as a `NOT_CONSUMABLE` refusal — a silent DROP of a
+# recorded human decision, which is its own M-26 violation and is caught, but it is not the loop
+# the reviewer saw. Restore only the handler and the decision still parks. The loop needs both, so
+# W29c applies both and the guard must still notice.
+MULTI_CASES = [
+    ("W29c both halves of F-03 at once — the EXACT rejected tree: the inbox skips M1's explicit "
+     "prerequisite AND the handler requires the Work Item unconditionally, so a canonical "
+     "HumanDecided for an item that has not landed raises inside the inbox's one transaction and "
+     "redelivers forever with inbox=0 parks=0 outbox=0 security=0",
+     (
+         (EI,
+          "        for aggregate_type, aggregate_id in requires_existing:\n",
+          "        for aggregate_type, aggregate_id in requires_existing:\n"
+          "            if (aggregate_type, aggregate_id) == (event.aggregate_type,"
+          " event.aggregate_id):\n"
+          "                continue  # MUTANT\n"),
+         (WI,
+          "            item = self.get(work_item_id)\n            if item is None:",
+          "            item = self.require(work_item_id)  # MUTANT\n            if item is None:"),
+     ),
+     f"{T}::test_every_trigger_has_a_converging_missing_work_item_outcome"),
+]
+
+
+def _run_edits(edits, guard) -> tuple[str, str]:
+    originals: dict[Path, bytes] = {}
+    for rel, old, new in edits:
+        path = ROOT / rel
+        if not path.exists():
+            return "SETUP-FAIL", f"{rel} does not exist"
+        text = path.read_bytes().decode("utf-8")
+        if text.count(old) != 1:
+            return "SETUP-FAIL", f"anchor appears {text.count(old)}x in {rel} (need exactly 1)"
+        if text.replace(old, new, 1) == text:
+            return "SETUP-FAIL", f"mutation was a no-op in {rel}"
 
     purge_pycache()
     if not run_guard(guard):
         return "SETUP-FAIL", "guard already RED before mutation"
 
-    mutated = text.replace(old, new, 1)
-    if mutated == text:
-        return "SETUP-FAIL", "mutation was a no-op"
-
     try:
-        path.write_text(mutated, encoding="utf-8")
+        for rel, old, new in edits:
+            path = ROOT / rel
+            originals[path] = path.read_bytes()
+            path.write_text(originals[path].decode("utf-8").replace(old, new, 1), encoding="utf-8")
         purge_pycache()
         caught = not run_guard(guard)
     finally:
-        path.write_bytes(original)
+        for path, blob in originals.items():
+            path.write_bytes(blob)
         purge_pycache()
-    if path.read_bytes() != original:
-        return "RESTORE-RED", f"byte-for-byte restore FAILED for {rel}"
+    for path, blob in originals.items():
+        if path.read_bytes() != blob:
+            return "RESTORE-RED", f"byte-for-byte restore FAILED for {path}"
     if not run_guard(guard):
         return "RESTORE-RED", "guard red after restore - investigate"
     return ("CAUGHT" if caught else "MISS"), ""
 
 
+def _run_text_case(case) -> tuple[str, str]:
+    _, rel, old, new, guard = case
+    return _run_edits(((rel, old, new),), guard)
+
+
 def main() -> int:
     results = [(c[0], *_run_text_case(c)) for c in TEXT_CASES]
+    results += [(c[0], *_run_edits(c[1], c[2])) for c in MULTI_CASES]
     print("\n=========== P6 U1 WORK ITEM / OWNERSHIP MUTATION BATTERY ===========")
     for label, verdict, note in results:
         mark = {"CAUGHT": "PASS", "MISS": "### MISS ###"}.get(verdict, verdict)

@@ -88,6 +88,8 @@ from freight_recon.work_item import (  # noqa: E402
     open_work_owned_by,
     record_human_authority,
     resolve_decision_ref,
+    rows_for_trigger,
+    work_item_must_exist,
 )
 
 MACHINE_SPEC = ROOT / "docs/specifications/state-machines/01-work-item.machine.md"
@@ -1503,6 +1505,253 @@ def test_a_trigger_for_a_work_item_that_does_not_exist_yet_is_parked_not_looped(
     assert expired[0].accountable_owner_id == "dispatcher-dana", (
         "an expired park with no accountable human is exactly the silent drop M-26 forbids"
     )
+    store.close()
+
+
+# --------------------------------------------------- the missing-Work-Item population, DERIVED
+
+def _canonical_trigger_envelope(trigger: Trigger, *, clock: Clock, work_item_id: str,
+                                seed: str, tenant: str = T_A) -> EventEnvelope:
+    """A well-formed envelope for ANY trigger, built from its contract — never hand-shaped.
+
+    The aggregate is the contract's own, which is the whole point of the sweep below: whether the
+    Work Item is the event's own aggregate or somebody else's is a fact of the registry, not a
+    choice this fixture gets to make.
+    """
+    from phase6_kit import deterministic_event_id, minimal_payload
+    contract = CONTRACTS.get(trigger.value)
+    aggregate_type = (contract.aggregate_type if contract and contract.aggregate_type
+                      else AGGREGATE_TYPE)
+    aggregate_id = work_item_id if aggregate_type == AGGREGATE_TYPE else f"{aggregate_type}-1"
+    now = format_instant(clock())
+    return EventEnvelope(
+        event_id=deterministic_event_id(seed), event_name=trigger.value, event_version=1,
+        occurred_at=now, recorded_at=now, tenant_id=tenant, aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id, aggregate_version=1, causation_id=None,
+        correlation_id=f"corr-{seed}", producer_component="p6-sweep",
+        producer_transition_id=(sorted(contract.producers)[0]
+                                if contract and contract.producers else "WI-1"),
+        actor_type="human", actor_id="dispatcher-dana", trace_id=f"trace-{seed}",
+        payload=(minimal_payload(trigger.value) if contract else {}),
+        accountable_owner_id="dispatcher-dana",
+    )
+
+
+def _missing_item_counters(store) -> tuple[int, int, int, int]:
+    q = lambda sql: store.conn.execute(sql, (T_A,)).fetchone()[0]  # noqa: E731
+    return (q("SELECT COUNT(*) FROM event_inbox WHERE tenant = ?"),
+            q("SELECT COUNT(*) FROM pending_references WHERE tenant = ?"),
+            q("SELECT COUNT(*) FROM event_outbox WHERE tenant = ?"),
+            q("SELECT COUNT(*) FROM security_events WHERE tenant = ?"))
+
+
+def test_every_trigger_has_a_converging_missing_work_item_outcome(tmp_path):
+    """### THE POPULATION IS THE `Trigger` ENUM, NOT AN EXAMPLE SOMEBODY LIKED.
+
+    The predecessor of this test asserted "parked, not looped" with ONE hand-picked
+    `PipelineStarted`. That event rides on `pipeline_instance`, so the Work Item was a reference to
+    somebody ELSE's aggregate and parked correctly — and the assertion was green for two years of
+    triggers it never touched. The two carried on `work_item` itself did the opposite: the inbox
+    skipped the requirement as a creation self-reference, `require()` raised inside the inbox's one
+    transaction, the receipt rolled back with the failure, and the event redelivered FOREVER with
+    inbox=0 parks=0 outbox=0 security=0 on every pass. A sampled population is how that survived.
+
+    So the population is enumerated and CLASSIFIED from the specification — §14's `creates` flag
+    and the registry's `aggregate_type` — and every class is asserted to converge:
+
+        A. creation / self-aggregate      the Work Item is the trigger's PRODUCT (WI-1)
+        B. prerequisite / self-aggregate  it must already exist, and the event rides on it
+        C. prerequisite / cross-aggregate it must already exist, and the event rides elsewhere
+        D. no canonical contract          the contract gate refuses the name, deterministically
+
+    Every class must be non-empty, or the sweep is proving nothing about a shape it never saw.
+    """
+    classified: dict[str, list[str]] = {"A": [], "B": [], "C": [], "D": []}
+    for trigger in Trigger:
+        contract = CONTRACTS.get(trigger.value)
+        if contract is None:
+            classified["D"].append(trigger.value)
+        elif not work_item_must_exist(trigger):
+            classified["A"].append(trigger.value)
+        elif contract.aggregate_type == AGGREGATE_TYPE:
+            classified["B"].append(trigger.value)
+        else:
+            classified["C"].append(trigger.value)
+
+    assert sum(len(v) for v in classified.values()) == len(list(Trigger)) == 13
+    for name, members in classified.items():
+        assert members, f"class {name} is empty — the sweep proves nothing about that shape"
+    assert "WorkItemCreated" in classified["A"], (
+        "WI-1 `creates` the Work Item; if it ever reads as a prerequisite it waits for itself"
+    )
+    assert "HumanDecided" in classified["B"], (
+        "WI-9 rides on `work_item:<id>` AND requires it to exist — the shape that was poisoning"
+    )
+    assert [r.id for r in rows_for_trigger(Trigger.WORK_ITEM_CREATED)] == ["WI-1"]
+
+    for trigger in Trigger:
+        klass = next(k for k, v in classified.items() if trigger.value in v)
+        clock = Clock()
+        store = make_store(tmp_path, name=f"sweep-{trigger.name}.db")
+        m = machine(store, clock=clock)
+        a_human(store, clock=clock)
+        envelope = _canonical_trigger_envelope(
+            trigger, clock=clock, work_item_id="wi-absent", seed=f"sweep-{trigger.value}")
+
+        outcomes = []
+        for _ in range(3):
+            # ### A RAISE IS THE DEFECT, SO IT IS CAUGHT AND RECORDED RATHER THAN ALLOWED TO ERROR
+            # THE TEST OUT — an exception escaping here would fail ONE parametrisation and hide the
+            # counters that show WHY, which is how "it raised" got mistaken for "it refused".
+            try:
+                result = m.consume(envelope, work_item_id="wi-absent", trigger=trigger,
+                                   accountable_owner_id="dispatcher-dana")
+                outcomes.append(result.consume.outcome)
+            except Exception as exc:  # noqa: BLE001
+                outcomes.append(f"RAISED {type(exc).__name__}")
+        counters = _missing_item_counters(store)
+
+        # `ConsumeOutcome` is a `str` Enum, so `isinstance(o, str)` is true of EVERY outcome and
+        # would have made this assertion vacuous — the exact false green this sweep is here to
+        # stop, caught on its own first run. Membership of the outcome type is the real question.
+        assert all(isinstance(o, ConsumeOutcome) for o in outcomes), (
+            f"{trigger.value} ({klass}) raised out of the inbox: {outcomes}. A handler exception "
+            f"rolls the inbox receipt back with it, so the transport redelivers forever."
+        )
+        assert outcomes[1] == outcomes[2], (
+            f"{trigger.value} ({klass}) had not stabilised by the third delivery: {outcomes}"
+        )
+        if klass == "A":
+            assert outcomes[0] is ConsumeOutcome.APPLIED
+            assert outcomes[1] is ConsumeOutcome.DUPLICATE_NOOP
+            assert counters[0] == 1, "a creation trigger is CONSUMED, so it leaves a receipt"
+            assert counters[1] == 0, f"{trigger.value} must not wait for what it creates"
+        elif klass in ("B", "C"):
+            assert outcomes[0] is ConsumeOutcome.PARKED_MISSING_AGGREGATE, (
+                f"{trigger.value} ({klass}) did not park under M-26: {outcomes}"
+            )
+            assert outcomes[1] is ConsumeOutcome.ALREADY_PARKED
+            assert counters[1] == 1, "exactly one park, however many times it was delivered"
+            held = store.conn.execute(
+                "SELECT * FROM pending_references WHERE tenant = ?", (T_A,)).fetchone()
+            assert held["referenced_id"] == "wi-absent"
+            assert held["accountable_owner_id"] == "dispatcher-dana", "rule 13: a park has an owner"
+            assert held["expires_at"], "a park with no TTL is a place events go to be forgotten"
+        else:
+            assert all(o is ConsumeOutcome.REJECTED_MALFORMED for o in outcomes), (
+                f"{trigger.value} (D) is not canonical, so the contract gate refuses it — "
+                f"deterministically, identically, and without a transaction: {outcomes}"
+            )
+
+        # The claim the rejected candidate could not make. Whatever the class, a delivery that
+        # leaves EVERY durable surface empty while refusing to converge is the poison signature.
+        assert not (counters == (0, 0, 0, 0) and klass != "D"), (
+            f"{trigger.value} ({klass}) left inbox=0 parks=0 outbox=0 security=0 — no receipt, no "
+            f"park, no evidence and no outcome is the poison loop this test exists to forbid"
+        )
+        store.close()
+
+
+def test_a_human_decision_for_a_work_item_that_has_not_landed_parks_and_then_drains(tmp_path):
+    """### THE SHAPE THAT POISONED: A REAL DECISION, BY A REAL HUMAN, ARRIVING FIRST.
+
+    `HumanDecided` is carried on `work_item:<id>` because that is its ordering key, and it decides a
+    Work Item that must already exist. Out of order — the decision recorded before the projection
+    that creates the item — it must be HELD, not discarded and not retried into the ground, because
+    discarding it loses a human's decision and retrying it loses everything else too.
+
+    Both halves are asserted here: the park, and the drain. A park that cannot drain is a drop with
+    a deadline.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+    envelope = _canonical_trigger_envelope(
+        Trigger.HUMAN_DECIDED, clock=clock, work_item_id="wi-late", seed="decision-first")
+
+    parked = m.consume(envelope, work_item_id="wi-late", trigger=Trigger.HUMAN_DECIDED,
+                       accountable_owner_id="dispatcher-dana")
+    assert parked.consume.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    assert not parked.moved
+    held = store.conn.execute(
+        "SELECT * FROM pending_references WHERE tenant = ?", (T_A,)).fetchall()
+    assert len(held) == 1 and held[0]["park_state"] == "PARKED"
+    assert (held[0]["referenced_type"], held[0]["referenced_id"]) == (AGGREGATE_TYPE, "wi-late")
+    assert held[0]["accountable_owner_id"] == "dispatcher-dana"
+    assert held[0]["arrival_sequence"] == 1 and held[0]["expires_at"]
+
+    for _ in range(3):
+        again = m.consume(envelope, work_item_id="wi-late", trigger=Trigger.HUMAN_DECIDED)
+        assert again.consume.outcome is ConsumeOutcome.ALREADY_PARKED, (
+            "a redelivery while still blocked is counted and otherwise ignored"
+        )
+    assert len(security_rows(store)) == 0, "being early is not a hostile act"
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM pending_references WHERE tenant = ?", (T_A,)).fetchone()[0] == 1
+
+    # The Work Item lands, and reaches the state WI-9 moves it out of.
+    an_item(m, work_item_id="wi-late")
+    m.apply("wi-late", Trigger.HUMAN_DECISION_REQUIRED, **SYS)
+    assert m.require("wi-late").state is WorkItemState.AWAITING_HUMAN
+
+    decision = a_human_decision(store, clock=clock)
+    drained = m.consume(envelope, work_item_id="wi-late", trigger=Trigger.HUMAN_DECIDED,
+                        decision_ref=decision, decision_ref_kind="AUDIT_EVENT")
+    assert drained.consume.outcome is ConsumeOutcome.APPLIED and drained.moved, (
+        "once the referent exists the held decision must be APPLIED, not left to expire"
+    )
+    assert m.require("wi-late").state is WorkItemState.IN_PROGRESS, "WI-9 did not actually run"
+    assert [r["park_state"] for r in store.conn.execute(
+        "SELECT park_state FROM pending_references WHERE tenant = ?", (T_A,)).fetchall()
+    ] == ["DRAINED"]
+
+    after = state_digest(store)
+    once_more = m.consume(envelope, work_item_id="wi-late", trigger=Trigger.HUMAN_DECIDED,
+                          decision_ref=decision, decision_ref_kind="AUDIT_EVENT")
+    assert once_more.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP and not once_more.moved
+    assert state_digest(store) == after, "the drained decision was applied a second time"
+    store.close()
+
+
+def test_a_creation_event_never_waits_for_the_work_item_it_creates(tmp_path):
+    """### WI-1's WORK ITEM IS ITS PRODUCT, SO REQUIRING IT TO PRE-EXIST IS REQUIRING A PARADOX.
+
+    `WorkItemCreated` rides on `work_item:<id>` exactly like `HumanDecided`, and the two want
+    opposite things from that fact — which is why the answer is DERIVED from §14's `creates` flag
+    rather than from the aggregate. Delivered to the consuming path it is refused as an OUTCOME:
+    §33's "Events consumed" does not list it, `legal_transitions` excludes every `creates` row, and
+    WI-1 is originated through `create()`. It is not recorded as an illegal ATTEMPT, because
+    `IllegalTransitionAttempted` must name the Work Item's state and version and there is no Work
+    Item to name — a fabricated security record is worse than none.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+    envelope = _canonical_trigger_envelope(
+        Trigger.WORK_ITEM_CREATED, clock=clock, work_item_id="wi-nascent", seed="creation-consumed")
+
+    first = m.consume(envelope, work_item_id="wi-nascent", trigger=Trigger.WORK_ITEM_CREATED,
+                      accountable_owner_id="dispatcher-dana")
+    assert first.consume.outcome is ConsumeOutcome.APPLIED, (
+        "consumed exactly once: a raise here rolls the receipt back and loops the transport"
+    )
+    assert first.refusal_kind == "NOT_CONSUMABLE" and not first.moved
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM pending_references WHERE tenant = ?", (T_A,)).fetchone()[0] == 0, (
+        "a creation event parked on the item it creates would wait for itself until its TTL"
+    )
+    assert m.get("wi-nascent") is None, "the refusal persisted nothing"
+    assert outbox_events(store) == [] and security_rows(store) == [], (
+        "nothing emitted, and no security record naming a state that does not exist"
+    )
+
+    after = state_digest(store)
+    second = m.consume(envelope, work_item_id="wi-nascent", trigger=Trigger.WORK_ITEM_CREATED,
+                       accountable_owner_id="dispatcher-dana")
+    assert second.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP
+    assert state_digest(store) == after
     store.close()
 
 
