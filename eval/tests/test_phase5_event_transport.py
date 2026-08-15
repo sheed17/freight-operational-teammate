@@ -42,6 +42,7 @@ from phase5_kit import (  # noqa: E402
     RecordingHandler,
     RecordingSink,
     a_contract_on,
+    agnostic_drain,
     assert_atomic,
     brake_version,
     deterministic_event_id,
@@ -628,7 +629,10 @@ def test_a_parked_gap_drains_in_order_when_the_missing_versions_arrive(tmp_path)
 
     assert inbox.consume(v3, handler).outcome is ConsumeOutcome.PARKED_VERSION_GAP
     assert inbox.consume(v2, handler).outcome is ConsumeOutcome.PARKED_VERSION_GAP
-    result = inbox.consume(v1, handler)
+    # The cascade is opt-in (F-04). `RecordingHandler` has no per-event semantics, so replaying v2
+    # and v3 through it is the same function as replaying them through their own — see
+    # `agnostic_drain`. A trigger-specific handler may NOT make this claim, and M1 does not.
+    result = inbox.consume(v1, handler, drain_handler_for=agnostic_drain(handler))
     assert result.outcome is ConsumeOutcome.APPLIED
     assert [e.aggregate_version for e in handler.applied] == [1, 2, 3], (
         f"the drain applied versions {[e.aggregate_version for e in handler.applied]}; a strict "
@@ -993,7 +997,7 @@ def test_parked_events_drain_in_arrival_order_when_the_referent_appears(tmp_path
     creation = make_envelope(aggregate_type="work_item", event_name="WorkItemCreated",
                              producer_transition_id="WI-1", aggregate_id="wi-9",
                              aggregate_version=1, seed="wi-creation")
-    result = inbox.consume(creation, handler)
+    result = inbox.consume(creation, handler, drain_handler_for=agnostic_drain(handler))
     assert result.outcome is ConsumeOutcome.APPLIED
     assert list(result.drained) == [e.event_id for e in waiting], (
         f"parked events drained out of arrival order: {result.drained}"
@@ -1042,7 +1046,7 @@ def test_a_chain_of_parks_across_aggregates_drains_all_the_way_down(tmp_path):
     root = make_envelope(aggregate_type="work_item", event_name="WorkItemCreated",
                          producer_transition_id="WI-1", aggregate_id="wi-root",
                          aggregate_version=1, seed="chain-root")
-    result = inbox.consume(root, handler)
+    result = inbox.consume(root, handler, drain_handler_for=agnostic_drain(handler))
     assert result.outcome is ConsumeOutcome.APPLIED
     assert result.drain_limit_reached is False
     assert set(result.drained) == {link_one.event_id, link_two.event_id}, (
@@ -1066,7 +1070,8 @@ def test_a_drained_park_is_resolved_in_the_same_commit_that_applies_it(tmp_path)
     existing.add(("work_item", "wi-2"))
     inbox.consume(make_envelope(aggregate_type="work_item", event_name="WorkItemCreated",
                                 producer_transition_id="WI-1", aggregate_id="wi-2",
-                                aggregate_version=1, seed="same-commit-root"), handler)
+                                aggregate_version=1, seed="same-commit-root"), handler,
+                  drain_handler_for=agnostic_drain(handler))
     row = store.conn.execute(
         "SELECT park_state, resolved_at FROM pending_references WHERE event_id = ?",
         (waiting.event_id,),
@@ -1248,6 +1253,193 @@ def test_a_park_on_an_explicit_prerequisite_drains_when_the_referent_appears(tmp
     fourth = inbox.consume(decision, handler, requires_existing=prereq)
     assert fourth.outcome is ConsumeOutcome.DUPLICATE_NOOP, "M-24 still owns the idempotency"
     assert state_digest(store) == after, "a redelivery after the drain moved durable state"
+    store.close()
+
+
+# ============================================ 10-bis. F-05 — A RE-PARK MUST TELL THE TRUTH IN THE
+#                                                      DURABLE ROW, NOT ONLY IN THE RETURN VALUE
+#
+# The defect an independent review REJECTED the P6-CP-1 candidate for. When `requires_existing`
+# resolved but a `requires` reference did NOT, the park was stamped DRAINED first and the event then
+# re-parked — and `_park_locked`'s `ON CONFLICT DO UPDATE` refreshes `attempts` and
+# `last_attempt_at` only, so `park_state` stayed DRAINED and `resolved_at` stayed set. The returned
+# outcome said PARKED while durable storage said DRAINED. `parked()` could not see it, `expire_overdue`
+# could not see it, its TTL could never produce M-26's owner-bearing exception, and the event became
+# silently unreachable — held by nothing, owed by nobody, and invisible to every query that exists
+# to find exactly this.
+#
+# The invariant: while ANY binding prerequisite is unresolved, the durable reference state is PARKED.
+# A park becomes DRAINED only once the event is genuinely eligible and has actually been consumed.
+
+def test_the_drain_derives_each_parked_events_handler_from_that_event(tmp_path):
+    """### F-04 AT THE PRIMITIVE, INDEPENDENTLY OF M1: THE FACTORY IS ASKED ABOUT THE PARKED EVENT.
+
+    The cascade is opt-in, and the thing a caller opts in WITH is a function from a parked envelope
+    to the handler for that envelope. This asserts the inbox actually consults it per event rather
+    than once — a distinction no caller with an event-agnostic handler can observe, and exactly the
+    distinction M1's trigger-specific handler was destroyed by.
+
+    Two events wait on one referent and each has its OWN handler. If the inbox derived semantics
+    from the event that woke the cascade instead, both would be recorded against one handler.
+    """
+    store = make_store(tmp_path)
+    existing: set[tuple[str, str]] = set()
+    inbox = make_inbox(store, reference_resolver=lambda t, i: (t, i) in existing)
+
+    alpha = make_envelope(aggregate_type="observation", event_name="ObservationReceived",
+                          producer_transition_id="OB-1", aggregate_id="obs-alpha",
+                          aggregate_version=1, seed="factory-alpha",
+                          entity_versions={"work_item:wi-factory": 1})
+    beta = make_envelope(aggregate_type="observation", event_name="ObservationReceived",
+                         producer_transition_id="OB-1", aggregate_id="obs-beta",
+                         aggregate_version=1, seed="factory-beta",
+                         entity_versions={"work_item:wi-factory": 1})
+    seeder = RecordingHandler(store.conn)
+    per_event = {alpha.event_id: RecordingHandler(store.conn),
+                 beta.event_id: RecordingHandler(store.conn)}
+    assert len(per_event) == 2, "the two parked events must be distinguishable"
+
+    for event in (alpha, beta):
+        assert inbox.consume(event, seeder).outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+
+    existing.add(("work_item", "wi-factory"))
+    creation = make_envelope(aggregate_type="work_item", event_name="WorkItemCreated",
+                             producer_transition_id="WI-1", aggregate_id="wi-factory",
+                             aggregate_version=1, seed="factory-root")
+    result = inbox.consume(creation, seeder,
+                           drain_handler_for=lambda envelope: per_event[envelope.event_id])
+    assert result.outcome is ConsumeOutcome.APPLIED
+    assert set(result.drained) == {alpha.event_id, beta.event_id}, result.drained
+
+    # ### THE CLAIM: each parked event went to ITS OWN handler, and the seeder saw only itself.
+    assert per_event[alpha.event_id].event_ids == [alpha.event_id]
+    assert per_event[beta.event_id].event_ids == [beta.event_id]
+    assert seeder.event_ids == [creation.event_id], (
+        f"the seeding handler consumed events that were not its own: {seeder.event_ids}"
+    )
+    assert inbox.parked() == []
+    store.close()
+
+
+def _park_row(store, event_id: str, *, tenant: str = T_A):
+    return store.conn.execute(
+        "SELECT * FROM pending_references WHERE tenant = ? AND event_id = ?",
+        (tenant, event_id)).fetchone()
+
+
+def _partially_blocked(store, *, existing: set[tuple[str, str]], clock: Clock):
+    """An event with an explicit SELF-aggregate prerequisite AND one further unresolved reference."""
+    inbox = make_inbox(store, clock=clock, reference_resolver=lambda t, i: (t, i) in existing)
+    handler = RecordingHandler(store.conn)
+    decision = make_envelope(aggregate_type="work_item", event_name="HumanDecided",
+                             aggregate_id="wi-partial", aggregate_version=2, seed="f05-partial",
+                             entity_versions={"work_item:wi-partial": 2})
+    kwargs = dict(
+        requires=(("pipeline_instance", "pi-still-missing"),),      # the second prerequisite
+        requires_existing=(("work_item", "wi-partial"),),           # the explicit self prerequisite
+        accountable_owner_id="dispatcher-dana",
+    )
+    return inbox, handler, decision, kwargs
+
+
+def test_a_repark_after_partial_prerequisite_resolution_stays_truthfully_parked(tmp_path):
+    """### F-05. THE EXPLICIT PREREQUISITE RESOLVES; ANOTHER ONE DOES NOT. THE ROW MUST SAY PARKED.
+
+    Resolving `requires_existing` is not the same fact as being eligible to consume, and treating
+    the first as the second is what made the durable row lie.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    existing: set[tuple[str, str]] = set()
+    inbox, handler, decision, kwargs = _partially_blocked(store, existing=existing, clock=clock)
+
+    # 1. initial park — both prerequisites missing.
+    first = inbox.consume(decision, handler, **kwargs)
+    assert first.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    assert _park_row(store, decision.event_id)["park_state"] == "PARKED"
+
+    # 2/3/4. the SELF prerequisite arrives; the event is reconsidered; the second is still missing.
+    existing.add(("work_item", "wi-partial"))
+    second = inbox.consume(decision, handler, **kwargs)
+
+    # ### DURABLE TRUTH, NOT JUST A RETURN VALUE. Every one of these was false on the rejected
+    # candidate except the first.
+    assert second.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE, second.outcome
+    row = _park_row(store, decision.event_id)
+    assert row["park_state"] == "PARKED", (
+        f"the API said PARKED while the durable row says {row['park_state']!r} — the event is now "
+        f"invisible to parked() and to expiry, which is the silent unreachability M-26 forbids"
+    )
+    assert row["resolved_at"] is None, (
+        f"resolved_at is set on an unresolved park: {row['resolved_at']!r}"
+    )
+    assert [p.event_id for p in inbox.parked()] == [decision.event_id], (
+        "parked() must still surface an event that is still blocked"
+    )
+    assert handler.applied == [], "the handler ran while a prerequisite was still missing"
+
+    # ### THE ROW'S REFERENT IS THE ORIGINAL BLOCKER, AND THAT IS CERTIFIED P5 BEHAVIOUR, NOT DRIFT.
+    # `referenced_type`/`referenced_id` are in `_PARK_IMMUTABLE` and a database trigger refuses to
+    # change them: a park records WHY IT WAS PARKED as an immutable historical fact. The CURRENT
+    # blocker is recomputed on every redelivery and reported on the outcome, which is where a
+    # diagnosis should read it from. Asserted rather than assumed, so a later change to either half
+    # is visible here.
+    assert (row["referenced_type"], row["referenced_id"]) == ("work_item", "wi-partial")
+    assert "pipeline_instance:pi-still-missing" in second.detail, (
+        f"the outcome must name what it is CURRENTLY waiting on: {second.detail!r}"
+    )
+    assert row["accountable_owner_id"] == "dispatcher-dana", "rule 13: a park has an owner"
+    assert int(row["attempts"]) >= 2, "the redelivery was not counted against the park"
+
+    # 5. and now the remaining prerequisite arrives: consumed EXACTLY once, DRAINED exactly once.
+    before = brake_version(store)
+    existing.add(("pipeline_instance", "pi-still-missing"))
+    third = inbox.consume(decision, handler, **kwargs)
+    assert third.outcome is ConsumeOutcome.APPLIED
+    assert handler.event_ids == [decision.event_id], "consumed more than once"
+    assert brake_version(store) == before + 1, "the durable effect happened other than exactly once"
+    row = _park_row(store, decision.event_id)
+    assert row["park_state"] == "DRAINED" and row["resolved_at"] is not None
+    assert inbox.parked() == []
+
+    after = state_digest(store)
+    fourth = inbox.consume(decision, handler, **kwargs)
+    assert fourth.outcome is ConsumeOutcome.DUPLICATE_NOOP
+    assert brake_version(store) == before + 1, "a redelivery produced a duplicate effect"
+    assert state_digest(store) == after
+    store.close()
+
+
+def test_a_partially_blocked_park_still_expires_onto_its_accountable_human(tmp_path):
+    """### M-26's OWNER-BEARING PATH MUST SURVIVE PARTIAL RESOLUTION.
+
+    The consequence of the durable row lying was not only that `parked()` missed it: the TTL sweep
+    reads the same column, so the one mechanism that turns a permanently dangling reference into a
+    named human's problem could never fire. This asserts that path directly, with the second
+    prerequisite never arriving.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)
+    existing: set[tuple[str, str]] = set()
+    inbox, handler, decision, kwargs = _partially_blocked(store, existing=existing, clock=clock)
+
+    assert inbox.consume(decision, handler, **kwargs).outcome is (
+        ConsumeOutcome.PARKED_MISSING_AGGREGATE)
+    existing.add(("work_item", "wi-partial"))                 # the explicit prerequisite resolves
+    assert inbox.consume(decision, handler, **kwargs).outcome is (
+        ConsumeOutcome.PARKED_MISSING_AGGREGATE)              # the other one does not
+
+    clock.advance(days=30)
+    expired = inbox.expire_overdue()
+    assert len(expired) == 1, (
+        f"the partially-resolved park did not surface on TTL: {expired}. A park that cannot expire "
+        f"is a place events go to be forgotten, which is exactly what M-26 exists to forbid."
+    )
+    assert expired[0].accountable_owner_id == "dispatcher-dana", (
+        "an expired park with no accountable human is the silent drop rule 13 forbids"
+    )
+    assert expired[0].park.event_id == decision.event_id
+    assert handler.applied == [], "nothing was consumed: it never became eligible"
     store.close()
 
 

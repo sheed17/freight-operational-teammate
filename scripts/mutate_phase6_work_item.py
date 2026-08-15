@@ -365,6 +365,59 @@ TEXT_CASES = [
      "            item = self.require(work_item_id)  # MUTANT: WI-1 waits for its own product\n"
      "            if item is None:",
      f"{T}::test_a_creation_event_never_waits_for_the_work_item_it_creates"),
+
+    # ---- F-04 / F-05: the two defects the fresh targeted independent review REJECTED ----------
+    # Each of these restores the REAL rejected behaviour rather than merely breaking something the
+    # new tests happen to watch. W31/W31a reproduce a wrong-trigger CONSUMPTION signature — a parked
+    # event reaching APPLIED through another event's semantics, with its own transition never fired.
+    # W32/W32a reproduce the durable lie — the API answers PARKED while the row says DRAINED and
+    # neither `parked()` nor `expire_overdue()` can find the event again.
+
+    ("W31 the post-apply drain cascades through the CURRENT invocation's handler again: a parked "
+     "cross-aggregate PipelineClosed is replayed through a HumanDecided closure, so WI-3 never "
+     "fires, the Work Item does not close, the event still reaches APPLIED, its park becomes "
+     "DRAINED, the later genuine retry is a DUPLICATE_NOOP and a fabricated "
+     "IllegalTransitionAttempted is recorded against the wrong interpretation (F-04)",
+     EI,
+     "        if drain_handler_for is None:\n"
+     "            # No factory, no cascade. The caller has not told us how to derive semantics for\n"
+     "            # somebody else's parked envelope, and guessing is precisely F-04.\n"
+     "            return result\n"
+     "        drained, limited = self._drain_for(event, drain_handler_for)",
+     "        drained, limited = self._drain_for(\n"
+     "            event, lambda _parked: handler)  # MUTANT: the drain's seeder interprets everyone",
+     f"{T}::test_heterogeneous_parked_triggers_in_one_store"
+     "_are_each_consumed_by_their_own_semantics"),
+
+    ("W31a the factory is consulted with the SEEDING event instead of the parked one, so a caller "
+     "that DID opt in still gets every held event interpreted as whatever woke the cascade — the "
+     "same wrong-trigger consumption, one layer down, and invisible to any caller whose handler "
+     "happens to be event-agnostic (F-04)",
+     EI,
+     "                        park.envelope, drain_handler_for(park.envelope), requires=(),",
+     "                        park.envelope, drain_handler_for(event), requires=(),  # MUTANT",
+     f"{T5}::test_the_drain_derives_each_parked_events_handler_from_that_event"),
+
+    ("W32 the park is stamped DRAINED the moment the explicit prerequisite resolves, BEFORE the "
+     "remaining blockers are checked: the event re-parks, ON CONFLICT DO UPDATE refreshes only "
+     "attempts, and the row stays DRAINED with resolved_at set while the API answers PARKED — "
+     "parked() cannot see it, expiry cannot see it, and the event is silently unreachable (F-05)",
+     EI,
+     "                released = True\n",
+     "                self._resolve_park_locked(  # MUTANT: DRAINED before eligibility is proven\n"
+     "                    event.event_id, state=\"DRAINED\", now=now_text)\n"
+     "                released = True\n",
+     f"{T5}::test_a_repark_after_partial_prerequisite_resolution_stays_truthfully_parked"),
+
+    ("W32a the same premature DRAINED stamp, watched by the TTL path instead of by the row: M-26's "
+     "owner-bearing exception is what turns a permanently dangling reference into a named human's "
+     "problem, and a park durable storage calls DRAINED can never reach it (F-05)",
+     EI,
+     "                released = True\n",
+     "                self._resolve_park_locked(  # MUTANT: DRAINED before eligibility is proven\n"
+     "                    event.event_id, state=\"DRAINED\", now=now_text)\n"
+     "                released = True\n",
+     f"{T5}::test_a_partially_blocked_park_still_expires_onto_its_accountable_human"),
 ]
 
 

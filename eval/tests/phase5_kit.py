@@ -302,6 +302,22 @@ class RecordingHandler:
         return [e.event_id for e in self.applied]
 
 
+def agnostic_drain(handler):
+    """Opt a consumption into the post-apply drain cascade — the honest way, for a handler that
+    genuinely has no per-event semantics to get wrong.
+
+    ### WHY THIS IS A NAMED HELPER AND NOT AN INLINE `lambda e: handler`. The cascade is opt-in
+    (F-04) because replaying somebody else's parked event through the CURRENT invocation's handler
+    lets event A be executed under event B's trigger and facts. `RecordingHandler` is immune to that
+    by construction: it reads only the envelope it is handed and derives nothing from the event that
+    seeded the drain, so "the handler for THAT envelope" and "this handler" are the same function.
+    That is a property of THIS handler, not a property of handlers, and writing it down here keeps a
+    future caller from copying the opt-in to a handler for which it is false — which is exactly how
+    M1 acquired the defect.
+    """
+    return lambda envelope: handler
+
+
 class FailingHandler:
     """A handler that raises after writing — the consumer-crash-mid-transaction shape."""
 

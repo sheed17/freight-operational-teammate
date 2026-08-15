@@ -175,6 +175,20 @@ ReferenceResolver = Callable[[str, str], bool]
 # The event does not instruct it (§9); the handler decides, and it decides inside our transaction.
 Handler = Callable[[EventEnvelope], None]
 
+# ### THE TYPE THAT MAKES F-04's INVARIANT STRUCTURAL: a parked event is consumed through semantics
+# DERIVED FROM THAT EVENT'S OWN ENVELOPE, never through the handler that happened to seed the drain.
+#
+# The factory is the whole opt-in. Supplying one says two things at once, and the second is the
+# load-bearing one: "cascade the drain" AND "here is how to obtain the right semantics for an
+# arbitrary parked envelope". A caller that cannot answer the second question has no business
+# answering the first, and before this parameter existed it was never asked — `consume` simply
+# reused the current invocation's closure, so event A could be executed as though it were event B.
+#
+# This is NOT a dispatcher. The inbox routes nothing and knows nothing about triggers: it hands the
+# caller a parked envelope and takes back a handler for it. Deriving one from the other is the
+# caller's own knowledge, which is exactly where it already lives.
+DrainHandlerFactory = Callable[[EventEnvelope], Handler]
+
 
 class DedupInbox:
     """One consumer's durable inbox, on an existing connection.
@@ -257,6 +271,7 @@ class DedupInbox:
         requires: Sequence[tuple[str, str]] = (),
         requires_existing: Sequence[tuple[str, str]] = (),
         accountable_owner_id: str | None = None,
+        drain_handler_for: DrainHandlerFactory | None = None,
     ) -> ConsumeResult:
         """Consume ONE event, exactly once, or say precisely why not.
 
@@ -280,6 +295,33 @@ class DedupInbox:
         every already-certified caller's meaning ambiguous — a pair equal to the own aggregate would
         have changed sense underneath callers who never asked. A caller that passes nothing here is
         unaffected, which is the whole reason this is a new name and not a new meaning.
+
+        ### `drain_handler_for` IS OFF BY DEFAULT, AND THE DEFAULT IS THE SAFE ONE (F-04).
+        A successful apply used to replay every newly-unblocked parked event through THIS
+        invocation's `handler` — a closure over THIS event's trigger and facts. For a caller whose
+        handler is event-agnostic that is harmless, and P5's own drain cases are exactly that shape.
+        For a caller whose handler is trigger-specific it is silent event loss, and M1 is that
+        caller: a correctly parked cross-aggregate `PipelineClosed` was replayed through a
+        `HumanDecided` closure, so WI-3 never fired, the Work Item never closed, the event
+        nevertheless reached APPLIED, its park became DRAINED, the later genuine retry became
+        DUPLICATE_NOOP, expiry could never surface the loss, and a fabricated
+        `IllegalTransitionAttempted` was recorded against the wrong interpretation. The event was
+        gone from the parked population AND from actionable machine state at once.
+
+        So the cascade is now something a caller ASKS for, by supplying the one thing that makes it
+        safe: a factory from a parked envelope to the handler for THAT envelope. The invariant is
+
+            event E may be consumed only through semantics derived from E
+
+        and not "E became unblocked, so whichever handler seeded the drain may interpret it".
+        Passing nothing drains nothing beyond this event — the parked cohort stays truthfully
+        PARKED, is redelivered by the transport into its own handler, and remains discoverable by
+        `parked()` and expirable under M-26. Nothing is dropped; only the opportunistic cascade is.
+
+        ### THE SELF-RELEASE PATH IS NOT THE CASCADE AND IS UNAFFECTED. An event held on its own
+        explicit `requires_existing` prerequisite is released and consumed — as ITSELF, through the
+        handler its own caller just supplied — the moment that prerequisite exists. That is the
+        `HumanDecided` path, it lives in `_consume_validated`, and it never touches another event.
         """
         if not callable(handler):
             raise InboxError("consume requires a handler callable")
@@ -344,7 +386,11 @@ class DedupInbox:
         )
         if result.outcome is not ConsumeOutcome.APPLIED:
             return result
-        drained, limited = self._drain_for(event, handler)
+        if drain_handler_for is None:
+            # No factory, no cascade. The caller has not told us how to derive semantics for
+            # somebody else's parked envelope, and guessing is precisely F-04.
+            return result
+        drained, limited = self._drain_for(event, drain_handler_for)
         return ConsumeResult(
             outcome=result.outcome, event_id=result.event_id, detail=result.detail,
             drained=drained, drain_limit_reached=limited,
@@ -407,6 +453,7 @@ class DedupInbox:
             ).fetchone()
             # A redelivery of an event we are already holding is counted and otherwise ignored —
             # unless this IS the drain replaying it, which is the one caller allowed past.
+            released = False
             if parked is not None and parked["park_state"] == "PARKED" and not draining:
                 # ### UNLESS THE REDELIVERY *IS* THE DRAIN, WHICH FOR AN EXPLICIT PREREQUISITE IS
                 # THE ONLY DRAIN THERE IS. `_drain_for` seeds itself from the aggregate of the
@@ -434,7 +481,20 @@ class DedupInbox:
                         outcome=ConsumeOutcome.ALREADY_PARKED, event_id=event.event_id,
                         detail="already parked; the redelivery was counted, nothing else changed",
                     )
-                self._resolve_park_locked(event.event_id, state="DRAINED", now=now_text)
+                # ### THE PARK IS *NOT* STAMPED DRAINED HERE, AND THAT ORDERING IS THE F-05 FIX.
+                # Resolving the explicit prerequisite is not the same fact as being eligible to
+                # consume: `requires` may still name a reference that is missing, and the strict
+                # version gap below may still hold. Stamping DRAINED at this point and then
+                # re-parking left the row DRAINED with `resolved_at` set — `_park_locked`'s
+                # ON CONFLICT DO UPDATE refreshes attempts and does not restore reference state —
+                # while the returned outcome said PARKED. `parked()` could not see it, expiry could
+                # not surface it, its TTL could never produce M-26's owner-bearing exception, and
+                # the event became silently unreachable in durable storage.
+                #
+                # So eligibility is established FIRST, and the stamp happens only on a path that
+                # has actually finished with the event: the apply below, or the STALE_NOOP that
+                # means the same thing. Every path that re-parks leaves the row truthfully PARKED.
+                released = True
 
             blocker = self._first_unresolved_reference(event, requires, requires_existing)
             if blocker is not None:
@@ -474,6 +534,10 @@ class DedupInbox:
             # double-apply anything.
             if not strict and event.aggregate_version < applied_version:
                 self._record_inbox_locked(event, outcome="STALE_NOOP", now=now_text)
+                if released:
+                    # A superseded fact IS finished with, exactly as the drain treats it: leaving
+                    # the park PARKED would expire a resolved problem onto somebody's desk.
+                    self._resolve_park_locked(event.event_id, state="DRAINED", now=now_text)
                 conn.commit()
                 return ConsumeResult(
                     outcome=ConsumeOutcome.STALE_NOOP, event_id=event.event_id,
@@ -509,11 +573,14 @@ class DedupInbox:
             self._record_inbox_locked(event, outcome="APPLIED", now=now_text)
             handler(event)
             self._advance_cursor_locked(event, now=now_text)
-            if draining:
+            if draining or released:
                 # The park is resolved in the SAME commit that applies it. Doing it afterwards
                 # would leave a window in which the event is consumed but its park row still says
                 # PARKED — and `expire_overdue` would then hand a human a problem that no longer
                 # exists, which is worse than not reporting it.
+                #
+                # `released` is the self-release path arriving here for the first time: its park is
+                # closed by the commit that consumes it, and by no earlier act (F-05).
                 self._resolve_park_locked(event.event_id, state="DRAINED", now=now_text)
             conn.commit()
         except BaseException:
@@ -598,8 +665,17 @@ class DedupInbox:
             ),
         )
 
-    def _drain_for(self, event: EventEnvelope, handler: Handler) -> tuple[tuple[str, ...], bool]:
+    def _drain_for(
+        self, event: EventEnvelope, drain_handler_for: DrainHandlerFactory,
+    ) -> tuple[tuple[str, ...], bool]:
         """After a successful apply, replay everything now unblocked — IN ARRIVAL ORDER (M-26).
+
+        ### EACH PARKED EVENT IS EXECUTED THROUGH ITS OWN SEMANTICS, OBTAINED HERE AND NOWHERE ELSE.
+        `drain_handler_for(park.envelope)` is called per event, so the handler that runs is derived
+        from the envelope about to be consumed rather than from the event that seeded the cascade.
+        Reusing the seeding closure — which is what this method used to do — let event A be applied
+        under event B's trigger and facts, reach APPLIED, and take its park to DRAINED with A's
+        actual work never performed (F-04).
 
         The worklist is a set of REFERENTS, not one: draining a parked event can itself bring an
         aggregate into existence, which unblocks a second cohort waiting on THAT one. Scanning only
@@ -628,7 +704,7 @@ class DedupInbox:
                     if park.event_id in drained:
                         continue
                     outcome = self._consume_validated(
-                        park.envelope, handler, requires=(),
+                        park.envelope, drain_handler_for(park.envelope), requires=(),
                         accountable_owner_id=park.accountable_owner_id, draining=True,
                     )
                     if outcome.outcome in (

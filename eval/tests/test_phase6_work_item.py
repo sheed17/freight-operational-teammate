@@ -2137,6 +2137,212 @@ def test_the_park_owner_is_resolved_from_the_work_item_when_the_item_exists(tmp_
     store.close()
 
 
+# ================================================ I-ter. F-04 — A PARKED EVENT IS CONSUMED THROUGH
+#                                                          ITS OWN SEMANTICS, OR IT IS LOST SILENTLY
+#
+# ### THE POPULATION SHAPE THE EARLIER TESTS STRUCTURALLY COULD NOT OBSERVE.
+# `test_every_trigger_has_a_converging_missing_work_item_outcome` sweeps all thirteen triggers, but
+# it gives each one a FRESH DATABASE (`name=f"sweep-{trigger.name}.db"`), so no two trigger shapes
+# were ever parked in one cohort. `test_a_human_decision_...parks_and_then_drains` parks exactly one
+# event. Every M1 park test was therefore a population of ONE, and a defect that requires two
+# different trigger shapes in one store could not be seen by any of them.
+#
+# F-04, as the independent reviewer reproduced it: `DedupInbox.consume` replayed every newly
+# unblocked parked event through the CURRENT invocation's handler — a closure over the CURRENT
+# invocation's trigger and facts. A correctly parked cross-aggregate `PipelineClosed` was replayed
+# through a `HumanDecided` context, so WI-3 never fired, the Work Item did not close, the event
+# nevertheless reached APPLIED, its park became DRAINED, the later genuine retry became
+# DUPLICATE_NOOP, expiry could never surface the loss, and a fabricated `IllegalTransitionAttempted`
+# was recorded against the wrong interpretation. The event was gone from the parked population AND
+# from actionable machine state at the same time.
+#
+# The invariant these cases hold is:  event E may be consumed only through semantics derived from E
+# and NOT:                            E became unblocked, so whichever handler seeded the drain may
+#                                     interpret it.
+
+def _park_rows(store, *, tenant: str = T_A) -> dict[str, dict[str, object]]:
+    return {
+        r["event_id"]: {"park_state": r["park_state"], "resolved_at": r["resolved_at"],
+                        "referenced": f"{r['referenced_type']}:{r['referenced_id']}",
+                        "arrival_sequence": int(r["arrival_sequence"]),
+                        "owner": r["accountable_owner_id"]}
+        for r in store.conn.execute(
+            "SELECT * FROM pending_references WHERE tenant = ? ORDER BY arrival_sequence",
+            (tenant,)).fetchall()
+    }
+
+
+def test_heterogeneous_parked_triggers_in_one_store_are_each_consumed_by_their_own_semantics(
+        tmp_path):
+    """### F-04. TWO CANONICAL M1 TRIGGER SHAPES, ONE MISSING WORK ITEM, ONE DURABLE STORE.
+
+    The cohort is deliberately heterogeneous, and the two members are the two shapes §14 actually
+    produces (asserted below from the registry, not chosen):
+
+        `HumanDecided`   — class B: rides on `work_item:<id>` ITSELF and requires it to pre-exist,
+                           so it is held on an explicit `requires_existing` prerequisite. Its
+                           intended effect is WI-9: AWAITING_HUMAN → IN_PROGRESS.
+        `PipelineClosed` — class C: rides on `pipeline_instance:<id>`, so the Work Item is a
+                           reference to somebody ELSE's aggregate. Its intended effect is WI-3:
+                           IN_PROGRESS → CLOSED.
+
+    Their effects are distinguishable on purpose: a wrong-trigger consumption cannot hide inside a
+    shared outcome, and the final state (CLOSED vs IN_PROGRESS) tells the two apart on its own.
+    """
+    clock = Clock()
+    store = make_store(tmp_path)                       # ### ONE store. Never one database per trigger.
+    m = machine(store, clock=clock)
+    a_human(store, clock=clock)
+
+    # The two shapes are DERIVED from the registry, so this is a claim about M1's canonical trigger
+    # population rather than about two events somebody liked.
+    assert CONTRACTS["HumanDecided"].aggregate_type == AGGREGATE_TYPE, (
+        "HumanDecided must ride on the Work Item itself, or this is not the self-aggregate shape"
+    )
+    assert CONTRACTS["PipelineClosed"].aggregate_type != AGGREGATE_TYPE, (
+        "PipelineClosed must ride elsewhere, or this is not the cross-aggregate shape"
+    )
+    assert work_item_must_exist(Trigger.HUMAN_DECIDED)
+    assert work_item_must_exist(Trigger.PIPELINE_CLOSED)
+
+    decided = _canonical_trigger_envelope(
+        Trigger.HUMAN_DECIDED, clock=clock, work_item_id="wi-cohort", seed="f04-decided")
+    closed = _trigger_envelope(store, seed="f04-closed", clock=clock, event_name="PipelineClosed",
+                               aggregate_id="pi-cohort", producer_transition_id="PL-14",
+                               accountable_owner_id="dispatcher-dana")
+
+    # --- 1. both park, in one cohort, against the SAME missing Work Item ---------------------
+    first = m.consume(decided, work_item_id="wi-cohort", trigger=Trigger.HUMAN_DECIDED,
+                      accountable_owner_id="dispatcher-dana")
+    second = m.consume(closed, work_item_id="wi-cohort", trigger=Trigger.PIPELINE_CLOSED,
+                       obligation_satisfied=True, accountable_owner_id="dispatcher-dana")
+    assert first.consume.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+    assert second.consume.outcome is ConsumeOutcome.PARKED_MISSING_AGGREGATE
+
+    parks = _park_rows(store)
+    assert len(parks) == 2, f"the cohort is not a population of two: {parks}"
+    assert {p["referenced"] for p in parks.values()} == {f"{AGGREGATE_TYPE}:wi-cohort"}, (
+        "both events must be held against the SAME missing Work Item, or they are not one cohort"
+    )
+    assert {decided.aggregate_type, closed.aggregate_type} == {AGGREGATE_TYPE, "pipeline_instance"}, (
+        "the cohort must contain BOTH a self-aggregate and a cross-aggregate member"
+    )
+    assert [parks[e]["arrival_sequence"] for e in (decided.event_id, closed.event_id)] == [1, 2]
+    assert all(p["owner"] == "dispatcher-dana" for p in parks.values()), "rule 13: a park has an owner"
+
+    # --- 2. a THIRD consumed event rides on the SAME aggregate the cohort waits on -------------
+    # `WorkItemCreated` is refused as an outcome (NOT_CONSUMABLE) yet still reaches APPLIED, and it
+    # rides on `work_item:wi-cohort` — so under the defect it SEEDS a drain over this exact cohort
+    # and interprets BOTH held events through a creation-refusal closure, consuming them for
+    # nothing while the Work Item still does not exist. Two events, two receipts, two DRAINED
+    # parks, zero transitions, and nothing left anywhere to notice.
+    creation = _canonical_trigger_envelope(
+        Trigger.WORK_ITEM_CREATED, clock=clock, work_item_id="wi-cohort", seed="f04-creation")
+    seeded = m.consume(creation, work_item_id="wi-cohort", trigger=Trigger.WORK_ITEM_CREATED,
+                       accountable_owner_id="dispatcher-dana")
+    assert seeded.consume.outcome is ConsumeOutcome.APPLIED
+    assert seeded.refusal_kind == "NOT_CONSUMABLE"
+    assert seeded.consume.drained == (), (
+        f"a WorkItemCreated consumption cascaded into the parked cohort: {seeded.consume.drained}. "
+        f"Its handler knows only how to refuse a creation, so every event it touched would be "
+        f"consumed for nothing."
+    )
+    assert _park_rows(store).keys() == {decided.event_id, closed.event_id}
+    assert all(p["park_state"] == "PARKED" and p["resolved_at"] is None
+               for p in _park_rows(store).values()), (
+        f"a foreign handler resolved a park it never legitimately consumed: {_park_rows(store)}"
+    )
+    assert not security_rows(store), "a fabricated refusal was recorded against a foreign trigger"
+
+    # --- 3. the Work Item appears; the self-aggregate member is released by ITS OWN redelivery --
+    an_item(m, work_item_id="wi-cohort")
+    m.apply("wi-cohort", Trigger.HUMAN_DECISION_REQUIRED, **SYS)
+    assert m.require("wi-cohort").state is WorkItemState.AWAITING_HUMAN
+    decision = a_human_decision(store, clock=clock)
+    released = m.consume(decided, work_item_id="wi-cohort", trigger=Trigger.HUMAN_DECIDED,
+                         decision_ref=decision, decision_ref_kind="AUDIT_EVENT")
+    assert released.consume.outcome is ConsumeOutcome.APPLIED and released.moved
+    assert m.require("wi-cohort").state is WorkItemState.IN_PROGRESS, "WI-9 did not run"
+
+    # ### THE EXACT CLAIM F-04 IS ABOUT: HumanDecided cannot cause PipelineClosed to be interpreted
+    # as HumanDecided. Under the defect the cascade seeded on `work_item:wi-cohort` found the
+    # PipelineClosed park, ran it through the HUMAN_DECIDED closure against IN_PROGRESS, recorded a
+    # fabricated `IllegalTransitionAttempted`, and took the park to DRAINED with WI-3 never fired.
+    assert released.consume.drained == (), (
+        f"the HumanDecided consumption cascaded into the cohort: {released.consume.drained}"
+    )
+    parks = _park_rows(store)
+    assert parks[decided.event_id]["park_state"] == "DRAINED", (
+        "an event that reached its own legitimate terminal consume result must close its park"
+    )
+    assert parks[closed.event_id]["park_state"] == "PARKED", (
+        f"PipelineClosed was consumed through the HumanDecided handler: {parks}. Its park is "
+        f"DRAINED, WI-3 never fired, and nothing will ever surface it again — silent event loss."
+    )
+    assert parks[closed.event_id]["resolved_at"] is None
+    assert not security_rows(store), (
+        f"a fabricated IllegalTransitionAttempted was produced by cross-handler confusion: "
+        f"{security_rows(store)}"
+    )
+
+    # --- 4. the cross-aggregate member is consumed by ITS OWN semantics ------------------------
+    drained = m.consume(closed, work_item_id="wi-cohort", trigger=Trigger.PIPELINE_CLOSED,
+                        obligation_satisfied=True, decision_ref=decision,
+                        decision_ref_kind="AUDIT_EVENT")
+    assert drained.consume.outcome is ConsumeOutcome.APPLIED and drained.moved, (
+        "the still-parked PipelineClosed must be consumable by its own trigger — if it is not, the "
+        "event was lost whichever state its park row claims"
+    )
+    assert m.require("wi-cohort").state is WorkItemState.CLOSED, (
+        "WI-3 did not run: the Work Item never closed, which is the customer-visible loss"
+    )
+    assert _park_rows(store)[closed.event_id]["park_state"] == "DRAINED"
+
+    # --- 5. each intended transition happened EXACTLY once -------------------------------------
+    # Scoped to THIS Work Item's aggregate: `a_human_decision` mints its own canonical `HumanDecided`
+    # (producer WI-9) on a separate aggregate to serve as the `decision_ref` target, and counting it
+    # here would make the assertion measure the fixture rather than the machine.
+    fired = [e["producer_transition_id"] for e in outbox_events(store)
+             if e["aggregate_id"] == "wi-cohort"]
+    assert fired, "the denominator is empty: this assertion would pass over no events at all"
+    assert fired.count("WI-9") == 1, f"WI-9 fired {fired.count('WI-9')} time(s): {fired}"
+    assert fired.count("WI-3") == 1, f"WI-3 fired {fired.count('WI-3')} time(s): {fired}"
+    assert "GR-1" not in fired, f"a refusal record was fabricated: {fired}"
+    assert not security_rows(store)
+
+    # --- 6. redelivery afterwards is safely idempotent -----------------------------------------
+    settled = state_digest(store)
+    for envelope, trigger, extra in (
+        (decided, Trigger.HUMAN_DECIDED, {"decision_ref": decision,
+                                          "decision_ref_kind": "AUDIT_EVENT"}),
+        (closed, Trigger.PIPELINE_CLOSED, {"obligation_satisfied": True,
+                                           "decision_ref": decision,
+                                           "decision_ref_kind": "AUDIT_EVENT"}),
+    ):
+        again = m.consume(envelope, work_item_id="wi-cohort", trigger=trigger, **extra)
+        assert again.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP and not again.moved
+    assert state_digest(store) == settled, "a redelivery after the drain changed durable state"
+
+    # --- 7. NO EVENT DISAPPEARED FROM BOTH POPULATIONS AT ONCE ---------------------------------
+    # The loss signature is an event that is neither still parked nor accounted for by the
+    # transition it was supposed to cause. Asserted over the whole cohort, with its denominator.
+    from freight_recon.event_inbox import DedupInbox
+
+    box = DedupInbox(store.conn, tenant=T_A, consumer_id="m1-work-item", clock=clock,
+                     reference_resolver=m.reference_resolver)
+    cohort = {decided.event_id: "WI-9", closed.event_id: "WI-3"}
+    assert len(cohort) == 2
+    for event_id, transition in cohort.items():
+        assert box.seen(event_id) == "APPLIED", f"{event_id} left no inbox receipt"
+        assert fired.count(transition) == 1, (
+            f"{event_id} reached APPLIED but its own transition {transition} never fired — that is "
+            f"consumption through the wrong semantics, which is loss with a receipt"
+        )
+    clock.advance(days=30)
+    assert box.expire_overdue() == [], "a park survived its own legitimate consumption"
+    store.close()
+
+
 # =========================================================================== J. tenant isolation
 
 def test_a_tenant_b_trigger_never_moves_a_tenant_a_machine(tmp_path):
