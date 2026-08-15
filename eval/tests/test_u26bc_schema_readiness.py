@@ -55,6 +55,9 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     per-aggregate cursor and M-26 parking. Built the same way and for the same reason: a helper
     that stopped at the P3 shape would make EVERY case in this module fail for a reason that has
     nothing to do with the one thing it deliberately broke.
+
+    P6: and since the entity layer landed, it also includes `tenant_humans` and `work_items` — the
+    recorded human authority and the obligation whose owner is a foreign key into it.
     """
     from freight_recon.migrations.phase3_checkpoint import (
         P3_INDEXES, P3_TENANT_TABLES, create_phase3_schema,
@@ -62,6 +65,9 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     from freight_recon.migrations.phase5_durable_timers import create_timer_schema
     from freight_recon.migrations.phase5_event_transport import (
         P5_INDEXES, P5_TENANT_TABLES, create_phase5_schema,
+    )
+    from freight_recon.migrations.phase6_work_items import (
+        P6_INDEXES, P6_TENANT_TABLES, create_phase6_schema,
     )
 
     conn = sqlite3.connect(path)
@@ -105,9 +111,12 @@ def _mutated(path, *, drop=None, replace=None, skip_index=None, ddl_edit=None,
     # short would make EVERY case in this module fail for a reason that has nothing to do with the
     # one thing it deliberately broke.
     create_timer_schema(conn, now="1970-01-01T00:00:00+00:00")
-    if drop in P5_TENANT_TABLES:
+    # ...and the P6 entity layer, for the third time and the same reason. It declares no foreign key
+    # into the ledger either, so it is built regardless of what was dropped.
+    create_phase6_schema(conn, now="1970-01-01T00:00:00+00:00")
+    if drop in P5_TENANT_TABLES or drop in P6_TENANT_TABLES:
         conn.execute(f"DROP TABLE IF EXISTS {drop}")
-    if skip_index and skip_index in P5_INDEXES:
+    if skip_index and (skip_index in P5_INDEXES or skip_index in P6_INDEXES):
         conn.execute(f"DROP INDEX IF EXISTS {skip_index}")
     if extra_table:
         conn.execute(extra_table)

@@ -1055,6 +1055,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"timers:{step}")
         conn.commit()
 
+        # ---- STEP 11 (P6): the entity layer — the recorded human authority and the Work Item.
+        # The same argument, one phase later again, and it is not a formality: `work_items` carries
+        # the foreign key that makes ownership structural, so a MIGRATED database without it is one
+        # where `owner_id` would have been a text column while a FRESH database enforced a referent.
+        # Create-only and idempotent, like its three predecessors.
+        from .phase6_work_items import create_phase6_schema
+
+        for step in create_phase6_schema(conn, now=_now()):
+            _mark(conn, f"phase6:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1070,9 +1081,11 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             # internally too, so neither marker can appear on a shape that did not prove itself.
             from .phase3_checkpoint import stamp_phase3_version
             from .phase5_event_transport import stamp_phase5_version
+            from .phase6_work_items import stamp_phase6_version
 
             stamp_phase3_version(conn, now=_now())
             stamp_phase5_version(conn, now=_now())
+            stamp_phase6_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

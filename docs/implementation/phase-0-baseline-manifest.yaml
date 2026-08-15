@@ -190,6 +190,21 @@ expected_noncanonical_schema:
     # REG-1 adjudication: tenant is the first primary-key column, the due-lookup index is
     # tenant-first, and the readiness oracle refuses the table otherwise.
     - durable_timers
+    # Phase 6 (the entity layer, P6-U1) - born tenant-first, and NEITHER is exempt.
+    # REG-1 adjudication, stated rather than assumed:
+    #   `tenant_humans` records that a named human holds authority WITHIN one brokerage (spec §7).
+    #   Authority is not portable across tenants - a dispatcher at one brokerage is nobody at
+    #   another - so a tenant-less roster would be an authority nobody scoped. It is also the
+    #   foreign-key referent that makes `work_items.owner_id` structural rather than a text column,
+    #   which is the whole mechanism behind CLAUDE.md rule 13.
+    #   `work_items` holds what ONE brokerage owes someone. "Whose obligation is this" has no
+    #   honest answer other than a tenant, and SD-10 makes two tenants' identical load numbers two
+    #   independent obligations by design.
+    # Both carry tenant as the first primary-key column, both have tenant-first indexes, both are
+    # refused by the readiness oracle otherwise, and the cross-tenant foreign keys travel with the
+    # tenant in the reference itself so a cross-tenant owner cannot be spelled.
+    - tenant_humans
+    - work_items
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

@@ -153,11 +153,13 @@ rather than hand-maintained.
 | **Blocked on** | ### **NOTHING IN THE SPECIFICATION. G2 IS ADJUDICATED AND ITS SEVEN EVENT OBLIGATIONS ARE DISCHARGED.** The predicate is settled and mechanised (interpretation C, HYBRID), all 134 rows carry structured classification, and the 7 transitions that performed durable writes with no canonical event — `PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8` — were given 7 **minted** canonical events under founder/architect authority on 2026-08-12 (registry 98 → 105), each discharge re-proven mechanically and each obligation retained in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml). ### **P5 IS STILL NOT_STARTED — the block that remains is that no P5 work has been done**, and the G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay recorded OPEN |
 | **Next unlocked** | P6 |
 
-## P6 — Foundational entities and state machines ⛔ NOT STARTED
+## P6 — Foundational entities and state machines ⛔ NOT STARTED — a candidate awaits review
 
 | | |
 |---|---|
 | **Purpose** | Work Item, Pipeline Instance, the 13 machines, 134 transitions |
+| **Candidate in the tree** | ### **`P6-CP-1-CANDIDATE` — machine M1, the Work Item, and ownership as a RECORDED AUTHORITY.** 14 of the 134 transitions as declarative data, `AC-MACH-000`'s bijection by EXACT SET EQUALITY, the 64-pair illegal sweep recorded to audit **and** security, K-1 `decision_ref` resolution, `owner_id` as a FOREIGN KEY into `tenant_humans`. 178 nodes, 27/27 mutants, ships dark. ### **It records NO landed checkpoint and NO scored criterion: it owes a fresh targeted independent review by a session that neither implemented nor remediated it** ([record](p6-u1-work-item-ownership-implementation-record.md)) |
+| **Still owed for the phase** | the **Pipeline Instance** (M2, 25 transitions), **M3–M13** (95 transitions), and with them `AC-EVT-003` — which discharges only when all 134 land |
 | **System capability after** | ### **Every unit of work has an accountable owner — structurally, not by convention** |
 | **User-visible capability** | None yet |
 | **Safety guarantees after** | A Work Item with no owner is a Sev-0 condition; the Pipeline Instance becomes the reservation |

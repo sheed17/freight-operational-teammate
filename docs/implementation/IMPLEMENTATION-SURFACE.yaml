@@ -166,10 +166,36 @@ concepts:
       enabled.
 
   - name: Work Item
-    status: SPECIFICATION_ONLY
+    status: IMPLEMENTED
     specification: docs/specifications/entities/01-work-item.md
-    absent_symbols: [WorkItem, work_items]
+    evidence:
+      - path: src/freight_recon/work_item.py
+        symbol: WorkItemMachine
+      - path: src/freight_recon/work_item.py
+        symbol: TRANSITIONS
+      - path: src/freight_recon/migrations/phase6_work_items.py
+        symbol: P6_TARGET_SCHEMA
+      - path: src/freight_recon/work_item.py
+        symbol: record_human_authority
     owning_unit: P6
+    note: >-
+      P6-U1 delivered machine M1 in full: the fourteen transitions of
+      state-machines/01-work-item.machine.md sec 14 as declarative data, a structural bijection with
+      the specification asserted by EXACT SET EQUALITY of transition identifiers, the exhaustive
+      64-pair illegal sweep with IllegalTransitionAttempted recorded to the audit backbone AND
+      security_events, OCC on version, closure only through a decision_ref that RESOLVES (K-1), and
+      reopening that leaves the prior closure event byte-identical. Ships DARK - a guard asserts the
+      package and scripts/ contain zero importers, and M1's import closure reaches no effect-capable
+      module.
+      ### OWNERSHIP IS A FOREIGN KEY, NOT A STRING. `record_human_authority` /`tenant_humans` is the
+      durable referent entities/01-work-item.md point 18 requires ("owner_id FK -> an authenticated
+      user of the tenant") and which had nowhere to point until now. It is recorded here as evidence
+      of Work Item ownership rather than as a concept of its own, because that is what it is - the
+      mechanism behind the entity's defining property, not a new primitive. It is NOT user
+      administration: the web control plane owns that and ADR-017 assigns it to P11. It carries spec
+      sec 7's two HUMAN roles and structurally excludes sec 7's other two rows, so a detector and a
+      model cannot be written into it and therefore cannot be written into work_items.owner_id;
+      recorded_by_kind is CHECK-constrained to 'human', so admitting a human is itself a human act.
 
   - name: Pipeline Instance
     status: SPECIFICATION_ONLY
@@ -188,7 +214,13 @@ concepts:
     specification: docs/architecture/semantic-model.md
     absent_symbols: [Obligation, obligations_table]
     owning_unit: P6
-    note: the accountable-owner semantics land with Work Item ownership
+    note: >-
+      ### THE ACCOUNTABLE-OWNER SEMANTICS HAVE NOW LANDED, ON THE WORK ITEM. P6-U1 made ownership a
+      foreign key into a recorded, attributed authority, required the owner ACTIVE at assignment,
+      and made offboarding refuse while open work is owned. `Obligation` as a NAMED entity of the
+      semantic model is still SPECIFICATION_ONLY and correctly so - no such type or table exists,
+      and the remaining obligation-shaped machines (Expectation, Exception, Compensation) are later
+      units. The distinction matters: the property is real, the entity is not built.
 
   - name: Evidence (content-addressed)
     status: SPECIFICATION_ONLY

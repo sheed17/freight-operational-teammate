@@ -2572,9 +2572,54 @@ units:
     # ### AC-EVT-003 DISCHARGES HERE: P5's IR-R8 recorded that 'every producer transition emits its
     # required event in the transition's own commit' cannot be proven at P5 because the 134
     # transitions are P6's. It is P6's to discharge, on the transport P5 certified.
+    # ### THIS TREE CARRIES A P6 CONTENT CANDIDATE, AND THE REGISTRY DELIBERATELY DOES NOT YET
+    # RECORD IT AS LANDED. Read `execution_state: NOT_STARTED` with `candidate_awaiting_review`
+    # below, never on its own: the two fields together are the honest statement, and either alone
+    # is a lie in one direction.
+    #
+    # ### WHY THE FIELDS DO NOT MOVE HERE. `test_status_reality.py` requires that a P6 that is
+    # IN_PROGRESS record a landed checkpoint, and that EVERY landed checkpoint cite BOTH on-disk
+    # implementer evidence AND an on-disk INDEPENDENT REVIEW REPORT — stating in its own words that
+    # "P4-CP-1's null review report is a recorded gap, not a precedent to copy". No such report
+    # exists for this candidate, and the session that built it may not write one (CLAUDE.md §11).
+    # Flipping the fields would therefore require either fabricating a review or copying the very
+    # precedent the guard refuses.
+    #
+    # ### THIS IS THE PRECEDENT THE REPOSITORY ALREADY SET, NOT AN IMPROVISATION. P5's outbox and
+    # inbox existed as working code at candidate `d807261` while this same registry read
+    # `execution_state: NOT_STARTED`, `checkpoint_state: NO_CHECKPOINT` and recorded no landed
+    # checkpoint. The fields moved only at the REPLACEMENT commit `de526c1`, which carried
+    # `u5-7-8-independent-review.md` on disk. Candidate first; landed when reviewed.
     status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
+    candidate_awaiting_review:
+      candidate_id: P6-CP-1-CANDIDATE
+      record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+      name: The Work Item, and ownership as a recorded authority rather than a string
+      # ### SAID PLAINLY SO `NOT_STARTED` CANNOT BE MISREAD AS "NO CODE EXISTS". It does exist, it
+      # is green, and it is not yet accepted work.
+      what_is_in_the_tree: >-
+        Machine M1 in full — `src/freight_recon/work_item.py` and
+        `src/freight_recon/migrations/phase6_work_items.py`, wired into `schema.py` and into the P2
+        migration path — with 178 acceptance and hostile nodes in
+        `eval/tests/test_phase6_work_item.py` and a 27-case mutation battery in
+        `scripts/mutate_phase6_work_item.py` at 27/27 caught. The canonical suite is green on the
+        whole tree. ### NONE OF THAT IS ACCEPTANCE: it is what an independent reviewer is being
+        asked to attack.
+      implementer_evidence: docs/implementation/p6-u1-work-item-ownership-implementation-record.md
+      independent_review_report: null
+      what_it_owes: >-
+        ### A FRESH TARGETED INDEPENDENT REVIEW BY A SESSION THAT NEITHER IMPLEMENTED NOR REMEDIATED
+        IT, then a separate adjudication. Only then may `execution_state` become IN_PROGRESS,
+        `checkpoint_state` leave NO_CHECKPOINT, and this record become a `landed_checkpoints` entry
+        citing the report. No P6 acceptance criterion is scored by this candidate and none may be.
+      product_driver_result: >-
+        ACCEPT — the driver OPERATED the machine through a brokerage narrative (load 4471 delivered,
+        billed, aged, handed over, the owner offboarded, paid, closed, short-paid and reopened) with
+        the hostile attempts inline: 27 behaviours as specified, 0 wrong. ### THAT IS AN INDEPENDENT
+        JUDGEMENT OF OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT ENGINEERING
+        REVIEW THIS CANDIDATE OWES. Its one FIX was against the scenario, not the product.
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -2609,6 +2654,84 @@ units:
       observability_requirements: [ownerless-Work-Item detection at Sev-0, Work Item age]
       security_requirements: [entity tables tenant-first, ownership only by recorded human assertion]
       readiness_target: LOCALLY_IMPLEMENTED
+    residual_risks_carried_forward:
+      - id: P6-D1
+        finding: >-
+          K-1 names six human-decision event types; `HumanResolved` is not among the 118 canonical
+          contracts. `ExceptionResolved` (M9, EC-3/EC-6) is the canonical name for what looks like
+          the same fact.
+        disposition: >-
+          The resolvable set is K-1's names INTERSECTED with the registry (five), asserted by NAME so
+          a silent shrink fails the build. Substituting one name for the other would be this unit
+          amending a protected specification; M9 owns that determination. A `decision_ref` naming an
+          `ExceptionResolved` refuses TODAY — the safe direction.
+        severity: LOW
+        closes_at: M9
+      - id: P6-D2
+        finding: >-
+          `CorrectionInvalidatedAnEffect` is listed in M1 §33 "Events consumed" but has no §14 row.
+        disposition: >-
+          §27 routes it out of band to M10 and `entities/01-work-item.md` point 32 says it "may raise
+          a Compensation-bearing obligation" — it creates a NEW Work Item rather than transitioning
+          one. It is therefore excluded from M1's trigger set. Including it would make every
+          legitimate delivery an `IllegalTransitionAttempted` — a FALSE security event, which is
+          worse than a missing one because it teaches operators to ignore the real ones.
+        severity: LOW
+        closes_at: M10
+      - id: P6-D3
+        finding: >-
+          `offboard_human` makes the ownerless state unreachable through the supported API, but a row
+          edited around it by an operator with a connection could still retire an owner.
+        disposition: >-
+          The detector `WorkItemMachine.ownerless()` SEES it, proven with a positive control that
+          breaks a row directly and asserts the detector reports all three items. The Sev-0 raise and
+          the "no consequential Pipeline may start" half are M9 and M2 — later P6 units, not
+          inventable here.
+        severity: MEDIUM
+        closes_at: M9 / M2
+      - id: P6-D4
+        finding: >-
+          K-1's `RULE` referent cannot resolve: there is no `rules` table until M12.
+        disposition: >-
+          FAILS CLOSED with a named reason. A stub accepting any rule id would make "closed by an
+          active rule" true of rules that do not exist.
+        severity: LOW
+        closes_at: M12
+      - id: P6-D5
+        finding: >-
+          WI-3's `obligation_satisfied` is a fact the CALLER states; M1 will not derive it from a
+          `PipelineClosed` arriving.
+        disposition: >-
+          This is acceptance (d), not a gap: billed is not paid, and a Work Item is 1:N to its
+          Pipelines. A machine that derived it would close obligations early and be right most of the
+          time, which is the worst possible failure profile for money.
+        severity: NONE - by design
+        closes_at: not a defect
+      - id: P6-D6
+        finding: >-
+          A parked trigger for a not-yet-existing Work Item does not drain when the item is CREATED.
+          P5's drain is keyed on the APPLIED event's own aggregate, and WI-1 creation is an
+          ORIGINATED act rather than a consumed one.
+        disposition: >-
+          The safety-critical half is complete: the event is never dropped, never retried forever,
+          and expires into a problem owned by a named human. Draining on creation needs the parked
+          trigger's FACTS to travel with the event — `obligation_satisfied`, the failure disposition,
+          the block reason — and those are supplied by the producer, which is the Pipeline Instance.
+          Building a facts-carrying drain here would be building infrastructure the next unit owns.
+        severity: LOW
+        closes_at: the Pipeline Instance unit
+      - id: P6-D7
+        finding: >-
+          `entities/01-work-item.md` point 24 offers reopening as a new phase OR as a LINKED new Work
+          Item (`reopens`). Only the new-phase form is implemented; the `reopens` column exists and is
+          never written, and `Reopened`'s `linked_work_item_id` alternative is never emitted.
+        disposition: >-
+          Recorded rather than half-built. The new-phase form is the one spec §12.14 and M-34 make
+          load-bearing, and the linked form is a caller's choice about how a reopened obligation is
+          shaped — a choice with no caller yet. The column and the contract alternative are both in
+          place, so adding it is additive.
+        severity: LOW
+        closes_at: the first caller that needs a linked reopen
     next_units_unlocked: [P7]
 
   - unit_id: P7

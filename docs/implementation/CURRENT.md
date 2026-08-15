@@ -91,14 +91,15 @@ suite_skipped: 1
 
 | Quantity | Count |
 |---|---|
-| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 + 4 = 18)* | |
+| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 + 4 + 2 = 20)* | |
 | — Phase-2 **migrated** tenant-owned tables | **7** — `workflow_runs`, `audit_events`, `security_events`, `operation_action_claims`, `delivery_action_claims`, `effect_grants`, `operation_token_amounts` |
 | — **Already tenant-first before P2** (the eighth tenant-first table, migrated by nobody) | **1** — `autonomous_run_counters` |
 | — Tenant-**exempt** bookkeeping tables | **3** — `schema_migrations`, `migration_quarantine`, `owner_assertions` |
 | — **Phase-3** tenant-owned tables | **2** — `checkpoint_witnesses` (append-only by trigger), `brakes` |
 | — **Phase-3** tenant-exempt table | **1** — `platform_brake` (the ONE global admission brake, SD-12 — by definition nobody's tenant data) |
 | — **Phase-5** tenant-owned tables *(the durable event transport, U5.7+U5.8)* | **4** — `event_outbox` (envelope columns immutable by trigger), `event_inbox` (fully append-only), `inbox_aggregate_cursor`, `pending_references`. ### **P5 adds NO tenant-exempt table** — tenant is the FIRST partition dimension of every store, stream and inbox [C-1], so "whose event is this" has no honest answer other than a tenant |
-| — Canonical tables **total** | **18** — exactly the union of the six sets above |
+| — **Phase-6** tenant-owned tables *(the entity layer, P6-U1)* | **2** — `tenant_humans` (the recorded, attributed human authority; identity and recording act immutable by trigger, never deleted — a human is OFFBOARDED), `work_items` (owner is a FOREIGN KEY into it, required ACTIVE at assignment; terminal states final by trigger; version advances by exactly one). ### **P6 adds NO tenant-exempt table** — a tenant-exempt roster would be an authority nobody scoped, and a tenant-exempt Work Item an obligation nobody owes |
+| — Canonical tables **total** | **20** — exactly the union of the seven sets above |
 | `WorkflowStore` methods, tenant-scoped + readiness-gated | **22 / 22** |
 | `WorkflowStore` construction sites *(the AC-SEC-001 sweep)* | **168** — 166 with an explicit tenant, 2 registered refusal probes |
 | Guard files / guard tests *(discovered by `guard_files()`, never enumerated — the transcribed "25 / 367" figure is retired: no executable source ever computed it. **Method, stated so the figure is reproducible:** files = `len(test_phase2_guard_registry.guard_files())`; tests = the AST count of `def test_*` functions across those files — test FUNCTIONS, not collected nodes, so parametrization does not inflate it)* | **42 / 631** *(was 38 / 578, then 41 / 624 after the P3 findings remediation added three guard files — ledger compatibility, step order, observability — and 46 test functions; the N-1 receipt-consistency correction then added one guard file — the BUILD-STATUS receipt-consistency guard — and 7 test functions)* |
@@ -130,6 +131,7 @@ state, and it changed because a record was written, not because a residual was w
 | — | ### **ADJ-P5-03 — a scope boundary, stated rather than waived.** P5's `rebaseline_contract` sets `readiness_target: STAGING_READY` for the persistence infrastructure. ### **THAT TARGET IS NOT MET AND IS NOT CLAIMED MET.** The PostgreSQL surface is proven against a real server on a developer machine; it has **not** been deployed to a production-like staging environment with secrets, monitoring and operational controls, and the observability surfaces are query primitives rather than dashboards or alerting. `readiness_target` is a maturity target, **not** one of the 14 weighted acceptance criteria, and ADR-016 assigns deployment and environments to P11 — the gate receipt says so itself | OPEN, recorded, non-blocking | **P11** |
 | — | **Transition/event completeness — G2 ADJUDICATED; ITS SEVEN EVENT OBLIGATIONS DISCHARGED.** The predicate is settled and mechanised (interpretation C, HYBRID): a *producer transition* is one declared in `events/registry.md` §3 — **117 of the 134 rows; the other 17 are non-producer transitions** — and completeness is `GR-2` over durable writes. All 134 rows carry structured classification (117 PRODUCER · 9 CONSUMES · 6 NON_PRODUCING · 2 DELEGATES_TO · 0 EVENT_REQUIRED); prose is never a classifier and an undecidable row fails the build. `EF-3` is re-attributed to the **existing** `EffectExecuted`. ### **`CONSUMES` IS PROVEN, NOT ASSERTED.** A durable-writing consumer must satisfy `CONSUMES-VALID`: a **bidirectionally declared co-commit** in both rows' `Writes` cells, a **different machine**, **not mutually exclusive** with the owner, and every persisted field carried by a consumed event's `state-machines/registry.md` §5 payload — undecidable **fails the build**. The first U5.1 candidate's version of this class was self-certifying and was **rejected**: it let `AP-9` be relabelled `CONSUMES:BrakeReleased` and stay green. `PL-15x` and `IB-5x` are `NON_PRODUCING` (their event's producer is the *rule* `GR-1`, not a transition). ### **`DELEGATES_TO` IS BOUNDED BY TRIGGER TYPE TOO** — a delegating row's `Trig` set must intersect each target's, which is what refuses `PL-7a → PL-7b` (`S` against `H`: the autonomous path may not be recorded by an event asserting a bound human approval). ### **THE RECORDED FINDING — *"7 transitions perform durable writes and name no event outright"* (`PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`) — IS DISCHARGED, AND IS KEPT HERE IN ITS ORIGINAL WORDS SO THE FINDING SURVIVES ITS OWN REPAIR. THE SEVEN NOW HAVE SEVEN MINTED CANONICAL EVENTS** (`AutonomousAdmissionRecorded`, `ApprovalFrozen`, `ConflictPartyAttached`, `ExceptionSeverityChanged`, `PolicySubmitted`, `PolicyApproved`, `RuleExpired`), minted 2026-08-12 under founder/architect authority; the registry moved **98 → 105**, `PolicyProposed` stayed PO-1's, and every discharge is re-proven mechanically on each run. The obligations are **retained**, marked discharged, in [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml). The retired "24-name-no-event" figure and the retired "121/13" split were never correct | ### **EVENT OBLIGATIONS DISCHARGED — residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` OPEN** | **G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` — each at the unit authorized for its surface; none blocks P6.** ### **THIS CELL USED TO READ *"G2 residuals; P5 event infrastructure still unbuilt"*, WHICH WAS TRUE WHEN WRITTEN AND IS FALSE NOW** — that infrastructure is built, independently reviewed and separately adjudicated at 14/14, as this row's own `Status` cell and this file's P5 record both state. Preserved in its own words because a finding must survive its own repair |
 | — | **PD-02 — the Product Driver's commit-topology warning is a TOOLING defect, not a repository conflict.** The driver reports `topology: BLOCKED_AUTHORITY` and a `max_content_commits` of **7**. The G2 adjudication proved this mechanically: `neyma_product_driver/protocol_sources.py`'s `_CONTENT_COUNT_RE` uses a `\d{1,2}` alternative behind a `\b`, which matches between a hyphen and a digit, so *"CLOSED by the separate **R-07** content commit"* is read as the cardinal **7**. The bad value is **consumed**, not merely displayed. ### **Repository authority is NOT contradictory: the rule is exactly ONE content commit, then exactly ONE finalizer-generated metadata commit** ([`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §10, `integration-topology-procedure.md`). A session must take commit topology from those two documents only and treat the driver's `BLOCKED_AUTHORITY` output as non-authoritative on this point. The fix is a one-line regex hardening **outside this repository** | OPEN — inherited governance/tooling residual, non-blocking; **rank-1 for the Product Driver** | Product Driver, not a product unit |
+| — | **P6-D8 — the "42 / 631" guard-file figure in the Exact-counts table is STALE, and it is not reproducible from outside pytest.** The stated method (`len(test_phase2_guard_registry.guard_files())` and the AST count of `def test_*` across those files) returns a DIFFERENT answer depending on how the module is imported, because `guard_files()` mutates `sys.path` and the central inventory reads `git ls-files` relative to the invocation. Measured 26/708 and 52/1105 from two invocation styles on the same tree. P6-U1 adds one guard file and 178 test functions, so it is now stale in a fourth way. ### **RECORDED, NOT ACTIONED (§13.3): no number is guessed here, because the honest fix is to make the method invocation-independent and have the figure derived rather than transcribed** — which is guard-tooling work, not a product unit | OPEN, recorded, non-blocking — **no executable source asserts this figure**, so nothing depends on it | the guard-tooling unit that makes the derivation invocation-independent |
 | — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
 | — | ~~Checkpoint Witness + seven-step checkpoint + claim CAS unimplemented~~ | ### **RESOLVED at P3** — the kernel exists and ships dark | **P3 ✅** |
 | — | ~~Adapter containment unimplemented~~ | ### **RESOLVED at P4** — the containment mechanism exists and is adjudicated 14/14, and the separate act of recording R-07 CONTAINED has now been made | **P4 ✅ · R-07 ✅** |
@@ -587,13 +589,48 @@ transport truncation disclosed, in
 
 ### **P6 — FOUNDATIONAL ENTITIES AND STATE MACHINES. IT IS THE SOLE `READY` UNIT.**
 
-### **`P6` is `READY`, which means SELECTED — it has NOT STARTED and it is NOT COMPLETE.**
+### **`P6` is `READY`, which means SELECTED. Its recorded `execution_state` is `NOT_STARTED` and
+its `checkpoint_state` is `NO_CHECKPOINT` — and this tree carries a P6 CONTENT CANDIDATE.**
+
+### **READ THOSE TWO SENTENCES TOGETHER; EITHER ALONE IS A LIE IN ONE DIRECTION.** The code exists,
+it is green, and it is **not accepted work**. The registry does not record it as landed because
+`test_status_reality.py` requires every landed checkpoint to cite an on-disk **independent review
+report** — *"P4-CP-1's null review report is a recorded gap, not a precedent to copy"* — and no such
+report exists for this candidate. The session that built it may not write one (§11). ### **THIS IS
+THE PRECEDENT THE REPOSITORY ALREADY SET:** P5's outbox and inbox were working code at candidate
+`d807261` while this file and the registry both read `NOT_STARTED` / `NO_CHECKPOINT`; the fields
+moved only at the replacement commit `de526c1`, which carried its independent review on disk.
+Candidate first; landed when reviewed.
+
+### **THE CANDIDATE — the Work Item, and accountable human ownership as a mechanism.**
+Machine **M1**: the **14 transitions** of `state-machines/01-work-item.machine.md` §14 as declarative
+data, with `AC-MACH-000`'s bijection asserted by **EXACT SET EQUALITY of transition identifiers**;
+the exhaustive **64-pair** illegal sweep recorded to the audit backbone **and** `security_events`;
+closure only through a `decision_ref` that **RESOLVES** (K-1); reopening that leaves the prior closure
+event **byte-identical**; and `work_items.owner_id` as a **FOREIGN KEY** into `tenant_humans`, the
+durable record of who was admitted to this brokerage, by whom, and when.
+### **178 acceptance/hostile nodes, 27/27 mutants caught, and it ships DARK — zero production
+callers, asserted by an AST scan and by an import-closure walk, not announced.**
+Implementer's record:
+[`p6-u1-work-item-ownership-implementation-record.md`](p6-u1-work-item-ownership-implementation-record.md).
+
+### **WHAT THE CANDIDATE OWES, AND WHAT IT MAY NOT DO.** A **fresh targeted independent review by a
+session that neither implemented nor remediated it**, then a **separate adjudication**. Only then may
+`execution_state` become `IN_PROGRESS`, `checkpoint_state` leave `NO_CHECKPOINT`, and the record
+become a `landed_checkpoints` entry citing the report.
+### **NO P6 ACCEPTANCE CRITERION IS SCORED, AND NONE MAY BE SCORED BY THE IMPLEMENTING LINEAGE**
+(CLAUDE.md §11). The Product Driver returned **ACCEPT** on observed product behaviour — 27 behaviours
+as specified, 0 wrong — and that is an independent judgement of the PRODUCT, **not** the targeted
+independent engineering review this candidate owes.
+
+### **P6 IS NOT COMPLETE, AND THE GAP IS LARGE AND NAMED.** `foundational-machine-acceptance.md`
+requires **100% of the 134 legal transitions** across **13 machines**. One machine and 14 transitions
+have landed. Still owed: the **Pipeline Instance** (M2, 25 transitions), **M3–M13** (95 transitions),
+and with them `AC-EVT-003` (P5's `IR-R8`), which discharges only when all 134 land.
 
 ### **The next approved unit is `P6`.** P5 is COMPLETE — all 14 weighted criteria PASS at 100/100 on
-independent evidence — so P6's sole dependency is satisfied, its `validation_blockers` are empty, and
-P6 is the selected unit. **`READY` is the SELECTION state and nothing more:** P6's
-`execution_state` is `NOT_STARTED`, its `checkpoint_state` is `NO_CHECKPOINT`, no P6 code exists and
-no P6 criterion is scored. The three fields are defined in `meta.status_model` of
+independent evidence — so P6's sole dependency is satisfied and its `validation_blockers` are empty.
+The three status fields are defined in `meta.status_model` of
 [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml).
 
 Unit `P6` in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — **the one and only
@@ -672,8 +709,9 @@ corrected N-1.
 
 | Not yet | Why |
 |---|---|
-| ### **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires `P6` COMPLETE. **P6 has not started** — it is `READY`, which is a selection and nothing more. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands here, not earlier: provenance was P5's `prohibited_scope` and is P6's too |
-| ### **Implementation Phase 6 — NOT YET, THOUGH ITS DEPENDENCY IS NOW SATISFIED** | Its dependency is discharged and **`P6` now holds the selector**, so it is no longer dependency-blocked. ### **It is still gated on ONE thing: this P5 closure content commit is NOT FINALIZED.** It owes a fresh targeted independent review, a separate targeted adjudication and exactly one finalizer, in that order. P6 begins the moment that finalizer has run — not before, and no further P5 engineering stands in the way |
+| ### **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires `P6` **COMPLETE**, and P6 is not: one of its thirteen machines has landed. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands here, not earlier: provenance was P5's `prohibited_scope` and is P6's too |
+| ### **Self-certifying the candidate in this tree** | `P6-CP-1-CANDIDATE` owes a **fresh targeted independent review** by a session that neither implemented nor remediated it, then a **separate adjudication**, before it may be recorded as landed or score anything. CLAUDE.md §11: certifying your own fixes is self-adjudication, a defect with a passing status. The Product Driver's ACCEPT is a product judgement and is **not** that review |
+| ### **Treating the Work Item machine as a freight workflow** | M1 is a platform primitive that ships **dark**. It performs no external effect, holds no commit key, mints no witness and no grant, and has **zero** production callers. Freight workflow implementation still requires the remaining foundations |
 | **Rebuilding any P5 surface** — event contracts, GC-1 corpus, replay sandbox, audit reconstruction, outbox/inbox, durable timers, PostgreSQL | ### **BUILT, REVIEWED, ADJUDICATED — do not rebuild, and do not re-open.** All 14 P5 criteria are `PASS`. Reopening a closed phase to polish it is forbidden by CLAUDE.md §13.8. The recorded nonblocking residuals (`IR-R5`–`IR-R12`, `ADJ-P5-01`–`ADJ-P5-03`) are **debt rows, and the debt row is the complete deliverable** (§13.3) |
 | Treating R-07 CONTAINED as production enablement | ### **Containment is not enablement.** External-effect paths are structurally forced through the governed boundary or fail closed. No production write is enabled, the deployed route answers `ROUTE_NOT_CONFIGURED`, the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** Live supervised writes are P12, behind the undischarged **RR-01** |
 | Running a finalizer on the R-07 closure content commit | It must first receive a **fresh targeted independent review** and a **separate targeted adjudication**. No finalizer receipt exists for it and none may be fabricated |

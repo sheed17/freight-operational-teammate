@@ -62,6 +62,16 @@ from .migrations.phase5_event_transport import (
     phase5_readiness_problems,
     stamp_phase5_version,
 )
+from .migrations.phase6_work_items import (
+    P6_EXEMPT_TABLES,
+    P6_INDEXES,
+    P6_REPLACED_INDEXES,
+    P6_TARGET_SCHEMA,
+    P6_TENANT_TABLES,
+    create_phase6_schema,
+    phase6_readiness_problems,
+    stamp_phase6_version,
+)
 
 TENANT_COLUMN = "tenant"
 
@@ -79,16 +89,20 @@ REQUIRED_INDEXES: tuple[str, ...] = (
 # Their presence proves a migration was never run, or died half-way. Either way: not ready.
 LEGACY_TABLES: tuple[str, ...] = ("operation_commit_claims",)
 
-# The complete canonical DDL: the Phase-2 shape, the Phase-3 checkpoint tables and the Phase-5
-# event transport. One merged view so the readiness oracle and the fresh-database builder cannot
-# disagree about what canonical means.
-_ALL_TARGET_SCHEMA: dict[str, str] = {**TARGET_SCHEMA, **P3_TARGET_SCHEMA, **P5_TARGET_SCHEMA}
+# The complete canonical DDL: the Phase-2 shape, the Phase-3 checkpoint tables, the Phase-5 event
+# transport and the Phase-6 entity layer. One merged view so the readiness oracle and the
+# fresh-database builder cannot disagree about what canonical means.
+_ALL_TARGET_SCHEMA: dict[str, str] = {
+    **TARGET_SCHEMA, **P3_TARGET_SCHEMA, **P5_TARGET_SCHEMA, **P6_TARGET_SCHEMA,
+}
 
-# Tenant-owned tables across all three phases: the readiness loop validates every one identically.
+# Tenant-owned tables across all four phases: the readiness loop validates every one identically.
 # The P5 event tables are in this list and not beside it, deliberately: an outbox that was exempt
-# from the tenant-first oracle would be the one store in the system where [C-1] was a comment.
+# from the tenant-first oracle would be the one store in the system where [C-1] was a comment. The
+# P6 entity tables are here for the same reason — a Work Item is owed BY one brokerage and a human's
+# authority is authority WITHIN one, and neither has an honest cross-tenant reading.
 ALL_TENANT_TABLES: tuple[str, ...] = (
-    *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES,
+    *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -101,6 +115,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P3_EXEMPT_TABLES,
     *P5_TENANT_TABLES,
     *P5_EXEMPT_TABLES,
+    *P6_TENANT_TABLES,
+    *P6_EXEMPT_TABLES,
 )
 
 
@@ -150,8 +166,9 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
         if name not in present:
             conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
-    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES}.items()
-                      if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES}
+    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES}.items()
+                      if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
+                      and n not in P6_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -179,6 +196,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_timer_schema(conn, now=_now())
     if not timer_readiness_problems(conn):
         stamp_timer_version(conn, now=_now())
+    # P6's entity layer: the recorded human authority and the Work Item. Built AFTER P5 because
+    # `work_items` has no dependency on the transport but the machine that writes it does — and the
+    # same marker-last discipline applies, so a database whose ownership triggers failed to build is
+    # never stamped as one that can carry accountable work.
+    create_phase6_schema(conn, now=_now())
+    if not phase6_readiness_problems(conn):
+        stamp_phase6_version(conn, now=_now())
     conn.commit()
 
 
@@ -251,6 +275,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase3_readiness_problems(conn))
     problems.extend(phase5_readiness_problems(conn))
     problems.extend(timer_readiness_problems(conn))
+    problems.extend(phase6_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

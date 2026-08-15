@@ -136,6 +136,18 @@ GUARD_REGISTRY: dict[str, tuple[str, str]] = {
     # Added by P5 U5.7+U5.8: it reads the transport module sources to prove they import no adapter or
     # network client, so the central inventory discovers it as a control guard.
     "test_phase5_event_transport.py": (RETAIN, "P5's first runtime capability held to its durability contract: a state change and the events it emits commit atomically or not at all - emit REFUSES to run outside an open transaction and no autocommit escape parameter exists - a relay publishes at-least-once under lease exclusivity, and consumption is idempotent on (tenant, consumer_id, event_id) so a redelivery is a no-op rather than a second effect. Strict per-aggregate ordering is enforced by a trigger asserting that no two DIFFERENT producer transitions own one version, which admits EF-2's legitimate GrantClaimed + EffectAttempted co-emission that a UNIQUE index would have made uninsertable; cross-tenant events are refused before the handler and before any write; and production stays dark - no default sink, no adapter or network import, zero witnesses and zero grants"),
+    # Added by P6-U1: it reads the machine and registry SPECIFICATIONS to prove the implementation's
+    # transition table is a bijection with sec 14, and it reads the package and scripts/ sources to
+    # prove M1 has no production caller - so the central inventory discovers it as a control guard.
+    #
+    # ### THIS ENTRY IS THE FIX FOR A FALSE GREEN THIS UNIT ACTUALLY PRODUCED, and it is the SAME
+    # false green P5's independent review rejected a candidate for. `guard_files()` discovers control
+    # guards through the central inventory, which reads `git ls-files` - so while this module was
+    # untracked the whole suite ran GREEN and the classification guard could not see it. It went red
+    # the moment the file was committed, and the finalizer refused before writing any status. The
+    # lesson is recorded here rather than only in a report: a suite run against an untracked new
+    # guard module is not evidence about the commit that tracks it.
+    "test_phase6_work_item.py": (RETAIN, "P6's first entity capability held to the claim it makes: that accountable human ownership is STRUCTURAL rather than documented. It asserts AC-MACH-000's bijection between the implementation's declarative transition table and the fourteen rows of state-machines/01-work-item.machine.md sec 14 by EXACT SET EQUALITY of transition identifiers, with a positive control performing a same-count substitution so the oracle is demonstrated to be a set comparison and not a count; it drives the exhaustive (state x trigger) sweep over a PROVEN population of 91 pairs, 27 legal and 64 illegal, and requires every illegal pair to persist nothing while recording IllegalTransitionAttempted to the audit backbone AND security_events; it refuses every shape of ownerless or unrecorded owner at the API and again at the database, refuses a model actor on every transition, refuses closure on a decision_ref that does not RESOLVE to an authenticated human decision, and proves reopening leaves the prior closure event byte-identical; and it proves the capability ships dark by import closure over every import spelling, by an AST scan requiring zero production importers, and by measured zero witnesses and zero grants across all seven reachable states"),
 }
 
 GUARD_PREFIXES = ("test_phase0_", "test_phase1_", "test_u26a_", "test_u26bc_", "test_phase2_",
