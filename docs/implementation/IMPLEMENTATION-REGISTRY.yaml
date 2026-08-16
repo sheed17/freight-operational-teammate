@@ -2572,97 +2572,160 @@ units:
     # ### AC-EVT-003 DISCHARGES HERE: P5's IR-R8 recorded that 'every producer transition emits its
     # required event in the transition's own commit' cannot be proven at P5 because the 134
     # transitions are P6's. It is P6's to discharge, on the transport P5 certified.
-    # ### THIS TREE CARRIES A P6 CONTENT CANDIDATE, AND THE REGISTRY DELIBERATELY DOES NOT YET
-    # RECORD IT AS LANDED. Read `execution_state: NOT_STARTED` with `candidate_awaiting_review`
-    # below, never on its own: the two fields together are the honest statement, and either alone
-    # is a lie in one direction.
+    # ### THE CANDIDATE HAS LANDED AS `P6-CP-1`, AND THIS RECORD NOW SAYS SO. Until the landing
+    # content commit these three lines read `execution_state: NOT_STARTED`, `checkpoint_state:
+    # NO_CHECKPOINT` and carried a `candidate_awaiting_review` block, under the heading
+    # "THIS TREE CARRIES A P6 CONTENT CANDIDATE, AND THE REGISTRY DELIBERATELY DOES NOT YET RECORD
+    # IT AS LANDED". ### THAT WORDING WAS TRUE WHEN WRITTEN AND IS FALSE NOW, and it is REPLACED
+    # rather than deleted (CLAUDE.md §5 rule 20) so the old phrasing stays recognisable if it
+    # returns. The stated reason it could not move was precise and has been DISCHARGED, not waived:
     #
-    # ### WHY THE FIELDS DO NOT MOVE HERE. `test_status_reality.py` requires that a P6 that is
-    # IN_PROGRESS record a landed checkpoint, and that EVERY landed checkpoint cite BOTH on-disk
-    # implementer evidence AND an on-disk INDEPENDENT REVIEW REPORT — stating in its own words that
-    # "P4-CP-1's null review report is a recorded gap, not a precedent to copy". No such report
-    # exists for this candidate, and the session that built it may not write one (CLAUDE.md §11).
-    # Flipping the fields would therefore require either fabricating a review or copying the very
-    # precedent the guard refuses.
+    #   "`test_status_reality.py` requires that a P6 that is IN_PROGRESS record a landed checkpoint,
+    #    and that EVERY landed checkpoint cite BOTH on-disk implementer evidence AND an on-disk
+    #    INDEPENDENT REVIEW REPORT ... No such report exists for this candidate, and the session
+    #    that built it may not write one (CLAUDE.md §11)."
+    #
+    # ### THE REPORT NOW EXISTS, AND NO SESSION IN THE BUILD LINEAGE WROTE IT. A fresh targeted
+    # INDEPENDENT re-review by a session that neither implemented nor remediated M1 returned ACCEPT
+    # FOR P6-CP-1 ADJUDICATION (`p6-cp1-independent-rereview-report-ca8c070.md`, preserved at
+    # refs/preserve/p6-cp1-independent-rereview-ca8c070, commit 7dff7f1); a SEPARATE third session
+    # then returned ADJUDICATE PASS — P6-CP-1 READY FOR FINALIZER
+    # (`p6-cp1-targeted-adjudication-report-ca8c070.md` + validated `.sha256` sidecar, preserved at
+    # refs/preserve/p6-cp1-targeted-adjudication-ca8c070, commit e7e99e3). Both artifacts were
+    # brought on-disk BYTE-IDENTICAL to the preserved blobs, never regenerated or summarised.
     #
     # ### THIS IS THE PRECEDENT THE REPOSITORY ALREADY SET, NOT AN IMPROVISATION. P5's outbox and
     # inbox existed as working code at candidate `d807261` while this same registry read
     # `execution_state: NOT_STARTED`, `checkpoint_state: NO_CHECKPOINT` and recorded no landed
     # checkpoint. The fields moved only at the REPLACEMENT commit `de526c1`, which carried
-    # `u5-7-8-independent-review.md` on disk. Candidate first; landed when reviewed.
+    # `u5-7-8-independent-review.md` on disk. Candidate first; landed when reviewed. P6-CP-1 has
+    # now reached the same point by the same route.
+    #
+    # ### LANDED IS NOT ACCEPTED. A checkpoint is a landed increment, NEVER a phase acceptance:
+    # `criteria_scored` is empty, all of P6's weighted acceptance criteria remain unscored, P6 is
+    # NOT COMPLETE, and M2 (Pipeline Instance) has not begun.
     status: READY
-    execution_state: NOT_STARTED
-    checkpoint_state: NO_CHECKPOINT
-    candidate_awaiting_review:
-      candidate_id: P6-CP-1-CANDIDATE
-      record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
-      name: The Work Item, and ownership as a recorded authority rather than a string
-      # ### SAID PLAINLY SO `NOT_STARTED` CANNOT BE MISREAD AS "NO CODE EXISTS". It does exist, it
-      # is green, and it is not yet accepted work.
-      what_is_in_the_tree: >-
-        Machine M1 in full — `src/freight_recon/work_item.py` and
-        `src/freight_recon/migrations/phase6_work_items.py`, wired into `schema.py` and into the P2
-        migration path — with 186 acceptance and hostile nodes in
-        `eval/tests/test_phase6_work_item.py` and a 32-case mutation battery in
-        `scripts/mutate_phase6_work_item.py` at 32/32 caught. The canonical suite is green on the
-        whole tree. ### NONE OF THAT IS ACCEPTANCE: it is what an independent reviewer is being
-        asked to attack.
-      implementer_evidence: docs/implementation/p6-u1-work-item-ownership-implementation-record.md
-      independent_review_report: null
-      # ### THE FIRST CANDIDATE WAS REJECTED, AND THIS IS THE REPLACEMENT. Kept in the record rather
-      # than overwritten: a finding must survive its own repair, and a candidate block that only
-      # ever describes the current tree cannot tell a reviewer what was already tried and found
-      # wrong. Same shape as the P4 acceptance closure, where the FIRST independent review rejected
-      # candidate `95cf5af7` and a separate session remediated it into `0891d1a`.
-      superseded_candidate:
-        commit: 2ed750e
-        verdict: REJECT
-        reviewed_by: >-
-          A fresh independent review of P6 M1, by a session that neither implemented nor remediated
-          the candidate. It is that review's verdict, not this session's judgement.
-        upheld_sound: >-
-          The ownership model, the transition table, closure semantics, timer semantics, OCC, tenant
-          isolation and the P5 reuse were found SOUND, and the remediation changes none of them.
-        material_defect_class: >-
-          EVIDENCE OF A REFUSAL WAS KEYED ON THE IDENTITY OF A TRANSITION THAT DID NOT HAPPEN.
-          F-01 — `IllegalTransitionAttempted` used §4's transition-natural identity, which contains
-          the aggregate version; an illegal transition does not advance that version, so a SECOND
-          distinct hostile attempt against one Work Item at one version collided on
-          `idempotency_identity`. Only the first attempt was recorded; later ones raised
-          `event_outbox.DuplicateEmission` instead of an IllegalTransition/WorkItemError refusal;
-          and inside `DedupInbox.consume` that exception rolled the inbox receipt back and made the
-          event redeliver forever, recording nothing on any pass.
-          F-02 — `consume()` could create a parked missing-aggregate obligation with
-          `accountable_owner_id` NULL: rule 13's one exception, created by the method whose own
-          contract promises the park surfaces WITH the human accountable for it.
-        reproduced_before_fixing: >-
-          Both were reproduced mechanically against commit 2ed750e before a line was changed: two
-          distinct hostile attempts produced ONE security record and a leaked `DuplicateEmission`;
-          two distinct hostile EVENTS through `consume()` produced ZERO inbox rows and ZERO security
-          records; a park was written with a NULL accountable owner.
-        remediation: >-
-          NARROW. Three files — `src/freight_recon/work_item.py` (the only runtime module),
-          `eval/tests/test_phase6_work_item.py` (+8 regressions) and
-          `scripts/mutate_phase6_work_item.py` (+5 mutants W27/W27a/W28/W28a/W28b, which restore the
-          rejected behaviour and prove the new regressions go red on it). No redesign of M1, no
-          broadening of P6, no M2, no P5 infrastructure change, no nonblocking debt actioned.
-      what_it_owes: >-
-        ### A FRESH TARGETED INDEPENDENT REVIEW BY A SESSION THAT NEITHER IMPLEMENTED NOR REMEDIATED
-        IT, then a separate adjudication. Only then may `execution_state` become IN_PROGRESS,
-        `checkpoint_state` leave NO_CHECKPOINT, and this record become a `landed_checkpoints` entry
-        citing the report. No P6 acceptance criterion is scored by this candidate and none may be.
-      product_driver_result: >-
-        ACCEPT — the driver OPERATED the machine through a brokerage narrative (load 4471 delivered,
-        billed, aged, handed over, the owner offboarded, paid, closed, short-paid and reopened) with
-        the hostile attempts inline. The remediated tree adds three scenes to that narrative —
-        several DISTINCT hostile transitions against one CLOSED obligation, two distinct hostile
-        EVENTS plus a redelivery through the real dedup inbox, and an event arriving for work that
-        does not exist and names nobody — for 35 behaviours as specified, 0 wrong. The probe was
-        proven able to fail: with the rejected behaviour restored IN MEMORY it goes RED (0 of 3
-        attempts recorded), and byte-exact restoration was verified afterwards. ### THAT IS AN
-        INDEPENDENT JUDGEMENT OF OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT
-        ENGINEERING REVIEW THIS CANDIDATE OWES. Its one FIX was against the scenario, not the
-        product.
+    execution_state: IN_PROGRESS
+    checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    landed_checkpoints:
+      - id: P6-CP-1
+        name: The Work Item, and ownership as a recorded authority rather than a string
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: ca8c070646f2a5f84fc6cafd926d78d1530ebeff
+        candidate_tree: 29ad9c25e75619effd4fa2675af320031aea9e6b
+        summary: >-
+          Machine M1 of the thirteen — the Work Item, and with it rule 13 turned from a written rule
+          into a mechanism. Ownership is a FOREIGN KEY into `tenant_humans`, a recorded and
+          attributed human authority that must be ACTIVE at assignment, never a string a caller may
+          invent; identity and the recording act are immutable by trigger and a human is OFFBOARDED
+          rather than deleted, so the authority behind a past assignment can still be read. 14 of
+          the 134 transitions, terminal states final by trigger, version advancing by exactly one
+          under OCC, tenant-first throughout. Evidence of a REFUSAL is keyed on the ATTEMPT, so two
+          distinct hostile transitions against one Work Item at one version are two records rather
+          than a collision; an event whose own aggregate is a prerequisite PARKS under M-26 with the
+          accountable human named instead of poisoning the inbox; a parked event is consumed through
+          its own semantics, and a park that still blocks says so.
+        implementer_evidence: docs/implementation/p6-u1-work-item-ownership-implementation-record.md
+        independent_review_report: docs/implementation/p6-cp1-independent-rereview-report-ca8c070.md
+        targeted_adjudication_report: docs/implementation/p6-cp1-targeted-adjudication-report-ca8c070.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE LINEAGE IS RECORDED RATHER THAN TIDIED. The review was
+          performed by a session that neither implemented nor remediated M1 and authored neither
+          `ca8c070` nor `64f6f6c`; it re-derived every load-bearing claim with probes it wrote
+          itself and showed each probe FAIL under a mutant restoring the real defect (W31, W31a,
+          W32), applied with an in-memory save/restore harness — never git checkout/restore/stash/
+          clean — with `event_inbox.py` verified byte-for-byte identical afterwards. Verdict: ACCEPT
+          FOR P6-CP-1 ADJUDICATION. A SEPARATE third session, in neither the build nor the review
+          lineage, returned ADJUDICATE PASS — P6-CP-1 READY FOR FINALIZER, reproducing the 41/41
+          mutation battery, P5's replay (24/24) and contract (37/37) batteries so P5's certification
+          survives the amendment to its inbox, and the TEST-NODE-MANIFEST set difference (+4/-0) by
+          exact identity. It found one of its OWN probes not capable of failing and corrected it
+          before believing it. ### ITS STATED LIMITATION IS KEPT HERE, NOT PAPERED OVER: the
+          full-green canonical suite and the clean-clone PASS were NOT fully reproduced in that
+          session's sandbox (no listening sockets, blocked pypi TLS); its 20 failures were all
+          `socket.bind` PermissionErrors in P4-era HTTP callback tests outside the candidate's blast
+          radius, and 2849 + 20 = 2869 reconciles exactly with the recorded run on identical
+          collected and skip identity. The finalizer executing this landing re-runs both in full.
+        nonblocking_residuals: >-
+          Carried out of the review and the adjudication and NOT actioned (CLAUDE.md §13.3): R-01
+          stale candidate-record prose; R-02 the superseded-candidate lineage below records only the
+          FIRST rejection (`2ed750e`) and not the two intermediate replacements (`761fcd7`,
+          `f5af910`); R-03 the `f5af910` rejection review is not preserved on a ref; A-01 the
+          review's "115 `.consume(` call sites" is textually 114, an error in the conservative
+          direction; A-02 making the cascade opt-in narrows the automatic-drain affordance for a
+          future consumer that supplies no factory, already covered by residual P6-D6 which assigns
+          the facts-carrying drain to the Pipeline Instance unit; A-03 a cosmetic mis-spelling of the
+          review preserve ref in the review mandate. None can produce a wrong customer outcome,
+          violate an invariant, or make a later phase unsafe.
+        criteria_scored: []
+        # ### THE ORIGINAL CANDIDATE RECORD, KEPT SO A FINDING SURVIVES ITS OWN REPAIR.
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        what_is_in_the_tree: >-
+          Machine M1 in full — `src/freight_recon/work_item.py` and
+          `src/freight_recon/migrations/phase6_work_items.py`, wired into `schema.py` and into the P2
+          migration path — with acceptance and hostile nodes in
+          `eval/tests/test_phase6_work_item.py` and the mutation battery in
+          `scripts/mutate_phase6_work_item.py`, which the accepted candidate carried to 41/41 caught
+          across W1..W32. ### THAT IS THE INCREMENT, NOT THE PHASE: M2 (Pipeline Instance) and the
+          remaining eleven machines are unbuilt, and 120 of the 134 transitions are unwritten.
+        # ### WHAT `what_it_owed` SAID BEFORE IT WAS DISCHARGED, kept verbatim so the obligation
+        # survives its own satisfaction: "### A FRESH TARGETED INDEPENDENT REVIEW BY A SESSION THAT
+        # NEITHER IMPLEMENTED NOR REMEDIATED IT, then a separate adjudication. Only then may
+        # `execution_state` become IN_PROGRESS, `checkpoint_state` leave NO_CHECKPOINT, and this
+        # record become a `landed_checkpoints` entry citing the report. No P6 acceptance criterion
+        # is scored by this candidate and none may be." Every clause of that is now satisfied except
+        # the last, which is a PROHIBITION and remains in force: `criteria_scored` is empty above.
+        what_it_owed: DISCHARGED — fresh independent re-review, then a separate targeted adjudication
+        # ### THE FIRST CANDIDATE WAS REJECTED, AND THIS RECORD KEEPS IT. A finding must survive its
+        # own repair, and a checkpoint record that only ever describes the accepted tree cannot tell
+        # a later session what was already tried and found wrong. Same shape as the P4 acceptance
+        # closure, where the FIRST independent review rejected candidate `95cf5af7` and a separate
+        # session remediated it into `0891d1a`. ### THIS RECORDS THE FIRST REJECTION ONLY; the two
+        # intermediate replacements `761fcd7` and `f5af910` are NOT recorded here, which is exactly
+        # the review's nonblocking residual R-02, recorded above and deliberately not actioned.
+        superseded_candidate:
+          commit: 2ed750e
+          verdict: REJECT
+          reviewed_by: >-
+            A fresh independent review of P6 M1, by a session that neither implemented nor remediated
+            the candidate. It is that review's verdict, not this session's judgement.
+          upheld_sound: >-
+            The ownership model, the transition table, closure semantics, timer semantics, OCC, tenant
+            isolation and the P5 reuse were found SOUND, and the remediation changes none of them.
+          material_defect_class: >-
+            EVIDENCE OF A REFUSAL WAS KEYED ON THE IDENTITY OF A TRANSITION THAT DID NOT HAPPEN.
+            F-01 — `IllegalTransitionAttempted` used §4's transition-natural identity, which contains
+            the aggregate version; an illegal transition does not advance that version, so a SECOND
+            distinct hostile attempt against one Work Item at one version collided on
+            `idempotency_identity`. Only the first attempt was recorded; later ones raised
+            `event_outbox.DuplicateEmission` instead of an IllegalTransition/WorkItemError refusal;
+            and inside `DedupInbox.consume` that exception rolled the inbox receipt back and made the
+            event redeliver forever, recording nothing on any pass.
+            F-02 — `consume()` could create a parked missing-aggregate obligation with
+            `accountable_owner_id` NULL: rule 13's one exception, created by the method whose own
+            contract promises the park surfaces WITH the human accountable for it.
+          reproduced_before_fixing: >-
+            Both were reproduced mechanically against commit 2ed750e before a line was changed: two
+            distinct hostile attempts produced ONE security record and a leaked `DuplicateEmission`;
+            two distinct hostile EVENTS through `consume()` produced ZERO inbox rows and ZERO security
+            records; a park was written with a NULL accountable owner.
+          remediation: >-
+            NARROW. Three files — `src/freight_recon/work_item.py` (the only runtime module),
+            `eval/tests/test_phase6_work_item.py` (+8 regressions) and
+            `scripts/mutate_phase6_work_item.py` (+5 mutants W27/W27a/W28/W28a/W28b, which restore the
+            rejected behaviour and prove the new regressions go red on it). No redesign of M1, no
+            broadening of P6, no M2, no P5 infrastructure change, no nonblocking debt actioned.
+        product_driver_result: >-
+          ACCEPT — the driver OPERATED the machine through a brokerage narrative (load 4471 delivered,
+          billed, aged, handed over, the owner offboarded, paid, closed, short-paid and reopened) with
+          the hostile attempts inline. The accepted tree adds scenes to that narrative — several
+          DISTINCT hostile transitions against one CLOSED obligation, two distinct hostile EVENTS plus
+          a redelivery through the real dedup inbox, and an event arriving for work that does not
+          exist and names nobody. The independent re-review re-ran it at 49/49 behaviours as
+          specified, 0 wrong, and proved it able to fail: under the F-04 mutant it reports 5 wrong
+          behaviours, so it is evidence rather than decoration. ### THAT IS AN INDEPENDENT JUDGEMENT
+          OF OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT ENGINEERING REVIEW — that
+          review is the separate artifact cited in `independent_review_report` above.
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]

@@ -4,20 +4,26 @@
 > Every phase review, blocker review and planning document is **historical evidence**. Do not
 > reconstruct status by reading them — that is the failure this file exists to prevent.
 >
-> **Last updated:** P5 — Canonical events, outbox/inbox, replay isolation and production
-> persistence **ADJUDICATED COMPLETE.** ### **All 14 weighted P5 criteria PASS → 100/100 → P5
-> COMPLETE.** A **FRESH INDEPENDENT REVIEW** of the P5 surface at content commit `1216254` returned
-> **ACCEPT FOR SEPARATE FINAL ADJUDICATION** with **NO material blocking defect**
-> ([report](p5-independent-review-report-1216254.md)); a **SEPARATE FINAL ADJUDICATION** — by a
-> session that neither implemented, remediated, reviewed nor finalized P5 — then set the fourteen
-> results from evidence it reproduced itself
-> ([report](p5-final-adjudication-report-91ba4e6.md)). **`P6` (foundational entities and state
-> machines) is now the sole READY unit.**
-> ### **THIS COMMIT IS NOT YET FINALIZED, AND P6 MAY NOT BEGIN UNTIL IT IS.** A closure content
-> commit must first receive a **fresh targeted independent review**, a **separate targeted
-> adjudication**, and then **exactly one finalizer** — the sequence the P4 acceptance closure and the
-> R-07 closure both executed. **No finalizer receipt exists for this commit and none may be
-> fabricated.**
+> **Last updated:** ### **`P6-CP-1` IS LANDED. P6 IS IN PROGRESS.** The first of P6's thirteen
+> machines — **M1, the Work Item, and with it an accountable human owner as a structural fact rather
+> than a documented rule** — is accepted work. Candidate content commit `ca8c070` (tree `29ad9c25e`)
+> received a **fresh targeted INDEPENDENT re-review** by a session that neither implemented nor
+> remediated it, returning **ACCEPT FOR P6-CP-1 ADJUDICATION**
+> ([report](p6-cp1-independent-rereview-report-ca8c070.md)); a **SEPARATE targeted adjudication**, by
+> a third session in neither the build nor the review lineage, returned **ADJUDICATE PASS — P6-CP-1
+> READY FOR FINALIZER** ([report](p6-cp1-targeted-adjudication-report-ca8c070.md)); and this landing
+> was then finalized by **exactly one canonical finalizer**.
+> ### **A LANDED CHECKPOINT IS NOT A PHASE ACCEPTANCE.** `P6` records `execution_state: IN_PROGRESS`
+> and `checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION` with **`criteria_scored: []`**. **NO
+> P6 acceptance criterion is scored, P6 is NOT COMPLETE**, and the phase still owes **M2 (Pipeline
+> Instance)**, machines **M3–M13**, and 120 of the 134 transitions. **M1 ships dark.**
+> ### **P5 REMAINS ADJUDICATED COMPLETE at 14/14 → 100/100.** A **FRESH INDEPENDENT REVIEW** of the
+> P5 surface at content commit `1216254` returned **ACCEPT FOR SEPARATE FINAL ADJUDICATION** with
+> **NO material blocking defect** ([report](p5-independent-review-report-1216254.md)); a **SEPARATE
+> FINAL ADJUDICATION** — by a session that neither implemented, remediated, reviewed nor finalized
+> P5 — then set the fourteen results from evidence it reproduced itself
+> ([report](p5-final-adjudication-report-91ba4e6.md)). **`P6` remains the sole READY unit**, and
+> being READY is a **selection**, never a claim about progress in either direction.
 > ### **P5 SHIPS DARK.** The outbox, inbox, relay, timers and PostgreSQL connector have **zero
 > production callers**; their only consumers are explicitly-invoked evidence tooling. Completing P5
 > enables no external effect.
@@ -74,7 +80,8 @@ suite_skipped: 1
 | **P3** — checkpoint, witness, claim CAS | ### **COMPLETE** | [`phase-3-implementation-review.md`](phase-3-implementation-review.md) — the implementer's record · [`p3-independent-review-findings.md`](p3-independent-review-findings.md) — the first INDEPENDENT review, which P3 **did not pass** (9 findings, 60/100) · [`p3-findings-remediation-review.md`](p3-findings-remediation-review.md) — the remediation · [`p3-genuine-independent-review.md`](p3-genuine-independent-review.md) — the FRESH independent review of the remediated, finalized tree, **PASS** (zero new defects, 13/13 hostile probes) · [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P3 recorded COMPLETE.** The kernel still ships dark. ### **Completing P3 did not close R-07 — and neither did completing P4:** R-07 closed only when a separate content commit, made after both P4 finalization passes, wrote the CONTAINED record into `phase-0-baseline-manifest.yaml` |
 | **P4** — adapter containment | ### **COMPLETE** | [`p4-independent-review-report.md`](p4-independent-review-report.md) — the first INDEPENDENT review, which candidate `95cf5af7` **did not pass** (REJECT — remediation required) · [`p4-independent-rereview-report-0891d1a.md`](p4-independent-rereview-report-0891d1a.md) — the FRESH INDEPENDENT re-review of the remediated candidate `0891d1a`, **ACCEPT FOR SEPARATE FINAL ADJUDICATION** · [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, P4 recorded COMPLETE** · [`p4-first-finalization-pass-report-86306d5.md`](p4-first-finalization-pass-report-86306d5.md) — the one canonical finalizer run. ### **This did NOT close R-07** — see the open-risks table |
 | **P5** — events, outbox/inbox, replay isolation, PostgreSQL | ### **COMPLETE** | [`p5-independent-review-report-1216254.md`](p5-independent-review-report-1216254.md) — the FRESH INDEPENDENT review of the whole P5 surface, **ACCEPT FOR SEPARATE FINAL ADJUDICATION**, **zero material blocking defects**, 45/45 hostile probes (eight of which it reported as its *own* defective probes rather than only the corrected results) · [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) — ### **the FINAL ADJUDICATION: all 14 weighted criteria PASS, 100/100, P5 recorded COMPLETE.** What it certifies: the **118 canonical event contracts** (105 machine-emitted F1–F13 + 13 audit/security F14) with the upcaster; the **transactional outbox** and **dedup inbox**; the **GC-1 golden corpus**, deterministic **replay** and **audit reconstruction**; **durable timers** (M-36); and the runtime on **production PostgreSQL** (ADR-016). The adjudicator re-executed the canonical suite, the clean-clone gate, the PostgreSQL gate against a database it created, both mutation batteries (24/24 · 37/37) and its own import-closure probe. ### **P5 ships dark — zero production callers.** |
-| **P6–P14** | **NOT STARTED** — `P6` is the sole `READY` unit | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
+| **P6** | ### **IN PROGRESS** — the sole `READY` unit; `P6-CP-1` (machine M1, the Work Item) is landed and accepted, **NOT COMPLETE** — 12 machines and 120 transitions still owed | [`p6-cp1-independent-rereview-report-ca8c070.md`](p6-cp1-independent-rereview-report-ca8c070.md) · [`p6-cp1-targeted-adjudication-report-ca8c070.md`](p6-cp1-targeted-adjudication-report-ca8c070.md) |
+| **P7–P14** | **BLOCKED** behind `P6` | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ## Completed acceptance gates
 
@@ -589,33 +596,72 @@ transport truncation disclosed, in
 
 ### **P6 — FOUNDATIONAL ENTITIES AND STATE MACHINES. IT IS THE SOLE `READY` UNIT.**
 
-### **`P6` is `READY`, which means SELECTED. Its recorded `execution_state` is `NOT_STARTED` and
-its `checkpoint_state` is `NO_CHECKPOINT` — and this tree carries a P6 CONTENT CANDIDATE.**
+### **`P6` is `READY`, which means SELECTED. Its recorded `execution_state` is now `IN_PROGRESS`
+and its `checkpoint_state` is `CHECKPOINT_ACCEPTED_FOR_CONTINUATION`, with exactly one landed
+checkpoint: `P6-CP-1`.**
 
-### **READ THOSE TWO SENTENCES TOGETHER; EITHER ALONE IS A LIE IN ONE DIRECTION.** The code exists,
-it is green, and it is **not accepted work**. The registry does not record it as landed because
-`test_status_reality.py` requires every landed checkpoint to cite an on-disk **independent review
-report** — *"P4-CP-1's null review report is a recorded gap, not a precedent to copy"* — and no such
-report exists for this candidate. The session that built it may not write one (§11). ### **THIS IS
-THE PRECEDENT THE REPOSITORY ALREADY SET:** P5's outbox and inbox were working code at candidate
-`d807261` while this file and the registry both read `NOT_STARTED` / `NO_CHECKPOINT`; the fields
-moved only at the replacement commit `de526c1`, which carried its independent review on disk.
-Candidate first; landed when reviewed.
+### **READ THOSE TWO SENTENCES TOGETHER; EITHER ALONE IS A LIE IN ONE DIRECTION.** Being READY is a
+**selection** and says nothing about progress; the execution fields say the progress. One of thirteen
+machines is accepted work — and twelve are not.
 
-### **THE CANDIDATE — the Work Item, and accountable human ownership as a mechanism.**
+<details>
+<summary><b>SUPERSEDED WORDING — HISTORICAL, kept so the old phrasing is recognisable if it returns</b></summary>
+
+> **SUPERSEDED / HISTORICAL.** Until the `P6-CP-1` landing commit this section read
+> *"Its recorded `execution_state` is `NOT_STARTED` and its `checkpoint_state` is `NO_CHECKPOINT` —
+> and this tree carries a P6 CONTENT CANDIDATE. ... The registry does not record it as landed because
+> `test_status_reality.py` requires every landed checkpoint to cite an on-disk independent review
+> report ... and no such report exists for this candidate. The session that built it may not write
+> one (§11)."*
+> That was true when written. The report now exists, **no session in the build lineage wrote it**, and
+> the obligation was discharged rather than waived.
+
+</details>
+
+### **THIS IS THE PRECEDENT THE REPOSITORY ALREADY SET, AND `P6-CP-1` COMPLETED IT:** P5's outbox and
+inbox were working code at candidate `d807261` while this file and the registry both read
+`NOT_STARTED` / `NO_CHECKPOINT`; the fields moved only at the replacement commit `de526c1`, which
+carried its independent review on disk. **Candidate first; landed when reviewed.** M1 has now made
+the same journey — rejected once, remediated, re-reviewed by a fresh independent session, separately
+adjudicated, and only then landed.
+
+### **HOW `P6-CP-1` WAS ACCEPTED — three separate sessions, none of them the builder.**
+The accepted candidate is content commit **`ca8c070`** (tree **`29ad9c25e`**).
+1. **FRESH TARGETED INDEPENDENT RE-REVIEW** — by a session that neither implemented nor remediated
+   M1 and authored neither `ca8c070` nor its metadata commit. It re-derived every load-bearing claim
+   with probes it wrote itself and showed each **FAIL under a mutant restoring the real defect**
+   (`W31`, `W31a`, `W32`), applied in memory with byte-identity verified afterwards — never
+   `git checkout`/`restore`/`stash`/`clean`. Verdict: **ACCEPT FOR P6-CP-1 ADJUDICATION**
+   ([report](p6-cp1-independent-rereview-report-ca8c070.md)).
+2. **SEPARATE TARGETED ADJUDICATION** — a third session, in neither the build nor the review lineage.
+   It reproduced the 41/41 mutation battery, P5's replay (24/24) and contract (37/37) batteries — so
+   **P5's certification survives the amendment to its inbox** — and the `TEST-NODE-MANIFEST` set
+   difference (+4/−0) by exact identity. It found one of **its own** probes not capable of failing
+   and corrected it before believing it. Verdict: **ADJUDICATE PASS — P6-CP-1 READY FOR FINALIZER**
+   ([report](p6-cp1-targeted-adjudication-report-ca8c070.md), with a validated `.sha256` sidecar).
+   ### **ITS STATED LIMITATION IS KEPT, NOT PAPERED OVER:** that session's sandbox could not fully
+   reproduce the green canonical suite or the clean-clone gate (no listening sockets, blocked pypi
+   TLS); its 20 failures were all `socket.bind` PermissionErrors in P4-era HTTP callback tests
+   outside the candidate's blast radius, reconciling exactly at 2849 + 20 = 2869. **The finalizer
+   that landed this checkpoint re-ran both in full.**
+3. **EXACTLY ONE CANONICAL FINALIZER** — this landing.
+
+### **WHAT LANDED — the Work Item, and accountable human ownership as a mechanism.**
 Machine **M1**: the **14 transitions** of `state-machines/01-work-item.machine.md` §14 as declarative
 data, with `AC-MACH-000`'s bijection asserted by **EXACT SET EQUALITY of transition identifiers**;
 the exhaustive **64-pair** illegal sweep recorded to the audit backbone **and** `security_events`;
 closure only through a `decision_ref` that **RESOLVES** (K-1); reopening that leaves the prior closure
 event **byte-identical**; and `work_items.owner_id` as a **FOREIGN KEY** into `tenant_humans`, the
 durable record of who was admitted to this brokerage, by whom, and when.
-### **186 acceptance/hostile nodes, 32/32 mutants caught, and it ships DARK — zero production
-callers, asserted by an AST scan and by an import-closure walk, not announced.**
+### **41/41 mutants caught, and it ships DARK — zero production callers, asserted by an AST scan
+over 337 sources and by an import-closure walk, not announced.** The adjudication's own caller
+enumeration found **7 constructions (1 in production) and 114 `consume` call nodes, of which exactly
+5 opt in and 0 are in production.**
 Implementer's record:
 [`p6-u1-work-item-ownership-implementation-record.md`](p6-u1-work-item-ownership-implementation-record.md).
 
-### **THE FIRST CANDIDATE (`2ed750e`) WAS REJECTED BY A FRESH INDEPENDENT REVIEW, AND THIS TREE IS
-ITS REPLACEMENT.** The review upheld the ownership model, the transition table, closure semantics,
+### **THE FIRST CANDIDATE (`2ed750e`) WAS REJECTED BY A FRESH INDEPENDENT REVIEW, AND `ca8c070` IS
+ITS ACCEPTED SUCCESSOR.** The review upheld the ownership model, the transition table, closure semantics,
 timer semantics, the OCC write, tenant isolation and the P5 reuse as **sound**, and rejected the
 candidate on one material defect class: ### **evidence of a REFUSAL was keyed on the identity of a
 transition that did not happen.** `IllegalTransitionAttempted` carried §4's *transition-natural*
@@ -632,16 +678,17 @@ remediation is narrow: one runtime module (`work_item.py`), **+8 regressions** a
 (`W27`/`W27a`/`W28`/`W28a`/`W28b`) that restore the rejected behaviour and prove the new regressions
 go red on it. The old suite was green on the rejected tree, which is exactly why the mutants exist.
 
-### **WHAT THE CANDIDATE OWES, AND WHAT IT MAY NOT DO.** A **fresh targeted independent review by a
-session that neither implemented nor remediated it**, then a **separate adjudication**. Only then may
-`execution_state` become `IN_PROGRESS`, `checkpoint_state` leave `NO_CHECKPOINT`, and the record
-become a `landed_checkpoints` entry citing the report. ### **THE REMEDIATING SESSION DID NOT REVIEW
-OR ADJUDICATE ITS OWN REMEDIATION**, and the re-review must be fresh with respect to it too.
-### **NO P6 ACCEPTANCE CRITERION IS SCORED, AND NONE MAY BE SCORED BY THE IMPLEMENTING LINEAGE**
-(CLAUDE.md §11). The Product Driver returned **ACCEPT** on observed product behaviour — 35 behaviours
-as specified, 0 wrong, including the three scenes added for the rejected defects, and proven able to
-fail — and that is an independent judgement of the PRODUCT, **not** the targeted independent
-engineering review this candidate owes.
+### **WHAT THE CANDIDATE OWED IS DISCHARGED — AND WHAT IT MAY NOT DO STILL STANDS.** It owed a
+**fresh targeted independent review by a session that neither implemented nor remediated it**, then a
+**separate adjudication**. Both were supplied by sessions outside the build lineage, in that order,
+and only then did `execution_state` become `IN_PROGRESS`, `checkpoint_state` leave `NO_CHECKPOINT`,
+and the record become a `landed_checkpoints` entry citing the report.
+### **NO P6 ACCEPTANCE CRITERION IS SCORED, AND NONE MAY BE SCORED BY A CHECKPOINT AT ALL**
+(CLAUDE.md §11). `criteria_scored` is `[]`, and the fourteen weighted criteria are a **separate final
+adjudication's** to set when the whole phase is done. The Product Driver returned **ACCEPT** on
+observed product behaviour — **49/49 behaviours as specified, 0 wrong**, and proven able to fail (5
+wrong under the F-04 mutant) — and that is an independent judgement of the PRODUCT, **not** the
+targeted independent engineering review, which is the separate artifact linked above.
 
 ### **P6 IS NOT COMPLETE, AND THE GAP IS LARGE AND NAMED.** `foundational-machine-acceptance.md`
 requires **100% of the 134 legal transitions** across **13 machines**. One machine and 14 transitions
@@ -664,12 +711,20 @@ written rule into a mechanism, and its Sev-0 hostile case is a Work Item with no
 its required event in the transition's own commit"* cannot be proven at P5, because the 134
 transitions are P6's. They are now built on a transport that has been certified.
 
-> ### **BUT P6 MAY NOT BEGIN YET.** The commit recording P5 COMPLETE is a **closure content commit**
-> and is **NOT FINALIZED**. Repository protocol — executed twice, at the P4 acceptance closure and at
-> the R-07 closure — requires a closure commit to receive a **fresh targeted independent review**,
-> then a **separate targeted adjudication**, then **exactly one finalizer**, in that order. P6 opens
-> when that finalizer has run and the machine-readable authority records P5 COMPLETE. **No finalizer
-> receipt exists for this commit and none may be fabricated.**
+> ### **P6 HAS BEGUN, AND ITS FIRST CHECKPOINT IS LANDED.** The P5 closure gate that once stood here
+> was discharged by its own review → adjudication → finalizer sequence, and `P6-CP-1` has now been
+> through the same three-session sequence in its own right. **The next P6 unit is `M2` — the Pipeline
+> Instance.**
+>
+> <details>
+> <summary><b>SUPERSEDED WORDING — HISTORICAL</b></summary>
+>
+> > **SUPERSEDED / HISTORICAL.** This block read: *"### BUT P6 MAY NOT BEGIN YET. The commit
+> > recording P5 COMPLETE is a closure content commit and is NOT FINALIZED. ... P6 opens when that
+> > finalizer has run and the machine-readable authority records P5 COMPLETE."* True when written;
+> > the finalizer has since run, P5 is recorded COMPLETE, and P6's own first checkpoint has landed.
+>
+> </details>
 
 > ### **P5's OWN BLOCKER: G2's SEVEN EVENT OBLIGATIONS ARE DISCHARGED.** The G2 contract is settled
 > and mechanised, `EF-3` is re-attributed to the existing `EffectExecuted`, all 134 transitions are
@@ -693,16 +748,20 @@ transitions are P6's. They are now built on a transport that has been certified.
 > delegation predicate is a conjunction of **necessary conditions**, not a semantic proof), both
 > opened and recorded by this sub-unit's replacement candidate rather than improvised shut.
 
-> ### **AND THE CONTROL BOUNDARY STOPS HERE.** Recording this transition authorizes the *status
-> change*, not the start of P6 work. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a
-> session must never roll into the next unit merely because the current one finished.
-> ### **The next legal acts on this branch are, in order: (1) a fresh targeted independent review of
-> THIS P5 closure content commit, by a session that did not write or adjudicate it; (2) a separate
-> targeted adjudication of it, by a further session; (3) exactly ONE finalizer run
-> (`.venv/bin/python scripts/finalize_status.py`) under an exclusively-held `finalizer_lock`,
-> producing exactly one status-metadata commit; and only then (4) may P6 begin.** That is the
-> sequence the P4 acceptance closure (`42ea24c → c30a43b → d3cf1de → 06ebfdb`) and the R-07 closure
-> (`a31a94a → c26aeae → 035cb55 → 6e8127d`) each executed, in that order and in that commit time.
+> ### **AND THE CONTROL BOUNDARY STOPS HERE.** Landing `P6-CP-1` authorizes the *status change* and
+> nothing else. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a session must never roll
+> into the next unit merely because the current one finished — **the landing session did not begin
+> M2, and did not action any nonblocking residual.**
+> ### **The next legal act is a FRESH BUILDER session implementing `M2` — the Pipeline Instance, the
+> durable execution of a workflow for a Work Item and the reservation that makes it exclusive**
+> (25 of the 134 transitions). It follows the same route M1 took: build a candidate, then a **fresh
+> targeted independent review** by a session that neither implemented nor remediated it, then a
+> **separate targeted adjudication** by a third, then **exactly one finalizer** — the sequence the P4
+> acceptance closure (`42ea24c → c30a43b → d3cf1de → 06ebfdb`), the R-07 closure
+> (`a31a94a → c26aeae → 035cb55 → 6e8127d`) and now `P6-CP-1` each executed.
+> ### **P6 does NOT become COMPLETE by accumulating checkpoints.** All 13 machines and 134
+> transitions must land, and only then may a **separate final adjudication** — by a session in none
+> of the build lineages — score the fourteen weighted criteria.
 > Integration to `main` is fast-forward-only under R-21 and is a separate founder-authorized act.
 
 How P3 got here, in order (all done): mutation proofs (guard battery 8/8; kernel battery K1–K11);
@@ -730,7 +789,7 @@ corrected N-1.
 | Not yet | Why |
 |---|---|
 | ### **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires `P6` **COMPLETE**, and P6 is not: one of its thirteen machines has landed. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands here, not earlier: provenance was P5's `prohibited_scope` and is P6's too |
-| ### **Self-certifying the candidate in this tree** | `P6-CP-1-CANDIDATE` owes a **fresh targeted independent review** by a session that neither implemented nor remediated it, then a **separate adjudication**, before it may be recorded as landed or score anything. CLAUDE.md §11: certifying your own fixes is self-adjudication, a defect with a passing status. The Product Driver's ACCEPT is a product judgement and is **not** that review |
+| ### **Self-certifying any future checkpoint, or scoring a weighted criterion from a build lineage** | `P6-CP-1`'s obligation is **DISCHARGED** — it received a fresh targeted independent review and a separate targeted adjudication from sessions outside its build lineage before being recorded as landed, and it scored nothing. ### **The same bar binds `M2` and every checkpoint after it.** CLAUDE.md §11: certifying your own fixes is self-adjudication, a defect with a passing status. The Product Driver's ACCEPT is a product judgement and is **not** that review |
 | ### **Treating the Work Item machine as a freight workflow** | M1 is a platform primitive that ships **dark**. It performs no external effect, holds no commit key, mints no witness and no grant, and has **zero** production callers. Freight workflow implementation still requires the remaining foundations |
 | **Rebuilding any P5 surface** — event contracts, GC-1 corpus, replay sandbox, audit reconstruction, outbox/inbox, durable timers, PostgreSQL | ### **BUILT, REVIEWED, ADJUDICATED — do not rebuild, and do not re-open.** All 14 P5 criteria are `PASS`. Reopening a closed phase to polish it is forbidden by CLAUDE.md §13.8. The recorded nonblocking residuals (`IR-R5`–`IR-R12`, `ADJ-P5-01`–`ADJ-P5-03`) are **debt rows, and the debt row is the complete deliverable** (§13.3) |
 | Treating R-07 CONTAINED as production enablement | ### **Containment is not enablement.** External-effect paths are structurally forced through the governed boundary or fail closed. No production write is enabled, the deployed route answers `ROUTE_NOT_CONFIGURED`, the production `GateRegistry` population stays **EMPTY** until U8.1 / P8, and **no autonomy — bounded or otherwise — was granted.** Live supervised writes are P12, behind the undischarged **RR-01** |

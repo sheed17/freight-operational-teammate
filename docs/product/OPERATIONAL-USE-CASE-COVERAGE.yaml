@@ -17,11 +17,13 @@
 #     production writes still dark; P5 is COMPLETE - ADJUDICATED at 14/14 (canonical events,
 #     outbox/inbox, replay isolation, audit reconstruction, durable timers, production PostgreSQL),
 #     independently reviewed with zero material blocking defects and separately adjudicated, and
-#     shipping dark with zero production callers; P6 is the sole READY unit and has NOT STARTED as
-#     a recorded state - the tree carries a P6 CONTENT CANDIDATE (machine M1, the Work Item with
-#     ownership as a recorded authority rather than a string, 14 of the 134 transitions) awaiting
-#     its fresh independent review, with no landed checkpoint and no scored criterion; P7-P14 are
-#     BLOCKED. Containment is not enablement: no production write is enabled.
+#     shipping dark with zero production callers; P6 is the sole READY unit and is now IN PROGRESS
+#     with exactly one landed continuation checkpoint, P6-CP-1 (machine M1, the Work Item with
+#     ownership as a recorded authority rather than a string, 14 of the 134 transitions), accepted
+#     by a fresh independent re-review and a separate targeted adjudication - a landed checkpoint is
+#     NOT a phase acceptance, so no P6 criterion is scored, P6 is NOT COMPLETE, M2 and eleven
+#     further machines are unbuilt, and it ships dark; P7-P14 are BLOCKED. Containment is not
+#     enablement: no production write is enabled.
 #     SUPERSEDED / HISTORICAL, kept so the old wording is recognisable if it returns - this read
 #     "plus the in-progress P4 adapter containment (READY, not COMPLETE; R-07 OPEN); P6-P14 have
 #     not begun". SUPERSEDED / HISTORICAL.
