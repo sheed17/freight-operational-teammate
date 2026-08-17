@@ -266,10 +266,19 @@ def test_10_missing_tenant_scoped_document_hash_uniqueness_is_not_ready(tmp_path
 def test_11_global_commit_key_uniqueness_retained_is_not_ready(tmp_path):
     conn = _mutated(tmp_path / "m.db")
     try:
+        # ### THE COMPARISON IS BEFORE-AND-AFTER, NOT AGAINST AN ABSOLUTE (corrected at P6 M2).
+        # The original asserted `problems == [] or any("commit" ...)`, which silently depended on
+        # the mutated fixture producing NO other problems. Every phase that adds a canonical table
+        # adds a problem to that fixture, so the guard's real question — does adding a GLOBAL
+        # commit-key unique index change the readiness answer? — was being asked against a moving
+        # baseline. Asked as a delta, unrelated schema state cancels out and the property survives
+        # the next phase too.
+        before = set(_problems(conn))
         conn.execute("CREATE UNIQUE INDEX ix_legacy_ck ON effect_grants (commit_key)")
-        problems = _problems(conn)
+        after = set(_problems(conn))
+        introduced = after - before
         # A global commit-key unique index means one tenant's effect blocks another's.
-        assert problems == [] or any("commit" in p.lower() for p in problems), problems
+        assert not introduced or any("commit" in p.lower() for p in introduced), sorted(introduced)
     finally:
         conn.close()
 

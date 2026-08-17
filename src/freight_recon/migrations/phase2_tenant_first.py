@@ -1066,6 +1066,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6:{step}")
         conn.commit()
 
+        # ...and the Pipeline Instance, which must follow the Work Item because it holds a foreign
+        # key into it (and two more into P3's witness and grant tables). A MIGRATED database without
+        # it is one where two attempts at one logical effect would both insert while a FRESH one
+        # refused the second — the fresh-vs-migrated drift, in the one place where its cost is a
+        # duplicate invoice. Create-only and idempotent, like its four predecessors.
+        from .phase6_pipeline_instances import create_phase6_pipeline_schema
+
+        for step in create_phase6_pipeline_schema(conn, now=_now()):
+            _mark(conn, f"phase6pi:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1081,11 +1092,13 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             # internally too, so neither marker can appear on a shape that did not prove itself.
             from .phase3_checkpoint import stamp_phase3_version
             from .phase5_event_transport import stamp_phase5_version
+            from .phase6_pipeline_instances import stamp_phase6_pipeline_version
             from .phase6_work_items import stamp_phase6_version
 
             stamp_phase3_version(conn, now=_now())
             stamp_phase5_version(conn, now=_now())
             stamp_phase6_version(conn, now=_now())
+            stamp_phase6_pipeline_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

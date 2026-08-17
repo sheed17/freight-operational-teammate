@@ -62,6 +62,16 @@ from .migrations.phase5_event_transport import (
     phase5_readiness_problems,
     stamp_phase5_version,
 )
+from .migrations.phase6_pipeline_instances import (
+    P6PI_EXEMPT_TABLES,
+    P6PI_INDEXES,
+    P6PI_REPLACED_INDEXES,
+    P6PI_TARGET_SCHEMA,
+    P6PI_TENANT_TABLES,
+    create_phase6_pipeline_schema,
+    phase6_pipeline_readiness_problems,
+    stamp_phase6_pipeline_version,
+)
 from .migrations.phase6_work_items import (
     P6_EXEMPT_TABLES,
     P6_INDEXES,
@@ -94,6 +104,7 @@ LEGACY_TABLES: tuple[str, ...] = ("operation_commit_claims",)
 # fresh-database builder cannot disagree about what canonical means.
 _ALL_TARGET_SCHEMA: dict[str, str] = {
     **TARGET_SCHEMA, **P3_TARGET_SCHEMA, **P5_TARGET_SCHEMA, **P6_TARGET_SCHEMA,
+    **P6PI_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -103,6 +114,7 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
 # authority is authority WITHIN one, and neither has an honest cross-tenant reading.
 ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
+    *P6PI_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -117,6 +129,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P5_EXEMPT_TABLES,
     *P6_TENANT_TABLES,
     *P6_EXEMPT_TABLES,
+    *P6PI_TENANT_TABLES,
+    *P6PI_EXEMPT_TABLES,
 )
 
 
@@ -166,9 +180,10 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
         if name not in present:
             conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
-    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES}.items()
+    merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES,
+                                        **P6PI_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
-                      and n not in P6_REPLACED_INDEXES}
+                      and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -203,6 +218,12 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_schema(conn, now=_now())
     if not phase6_readiness_problems(conn):
         stamp_phase6_version(conn, now=_now())
+    # P6's Pipeline Instance. Built AFTER the Work Item because it holds a foreign key into it, and
+    # after P3 because it holds two more into the witness and grant tables — so this is the one
+    # ordering in the builder that is load-bearing rather than tidy. Marker-last, like every other.
+    create_phase6_pipeline_schema(conn, now=_now())
+    if not phase6_pipeline_readiness_problems(conn):
+        stamp_phase6_pipeline_version(conn, now=_now())
     conn.commit()
 
 
@@ -276,6 +297,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase5_readiness_problems(conn))
     problems.extend(timer_readiness_problems(conn))
     problems.extend(phase6_readiness_problems(conn))
+    problems.extend(phase6_pipeline_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))
@@ -469,16 +491,49 @@ def _enforcement_problems(conn: sqlite3.Connection) -> list[str]:
 
 
 def _second_ledger_problems(conn: sqlite3.Connection, present: set[str]) -> list[str]:
-    """One ledger. A second table carrying commit_key + state is a second effect authority."""
+    """One ledger. A second table that reserves a commit key INDEPENDENTLY is a second authority.
+
+    ### THE WORD THAT DOES THE WORK IS `INDEPENDENTLY`, AND THE FIRST VERSION OF THIS GUARD DID NOT
+    HAVE IT. It refused any table carrying both `commit_key` and `state`, which is a proxy for the
+    real question and not the question. The rule it defends is CLAUDE.md rule 17 — *no permanent
+    dual effect-authority systems* — and an effect AUTHORITY is a row that can, on its own, be
+    presented as permission to touch the outside world. `effect_grants` is that row (ADR-004/009,
+    SD-2: one ledger, eight states); nothing else may be.
+
+    ### `pipeline_instances` CARRIES BOTH COLUMNS BY CANONICAL MANDATE, AND IS NOT AN AUTHORITY.
+    `02-pipeline-instance.machine.md` §14 PL-1 requires the **Layer-1 reservation**
+    `UNIQUE(tenant, commit_key) WHERE state ∉ terminal` on the pipeline itself: it is what turns a
+    second proposal for one logical effect into one absorbed operator card (PL-1b) instead of two
+    invoices. The two layers do different jobs and neither is the other's backup —
+
+        Layer 1 (pipeline)  one attempt at a logical effect may be RUNNING at a time
+        Layer 2 (grants)    one effect may EXIST, ever; a VERIFIED grant holds its key forever
+
+    — and the pipeline can never become an authority, because the thing an adapter is shown is a
+    signed grant handle validated against `effect_grants` by `claim_grant_cas`. No effect path reads
+    `pipeline_instances` at all.
+
+    ### SO THE PREDICATE IS STRUCTURAL, NOT A NAME AND NOT A LIST OF BLESSED TABLES. A table may
+    reserve a commit key only if it is ANSWERABLE to the one ledger — which it declares by holding a
+    foreign key into `effect_grants`. A genuinely independent second ledger has no such reference by
+    construction: that is what makes it independent, and it is exactly what this now refuses.
+    Enumerating exempt table names instead would be the filename-enumeration blind spot CLAUDE.md §9
+    says this repository has produced four times.
+    """
     problems = []
     for table in sorted(present):
         if table in ("effect_grants",) or table.startswith("_legacy_"):
             continue
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if "commit_key" in cols and "state" in cols:
+        if not ("commit_key" in cols and "state" in cols):
+            continue
+        referents = {r[2] for r in conn.execute(
+            f"PRAGMA foreign_key_list({table})").fetchall()}
+        if "effect_grants" not in referents:
             problems.append(
-                f"{table!r} carries both commit_key and state: a second effect ledger can reserve "
-                f"the same logical effect independently of effect_grants."
+                f"{table!r} carries both commit_key and state and declares NO foreign key into "
+                f"effect_grants: a second effect ledger can reserve the same logical effect "
+                f"independently of the one canonical ledger (CLAUDE.md rule 17)."
             )
     return problems
 

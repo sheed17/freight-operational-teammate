@@ -114,6 +114,59 @@ STRICT_ORDER_AGGREGATE_TYPES: tuple[str, ...] = (
 
 _STRICT_SQL_LIST = ",".join(f"'{t}'" for t in STRICT_ORDER_AGGREGATE_TYPES)
 
+# ### THE FAMILIES §8 DECLARES ORDER-TOLERANT, AND WHY THE TRIGGER HAD TO LEARN ABOUT THEM (P6-CP-2).
+#
+# `events/registry.md` §8 classifies ordering BY FAMILY: strict for F2/F3/F4/F11/F13, and
+# **order-tolerant for F5 Observation, F7 Conflict, F9 Exception and F14 Security — "each is
+# independently meaningful"**. Keying the trigger on `aggregate_type` was a faithful proxy for that
+# for as long as every event landing on a strict aggregate came from a strict family. Machine M2
+# ended that condition, and the failure was total rather than cosmetic:
+#
+#     GR-1 / [C-4] require an illegal (state, trigger) to emit `IllegalTransitionAttempted` — an
+#     **F14** contract whose producer is the RULE, not a transition. It records something that did
+#     NOT happen, so it rides at the attempt's UNCHANGED version. On `pipeline_instance` (strict)
+#     that version is already owned by the transition that reached it, the producer ids differ, and
+#     the insert ABORTED. The refusal still worked; the EVIDENCE OF IT COULD NOT BE WRITTEN — on the
+#     one surface an operator is paged from, for every hostile attempt against a healthy attempt.
+#
+# So the exemption is not a relaxation: it makes the trigger enforce the rule §8 actually states
+# instead of a proxy for it. The invariant it defends is unchanged and is stated in its own abort
+# text — *no two DIFFERENT TRANSITIONS may own one version* — and an F14 security record is not a
+# transition and owns no version. Both sides of the comparison are filtered, because a strict event
+# colliding with a security record is the same non-collision read the other way round.
+#
+# ### DERIVED FROM THE CANONICAL CONTRACT DATA, NEVER RESTATED. A hand-typed family list here would
+# be a second copy of U5.3's registry and would stop matching. The set is read from
+# `event_contracts_data.json` — the same generated file `event_contracts.py` reads — by FILE rather
+# than by import, because `event_contracts` imports `event_envelope`, which imports this module.
+_STRICT_FAMILIES: frozenset[str] = frozenset({"F2", "F3", "F4", "F11", "F13"})
+
+
+def _strict_family_event_names() -> tuple[str, ...]:
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "event_contracts_data.json"
+    contracts = json.loads(path.read_text(encoding="utf-8"))["contracts"]
+    names = tuple(sorted(
+        c["name"] for c in contracts if c.get("family") in _STRICT_FAMILIES))
+    if not names:
+        raise RuntimeError(
+            f"no strict-family contract was derived from {path}. An empty set would exempt EVERY "
+            f"event from the strict-ordering trigger, which is the vacuous-guard failure CLAUDE.md "
+            f"§9 exists to catch — the trigger would still exist and would enforce nothing."
+        )
+    if any("'" in name for name in names):
+        raise RuntimeError(
+            "a canonical event name contains an apostrophe and cannot be interpolated into the "
+            "single-quoted SQL literal list below without escaping."
+        )
+    return names
+
+
+STRICT_FAMILY_EVENT_NAMES: tuple[str, ...] = _strict_family_event_names()
+_STRICT_EVENTS_SQL = ",".join(f"'{n}'" for n in STRICT_FAMILY_EVENT_NAMES)
+
 # The exact text the strict-version-ownership trigger aborts with. Named here, and matched by
 # `event_outbox.py` when it classifies a `sqlite3.IntegrityError`, so the two cannot drift: SQLite
 # reports a trigger RAISE(ABORT) and a UNIQUE violation through the SAME exception type, and
@@ -325,11 +378,13 @@ P5_TRIGGERS: dict[str, str] = {
         CREATE TRIGGER trg_event_outbox_strict_version_owner
         BEFORE INSERT ON event_outbox
         WHEN NEW.aggregate_type IN ({_STRICT_SQL_LIST})
+         AND NEW.event_name IN ({_STRICT_EVENTS_SQL})
          AND EXISTS (SELECT 1 FROM event_outbox
                       WHERE tenant = NEW.tenant
                         AND aggregate_type = NEW.aggregate_type
                         AND aggregate_id = NEW.aggregate_id
                         AND aggregate_version = NEW.aggregate_version
+                        AND event_name IN ({_STRICT_EVENTS_SQL})
                         AND producer_transition_id <> NEW.producer_transition_id)
         BEGIN SELECT RAISE(ABORT, '{STRICT_ORDER_ABORT}'); END""",
     "trg_event_outbox_envelope_immutable": f"""
@@ -465,6 +520,32 @@ def phase5_readiness_problems(conn: sqlite3.Connection) -> list[str]:
             f"outbox envelope is editable and an inbox row is deletable, which re-arms every "
             f"duplicate delivery [S8, M-24]."
         )
+    # ### PRESENT IS NOT THE SAME AS CURRENT, AND P6-CP-2 IS WHY THAT DISTINCTION NOW EXISTS.
+    # `create_phase5_schema` is create-only and idempotent: it skips a trigger that already exists,
+    # by name. That is correct for a trigger whose text never changes — and the strict-ordering
+    # trigger's text DID change, to stop refusing the F14 security records `events/registry.md` §8
+    # declares order-tolerant. A database carrying the previous text would still have a trigger
+    # called `trg_event_outbox_strict_version_owner`, would still pass a presence check, and would
+    # still make `IllegalTransitionAttempted` uninsertable on a strict aggregate. So the live text
+    # is compared to the canonical text, whitespace-normalised, and a divergence is UNREADY rather
+    # than silently the old rule. Fail-closed: a refused database is fixable; a stale trigger that
+    # reads as present is not visible at all.
+    canonical_triggers = {
+        name: " ".join(ddl.split()) for name, ddl in P5_TRIGGERS.items()
+    }
+    for name, expected in canonical_triggers.items():
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name = ?", (name,)
+        ).fetchone()
+        if row is None or not row[0]:
+            continue  # already reported as missing above
+        if " ".join(str(row[0]).split()) != expected:
+            problems.append(
+                f"trigger {name!r} does not match the canonical text: this database carries an "
+                f"earlier version of an event-transport invariant. Re-run the {MIGRATION_ID} "
+                f"migration after dropping it — a trigger that is present but stale enforces the "
+                f"rule that used to hold, invisibly."
+            )
     live_indexes = _indexes(conn)
     for name in P5_INDEXES:
         if name not in live_indexes:

@@ -197,3 +197,173 @@ def effect_adapter_import_violations() -> tuple[list[ImportSite], Evaluation]:
 def effect_adapter_violation_edges() -> set[str]:
     sites, _ = effect_adapter_import_violations()
     return {f"{s.module} -> {s.imported}" for s in sites}
+
+
+# =============================================================================================
+# THE TRANSITIVE IMPORT CLOSURE, SPELLING-COMPLETE.
+#
+# `adapter_import_sites` above answers "who imports an adapter DIRECTLY". A dark-surface guard needs
+# the other question: "what can this module reach, through any number of hops, in any legal import
+# spelling". It lives here rather than in a test because the FIRST version of the M2 dark-surface
+# guard shipped its own walker, and that walker recognised two of Python's import forms out of six
+# — it followed `from .x import y` and `import freight_recon.x`, and was blind to
+# `from freight_recon.x import y` (the DOMINANT spelling in this package), to `from . import x`
+# (in live use at `governed_write_route.py` and `action_callback.py`), and to
+# `importlib.import_module`. A closure walk that stops at the first unrecognised spelling reports an
+# empty leak set and looks green. One walker, in the repository's own import authority, mutation-
+# proven against every spelling, is the answer to that class of defect — not a second walker.
+# =============================================================================================
+
+_PACKAGE = "freight_recon"
+
+
+def package_modules() -> dict[str, Path]:
+    """Every importable module of the package, dotted-relative to it. `migrations/x.py` -> `migrations.x`."""
+    out: dict[str, Path] = {}
+    for path in python_files(SRC):
+        rel_parts = path.relative_to(SRC).with_suffix("").parts
+        if rel_parts and rel_parts[-1] == "__init__":
+            rel_parts = rel_parts[:-1]
+        if not rel_parts:
+            continue  # the package's own __init__
+        out[".".join(rel_parts)] = path
+    return out
+
+
+def _package_of(module: str) -> str:
+    """The package a module lives in, dotted-relative to `freight_recon`. Top level -> ""."""
+    return module.rpartition(".")[0]
+
+
+def _ascend(package: str, level: int) -> str | None:
+    """Resolve `level` leading dots from `package`. `None` when it climbs out of the package."""
+    parts = [p for p in package.split(".") if p]
+    for _ in range(level - 1):
+        if not parts:
+            return None
+        parts.pop()
+    return ".".join(parts)
+
+
+def _targets_from(base: str, names: tuple[str, ...]) -> set[str]:
+    """A dotted base plus the names imported from it, and every proper prefix of the base.
+
+    `from freight_recon.migrations.x import Y` can bind the module `migrations.x` AND, when `Y` is
+    itself a submodule, `migrations.x.Y`. Both are emitted; the closure walk discards whichever does
+    not resolve to a file, so a symbol is never mistaken for a module.
+    """
+    out: set[str] = set()
+    if base:
+        out.add(base)
+        parts = base.split(".")
+        for i in range(1, len(parts)):
+            out.add(".".join(parts[:i]))
+    for name in names:
+        out.add(f"{base}.{name}" if base else name)
+    return out
+
+
+def module_import_targets(tree: ast.AST, module: str) -> set[str]:
+    """Every module of THIS package that `module`'s source can pull into its namespace.
+
+    Covers all six spellings the package actually uses or could use:
+        import freight_recon.a.b [as x]
+        from freight_recon.a.b import n
+        from freight_recon import n
+        from .a import n          /  from ..a import n
+        from . import n           /  from .. import n
+        importlib.import_module("freight_recon.a")  /  __import__(...)  /  import_module(".a", pkg)
+    """
+    package = _package_of(module)
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == _PACKAGE:
+                    continue
+                if alias.name.startswith(f"{_PACKAGE}."):
+                    out |= _targets_from(alias.name.split(".", 1)[1], ())
+        elif isinstance(node, ast.ImportFrom):
+            names = tuple(a.name for a in node.names)
+            if node.level:
+                base = _ascend(package, node.level)
+                if base is None:
+                    continue  # climbs out of the package: not our graph
+                if node.module:
+                    base = f"{base}.{node.module}" if base else node.module
+                out |= _targets_from(base, names)
+            elif node.module == _PACKAGE:
+                out |= _targets_from("", names)
+            elif node.module and node.module.startswith(f"{_PACKAGE}."):
+                out |= _targets_from(node.module.split(".", 1)[1], names)
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            fname = getattr(fn, "attr", None) or getattr(fn, "id", None)
+            if fname not in ("import_module", "__import__") or not node.args:
+                continue
+            arg = node.args[0]
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                continue
+            spelled = arg.value
+            if spelled.startswith("."):
+                level = len(spelled) - len(spelled.lstrip("."))
+                base = _ascend(package, level)
+                if base is None:
+                    continue
+                tail = spelled[level:]
+                out |= _targets_from(f"{base}.{tail}" if base and tail else (tail or base), ())
+            elif spelled == _PACKAGE:
+                continue
+            elif spelled.startswith(f"{_PACKAGE}."):
+                out |= _targets_from(spelled.split(".", 1)[1], ())
+    return out
+
+
+def package_import_closure(roots) -> tuple[set[str], Evaluation]:
+    """The transitive closure of package modules reachable from `roots`, dotted-relative names.
+
+    The roots themselves are included. An unresolvable target is DROPPED (it was a symbol, not a
+    module) and an unparseable source is recorded in `unmatched` rather than skipped silently.
+    """
+    ev = Evaluation(name="imports.package_closure")
+    modules = package_modules()
+    seen: set[str] = set()
+    frontier = [r for r in roots]
+    for root in frontier:
+        if root not in modules:
+            raise FileNotFoundError(
+                f"import closure root {root!r} is not a module of {_PACKAGE}. A closure walk from a "
+                f"root that does not exist reaches nothing and reports green."
+            )
+    while frontier:
+        module = frontier.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        path = modules.get(module)
+        if path is None:
+            continue
+        ev.sources_inspected.append(rel(path))
+        ev.accepted.append(module)
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            ev.unmatched.append(f"{rel(path)}: unparseable ({exc})")
+            continue
+        for target in module_import_targets(tree, module):
+            ev.candidates.append(f"{module} -> {target}")
+            if target in modules and target not in seen:
+                frontier.append(target)
+    return seen, ev
+
+
+def effect_capable_reachable_from(roots) -> tuple[set[str], Evaluation]:
+    """Which EFFECT-CAPABLE adapters `roots` can reach transitively. Empty == the surface is dark.
+
+    The population is `EFFECT_CAPABLE_ADAPTERS` — this module's own authority, the same set the P4
+    import gate partitions on — so an adapter added there is guarded here on the same commit,
+    without anybody remembering to update a second list.
+    """
+    closure, ev = package_import_closure(roots)
+    ev.name = "imports.effect_capable_reachable"
+    return {m for m in closure if m.rpartition(".")[2] in EFFECT_CAPABLE_ADAPTERS}, ev

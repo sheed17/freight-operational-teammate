@@ -2538,24 +2538,64 @@ def test_no_transition_mints_a_witness_or_a_grant(tmp_path):
 
 def test_nothing_in_production_calls_this_machine_yet(tmp_path):
     """### IT SHIPS DARK, AND THAT IS ASSERTED RATHER THAN ANNOUNCED. Discovered by scanning the
-    package and the operator scripts, never by an enumerated file list."""
+    package and the operator scripts, never by an enumerated file list.
+
+    ### THE ONE PERMITTED IMPORTER IS THE P6 ENTITY LAYER ITSELF (amended at P6-CP-2, and NARROWED
+    rather than widened). Machine M2 imports M1 because
+    `02-pipeline-instance.machine.md` §5 makes the attempt's owner *the Work Item's owner*: M2 reads
+    that owner from M1's recorded roster instead of accepting a string, which is the whole
+    mechanism rule 13 rests on. Refusing the import would force M2 to keep its own roster — a second
+    ownership authority — so the guard would have driven the exact defect it exists to prevent.
+
+    What the guard now asserts is stronger than "zero importers", because "zero" was never the
+    property that mattered: it is that no ADAPTER, WORKFLOW, SCRIPT, CALLBACK or ROUTE reaches
+    either machine, and that the entity layer's importers are themselves dark. Both halves are
+    checked, and the permitted set is derived from the P6 modules on disk rather than typed out.
+    """
+    entity_layer = {"work_item.py", "pipeline_instance.py"}
+    assert entity_layer <= {p.name for p in (ROOT / "src" / "freight_recon").glob("*.py")}, (
+        "the P6 entity layer no longer exists under these names — the permitted-importer set would "
+        "be empty and this guard would confine nothing"
+    )
     importers: list[str] = []
+    inspected = 0
     for path in sorted((ROOT / "src" / "freight_recon").rglob("*.py")) + \
             sorted((ROOT / "scripts").rglob("*.py")):
         if path.name == "work_item.py":
             continue
+        inspected += 1
         text = path.read_text(encoding="utf-8")
         for node in ast.walk(ast.parse(text)):
             if isinstance(node, ast.ImportFrom) and node.module and \
                     node.module.split(".")[-1] == "work_item":
-                importers.append(str(path.relative_to(ROOT)))
+                importers.append(path.name)
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name.split(".")[-1] == "work_item":
-                        importers.append(str(path.relative_to(ROOT)))
-    assert not importers, (
-        f"M1 has acquired production callers: {sorted(set(importers))}. P6 ships dark; a caller "
-        f"means the rollout posture in the registry is no longer true."
+                        importers.append(path.name)
+    assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
+    outside = sorted({name for name in importers if name not in entity_layer})
+    assert not outside, (
+        f"M1 has acquired production callers outside the P6 entity layer: {outside}. P6 ships dark; "
+        f"a caller means the rollout posture in the registry is no longer true."
+    )
+    # ### AND THE PERMITTED IMPORTER MUST ITSELF BE DARK, or "dark" would be one hop deep.
+    from freight_recon.pipeline_instance import AGGREGATE_TYPE as M2_AGGREGATE  # noqa: F401
+
+    m2_importers = [
+        path.name
+        for path in sorted((ROOT / "src" / "freight_recon").rglob("*.py"))
+        + sorted((ROOT / "scripts").rglob("*.py"))
+        if path.name != "pipeline_instance.py"
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if (isinstance(node, ast.ImportFrom) and node.module
+            and node.module.split(".")[-1] == "pipeline_instance")
+        or (isinstance(node, ast.Import)
+            and any(a.name.split(".")[-1] == "pipeline_instance" for a in node.names))
+    ]
+    assert not m2_importers, (
+        f"M2 has production callers: {sorted(set(m2_importers))}. M1 is permitted exactly one "
+        f"importer BECAUSE that importer is dark too; a caller of M2 makes M1 reachable."
     )
 
 

@@ -97,7 +97,27 @@ def test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoi
     # BOUNDARY, not a discovery problem, so it is stated - but it is stated defensively: each
     # member must still exist on disk, or a rename would empty the allowlist and the confinement
     # assertion below would pass over nothing (the vacuous-guard failure this file is named for).
-    KERNEL = {"checkpoint.py", "phase3_checkpoint.py"}
+    #
+    # ### `pipeline_instance.py` JOINED THIS SET AT P6-CP-2, AND IT IS A WIDENING WITH A NARROWING
+    # ATTACHED. `02-pipeline-instance.machine.md` §14 makes the gate vocabulary M2's business by
+    # canon: PL-2 WRITES `gate_decision` and refuses NULL (F-20/GR-8); PL-3 rejects on `FORBIDDEN`;
+    # PL-6 routes to a human on the two human gates; PL-7a admits autonomously only on
+    # `AUTONOMOUS_WITHIN_CAPS`. A machine that could not NAME a gate decision could not route on
+    # one, and the alternative — M2 inventing its own vocabulary — is the leak this guard exists to
+    # catch, arriving by the door marked "compliant".
+    #
+    # So CARRYING a decision is now permitted here and MINTING one is asserted impossible below.
+    # That is the property that was always meant: policy is DECIDED at the boundary that owns it.
+    # `phase6_pipeline_instances.py` is deliberately NOT in this set — its `gate_decision` CHECK
+    # derives its four literals from P3's `checkpoint_witnesses` DDL at import time rather than
+    # restating them, so no gate token appears in that file at all and this guard still proves it.
+    #
+    # FIXED-SPECIFICATION: this is a POLICY BOUNDARY the architecture states, not a population to be
+    # discovered — ADR-010 puts gate evaluation at the checkpoint kernel, and §14 gives machine M2
+    # the right to route on the decision the kernel returns. Discovering it would mean asking the
+    # code which modules currently touch gates, which is the question, not the answer. Each member
+    # is verified to EXIST below, so a rename cannot empty the set and make the confinement vacuous.
+    KERNEL = {"checkpoint.py", "phase3_checkpoint.py", "pipeline_instance.py"}
     for name in sorted(KERNEL):
         assert any(p.name == name for p in src.rglob("*.py")), (
             f"the gate-kernel allowlist names {name!r}, which no longer exists - the allowlist "
@@ -118,6 +138,60 @@ def test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoi
     assert not leaked, (
         "a typed gate decision escaped the checkpoint kernel: policy must be evaluated at the "
         f"boundary that owns it, never carried by a workflow, adapter or callback: {leaked}"
+    )
+
+
+def test_only_the_checkpoint_kernel_may_MINT_a_gate_decision():
+    """The narrowing that pays for `pipeline_instance.py` joining the allowlist above.
+
+    ### CARRYING A GATE DECISION AND DECIDING ONE ARE DIFFERENT ACTS, AND ONLY THE SECOND IS THE
+    LEAK. Machine M2 must name the four decisions to route on them (§14 PL-2/PL-3/PL-6/PL-7a), so
+    the token scan above can no longer distinguish "policy escaped" from "the pipeline read the
+    kernel's answer". This asserts the sharper thing directly: a gate decision comes into existence
+    only by constructing a `GateEntry` or a `GateRegistry`, and outside the kernel nothing may.
+
+    AST-based, not a substring sweep — `GateEntry` inside a docstring or an error message is prose,
+    and a guard that fires on its own explanatory text is one people learn to suppress.
+    """
+    import ast
+
+    import freight_recon
+
+    src = Path(freight_recon.__file__).parent
+    MINTS = {"GateEntry", "GateRegistry"}
+    KERNEL = {"checkpoint.py"}
+    inspected: list[str] = []
+    offenders: list[str] = []
+    kernel_mints: list[str] = []
+    for path in sorted(src.rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover — a file that does not parse is reported, not skipped
+            offenders.append(f"{path.name}:UNPARSEABLE")
+            continue
+        inspected.append(path.name)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (func.id if isinstance(func, ast.Name)
+                    else func.attr if isinstance(func, ast.Attribute) else None)
+            if name in MINTS:
+                (kernel_mints if path.name in KERNEL else offenders).append(f"{path.name}:{name}")
+
+    assert inspected, "the probe parsed nothing - it cannot conclude anything"
+    # ### THE POSITIVE CONTROL. A confinement assertion over a population that contains no mint at
+    # all passes vacuously and proves nothing (CLAUDE.md §9). The kernel's own `_DEFAULT` gate entry
+    # is a real construction, so the scanner is demonstrated to FIND one before it is believed about
+    # finding none elsewhere.
+    assert kernel_mints, (
+        "the AST scan found no GateEntry/GateRegistry construction anywhere, including inside "
+        "checkpoint.py, which declares the fail-closed default. The scanner is not seeing "
+        "constructions, so its silence about other modules is meaningless."
+    )
+    assert not offenders, (
+        "a module outside the checkpoint kernel MINTS a gate decision: constructing a GateEntry or "
+        f"a GateRegistry IS deciding policy, and ADR-010 puts that at one boundary: {sorted(offenders)}"
     )
 
 

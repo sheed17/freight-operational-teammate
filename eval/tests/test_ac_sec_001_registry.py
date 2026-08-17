@@ -391,9 +391,28 @@ def test_one_canonical_effect_ledger_with_exact_states(tmp_path):
         others = [r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")
             if r[0] != "effect_grants" and r[0] not in TENANT_EXEMPT_TABLES]
+        # ### THE WORD THAT DOES THE WORK IS `INDEPENDENTLY` (narrowed at P6 M2, matching
+        # `schema._second_ledger_problems`). CLAUDE.md rule 17 forbids a second effect AUTHORITY —
+        # a row that can, on its own, be presented as permission to touch the outside world. A
+        # table that reserves a commit key while holding a FOREIGN KEY into `effect_grants` is
+        # answerable to the one ledger by construction; `pipeline_instances` is required to carry
+        # exactly that reservation by `02-pipeline-instance.machine.md` §14 PL-1 (Layer 1: one
+        # attempt RUNNING at a time), while Layer 2 — the grant ledger — remains the only thing
+        # that decides whether an effect may EXIST. A genuinely independent second ledger has no
+        # such reference: that is what makes it independent, and it is what this still refuses.
+        checked = 0
         for t in others:
             cols = {r[1] for r in conn.execute(f"PRAGMA table_info({t})")}
-            assert not ({"commit_key", "state"} <= cols), f"{t} is a second effect ledger"
+            if not ({"commit_key", "state"} <= cols):
+                continue
+            checked += 1
+            referents = {r[2] for r in conn.execute(f"PRAGMA foreign_key_list({t})")}
+            assert "effect_grants" in referents, (
+                f"{t} reserves a commit key and declares NO foreign key into effect_grants: it is "
+                f"a second effect ledger (CLAUDE.md rule 17)")
+        assert checked, (
+            "no table other than effect_grants carries commit_key + state, so the check above "
+            "passed over an empty set and proved nothing about the rule it defends")
     finally:
         conn.close()
 

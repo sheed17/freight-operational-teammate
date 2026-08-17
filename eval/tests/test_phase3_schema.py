@@ -145,6 +145,25 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_work_items_owner_is_a_recorded_human_insert"
                for step in p6_performed)
     assert phase6_readiness_problems(conn) == []
+    # ### AND A FOURTH TIME, FOR THE PIPELINE INSTANCE. Canonical moved again: a store with no
+    # `pipeline_instances` cannot hold a durable ATTEMPT, and — the part that matters here — it
+    # carries no Layer-1 reservation, so two proposals for one logical effect would both insert
+    # while a FRESH database refused the second. The property under test is still the one this node
+    # has always asserted: a migrated database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_pipeline_instances import (  # noqa: E402
+        create_phase6_pipeline_schema,
+        phase6_pipeline_readiness_problems,
+    )
+
+    assert any("phase6_pipeline_instances" in p for p in schema_readiness_problems(conn)), (
+        schema_readiness_problems(conn))
+    p6pi_performed = create_phase6_pipeline_schema(conn, now=utc_now())
+    assert any(step == "create-table:pipeline_instances" for step in p6pi_performed)
+    assert any(step == "create-index:ix_pipeline_instances_live_reservation"
+               for step in p6pi_performed)
+    assert any(step == "create-trigger:trg_pipeline_instances_terminal_is_final"
+               for step in p6pi_performed)
+    assert phase6_pipeline_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

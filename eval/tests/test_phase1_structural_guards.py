@@ -272,12 +272,15 @@ def test_no_free_form_occurrence_key_is_readable_from_the_request_payload():
     """
     ev = Evaluation(name="phase1.params_reads_for_identity")
     offenders = []
+    annotated = []
     for path in python_files(SRC, SCRIPTS):
         ev.sources_inspected.append(rel(path))
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
         except SyntaxError:
             continue
+        lines = source.split("\n")
         for node in ast.walk(tree):
             key = None
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
@@ -290,13 +293,58 @@ def test_no_free_form_occurrence_key_is_readable_from_the_request_payload():
                 continue
             ev.candidates.append(f"{rel(path)}:{key}")
             ev.accepted.append(f"{rel(path)}:{key}")
-            if key == "occurrence_key":
-                offenders.append(f"{rel(path)}:{getattr(node, 'lineno', '?')}")
+            if key != "occurrence_key":
+                continue
+            # ### THE ONE PERMITTED SHAPE, ANNOTATED AND NARROW (added at P6 M2).
+            #
+            # The defect P1 closed is a CALLER-AUTHORED occurrence key entering the identity of a
+            # consequential effect — `params.get("occurrence_key")`, a string somebody passed in.
+            # Reading back the canonical occurrence this system ITSELF derived, off its own
+            # persisted row, is the opposite act: it is how a Pipeline Instance reconstructs the
+            # `LogicalEffect` it was created for, so that a retry cannot vary the commit key
+            # (§20). Refusing it would force the machine to either re-derive the key from caller
+            # input at every checkpoint — the actual defect — or store an opaque key nobody can
+            # audit.
+            #
+            # So the exemption is an ANNOTATION WITH A REASON, exactly as
+            # `test_false_green_defenses` handles a deliberately-fixed population, and it is
+            # deliberately not a name-based or module-based carve-out: an unannotated read still
+            # fails, and the positive control below proves it.
+            window = "\n".join(lines[max(0, node.lineno - 10): node.lineno + 1])
+            if "CANONICAL-ROW-READ:" in window:
+                annotated.append(f"{rel(path)}:{getattr(node, 'lineno', '?')}")
+                continue
+            offenders.append(f"{rel(path)}:{getattr(node, 'lineno', '?')}")
     ev.require_population(minimum=20)
     assert not offenders, (
         "the generic occurrence escape hatch is back: " + ", ".join(offenders) +
-        "\nA caller-authored string may not carry the identity of a consequential effect."
+        "\nA caller-authored string may not carry the identity of a consequential effect. If this "
+        "is a read of the canonical occurrence off this system's OWN persisted row, annotate it "
+        "`CANONICAL-ROW-READ:` with a reason."
     )
+    assert annotated, (
+        "no annotated canonical-row read exists, so the exemption branch above is never taken and "
+        "this guard has not been shown to distinguish the two shapes at all"
+    )
+
+
+def test_the_occurrence_key_annotation_does_not_exempt_a_payload_read():
+    """### THE POSITIVE CONTROL FOR THE EXEMPTION ABOVE. An annotation that could be written near
+    any read would turn the guard off; this proves the OFFENDING shape is still caught, and that
+    the annotation is required rather than assumed."""
+    module = ast.parse(
+        "def handler(params):\n"
+        "    # some ordinary comment\n"
+        "    return params.get('occurrence_key')\n"
+    )
+    hits = [n for n in ast.walk(module)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "get" and n.args
+            and getattr(n.args[0], "value", None) == "occurrence_key"]
+    assert len(hits) == 1, "the detector no longer recognises the escape-hatch shape at all"
+    window = "def handler(params):\n    # some ordinary comment\n    return params.get(...)"
+    assert "CANONICAL-ROW-READ:" not in window, (
+        "an unannotated payload read would be exempted — the exemption is not opt-in")
 
 
 def test_the_derivation_accepts_no_free_form_occurrence_parameter():

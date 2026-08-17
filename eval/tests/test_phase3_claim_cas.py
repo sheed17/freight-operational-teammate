@@ -536,7 +536,34 @@ def test_the_cas_where_clause_still_carries_all_five_predicates(tmp_path):
 
     from freight_recon import checkpoint as ckpt
 
-    source = inspect.getsource(ckpt.claim_grant_cas)
+    # ### THE ANCHOR IS DISCOVERED, NOT NAMED. The first version of this guard read
+    # `inspect.getsource(ckpt.claim_grant_cas)`, which silently stopped covering anything the day
+    # the CAS body moved into a locked entry point so machine M2 could co-commit its own row with
+    # it — the statement was still there, still correct, and this test reported that it "could not
+    # be located". A guard anchored on one symbol is a guard that a refactor can aim at. So the
+    # module is swept for the function that CONTAINS the statement, exactly one must, and its
+    # absence is a failure rather than a miss.
+    # The statement is identified by WHAT IT DOES — the GRANTED -> CLAIMED write — not by the name
+    # of the function it happens to sit in. `expire_unclaimed` and `revoke_unclaimed` also UPDATE
+    # this table, and neither is the CAS.
+    CLAIM_WRITE = re.compile(r"UPDATE effect_grants\s+SET state = 'CLAIMED'", re.S)
+    owners = {
+        name: inspect.getsource(fn)
+        for name, fn in vars(ckpt).items()
+        if inspect.isfunction(fn) and getattr(fn, "__module__", None) == ckpt.__name__
+        and CLAIM_WRITE.search(inspect.getsource(fn))
+    }
+    assert owners, (
+        "no function in the checkpoint kernel performs the GRANTED -> CLAIMED write: the claim CAS "
+        "has been removed, renamed out of the module, or generated at runtime. Any of the three "
+        "means this guard is protecting nothing."
+    )
+    assert len(owners) == 1, (
+        f"the claim CAS statement appears in {sorted(owners)}. Exactly one function may perform the "
+        f"GRANTED -> CLAIMED transition (ADR-004 §3.5): two copies is two places for a predicate to "
+        f"be dropped from, and this guard would only ever check one of them."
+    )
+    source = next(iter(owners.values()))
     m = re.search(r"UPDATE effect_grants.*?\"\"\"", source, re.S)
     assert m, "the claim CAS UPDATE statement could not be located in the source"
     where = m.group(0)

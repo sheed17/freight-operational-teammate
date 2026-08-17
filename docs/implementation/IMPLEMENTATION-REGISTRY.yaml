@@ -2607,6 +2607,220 @@ units:
     status: READY
     execution_state: IN_PROGRESS
     checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    # ### THIS TREE CARRIES A SECOND P6 CONTENT CANDIDATE, AND THE REGISTRY DELIBERATELY DOES NOT
+    # YET RECORD IT AS LANDED. `test_status_reality.py` requires every landed checkpoint to cite
+    # BOTH on-disk implementer evidence AND an on-disk INDEPENDENT REVIEW REPORT. No such report
+    # exists for `P6-CP-2`, and the session that built it may not write one (CLAUDE.md §11). So
+    # `checkpoint_state` stays where `P6-CP-1` left it, `landed_checkpoints` still names one entry,
+    # and the candidate is recorded below as a candidate. This is the same route M1 took: candidate
+    # first, landed when reviewed. Nothing here scores a P6 acceptance criterion, and none may be.
+    candidate_awaiting_review:
+      id: P6-CP-2
+      name: The Pipeline Instance — one durable attempt, and the effect that can only happen once
+      record_type: CONTENT_CANDIDATE_AWAITING_FRESH_INDEPENDENT_REVIEW
+      summary: >-
+        Machine M2 of the thirteen — the durable execution of a workflow for a Work Item, and the
+        reservation that makes it exclusive. 25 of the 134 transitions, the sixteen states of
+        registry §4, tenant-first, owner following the Work Item by trigger. PL-1 acquires the
+        Layer-1 reservation `UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal)` so a second
+        proposal for one logical effect is ABSORBED (PL-1b) rather than raced; the predicate of that
+        index IS §20's retry rule, so `NEEDS_VERIFICATION` — non-terminal — keeps holding the key and
+        nothing may retry an effect nobody can say happened. PL-8 and PL-9 call P3's kernel through
+        additive locked entry points so the witness insert, the grant mint, the claim CAS and the
+        pipeline's own writes share ONE transaction: never both, never neither (§30). `GRANTED` and
+        everything downstream is unreachable without BOTH a real witness row and a real grant row;
+        `FAILED` is unreachable without affirmative proof (GR-5) at the guard AND at the database;
+        no timer may move `NEEDS_VERIFICATION` (GR-6, AC-MACH-215x); terminal is absolutely final,
+        with no reopen door at all (§24).
+      what_is_in_the_tree: >-
+        `src/freight_recon/pipeline_instance.py` and
+        `src/freight_recon/migrations/phase6_pipeline_instances.py`, wired into `schema.py` and into
+        the P2 migration path; ADDITIVE locked entry points in `src/freight_recon/checkpoint.py`
+        (`run_checkpoint_locked`, `claim_grant_cas_locked`, `record_checkpoint_refusal`,
+        `flush_claim_records`) with `run_checkpoint` and `claim_grant_cas` rewritten as thin
+        transaction wrappers over the SAME body; one narrowing of P5's strict-ordering trigger in
+        `migrations/phase5_event_transport.py` plus a trigger-text drift check in its readiness
+        oracle; acceptance and hostile nodes in `eval/tests/test_phase6_pipeline_instance.py` with
+        `eval/tests/phase6_pipeline_kit.py`; and the mutation battery in
+        `scripts/mutate_phase6_pipeline_instance.py` at 40/40 caught.
+        ### THAT IS THE INCREMENT, NOT THE PHASE: M3–M13 are unbuilt and 95 of the 134 transitions
+        are unwritten.
+      guards_amended_and_why: >-
+        ### SIX GUARDS WERE NARROWED OR EXTENDED, EVERY ONE WITH A POSITIVE CONTROL, AND NONE WAS
+        WEAKENED TO MAKE A TEST PASS. (1) `schema._second_ledger_problems` and its twin in
+        `test_ac_sec_001_registry` forbade any table carrying `commit_key` + `state`; §14 PL-1
+        REQUIRES that pair on the pipeline, so the predicate now asks the question rule 17 actually
+        poses — is the reservation ANSWERABLE to the one ledger, i.e. does it declare a foreign key
+        into `effect_grants` — and a new case builds a non-compliant table to prove the refusal
+        still fires. (2) `test_phase0_null_gate`'s kernel allowlist gained `pipeline_instance.py`,
+        PAID FOR by a new AST guard proving that only `checkpoint.py` may CONSTRUCT a `GateEntry` or
+        `GateRegistry`: carrying a gate decision and deciding one are different acts, and only the
+        second is the leak. (3) `test_phase1_structural_guards`'s occurrence-key ban now exempts an
+        ANNOTATED read of the canonical occurrence off this system's own persisted row, with a
+        positive control proving an unannotated payload read still fails. (4) M1's dark-posture
+        guard permitted its ONE importer — M2 — and became STRONGER by additionally asserting that
+        importer is itself dark. (5) `test_phase3_claim_cas`'s WHERE-clause guard was anchored on a
+        function NAME and stopped covering anything when the CAS body moved; it now DISCOVERS the
+        function containing the GRANTED→CLAIMED write and fails if there is not exactly one.
+        (6) `test_u26bc_schema_readiness` test 11 compared readiness problems against an absolute
+        that every new canonical table moved; it now compares before-and-after.
+      what_it_owes: >-
+        ### A FRESH TARGETED INDEPENDENT REVIEW BY A SESSION THAT NEITHER IMPLEMENTED NOR REMEDIATED
+        IT, then a SEPARATE targeted adjudication, then exactly ONE finalizer. Only then may
+        `landed_checkpoints` gain a second entry citing the report. No P6 acceptance criterion is
+        scored by this candidate and none may be.
+      rejected_candidate_preserved_at: refs/preserve/p6-cp2-rejected-candidate-3d4046a
+      commit_topology_note: >-
+        ### THE REJECTED CANDIDATE IS REPLACED, NOT STACKED ON, AND THAT IS THE CONVENTION RATHER
+        THAN A PREFERENCE. `3d4046a` was an unfinalized content commit; the two-commit convention
+        permits exactly ONE, and `test_status_reality.repo_state()` names two "not the producing
+        state ... which the convention forbids". The finalizer that would have closed `3d4046a` is
+        not this session's to run and would refuse in this sandbox anyway, so the remediation was
+        collapsed onto `cc986dd` as a single replacement content commit. The repository is back in
+        the legal **PRODUCING** state, the working tree is clean, and `3d4046a` is preserved
+        byte-exactly at `refs/preserve/p6-cp2-rejected-candidate-3d4046a` (with the pre-collapse
+        remediation state at `refs/preserve/p6-cp2-remediation-prestate-8bb4cb0`) so the review's
+        subject remains resolvable. The replacement's tree is byte-identical to the pre-collapse
+        one — only the topology changed.
+      first_independent_review: >-
+        ### REJECT — M2 NOT READY FOR ADJUDICATION. Candidate `3d4046a` (tree `34cc2285`, preserved
+        at `refs/preserve/p6-cp2-rejected-candidate-3d4046a`) was
+        REJECTED by a fresh targeted INDEPENDENT review on TWO blocking defect classes. This is the
+        same shape as P4's first review and M1's: a candidate failing its first independent review
+        is the discipline working, not an exception to it.
+        ### F-01 — `CLAIMED` WAS REACHABLE WITHOUT THE CAS. The reviewer consumed a contract-valid
+        canonical `GrantClaimed` through the public API and moved a Pipeline Instance
+        `GRANTED → CLAIMED` with no kernel, no grant handle, no CAS, `claimed_at` still NULL and the
+        grant ledger still reading `GRANTED`. Root cause: `apply()` special-cased the consequential
+        rows and routed them to the kernel; `consume()` routed canonical events straight into
+        `_apply_locked`, and `_guard_problem` had no branch for PL-8/PL-8f/PL-9 — so the rows whose
+        precondition is the kernel's own atomic write were satisfied by an empty guard. That
+        violates §15 (`CLAIMED` without a successful CAS is IMPOSSIBLE), the M2↔M3 co-transition
+        rule, §17's serialization point and the authority model. The SAME root cause, at lower
+        severity, let a consumed `CHECKPOINT_RUN` select PL-8f by §16 precedence and raise a payload
+        violation INSIDE the inbox transaction — rolling the receipt back and making the event
+        redeliverable forever.
+        ### F-02 — THE HEADLINE "SHIPS DARK" GUARD WAS FALSE-GREEN IN TWO INDEPENDENT WAYS.
+        `test_m2_cannot_reach_an_effect_capable_adapter` hand-enumerated nine adapter names — three
+        of which are not modules of this repository, while `discovered_write`, `browser_agent` and
+        `browser_tms_adapter` were all missing — and its own import walker recognised two of
+        Python's six import spellings, missing `from freight_recon.x import y` (the dominant
+        spelling in this package) and `from . import x` (in live use at `governed_write_route.py`
+        and `action_callback.py`). A leak through either was invisible.
+        ### THE REVIEWER HELD THE REST: reservation/idempotency, retries, `NEEDS_VERIFICATION`,
+        brake semantics, the model prohibition, checkpoint extraction, the database invariants,
+        tenant behaviour, `AC-MACH-000`'s exact population, the focused battery, the Product Driver
+        and the existing mutation coverage. It also independently CONFIRMED P6-D9, P6-D11 and P6-D13
+        as real canonical inconsistencies and nonblocking for M2 today.
+      remediation: >-
+        ### NARROW, AND SCOPED TO THE TWO FINDINGS. Five files, no redesign of M2, no M3, no
+        reopening of M1/P3/P5, no product semantics changed and none of P6-D9/D11/D13 resolved by
+        invention.
+        ### F-01 IS CLOSED STRUCTURALLY, NOT BY A SECOND CHECK AT THE CALL SITE. §7's machine
+        defaults — *"consequential transitions = PL-8 (checkpoint) and PL-9 (claim) only"* — become
+        DATA on the transition row (`TransitionRow.consequential`, naming the kernel path that owns
+        it). `KERNEL_OWNED_ROW_IDS` is DERIVED from those seeds plus every row sharing a
+        (from-state, trigger) pair with one, which is what puts PL-8f in the population without
+        anybody listing it. `_guard_problem` refuses that whole population BEFORE any row branch, so
+        the ordinary path — the only path `consume()` has — can never satisfy a kernel-owned row at
+        any set of facts. `_apply_locked` classifies an all-kernel-owned refusal as §15/GR-1
+        illegality rather than an ordinary guard failure, so `IllegalTransitionAttempted` reaches the
+        audit backbone AND `security_events` inside the inbox's own commit: the refusal converges,
+        the receipt is written, and redelivery is `DUPLICATE_NOOP` instead of a poison loop. And
+        `apply()`'s kernel dispatch is now derived from the SAME declaration, so dispatch and refusal
+        cannot disagree — a consequential row whose executor is missing FAILS CLOSED instead of
+        falling through to the ordinary path. The P3 kernel is untouched: no CAS predicate moved, no
+        checkpoint semantics changed, nothing was duplicated inside `consume()`.
+        ### F-02 IS CLOSED BY CENTRALISING, NOT BY WRITING A THIRD WALKER. The transitive closure
+        moved into `eval/phase0/import_probe.py` — the repository's own import authority, already
+        mutation-proven for the P4 gate — as `package_import_closure` /
+        `effect_capable_reachable_from`, recognising every legal Python import spelling including
+        `from freight_recon.x import y`, `from . import x`, `from .x import y`,
+        `import freight_recon.x`, `importlib.import_module` (absolute and relative literals) and
+        `__import__`. The M2 guard now DERIVES all three of its inputs: roots from
+        `IMPLEMENTATION-SURFACE.yaml`'s recorded Pipeline Instance surface, the population from
+        `import_probe.EFFECT_CAPABLE_ADAPTERS`, and reachability from that closure — with a
+        `require_population` denominator and a live positive control (`effect_boundary` must reach
+        adapters, or the walker is broken).
+        ### EVIDENCE. +19 test nodes (the manifest delta is purely additive: 3011 → 3030, zero
+        removed); mutation battery 40 → **55/55 caught** with byte-for-byte restoration, of which 15
+        are new and aimed at exactly these two findings — including the rejected candidate's own
+        defect restored (K1), the §15 record degraded (K3), each of the six import spellings
+        (D1–D4), a TRANSITIVE leak two hops out (D5), an effect-capable adapter appearing in the
+        CANONICAL population with the M2 test untouched (D6), and the walk crippled so the
+        denominator guard has to catch it (D9).
+      material_findings_for_the_reviewer: >-
+        ### THREE CANONICAL SEAMS THIS UNIT FOUND BY IMPLEMENTING §14, AND REFUSED TO IMPROVISE
+        ACROSS. They are the first thing a reviewer should attack. (P6-D9) §14's PL-8f Event cell
+        reads `CheckpointFailed{step,reason}` + `PipelineVoided`, but `events/registry.md` §3
+        attributes `PipelineVoided` to PL-7v/PL-9v ONLY and the contract gate enforces that
+        attribution — so PL-8f emits `CheckpointFailed` alone and the state still becomes VOIDED.
+        (P6-D11) Eight of the 25 rows are `CONSUMES`: they advance the attempt's version and emit
+        nothing on `pipeline_instance`, so the F2 stream has GAPS — and F2 is a STRICT-ORDER family
+        whose inbox rule parks any version above applied+1. Measured, not assumed, by a dedicated
+        test. Nothing consumes M2's F2 stream today. (P6-D13) `VerificationDeferred` is the one
+        contract the registry attributes to a PL-* transition while declaring
+        `aggregate_type: effect_grant`; its ordering key needs the GRANT's version, which is M3's,
+        so PL-11d performs its durable write and does NOT emit rather than guessing a version that
+        would misorder a strict stream permanently and silently.
+      environment_limitations_disclosed: >-
+        ### THE FULL-GREEN SUITE AND THE CLEAN-CLONE GATE WERE NOT REPRODUCED IN THE BUILDING
+        SESSION'S SANDBOX, AND THAT IS STATED RATHER THAN PAPERED OVER. `socket.bind` is refused by
+        the sandbox, so 19 P4-era HTTP callback tests in `test_action_callback.py` plus
+        `test_p4_deployed_governed_route.py::test_run_callback_server_accepts_and_holds_the_deployed_seams`
+        fail with `PermissionError` — the identical 20 nodes, and the identical cause, that the
+        P6-CP-1 independent review disclosed. They are outside this candidate's blast radius: none
+        imports `pipeline_instance`. The clean-clone gate fails at `install declared deps only` on a
+        TLS certificate error reaching pypi.org, not on anything in the tree. Measured result:
+        2988 passed · 20 failed (all `socket.bind`) · 3 skipped (the one canonical skip plus two
+        `test_status_reality` nodes that skip on a dirty tree and resolve once committed).
+        ### THE FINALIZER WAS THEREFORE NOT RUN, AND NO RECEIPT WAS FORGED. It is not this session's
+        to run in any case: this is a CONTENT candidate that owes its own review and adjudication
+        first.
+      product_driver_result: >-
+        ACCEPT — 70 behaviours as specified, 0 wrong, and PROVEN ABLE TO FAIL: three mutants (FAILED
+        without a proof, the reservation losing its UNIQUE, a model driving the machine) each drove
+        the driver to a non-zero exit, and the tree was restored byte-for-byte. The driver OPERATED
+        the machine through a brokerage narrative — load 4471 delivered and billable, the billing
+        sweep proposing it twice and again at a different price, the rate moving after the human
+        approved it, ops engaging the brake between authorization and execution, the released brake
+        NOT resurrecting the dead authorization, the voided attempt NOT freeing the effect until the
+        grant is revoked (the M3 seam, named), and a second load whose write times out so that
+        nobody can say whether the invoice went out. ### THAT IS AN INDEPENDENT JUDGEMENT OF
+        OBSERVED PRODUCT BEHAVIOUR AND IS NOT THE TARGETED INDEPENDENT ENGINEERING REVIEW.
+        ### RE-RUN ON THE REPLACEMENT CANDIDATE: the canonical scenario probe is unchanged and still
+        reports **70 behaviours as specified, 0 wrong**, so the remediation broke none of the
+        narrative the first candidate earned.
+      product_driver_bypass_scenes: >-
+        ### THE HOSTILE SCENES THE REVIEW REQUIRED, RUN AGAINST THE REPLACEMENT CANDIDATE:
+        **17 behaviours as specified, 0 wrong**, and **proven able to fail** — three mutants (the
+        kernel refusal removed, the §15 record degraded, a real effect-capable adapter reached)
+        each drove the probe to a non-zero exit, with byte-for-byte restoration and the probe green
+        again afterwards. The scenes: a contract-valid canonical `GrantClaimed` on the bus trying to
+        record that Neyma claimed the authority to bill a customer when nothing claimed it; the
+        redelivery that follows; a `CheckpointPassed` trying to mint a witness and a grant outside
+        the kernel; the poison-loop check on the inbox receipt; the WHOLE derived kernel-owned
+        population swept rather than the two rows that were found; the real CAS path still claiming
+        and the ledger still agreeing; and the dark surface with its positive control.
+        ### DISCLOSED SCOPE LIMIT, NOT PAPERED OVER. These scenes could not be appended to
+        `../neyma-product-driver/scenarios/p6_pipeline_instance_probe.py` where they belong: the
+        driver repository is outside this session's sandbox write boundary. They were written as an
+        extension that IMPORTS that probe as a library — reusing its world, clock, scoring and
+        canonical-envelope helpers rather than a second set — and run from outside the product, for
+        the reason the driver's own header gives: a demonstration script committed into Neyma would
+        be the first production caller of a capability that ships dark. Merging them into the driver
+        repository is a one-file act for a session with write access there.
+      environment_limitations_disclosed_on_the_replacement: >-
+        ### THE SAME 20 ENVIRONMENTAL FAILURES, INDEPENDENTLY REPRODUCED AND UNCHANGED BY THIS
+        REMEDIATION. `socket.bind` is refused by this sandbox, so 19 P4-era HTTP callback tests plus
+        one deployed-route test fail with `PermissionError`; none imports `pipeline_instance`, and
+        not one of them was weakened, skipped, rewritten or reported as passing. The clean-clone
+        gate fails at dependency installation on TLS interception reaching pypi.org, not on anything
+        in the tree. ### THE FINALIZER WAS NOT RUN AND NO RECEIPT WAS FORGED — the final landing
+        still owes a reproduction of the canonical suite and the clean-clone gate from a capable
+        host shell.
+      implementer_evidence: docs/implementation/p6-cp2-pipeline-instance-implementation-record.md
+      criteria_scored: []
     landed_checkpoints:
       - id: P6-CP-1
         name: The Work Item, and ownership as a recorded authority rather than a string

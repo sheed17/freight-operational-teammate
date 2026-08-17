@@ -98,7 +98,7 @@ suite_skipped: 1
 
 | Quantity | Count |
 |---|---|
-| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 + 4 + 2 = 20)* | |
+| **Canonical table partition** *(exact, disjoint, guarded — 7 + 1 + 3 + 2 + 1 + 4 + 2 + 1 = 21)* | |
 | — Phase-2 **migrated** tenant-owned tables | **7** — `workflow_runs`, `audit_events`, `security_events`, `operation_action_claims`, `delivery_action_claims`, `effect_grants`, `operation_token_amounts` |
 | — **Already tenant-first before P2** (the eighth tenant-first table, migrated by nobody) | **1** — `autonomous_run_counters` |
 | — Tenant-**exempt** bookkeeping tables | **3** — `schema_migrations`, `migration_quarantine`, `owner_assertions` |
@@ -106,7 +106,8 @@ suite_skipped: 1
 | — **Phase-3** tenant-exempt table | **1** — `platform_brake` (the ONE global admission brake, SD-12 — by definition nobody's tenant data) |
 | — **Phase-5** tenant-owned tables *(the durable event transport, U5.7+U5.8)* | **4** — `event_outbox` (envelope columns immutable by trigger), `event_inbox` (fully append-only), `inbox_aggregate_cursor`, `pending_references`. ### **P5 adds NO tenant-exempt table** — tenant is the FIRST partition dimension of every store, stream and inbox [C-1], so "whose event is this" has no honest answer other than a tenant |
 | — **Phase-6** tenant-owned tables *(the entity layer, P6-U1)* | **2** — `tenant_humans` (the recorded, attributed human authority; identity and recording act immutable by trigger, never deleted — a human is OFFBOARDED), `work_items` (owner is a FOREIGN KEY into it, required ACTIVE at assignment; terminal states final by trigger; version advances by exactly one). ### **P6 adds NO tenant-exempt table** — a tenant-exempt roster would be an authority nobody scoped, and a tenant-exempt Work Item an obligation nobody owes |
-| — Canonical tables **total** | **20** — exactly the union of the seven sets above |
+| — **Phase-6** tenant-owned table *(the attempt layer, P6-CP-2)* | **1** — `pipeline_instances` (one durable ATTEMPT at one effect; the **Layer-1 reservation** `UNIQUE(tenant, commit_key) WHERE state NOT IN (CLOSED,REJECTED,VOIDED,FAILED)`; terminal states final by trigger with **no reopen door at all**; `GRANTED` and everything downstream unreachable without BOTH a real `checkpoint_witnesses` row and a real `effect_grants` row; `FAILED` unreachable without affirmative proof). ### **NOT tenant-exempt, and the reservation is why**: without the tenant in that index, one brokerage billing load 4471 would block another brokerage's unrelated load 4471 |
+| — Canonical tables **total** | **21** — exactly the union of the eight sets above |
 | `WorkflowStore` methods, tenant-scoped + readiness-gated | **22 / 22** |
 | `WorkflowStore` construction sites *(the AC-SEC-001 sweep)* | **168** — 166 with an explicit tenant, 2 registered refusal probes |
 | Guard files / guard tests *(discovered by `guard_files()`, never enumerated — the transcribed "25 / 367" figure is retired: no executable source ever computed it. **Method, stated so the figure is reproducible:** files = `len(test_phase2_guard_registry.guard_files())`; tests = the AST count of `def test_*` functions across those files — test FUNCTIONS, not collected nodes, so parametrization does not inflate it)* | **42 / 631** *(was 38 / 578, then 41 / 624 after the P3 findings remediation added three guard files — ledger compatibility, step order, observability — and 46 test functions; the N-1 receipt-consistency correction then added one guard file — the BUILD-STATUS receipt-consistency guard — and 7 test functions)* |
@@ -752,13 +753,132 @@ transitions are P6's. They are now built on a transport that has been certified.
 > nothing else. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a session must never roll
 > into the next unit merely because the current one finished — **the landing session did not begin
 > M2, and did not action any nonblocking residual.**
-> ### **The next legal act is a FRESH BUILDER session implementing `M2` — the Pipeline Instance, the
+> ### **The next legal act was a FRESH BUILDER session implementing `M2` — the Pipeline Instance, the
 > durable execution of a workflow for a Work Item and the reservation that makes it exclusive**
 > (25 of the 134 transitions). It follows the same route M1 took: build a candidate, then a **fresh
 > targeted independent review** by a session that neither implemented nor remediated it, then a
 > **separate targeted adjudication** by a third, then **exactly one finalizer** — the sequence the P4
 > acceptance closure (`42ea24c → c30a43b → d3cf1de → 06ebfdb`), the R-07 closure
-> (`a31a94a → c26aeae → 035cb55 → 6e8127d`) and now `P6-CP-1` each executed.
+> (`a31a94a → c26aeae → 035cb55 → 6e8127d`) and `P6-CP-1`
+> (`ca8c070 → 64f6f6c → da84806 → cc986dd`) each executed.
+
+> ### **THAT BUILDER SESSION HAS RUN, ITS CANDIDATE `3d4046a` WAS INDEPENDENTLY **REJECTED**, AND
+> THIS TREE CARRIES THE REMEDIATED REPLACEMENT.**
+> ### **THE REJECTED CANDIDATE IS REPLACED, NOT STACKED ON.** `3d4046a` was an unfinalized content
+> commit and the two-commit convention permits exactly ONE — `test_status_reality.repo_state()`
+> calls two *"not the producing state … which the convention forbids"* — while the finalizer that
+> would have closed it is not a builder's to run and would refuse in this sandbox anyway. So the
+> remediation was collapsed onto `cc986dd` as a **single replacement content commit**, returning the
+> repository to the legal **PRODUCING** state with a clean working tree. `3d4046a` is preserved
+> byte-exactly at **`refs/preserve/p6-cp2-rejected-candidate-3d4046a`**, so the review's subject
+> stays resolvable; the replacement's tree is byte-identical to the pre-collapse one, and only the
+> topology changed.
+> ### **A FRESH TARGETED INDEPENDENT REVIEW RETURNED `REJECT — M2 NOT READY FOR ADJUDICATION`** on
+> two blocking defect classes. This is the third time a candidate in this repository has failed its
+> first independent review — P4's `95cf5af7` and `P6-CP-1`'s predecessor were the others — and each
+> time it was the discipline working rather than an exception to it.
+> **F-01 — `CLAIMED` WAS REACHABLE WITHOUT THE CAS.** The reviewer consumed a **contract-valid
+> canonical `GrantClaimed`** through the public API and moved an attempt `GRANTED → CLAIMED` with no
+> kernel, no grant handle, no CAS, `claimed_at` still NULL and **the grant ledger still reading
+> `GRANTED`** — the attempt claiming an authority the ledger says nobody claimed, which is one
+> authorization that could be spent twice. Root cause: `apply()` routed the consequential rows to
+> P3's kernel; `consume()` routed canonical events straight into `_apply_locked`, where
+> `_guard_problem` had **no branch at all** for PL-8/PL-8f/PL-9 — a row whose real precondition is
+> the kernel's own atomic write, satisfied by the *absence* of a guard. The same root cause let a
+> consumed `CHECKPOINT_RUN` select PL-8f by §16 precedence and raise **inside the inbox
+> transaction**, rolling the receipt back and making the event redeliverable forever.
+> **F-02 — THE HEADLINE "SHIPS DARK" GUARD WAS FALSE-GREEN TWICE OVER.** It hand-enumerated nine
+> adapter names — three of which are not modules of this repository, while `discovered_write`,
+> `browser_agent` and `browser_tms_adapter` were all missing — and its own walker read **two of
+> Python's six import spellings**, missing `from freight_recon.x import y` (the dominant spelling
+> here) and `from . import x` (in **live use** at `governed_write_route.py` and
+> `action_callback.py`). A leak through either was invisible.
+> ### **BOTH ARE NOW CLOSED, AND CLOSED BY DERIVATION RATHER THAN BY A LIST.** §7's *"consequential
+> transitions = PL-8 and PL-9 only"* is DATA on the transition row; the kernel-owned population is
+> those seeds **plus every row sharing a (from-state, trigger) pair with one**, which is what puts
+> PL-8f in without anybody naming it; `_guard_problem` refuses that whole population before any row
+> branch, so the ordinary path — **the only path `consume()` has** — can never satisfy a kernel-owned
+> row at any set of facts; the refusal is classified as **§15/GR-1 illegality**, so
+> `IllegalTransitionAttempted` reaches the audit backbone AND `security_events` inside the inbox's
+> own commit and the redelivery is a `DUPLICATE_NOOP` rather than a poison loop; and `apply()`'s
+> kernel dispatch is derived from the **same** declaration, so a consequential row with no executor
+> **fails closed** instead of falling through. For F-02, the transitive closure moved into
+> [`import_probe.py`](../../eval/phase0/import_probe.py) — the repository's own, already
+> mutation-proven, import authority — recognising every legal spelling; and the M2 guard now derives
+> **all three** inputs: roots from `IMPLEMENTATION-SURFACE.yaml`, the population from
+> `EFFECT_CAPABLE_ADAPTERS`, reachability from that closure, with a denominator and a **live positive
+> control** (`effect_boundary` must reach adapters, or the walker is broken).
+> ### **P3's KERNEL IS UNTOUCHED — no CAS predicate moved, no checkpoint step changed** — and the
+> reviewer's held surfaces (reservation, retries, `NEEDS_VERIFICATION`, brake semantics, the model
+> prohibition, the checkpoint extraction, the database invariants, tenant behaviour, `AC-MACH-000`)
+> were not redesigned. `P6-D9`/`P6-D11`/`P6-D13` were **independently confirmed real and
+> nonblocking** and are preserved at their current hard boundaries; **none was resolved by
+> invention**, and **`P6-D11` must still be resolved before an actual F2 consumer arrives in M3.**
+> **Evidence:** M2 battery **158/158** (+19 nodes, manifest 3011 → **3030**, zero removed); M1 · P5
+> transport · P3 CAS · P3 matrix · P4 import gate · P0 adapter imports **528/528**; mutation battery
+> **55/55 caught** (was 40/40) with byte-for-byte restoration; Product Driver **70/70** unchanged
+> plus **17/17** new bypass scenes, proven able to fail under three mutants.
+> ### **IT IS A CANDIDATE, NOT A LANDING.** `test_status_reality.py` requires every landed
+> checkpoint to cite BOTH on-disk implementer evidence AND an on-disk INDEPENDENT REVIEW REPORT; no
+> such report exists for `P6-CP-2`, and the session that built it may not write one (CLAUDE.md §11).
+> So `execution_state` and `checkpoint_state` are **unchanged**, `landed_checkpoints` still names
+> exactly ONE entry, and the candidate is recorded in
+> [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) under `candidate_awaiting_review`.
+> This is the precedent M1 set — candidate first, landed when reviewed.
+>
+> **What it is:** 25 of the 134 transitions, the sixteen states of registry §4, one new tenant-first
+> table (`pipeline_instances`, canonical total 20 → **21**), and the two co-commits that make an
+> attempt safe. **One attempt at a time, one effect ever:** PL-1 takes the Layer-1 reservation
+> `UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal)`, so a second proposal for one logical
+> effect is ABSORBED (PL-1b) and a broker receives one invoice rather than two — and the predicate of
+> that index IS §20's retry rule, because `NEEDS_VERIFICATION` is **non-terminal** and therefore
+> keeps holding the key. **Never both, never neither:** PL-8 and PL-9 call P3's kernel through
+> ADDITIVE locked entry points, so the witness insert, the grant mint, the claim CAS and the
+> pipeline's own writes share ONE transaction. `GRANTED` is unreachable without a real witness AND a
+> real grant; `FAILED` is unreachable without affirmative proof; no timer moves
+> `NEEDS_VERIFICATION`. Evidence:
+> [`p6-cp2-pipeline-instance-implementation-record.md`](p6-cp2-pipeline-instance-implementation-record.md).
+> ### **M2 SHIPS DARK.** Zero production importers, an import closure that reaches no effect-capable
+> module, an EMPTY production `GateRegistry`, and R-07 still **CONTAINED**.
+>
+> ### **THREE CANONICAL SEAMS IT FOUND AND REFUSED TO IMPROVISE ACROSS — a reviewer should attack
+> these first.** `P6-D9`: §14's PL-8f Event cell names `PipelineVoided`, which `events/registry.md`
+> §3 attributes to PL-7v/PL-9v only, so PL-8f emits `CheckpointFailed` alone. `P6-D11`: eight
+> `CONSUMES` rows advance the attempt's version and emit nothing on `pipeline_instance`, so the F2
+> stream has **measured** gaps — and F2 is a STRICT-ORDER family. `P6-D13`: `VerificationDeferred` is
+> attributed to PL-11d while declaring `aggregate_type: effect_grant`, whose version is M3's, so
+> PL-11d writes and does not emit rather than guessing a version that would misorder a strict stream
+> silently and permanently.
+>
+> ### **AND ONE DEFECT IT FOUND IN ALREADY-CERTIFIED CODE, CORRECTED TOWARD THE SPECIFICATION.**
+> `IllegalTransitionAttempted` was **uninsertable** on a strict-order aggregate: GR-1/[C-4] require
+> the refusal to be recorded, it rides at the attempt's unchanged version, and on `pipeline_instance`
+> that version is already owned by the transition that reached it — so the refusal worked and the
+> **evidence of it could not be written**, on the surface an operator is paged from.
+> `events/registry.md` §8 classifies ordering **by family** and names F14 Security ORDER-TOLERANT;
+> P5's trigger keyed on `aggregate_type`, a faithful proxy only while every event on a strict
+> aggregate came from a strict family. The trigger now also requires the event to be in a strict
+> family, with the name set **derived from the canonical contract data rather than restated**, and
+> P5's readiness oracle now refuses a database carrying a stale trigger TEXT. Mutants prove both
+> directions.
+>
+> ### **WHAT IT DOES NOT DO.** It scores **no** P6 acceptance criterion (`criteria_scored: []`), it
+> does not make P6 COMPLETE — **M3–M13 and 95 of the 134 transitions are unbuilt** — it enables no
+> external effect, it registers no production policy gate, and it grants no autonomy.
+> ### **THE FINALIZER WAS NOT RUN AND NO RECEIPT WAS FORGED.** This session's sandbox refuses
+> `socket.bind`, so the 19 P4-era HTTP callback tests and one deployed-route test fail with
+> `PermissionError` — the identical 20 nodes the P6-CP-1 independent review disclosed, none of which
+> imports `pipeline_instance` — and the clean-clone gate fails reaching `pypi.org` over TLS.
+> Measured **on the committed replacement tree**: **3009 passed · 20 failed · 1 skipped**,
+> reconciling exactly with the regenerated node manifest (3009 + 20 + 1 = **3030**). The finalizer
+> executes both the suite and the gate itself and would refuse both, correctly; it is not this
+> session's to run in any case.
+> ### **THE 20 FAILURES ARE THE SAME 20, WITH THE SAME CAUSE, AND NOT ONE WAS TOUCHED.** They are
+> 19 legacy callback-server tests and one deployed-route test, all `socket.bind` `PermissionError`
+> in this sandbox; **none imports `pipeline_instance`**; none was weakened, skipped, rewritten, or
+> reported as passing. The earlier candidate recorded 2990 · 20 · 1 against a 3011-node manifest;
+> the delta is exactly the **+19 regression nodes** the remediation added, and the manifest delta is
+> **purely additive — zero nodes removed**.
 > ### **P6 does NOT become COMPLETE by accumulating checkpoints.** All 13 machines and 134
 > transitions must land, and only then may a **separate final adjudication** — by a session in none
 > of the build lineages — score the fourteen weighted criteria.

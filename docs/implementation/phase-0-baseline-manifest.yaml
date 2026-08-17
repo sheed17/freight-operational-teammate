@@ -205,6 +205,19 @@ expected_noncanonical_schema:
     # tenant in the reference itself so a cross-tenant owner cannot be spelled.
     - tenant_humans
     - work_items
+    # Phase 6 (the attempt layer, P6-CP-2) — born tenant-first, and NOT exempt.
+    # REG-1 adjudication, stated rather than assumed:
+    #   `pipeline_instances` holds one durable ATTEMPT to produce one external effect for one
+    #   brokerage, against that brokerage's own TMS, under that brokerage's own approvals and
+    #   brake. "Whose attempt is this" has no honest answer other than a tenant, and the Layer-1
+    #   reservation it carries — UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal) — would
+    #   be a CROSS-BROKERAGE lock without the tenant in it: one brokerage billing load 4471 would
+    #   block another brokerage's unrelated load 4471.
+    # Tenant is the first primary-key column, every index is tenant-first, the readiness oracle
+    # refuses the table otherwise, and all five foreign keys (work_items, tenant_humans,
+    # checkpoint_witnesses, effect_grants, and its own lineage) carry the tenant in the reference
+    # itself, so a cross-tenant obligation, owner, witness or grant cannot be spelled.
+    - pipeline_instances
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

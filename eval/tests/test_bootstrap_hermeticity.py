@@ -3480,9 +3480,11 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     where [C-1] was a comment.
 
     ### P6 CONTRIBUTES NO EXEMPT CLASS EITHER, AND ITS EMPTINESS IS ASSERTED FOR A SHARPER REASON.
-    The two tables it adds are the recorded human authority and the obligation that points at it. A
-    tenant-exempt roster would be an authority nobody scoped - a dispatcher at one brokerage is
-    nobody at another - and a tenant-exempt Work Item would be an obligation nobody owes.
+    The tables it adds are the recorded human authority, the obligation that points at it, and the
+    ATTEMPT that discharges the obligation. A tenant-exempt roster would be an authority nobody
+    scoped - a dispatcher at one brokerage is nobody at another - a tenant-exempt Work Item would
+    be an obligation nobody owes, and a tenant-exempt Pipeline Instance would be an attempt made on
+    nobody's behalf against nobody's TMS.
     """
     from freight_recon.migrations.phase2_tenant_first import (
         CANONICAL_TENANT_TABLES, TENANT_EXEMPT_TABLES,
@@ -3490,6 +3492,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase3_checkpoint import P3_EXEMPT_TABLES, P3_TENANT_TABLES
     from freight_recon.migrations.phase5_event_transport import (
         P5_EXEMPT_TABLES, P5_TENANT_TABLES,
+    )
+    from freight_recon.migrations.phase6_pipeline_instances import (
+        P6PI_EXEMPT_TABLES, P6PI_TENANT_TABLES,
     )
     from freight_recon.migrations.phase6_work_items import (
         P6_EXEMPT_TABLES, P6_TENANT_TABLES,
@@ -3504,6 +3509,10 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"P6 declared a tenant-exempt table {sorted(P6_EXEMPT_TABLES)}: a Work Item nobody owes and "
         f"an authority nobody scoped. Defend it here first."
     )
+    assert set(P6PI_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt attempt table {sorted(P6PI_EXEMPT_TABLES)}: an attempt made "
+        f"on nobody's behalf, against nobody's TMS. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3512,6 +3521,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p3_exempt": set(P3_EXEMPT_TABLES),
         "p5_tenant": set(P5_TENANT_TABLES),
         "p6_tenant": set(P6_TENANT_TABLES),
+        "p6_pipeline_tenant": set(P6PI_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3526,7 +3536,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     shape = {name: len(members) for name, members in classes.items()}
     assert shape == {"migrated": 7, "already_tenant_first": 1, "exempt": 3,
                      "p3_tenant": 2, "p3_exempt": 1,
-                     "p5_tenant": 4, "p6_tenant": 2}, f"the partition shape drifted: {shape}"
+                     "p5_tenant": 4, "p6_tenant": 2,
+                     "p6_pipeline_tenant": 1}, f"the partition shape drifted: {shape}"
 
     text = read(IMPL / "CURRENT.md")
     assert "autonomous_run_counters" in text, (

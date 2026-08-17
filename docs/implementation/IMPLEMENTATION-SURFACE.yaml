@@ -198,10 +198,51 @@ concepts:
       recorded_by_kind is CHECK-constrained to 'human', so admitting a human is itself a human act.
 
   - name: Pipeline Instance
-    status: SPECIFICATION_ONLY
+    status: IMPLEMENTED
     specification: docs/specifications/entities/02-pipeline-instance.md
-    absent_symbols: [PipelineInstance, pipeline_instances]
+    evidence:
+      - path: src/freight_recon/pipeline_instance.py
+        symbol: PipelineMachine
+      - path: src/freight_recon/pipeline_instance.py
+        symbol: TRANSITIONS
+      - path: src/freight_recon/migrations/phase6_pipeline_instances.py
+        symbol: P6PI_TARGET_SCHEMA
+      - path: src/freight_recon/pipeline_instance.py
+        symbol: PipelineState
     owning_unit: P6
+    note: >-
+      P6-CP-2 delivered machine M2 in full: the twenty-five transitions of
+      state-machines/02-pipeline-instance.machine.md sec 14 as declarative data, a structural
+      bijection with the specification asserted by EXACT SET EQUALITY of transition identifiers, the
+      exhaustive 377-pair illegal sweep over all sixteen states with IllegalTransitionAttempted
+      recorded to the audit backbone AND security_events, OCC on version, and the two co-commits
+      that make the machine safe. Ships DARK - a guard asserts the package and scripts/ contain zero
+      importers, and M2's transitive import closure reaches no effect-capable module.
+      ### THAT DARK-SURFACE GUARD WAS REBUILT AFTER AN INDEPENDENT REVIEW FOUND IT FALSE-GREEN. It
+      hand-enumerated adapter names (three of which were not modules of this repository, while three
+      real effect-capable adapters were missing) and its own walker read two of Python's six import
+      spellings. It now DERIVES all three of its inputs: the roots from THIS record's evidence paths,
+      the effect-capable population from import_probe.EFFECT_CAPABLE_ADAPTERS, and reachability from
+      import_probe.package_import_closure - which resolves every legal spelling with correct package
+      context. So the paths recorded below are load-bearing: a module added to M2's surface here is
+      walked by the guard, and one removed narrows it. Measured closure: 24 modules, zero
+      effect-capable.
+      ### ONE ATTEMPT AT A TIME, ONE EFFECT EVER. PL-1 acquires the Layer-1 reservation
+      UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal), so a second proposal for the same
+      logical effect is ABSORBED onto the running attempt (PL-1b) and a broker receives one invoice
+      rather than two. The predicate of that index IS sec 20's retry rule: the four terminal states
+      free the key, and NEEDS_VERIFICATION is non-terminal so it HOLDS the key - "we cannot say
+      whether the effect happened, therefore nobody may try again", enforced by a database index
+      rather than by a code path somebody has to remember.
+      ### NEVER BOTH, NEVER NEITHER. PL-8 calls P3's seven-step checkpoint through its locked entry
+      point so the witness insert, the grant mint, the pipeline's own state change and CheckpointPassed
+      share ONE transaction; PL-9 does the same with the claim CAS. A brake engaged between them
+      matches zero rows and the adapter does nothing. Neither is re-implemented here - a second
+      checkpoint or a second CAS would be the dual effect-authority system CLAUDE.md rule 17 forbids.
+      ### GRANTED IS UNREACHABLE WITHOUT A WITNESS, structurally: two tenant-consistent foreign keys
+      into checkpoint_witnesses and effect_grants plus a trigger that refuses the state set. FAILED
+      is unreachable without affirmative failure_proof at the guard AND at the database (GR-5), and
+      no timer may move NEEDS_VERIFICATION (GR-6, AC-MACH-215x).
 
   - name: Expectation
     status: SPECIFICATION_ONLY

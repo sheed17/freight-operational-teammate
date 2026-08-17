@@ -571,6 +571,85 @@ class CheckpointKernel:
 # ------------------------------------------------------------------ the checkpoint itself
 
 
+def _tenant_mismatch_refusal(
+    kernel: CheckpointKernel, request: CheckpointRequest,
+) -> CheckpointRefused | None:
+    """[C-1] at the kernel's front door. One text, both entry points."""
+    if request.effect.tenant.strip().lower() == kernel.store.tenant.strip().lower():
+        return None
+    return CheckpointRefused(
+        step=1, step_name=CHECKPOINT_STEPS[0], reason="TENANT_MISMATCH",
+        detail=f"the effect names tenant {request.effect.tenant!r}; this kernel is bound to "
+               f"{kernel.store.tenant!r}. A checkpoint never crosses a tenant.",
+    )
+
+
+def run_checkpoint_locked(
+    kernel: CheckpointKernel,
+    request: CheckpointRequest,
+    inputs: CheckpointInputs,
+    *,
+    now: datetime | None = None,
+) -> CheckpointAuthorized | CheckpointRefused:
+    """The seven checks, the witness insert and the grant mint — INSIDE THE CALLER'S TRANSACTION.
+
+    ### WHY THIS ENTRY POINT EXISTS, AND WHAT IT DOES NOT CHANGE.
+    `02-pipeline-instance.machine.md` §4 requires that PL-8 co-commit *"the Checkpoint Witness
+    insert + the grant mint (M3) in ONE transaction"* **with the pipeline's own `CHECKPOINT →
+    GRANTED` state change and the `CheckpointPassed` it emits**. `run_checkpoint` owns its
+    transaction, so a caller that also has a row to write in that same commit cannot use it — and
+    the alternative, a machine that re-implements the seven checks, is the second effect-authority
+    system CLAUDE.md rule 17 forbids.
+
+    So this is an EXTRACTION, not a new kernel: `run_checkpoint` is now a thin transaction wrapper
+    over this exact body, and there is one text of the seven steps, one witness insert and one mint.
+    Nothing here is weaker than what `run_checkpoint` did — the step order, the short-circuit, the
+    SD-3 pin set, the `CheckpointPassed` mint and the fail-closed direction are `_seven_steps_locked`
+    and are untouched.
+
+    ### THE ONE THING THIS OWES ITS CALLER: a refusal returned from here is NOT yet recorded.
+    `_record_refusal` writes a `security_events` row, and that row must survive the caller's
+    rollback — so it cannot be written inside the transaction that is about to be abandoned. The
+    caller rolls back FIRST and then calls `record_checkpoint_refusal`. That is the same ordering
+    `run_checkpoint` has always used; it is now the caller's to perform because the transaction is.
+
+    Requires a transaction to be open; never opens, commits or rolls back one.
+    """
+    if not isinstance(request, CheckpointRequest) or not isinstance(inputs, CheckpointInputs):
+        raise CheckpointError("run_checkpoint takes a CheckpointRequest and CheckpointInputs")
+    mismatch = _tenant_mismatch_refusal(kernel, request)
+    if mismatch is not None:
+        return mismatch
+    when = now or kernel.now()
+    try:
+        outcome = _seven_steps_locked(
+            kernel, request, inputs, request.effect.key(), when)
+    except sqlite3.IntegrityError as exc:
+        # The Layer-2 live-hold index refused the mint: another attempt already holds this logical
+        # effect. SQLite's default ABORT backs out only the offending STATEMENT and leaves the
+        # transaction active, so returning here is safe — the caller still decides the commit.
+        return CheckpointRefused(
+            step=0, step_name="mint", reason="COMMIT_KEY_HELD",
+            detail=f"the ledger already holds a live-or-committed row for this logical effect: "
+                   f"{exc}. Exactly one competitor wins (AC-SAFE-014); this attempt is not it.",
+        )
+    if isinstance(outcome, CheckpointRefused):
+        return outcome
+    witness, handle = outcome
+    return CheckpointAuthorized(witness=witness, handle=handle)
+
+
+def record_checkpoint_refusal(
+    kernel: CheckpointKernel, request: CheckpointRequest, refused: CheckpointRefused,
+) -> None:
+    """Record a refusal returned by `run_checkpoint_locked`, AFTER the caller has rolled back.
+
+    Public because the locked entry point makes the caller responsible for the ordering that
+    `run_checkpoint` performs internally. Same function, same payload, same SD-7 named step.
+    """
+    _record_refusal(kernel, request, refused)
+
+
 def run_checkpoint(
     kernel: CheckpointKernel,
     request: CheckpointRequest,
@@ -581,47 +660,38 @@ def run_checkpoint(
     Refusal path: the transaction rolls back (nothing to persist), the refusal is recorded as a
     security event AFTER rollback (so the record survives), the observer is notified, and the
     caller receives outcome (b) with the first failing step named.
+
+    The body is `run_checkpoint_locked`; this owns the transaction around it. A caller that needs
+    its OWN write in the checkpoint's commit — machine M2's PL-8 — uses the locked form directly.
     """
     if not isinstance(request, CheckpointRequest) or not isinstance(inputs, CheckpointInputs):
         raise CheckpointError("run_checkpoint takes a CheckpointRequest and CheckpointInputs")
-    store = kernel.store
-    if request.effect.tenant.strip().lower() != store.tenant.strip().lower():
-        return _refuse(
-            kernel, request, step=1, reason="TENANT_MISMATCH",
-            detail=f"the effect names tenant {request.effect.tenant!r}; this kernel is bound to "
-                   f"{store.tenant!r}. A checkpoint never crosses a tenant.",
-        )
-    commit_key_value = request.effect.key()
-    now = kernel.now()
+    # The tenant check stays OUTSIDE the transaction, exactly where it has always been: a
+    # cross-tenant request must not take the write lock even briefly.
+    mismatch = _tenant_mismatch_refusal(kernel, request)
+    if mismatch is not None:
+        _record_refusal(kernel, request, mismatch)
+        return mismatch
 
-    conn = store.conn
+    conn = kernel.store.conn
     conn.execute("BEGIN IMMEDIATE")
     try:
-        outcome = _seven_steps_locked(kernel, request, inputs, commit_key_value, now)
+        outcome = run_checkpoint_locked(kernel, request, inputs)
         if isinstance(outcome, CheckpointRefused):
             conn.rollback()
             _record_refusal(kernel, request, outcome)
             return outcome
-        witness, handle = outcome
         conn.commit()
-    except sqlite3.IntegrityError as exc:
-        conn.rollback()
-        refused = CheckpointRefused(
-            step=0, step_name="mint", reason="COMMIT_KEY_HELD",
-            detail=f"the ledger already holds a live-or-committed row for this logical effect: "
-                   f"{exc}. Exactly one competitor wins (AC-SAFE-014); this attempt is not it.",
-        )
-        _record_refusal(kernel, request, refused)
-        return refused
     except BaseException:
         conn.rollback()
         raise
 
+    witness = outcome.witness
     kernel.observe({
         "kind": "CheckpointPassed", "tenant": witness.tenant, "checkpoint_id": witness.checkpoint_id,
         "grant_id": witness.grant_id, "commit_key": witness.commit_key,
     })
-    return CheckpointAuthorized(witness=witness, handle=handle)
+    return outcome
 
 
 # The pinned name for the constitutional mechanism: ADR-004 §2.4 calls it the seven-step atomic
@@ -1183,63 +1253,170 @@ def claim_grant_cas(
     checked structurally, by membership, in `test_the_cas_where_clause_still_carries_all_five_
     predicates` — the only way the removal of a masked predicate is visible at all.
     """
+    pending = claim_grant_cas_locked_outside_a_transaction(kernel, handle, params, now=now)
+    return flush_claim_records(kernel, pending)
+
+
+@dataclass(frozen=True, slots=True)
+class PendingClaimRecords:
+    """A locked claim's decision, plus the records it owes ONCE the caller has settled the commit.
+
+    ### THE RECORDS CANNOT BE WRITTEN INSIDE THE TRANSACTION THAT IS ABOUT TO BE ABANDONED.
+    Every refusal path of the claim CAS rolls the transaction back and THEN writes its
+    `security_events` row, in that order, because a Sev-0 written inside the rolled-back transaction
+    vanishes with it — the exact defect M1's `IllegalTransitionAttempted` path was corrected for.
+    When the transaction belongs to the caller, so does that ordering, so the decision and its
+    pending records are returned together and `flush_claim_records` is called afterwards.
+
+    `security` is written before `observations`, preserving the interleaving the transactional form
+    has always had (`StaleWitnessUsed` is recorded, then `ClaimRefused` is observed).
+    """
+
+    outcome: ClaimOutcome
+    security: tuple[tuple[str, dict[str, Any]], ...] = ()
+    observations: tuple[dict[str, Any], ...] = ()
+
+
+def flush_claim_records(kernel: CheckpointKernel, pending: PendingClaimRecords) -> ClaimOutcome:
+    """Write a locked claim's owed records and hand back its outcome. Call AFTER commit/rollback."""
+    for event_type, payload in pending.security:
+        _security(kernel, event_type, payload)
+    for observation in pending.observations:
+        kernel.observe(observation)
+    return pending.outcome
+
+
+def claim_grant_cas_locked(
+    kernel: CheckpointKernel,
+    handle: EffectGrantHandle,
+    params: ClaimParams,
+    *,
+    now: datetime | None = None,
+) -> PendingClaimRecords:
+    """EF-2's CAS, INSIDE THE CALLER'S OPEN TRANSACTION. Neither commits nor rolls back.
+
+    ### WHY THIS EXISTS. `02-pipeline-instance.machine.md` §14 PL-9 co-commits *"M3 `CLAIMED` + M4
+    `ApprovalConsumed` + `EffectAttempted`"* with the pipeline's own `GRANTED → CLAIMED`, and §30
+    states the property that co-commit buys: *"a brake engaged between PL-8 and PL-9 makes the CAS
+    match zero rows — the adapter does nothing (**never both, never neither**)."* A machine that
+    claimed the grant in one transaction and moved its own row in another could be interrupted
+    between them, which is precisely "both" or "neither".
+
+    This is an EXTRACTION of the body `claim_grant_cas` already had. **The WHERE clause is
+    untouched and keeps all six predicates** (CLAUDE.md §11 forbids it losing one, and
+    `test_the_cas_where_clause_still_carries_all_five_predicates` checks the set structurally).
+    Every refusal cause, every Sev-0 and every observation is the same; what moved is who owns the
+    transaction and, with it, who writes the records afterwards.
+
+    The caller MUST: commit iff `outcome.claimed`, roll back otherwise, then `flush_claim_records`.
+    """
+    return _claim_locked(kernel, handle, params, now=now, own_transaction=False)
+
+
+def claim_grant_cas_locked_outside_a_transaction(
+    kernel: CheckpointKernel,
+    handle: EffectGrantHandle,
+    params: ClaimParams,
+    *,
+    now: datetime | None = None,
+) -> PendingClaimRecords:
+    """The transactional form's body: opens and settles its own transaction, defers its records."""
+    return _claim_locked(kernel, handle, params, now=now, own_transaction=True)
+
+
+def _claim_locked(
+    kernel: CheckpointKernel,
+    handle: EffectGrantHandle,
+    params: ClaimParams,
+    *,
+    now: datetime | None,
+    own_transaction: bool,
+) -> PendingClaimRecords:
+    """ONE text of the claim decision, whichever side of the transaction boundary the caller is on.
+
+    `own_transaction` decides only who calls BEGIN/COMMIT/ROLLBACK. It decides nothing about the
+    checks, their order, the WHERE clause or the recorded causes — two copies of this body is how
+    one of them quietly stops revalidating the brake.
+    """
     when = (now or kernel.now())
     if when.tzinfo is None:
         raise CheckpointError("claim time must be timezone-aware UTC")
     when = when.astimezone(timezone.utc)
     store = kernel.store
 
+    def settle(commit: bool) -> None:
+        if not own_transaction:
+            return
+        conn.commit() if commit else conn.rollback()
+
     if not hmac.compare_digest(kernel.sign(handle.token), handle.signature):
-        kernel.observe({"kind": "ClaimRefused", "cause": "INVALID_HANDLE_SIGNATURE",
-                        "grant_id": handle.grant_id})
-        return ClaimOutcome(claimed=False, cause="INVALID_HANDLE_SIGNATURE", grant_id=handle.grant_id)
+        return PendingClaimRecords(
+            outcome=ClaimOutcome(
+                claimed=False, cause="INVALID_HANDLE_SIGNATURE", grant_id=handle.grant_id),
+            observations=({"kind": "ClaimRefused", "cause": "INVALID_HANDLE_SIGNATURE",
+                           "grant_id": handle.grant_id},),
+        )
 
     conn = store.conn
-    conn.execute("BEGIN IMMEDIATE")
-    sev0: tuple[str, dict[str, Any]] | None = None
+    if own_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     try:
         row = conn.execute(
             "SELECT * FROM effect_grants WHERE tenant = ? AND grant_id = ?",
             (store.tenant, handle.grant_id),
         ).fetchone()
         if row is None:
-            conn.rollback()
-            _security(kernel, "WellFormedHandleNamesNoRow", {
-                "grant_id": handle.grant_id,
-                "why": "a correctly-signed handle naming no ledger row means someone is minting "
-                       "handles outside the checkpoint",
-            })
-            return ClaimOutcome(claimed=False, cause="NO_SUCH_GRANT", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="NO_SUCH_GRANT", grant_id=handle.grant_id),
+                security=(("WellFormedHandleNamesNoRow", {
+                    "grant_id": handle.grant_id,
+                    "why": "a correctly-signed handle naming no ledger row means someone is minting "
+                           "handles outside the checkpoint",
+                }),),
+            )
         if row["handle_digest"] != hashlib.sha256(handle.token.encode("utf-8")).hexdigest():
-            conn.rollback()
-            _security(kernel, "HandleDigestMismatch", {"grant_id": handle.grant_id})
-            return ClaimOutcome(claimed=False, cause="HANDLE_DIGEST_MISMATCH", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="HANDLE_DIGEST_MISMATCH", grant_id=handle.grant_id),
+                security=(("HandleDigestMismatch", {"grant_id": handle.grant_id}),),
+            )
 
         witness_row = conn.execute(
             "SELECT * FROM checkpoint_witnesses WHERE tenant = ? AND checkpoint_id = ?",
             (store.tenant, row["checkpoint_id"]),
         ).fetchone() if row["checkpoint_id"] else None
         if witness_row is None:
-            conn.rollback()
-            _security(kernel, "GrantWithoutWitness", {
-                "grant_id": handle.grant_id,
-                "why": "a claimable grant must be checkpoint-bound; a grant with no witness is "
-                       "not claimable under the two-key rule",
-            })
-            return ClaimOutcome(claimed=False, cause="NO_WITNESS", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(claimed=False, cause="NO_WITNESS", grant_id=handle.grant_id),
+                security=(("GrantWithoutWitness", {
+                    "grant_id": handle.grant_id,
+                    "why": "a claimable grant must be checkpoint-bound; a grant with no witness is "
+                           "not claimable under the two-key rule",
+                }),),
+            )
         if witness_row["grant_id"] != handle.grant_id:
-            conn.rollback()
-            _security(kernel, "WitnessGrantMismatch", {"grant_id": handle.grant_id})
-            return ClaimOutcome(claimed=False, cause="WITNESS_GRANT_MISMATCH", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="WITNESS_GRANT_MISMATCH", grant_id=handle.grant_id),
+                security=(("WitnessGrantMismatch", {"grant_id": handle.grant_id}),),
+            )
         if _iso(when) >= witness_row["expires_at"]:
-            conn.rollback()
-            _security(kernel, "StaleWitnessUsed", {
-                "grant_id": handle.grant_id, "witness_expired_at": witness_row["expires_at"],
-                "attempted_at": _iso(when),
-            })
-            kernel.observe({"kind": "ClaimRefused", "cause": "STALE_WITNESS",
-                            "grant_id": handle.grant_id})
-            return ClaimOutcome(claimed=False, cause="STALE_WITNESS", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="STALE_WITNESS", grant_id=handle.grant_id),
+                security=(("StaleWitnessUsed", {
+                    "grant_id": handle.grant_id, "witness_expired_at": witness_row["expires_at"],
+                    "attempted_at": _iso(when),
+                }),),
+                observations=({"kind": "ClaimRefused", "cause": "STALE_WITNESS",
+                               "grant_id": handle.grant_id},),
+            )
 
         mismatches = {
             name: (row[column], got)
@@ -1253,21 +1430,28 @@ def claim_grant_cas(
             if row[column] != got
         }
         if mismatches:
-            conn.rollback()
-            _security(kernel, "ConfusedDeputyRefused", {
-                "grant_id": handle.grant_id,
-                "mismatches": {k: {"grant": a, "caller": b} for k, (a, b) in sorted(mismatches.items())},
-                "why": "a grant for one effect was presented alongside parameters for another",
-            })
-            return ClaimOutcome(claimed=False, cause="CONFUSED_DEPUTY", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="CONFUSED_DEPUTY", grant_id=handle.grant_id),
+                security=(("ConfusedDeputyRefused", {
+                    "grant_id": handle.grant_id,
+                    "mismatches": {k: {"grant": a, "caller": b}
+                                   for k, (a, b) in sorted(mismatches.items())},
+                    "why": "a grant for one effect was presented alongside parameters for another",
+                }),),
+            )
 
         try:
             current_brake_token = kernel.brakes.version_token(tenant=store.tenant)
         except BrakeStoreUnreachable:
-            conn.rollback()
-            kernel.observe({"kind": "ClaimRefused", "cause": "BRAKE_UNREADABLE",
-                            "grant_id": handle.grant_id})
-            return ClaimOutcome(claimed=False, cause="BRAKE_UNREADABLE", grant_id=handle.grant_id)
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="BRAKE_UNREADABLE", grant_id=handle.grant_id),
+                observations=({"kind": "ClaimRefused", "cause": "BRAKE_UNREADABLE",
+                               "grant_id": handle.grant_id},),
+            )
         cur = conn.execute(
             """
             UPDATE effect_grants
@@ -1279,11 +1463,13 @@ def claim_grant_cas(
              kernel.gates.policy_version),
         )
         if cur.rowcount == 1:
-            conn.commit()
-            kernel.observe({"kind": "GrantClaimed", "grant_id": handle.grant_id,
-                            "tenant": store.tenant, "transition": GRANTED_TO_CLAIMED})
-            return ClaimOutcome(claimed=True, cause="CLAIMED", grant_id=handle.grant_id,
-                                transition=GRANTED_TO_CLAIMED)
+            settle(True)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(claimed=True, cause="CLAIMED", grant_id=handle.grant_id,
+                                     transition=GRANTED_TO_CLAIMED),
+                observations=({"kind": "GrantClaimed", "grant_id": handle.grant_id,
+                               "tenant": store.tenant, "transition": GRANTED_TO_CLAIMED},),
+            )
         # Zero rows: the adapter does nothing. Name the cause honestly from the row we hold —
         # the write lock means it cannot have changed under us within this transaction.
         cause = "ALREADY_" + row["state"] if row["state"] != "GRANTED" else (
@@ -1291,11 +1477,14 @@ def claim_grant_cas(
             else "BRAKE_CHANGED" if row["brake_version"] != current_brake_token
             else "POLICY_CHANGED" if row["policy_version"] != kernel.gates.policy_version
             else "UNCLAIMABLE")
-        conn.rollback()
-        kernel.observe({"kind": "ClaimRefused", "cause": cause, "grant_id": handle.grant_id})
-        return ClaimOutcome(claimed=False, cause=cause, grant_id=handle.grant_id)
+        settle(False)
+        return PendingClaimRecords(
+            outcome=ClaimOutcome(claimed=False, cause=cause, grant_id=handle.grant_id),
+            observations=({"kind": "ClaimRefused", "cause": cause,
+                           "grant_id": handle.grant_id},),
+        )
     except BaseException:
-        conn.rollback()
+        settle(False)
         raise
 
 
