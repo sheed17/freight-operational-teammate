@@ -19,10 +19,20 @@
 > **non-terminal, still holding the reservation, and moved by no timer** — so *"we cannot say whether
 > the invoice went out"* stays an open obligation with a named human instead of decaying into "it
 > failed" and being billed twice.
-> ### **THIS LANDING IS NOT FINALIZED.** It owes **exactly one canonical finalizer run by a fourth
-> session**, from a host that permits `socket.bind` and reaches pypi.org over untampered TLS. The
-> finalizer re-runs the canonical suite and the clean-clone gate in full; **neither was reproducible
-> in the review or adjudication sandboxes, and neither was papered over.**
+> ### **`P6-CP-2` IS FULLY FINALIZED — AT `c2def38` — AND OWES NO FURTHER FINALIZER.** Its canonical
+> finalizer ran and its receipts bind: `SUITE-RESULT.json` and `GATE-RESULT.json` both name commit
+> `1abcb229` / tree `1f98154d` with `exit_status: 0` and the clean-clone gate `passed: true`, and
+> `BUILD-STATUS.yaml`'s finalizer-maintained `derived:` block is rebound to the same pair. The
+> topology `1aaf943 → b226717 → 1abcb229 → c2def38` mirrors `P6-CP-1`'s `ca8c070 → 64f6f6c →
+> da84806 → cc986dd` exactly.
+> ### **SUPERSEDED WORDING, kept so it is recognisable if it returns (§5 rule 20):** this block read
+> *"**THIS LANDING IS NOT FINALIZED.** It owes **exactly one canonical finalizer run by a fourth
+> session** ..."*. **True when written, false now.** It survived `c2def38` only because a
+> status-metadata commit may edit exactly five status files and not narrative prose — so the
+> finalizer that discharged the obligation could not delete the sentence claiming it. The `P6-D11`
+> independent review raised it as **F-1**; the targeted adjudication made correcting it hard landing
+> condition **A-2**, because a document telling a fresh session to run a finalizer that is not owed
+> is an **active false instruction**, not a cosmetic staleness. Corrected here.
 > ### **`P6-CP-1` REMAINS LANDED** — M1, the Work Item, and with it an accountable human owner as a
 > structural fact rather than a documented rule (candidate `ca8c070`, tree `29ad9c25e`) — accepted by
 > the same three-session route ([review](p6-cp1-independent-rereview-report-ca8c070.md) ·
@@ -34,11 +44,61 @@
 > owes machines **M3–M13** and **95 of the 134 transitions**. **M1 and M2 both ship dark** — M2 has
 > **zero production importers**, and its 24-module import closure reaches **no** effect-capable
 > adapter.
-> ### **M3 MAY NOT BEGIN ON THE STRENGTH OF THIS LANDING.** `P6-D11` is a hard boundary the
-> adjudicator named explicitly: eight of M2's 25 rows are `CONSUMES` and emit nothing on the
-> STRICT-ORDER `pipeline_instance` F2 aggregate, so the stream has **measured** gaps that would
-> **permanently park** the first real consumer — and that consumer is **M3**. It must be resolved
-> before M3, and **M2 landing does not discharge it.**
+> ### **`P6-D11` IS RESOLVED — THE F2 ORDERING CONTRACT IS NOW EXPLICIT AND CANONICAL.** The
+> adjudicator's hard boundary was real and it is closed: `events/registry.md` §8 now states that
+> strict per-aggregate ordering means **ORDER, never CONTIGUITY** — it never could mean contiguity,
+> because `GR-2` is discharged by a **co-commit**, so a transition whose canonical event belongs to
+> another machine's aggregate advances its own version and emits nothing on its own stream. **Nine**
+> of M2's transitions do that (the eight `CONSUMES` rows plus `PL-11d`), not eight as previously
+> recorded. ### **So the successor declares what it follows** — one additive, optional envelope
+> field, `previous_aggregate_version` — **and a consumer blocks iff that predecessor is above its
+> applied high-water mark, never on the mere absence of a version.** A genuinely lost or reordered
+> event **still parks**, with its arrival order, its accountable owner and its M-26 TTL unchanged;
+> only the intentional silence stops blocking, and only because it is now positively declared to be
+> nothing (ER-16's principle one level down). ### **No canonical event was minted, no transition
+> moved, no schema migrated, and every historical event is byte-identical.**
+> Evidence: 22/22 focused hostile cases · **15/15 mutants caught** · Product Driver **16 as
+> specified, 0 wrong** and proven able to fail on 3 mutants
+> ([record](p6-d11-f2-ordering-contract-record.md)).
+> ### **`P6-D11` IS NOW REVIEWED, ADJUDICATED AND LANDED — AND ONE FINALIZER REMAINS.** It is a
+> CONTENT change and owed the same route every unit here owes. **Three of the four steps are
+> DISCHARGED:** a **fresh targeted INDEPENDENT review**, by a session that neither implemented nor
+> remediated it, returned **ACCEPT FOR SEPARATE TARGETED ADJUDICATION** with five findings and **none
+> blocking** ([report](p6-d11-independent-review-report-021a9a2.md)); a **SEPARATE targeted
+> adjudication**, by a third session in neither lineage, returned **ACCEPT — no material correctness
+> defect survives, and no product-code change is owed**
+> ([report](p6-d11-targeted-adjudication-report-021a9a2.md)); and this landing content commit carries
+> both artifacts on disk, byte-identical to their preservation refs.
+> ### **WHAT REMAINS IS EXACTLY ONE CANONICAL FINALIZER RUN — for THIS landing, and it is the ONLY
+> finalizer owed anywhere in P6.** `P6-CP-2`'s was already run at `c2def38`. **`M3` may not begin
+> before it.**
+> ### **THE LANDING ADDED ONE CANONICAL CONTRACT AND CORRECTED ONE ACTIVE FALSE INSTRUCTION — both
+> were the adjudicator's landing conditions, not the builder's scope.** **A-3:** `events/registry.md`
+> §8 now states that **a strict-order consumer must consume the COMPLETE aggregate stream, never a
+> family subset.** The live case is `IllegalTransitionAttempted` — an **F14 order-tolerant** contract
+> that rides on the **strict-order** `pipeline_instance` F2 aggregate at the attempt's unchanged
+> version, so when it lands at a version a `CONSUMES` row left silent it becomes the **sole occupant
+> of that version and therefore the declared predecessor** of the next F2 event; a consumer
+> subscribing to F2 alone would block forever on a predecessor it discarded. **No new sequencing
+> mechanism was introduced** — it is a requirement on the SUBSCRIPTION, and the adjudicator proved it
+> satisfiable end to end before requiring it be written down. **A-2:** every active claim that
+> `P6-CP-2` still owed a finalizer is corrected in this document, in `CLAUDE.md` and in the registry,
+> with the superseded wording kept (§5 rule 20) rather than deleted.
+> ### **A-1 — THE INDEPENDENT REVIEW ARTIFACT WAS LOST AND WAS RECOVERED, AND THAT IS RECORDED
+> RATHER THAN TIDIED.** No preservation ref existed for it: the reviewer wrote the report to an
+> ephemeral session scratchpad that was later cleared, so the adjudicator could not read it, **refused
+> to substitute its own verification for it**, re-derived every material claim independently, and made
+> preservation a **hard** landing condition. The landing session found it in no tree, ref, stash,
+> reflog, worktree, `lost-found` or blob object in this repository — **no blob in the object database
+> mentions `021a9a2`** — and recovered it byte-exactly from the reviewing session's own durable
+> tool-invocation record (a single quoted heredoc whose tool result reads *"report written"*).
+> **Nothing was reconstructed from builder prose, adjudicator prose, memory, summaries or test
+> output.** Both artifacts are now on disk with `.sha256` sidecars and preservation refs
+> (`refs/preserve/p6-d11-independent-review-021a9a2` · `refs/preserve/p6-d11-targeted-adjudication-021a9a2`),
+> each parented on `021a9a2`, which is what binds the evidence to the candidate rather than to a claim
+> about it. ### **Recorded as debt, not actioned: `P6-D24`** (M3's strict consumer owes
+> `drain_handler_for`) **and `P6-D27`** (the chain-fork gap, ruled unreachable through every canonical
+> producer).
 > ### **P5 REMAINS ADJUDICATED COMPLETE at 14/14 → 100/100.** A **FRESH INDEPENDENT REVIEW** of the
 > P5 surface at content commit `1216254` returned **ACCEPT FOR SEPARATE FINAL ADJUDICATION** with
 > **NO material blocking defect** ([report](p5-independent-review-report-1216254.md)); a **SEPARATE
@@ -166,6 +226,9 @@ state, and it changed because a record was written, not because a residual was w
 | — | ### **`P6-D18` — PL-1b absorption does not survive genuine concurrency** (independent review R-2, MEDIUM, NEW; reproduced independently by the adjudicator). Eight threads on eight connections racing one logical effect against a sequential control: **sequential** 1 + 7 duplicates → 1 live attempt, `absorbed_count` **7**, **7** `DuplicateProposalAbsorbed`; **concurrent** → 1 live attempt, `absorbed_count` **0**, **0** events. ### **THE SAFETY INVARIANT HOLDS IN BOTH — one attempt, one effect, no double bill.** The Layer-1 UNIQUE index is the enforcer and it works under real contention, and the seven losers get a **typed** `ReservationHeld` naming the correct remedy, so the failure is loud, not silent. What does not hold is the **record**: raced duplicates appear in no operator count. `propose()`'s `ReservationHeld` branch has **no test coverage** | OPEN, recorded, **non-blocking** — M2 ships dark with no concurrent proposer today and no money outcome changes | ### **before M9's billing sweep — the first concurrent proposer.** Either retry into the absorb path on `ReservationHeld`, or state in the canon that a raced duplicate is a refusal rather than an absorption. The fix is local to `propose()`'s `except` branch, not a rewrite of certified code |
 | — | **`P6-D19` · `P6-D20` · `P6-D21` — three ACCURACY defects in the candidate's own prose** (review R-5/R-6/R-7, all LOW, all confirmed exactly by the adjudicator). `P6-D19`: the replacement commit calls the collapsed tree "byte-identical to the pre-collapse one" — three **documentation** files differ (+52/−1), while `src/`, `eval/` and `scripts/` are identical, so the substantive no-runtime-delta claim holds. `P6-D20`: the F-02 narrative names three missing adapters; only **one** (`discovered_write`) is a module of this repository — which was already enough to defeat every import spelling. `P6-D21`: `test_nothing_in_production_calls_this_machine_yet`'s docstring claims the permitted set "is derived … rather than typed out"; it is the literal `{"work_item.py", "pipeline_instance.py"}` behind an existence check — the guard is sound, the sentence is not | OPEN, recorded, **non-blocking** — prose accuracy, no executable behaviour depends on any of the three | whichever session next touches those texts |
 | — | **`P6-D22` · `P6-D23` — the two findings the ADJUDICATOR raised, both resolved by the `P6-CP-2` landing commit and recorded so they survive their own repair.** `P6-D22` (A-01): `P6-D14` had been assigned to **three different findings** — the implementation record's co-commit partner halves, the prior adjudication's unpreserved `3d4046a` rejection review, and the review's PL-1b recommendation; a landed history carrying one ID for three findings is not resolvable later, so the landing assigned `P6-D17`–`P6-D23`, left `P6-D14`/`D15`/`D16` at their implementation-record meanings, and did **not** recycle the unused `P6-D10`. `P6-D23` (A-02): the independent review report was **untracked**, which made the tree dirty, which made two `test_status_reality` nodes SKIP — and one of them **treats its own skip as a failure** under canonical finalization; materialising both reports on disk is what clears it | **RESOLVED by the landing commit**, recorded not deleted | closed here |
+| — | ### **`P6-D24` — A STRICT-ORDER CONSUMER MUST SUPPLY `drain_handler_for`, OR A PARKED EVENT LEAVES THE PARK ONLY BY M-26 EXPIRY** (recorded by the `P6-D11` builder; **confirmed as valid and correctly characterized** by the independent review, which reproduced it rather than deferring to the record, and **classified `A` — a nonblocking M3 obligation** by the targeted adjudication). A redelivery of an already-parked event is counted `ALREADY_PARKED` and does **not** re-evaluate the gap: without a drain factory, v5 and v3 park while v1 applies and neither parked event is ever re-examined; with one supplied on the unblocking consume, the handler sees `[1, 3, 5]` and the park empties. ### **WHY IT IS AN OBLIGATION AND NOT A DEFECT:** it is `P6-CP-1`'s landed, adjudicated `F-04` design and is **untouched by the P6-D11 diff** (the park predicate and observability payload changed; `_park_locked`, the drain path and `ALREADY_PARKED` did not); it is deliberate — you may not consume another caller's parked envelope through a handler you guessed at; it **fails safe**, the event staying PARKED with its arrival order, its accountable owner and an M-26 TTL that surfaces an owned exception rather than a silent drop; `drain_handler_for` is a **named parameter** on `consume`, an explicit API contract rather than a latent trap; and P6-D11 **strictly reduces** exposure to it — pre-fix every attempt parked, post-fix only genuine loss or reorder does. M3 does not exist, so no consumer can be wrong today | ### **OPEN — NONBLOCKING. Carried forward as an M3 obligation; NOT actioned here (§13.3), and the shared runtime is NOT modified for it by this landing** | **M3** |
+| — | ### **`P6-D27` — THE CHAIN-FORK / EMISSION-MONOTONICITY GAP** (NEW; raised by the targeted adjudication of `021a9a2`, constructed at the outbox rather than reasoned about). The consumer's *"apply anything at or below the high-water mark"* branch is safe only while the predecessor chain is a **path**. ### **If a producer emitted a LOWER `aggregate_version` after a higher one on one aggregate, two events would declare the same predecessor**, and the later-arriving lower one would apply *after* the higher — a silent strict-order violation. The adjudicator built it and **it is not refused**. ### **THE ADJUDICATOR'S DISPOSITION, PRESERVED EXACTLY: nonblocking, because it is UNREACHABLE THROUGH EVERY CANONICAL PRODUCER** — M2 allocates `item.version + 1` under OCC and its F14 record rides at the **current (maximal)** version, so emitted versions are **non-decreasing**; it ships dark with **zero production importers**; and it requires a future producer defect that is independently a strict-order violation. ### **ITS HONEST CAVEAT, ALSO PRESERVED:** *the old rule failed **closed** here and the new one fails **open** — though only because the old rule parked everything, correct traffic included.* Named mechanical close for whoever takes it: refuse at `emit` any strict-aggregate envelope whose `aggregate_version` is strictly below that aggregate's maximum emitted version — **`<`, never `≤`**, since equality is the legitimate sibling and F14 case | ### **OPEN — NONBLOCKING. Recorded, NOT remediated by this landing (§13.3)** | a future strict producer, before it ships |
+| — | ### **`P6-D28` — THE A-3 COMPLETE-STREAM CONSUMER RULE IS PROSE, NOT A MECHANISM** (found by the LANDING session's own mutation testing and reported rather than left implied). Deleting §8's complete-stream bullet leaves `generate_event_contracts.py --check` GREEN and the whole docs-control battery GREEN — **nothing mechanically enforces the rule condition A-3 required be written down.** The same harness CAUGHT the disarming-banner guard on the recovered review report over a proven 51-document population, so the harness is proven able to fail. ### **Why it is not fixed here:** the rule constrains a CONSUMER'S SUBSCRIPTION and the only consumer it binds is **M3, which does not exist** — a guard written now would run over an **EMPTY population**, the vacuous-negative false green §9 forbids by name. Stating it in canon is what A-3 asked for and is discharged; **mechanical enforcement is owed with M3**, with M3's consumer as the proven population and a family-filtering mutant seen to go RED. Distinct from `P6-D26`, which is the **producer** side | ### **OPEN — NONBLOCKING. Recorded, not actioned (§13.3)** | **M3** |
 | — | **R-3 was OVERTURNED IN PART and R-4 was UPHELD-AND-REMEDIED — neither carries a debt ID, and that is a ruling rather than an omission.** The review's **R-3** headline ("the landing gate never checks that the cited review report exists") is **false at repository level**: the existence check does exist, in `test_roadmap_completeness_control.py`'s `test_a_claimed_independent_checkpoint_review_must_cite_a_report_that_exists`, which the reviewer did not probe. The adjudicator settled it by mutation — repointing a checkpoint citation at a nonexistent file leaves `test_status_reality.py` GREEN but drives that guard **RED** — so **no remediation is owed** and R-3 is downgraded to an accuracy defect *in the review*. **R-4** (a targeted adjudication created before any independent review existed) was upheld and remedied by the re-adjudication itself | CLOSED — recorded so a later session does not act on a false premise | closed here |
 | — | Hardcoded knowledge-base `tenant="default"` — `ops_control.py` ×5, `action_callback.py::_learn_correction` (the `KnowledgeBase(...).learn` call) | OPEN | the phase that makes the KB tenant-safe |
 | — | ~~Checkpoint Witness + seven-step checkpoint + claim CAS unimplemented~~ | ### **RESOLVED at P3** — the kernel exists and ships dark | **P3 ✅** |
@@ -744,9 +807,16 @@ transitions are P6's. They are now built on a transport that has been certified.
 > same three-session sequence in its own right, and `P6-CP-2` has now done the same.
 > ### **SUPERSEDED WORDING, kept so it is recognisable if it returns (§5 rule 20):** this block read
 > *"**The next P6 unit is `M2` — the Pipeline Instance.**"* That was true when written and is false
-> now — M2 is landed. ### **The next act is the CANONICAL FINALIZER for this landing, by a fourth
-> session. `M3` may not begin: it is gated behind that finalizer AND behind `P6-D11`, which M2's
-> landing does not discharge.**
+> now — M2 is landed. ### **A SECOND SUPERSEDED SENTENCE, ALSO KEPT:** it then read *"The next act is
+> the CANONICAL FINALIZER for this landing, by a fourth session. `M3` may not begin: it is gated
+> behind that finalizer AND behind `P6-D11` ..."*. **That finalizer HAS RUN — `c2def38` — so the
+> sentence is false now and is corrected rather than restated.** ### **`P6-D11` has since been
+> RESOLVED, independently REVIEWED, separately ADJUDICATED and LANDED**
+> ([record](p6-d11-f2-ordering-contract-record.md) ·
+> [review](p6-d11-independent-review-report-021a9a2.md) ·
+> [adjudication](p6-d11-targeted-adjudication-report-021a9a2.md)). ### **The next act is the
+> CANONICAL FINALIZER for the `P6-D11` landing — the only finalizer owed — and `M3` may not begin
+> before it.**
 >
 > <details>
 > <summary><b>SUPERSEDED WORDING — HISTORICAL</b></summary>
@@ -784,12 +854,21 @@ transitions are P6's. They are now built on a transport that has been certified.
 > nothing else. Under [`PROGRESS-PROTOCOL.md`](PROGRESS-PROTOCOL.md) §9 a session must never roll
 > into the next unit merely because the current one finished — **this landing session did not begin
 > M3, did not run the finalizer, and did not action any nonblocking residual.**
-> ### **The next legal act is EXACTLY ONE CANONICAL FINALIZER RUN, by a session in none of the build,
-> review, adjudication or landing lineages**, under an exclusively-held `finalizer_lock`, producing
-> one status-metadata commit touching only `STATUS_METADATA_FILES` — and it must run from a host that
-> permits `socket.bind` and reaches pypi.org over untampered TLS, because `scripts/finalize_status.py`
-> **executes the clean-clone gate itself and refuses on failure.**
-> ### **ONLY AFTER THAT, AND ONLY AFTER `P6-D11` IS RESOLVED, MAY `M3` BEGIN.** It will follow the
+> ### **THAT FINALIZER HAS SINCE RUN — `c2def38`.** This block read *"The next legal act is EXACTLY
+> ONE CANONICAL FINALIZER RUN, by a session in none of the build, review, adjudication or landing
+> lineages"*, and that act is **executed and receipted**; the wording is kept (§5 rule 20) because it
+> describes what `P6-CP-2` legally owed at the moment it was written. **It is not an instruction to a
+> reader today: no `P6-CP-2` finalizer is owed.**
+> ### **`P6-D11` IS RESOLVED, REVIEWED, ADJUDICATED AND LANDED**
+> ([record](p6-d11-f2-ordering-contract-record.md) ·
+> [review](p6-d11-independent-review-report-021a9a2.md) ·
+> [adjudication](p6-d11-targeted-adjudication-report-021a9a2.md)), so the boundary that stood beside
+> the finalizer is closed. ### **What the `P6-D11` LANDING now owes is EXACTLY ONE CANONICAL
+> FINALIZER RUN** — by a session in none of the build, review, adjudication or landing lineages,
+> under an exclusively-held `finalizer_lock`, producing one status-metadata commit touching only
+> `STATUS_METADATA_FILES`, from a host that permits `socket.bind` and reaches pypi.org over
+> untampered TLS, because `scripts/finalize_status.py` **executes the clean-clone gate itself and
+> refuses on failure.** ### **ONLY AFTER THAT MAY `M3` BEGIN.** It will follow the
 > same route M1 and M2 took: build a candidate, then a **fresh targeted independent review** by a
 > session that neither implemented nor remediated it, then a **separate targeted adjudication** by a
 > third, then **exactly one finalizer** — the sequence the P4 acceptance closure
@@ -853,6 +932,9 @@ transitions are P6's. They are now built on a transport that has been certified.
 > were not redesigned. `P6-D9`/`P6-D11`/`P6-D13` were **independently confirmed real and
 > nonblocking** and are preserved at their current hard boundaries; **none was resolved by
 > invention**, and **`P6-D11` must still be resolved before an actual F2 consumer arrives in M3.**
+> ### **`P6-D11` HAS SINCE BEEN RESOLVED** — not by invention, but by stating what §8 already meant
+> and giving a consumer the positive evidence it was inferring from an absence
+> ([record](p6-d11-f2-ordering-contract-record.md)). `P6-D9` and `P6-D13` stay open.
 > **Evidence:** M2 battery **158/158** (+19 nodes, manifest 3011 → **3030**, zero removed); M1 · P5
 > transport · P3 CAS · P3 matrix · P4 import gate · P0 adapter imports **528/528**; mutation battery
 > **55/55 caught** (was 40/40) with byte-for-byte restoration; Product Driver **70/70** unchanged
@@ -903,6 +985,12 @@ transitions are P6's. They are now built on a transport that has been certified.
 > attributed to PL-11d while declaring `aggregate_type: effect_grant`, whose version is M3's, so
 > PL-11d writes and does not emit rather than guessing a version that would misorder a strict stream
 > silently and permanently.
+> ### **OF THOSE THREE, `P6-D11` IS NOW CLOSED** ([record](p6-d11-f2-ordering-contract-record.md)):
+> §8 states strict = ORDER and never CONTIGUITY, and every strict-order producer declares
+> `previous_aggregate_version` so a consumer blocks on an unapplied PREDECESSOR rather than on an
+> absent version. The gap count above is also corrected there: **nine** transitions advance the
+> version without emitting on `pipeline_instance` — the eight `CONSUMES` rows plus `PL-11d`.
+> `P6-D9` and `P6-D13` remain open and block nothing.
 >
 > ### **AND ONE DEFECT IT FOUND IN ALREADY-CERTIFIED CODE, CORRECTED TOWARD THE SPECIFICATION.**
 > `IllegalTransitionAttempted` was **uninsertable** on a strict-order aggregate: GR-1/[C-4] require
@@ -964,7 +1052,7 @@ corrected N-1.
 |---|---|
 | ### **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires `P6` **COMPLETE**, and P6 is not: one of its thirteen machines has landed. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands here, not earlier: provenance was P5's `prohibited_scope` and is P6's too |
 | ### **Self-certifying any future checkpoint, or scoring a weighted criterion from a build lineage** | `P6-CP-1`'s obligation is **DISCHARGED** — it received a fresh targeted independent review and a separate targeted adjudication from sessions outside its build lineage before being recorded as landed, and it scored nothing. ### **The same bar binds `M2` and every checkpoint after it.** CLAUDE.md §11: certifying your own fixes is self-adjudication, a defect with a passing status. The Product Driver's ACCEPT is a product judgement and is **not** that review |
-| ### **`M3` — and any other consumer of M2's F2 stream** | ### **BLOCKED ON TWO SEPARATE THINGS, AND THE SECOND IS NOT DISCHARGED BY THIS LANDING.** (1) `P6-CP-2` owes **exactly one canonical finalizer run** by a session in none of the build, review, adjudication or landing lineages. (2) ### **`P6-D11` is a hard boundary:** eight of M2's 25 rows are `CONSUMES` — they advance the attempt's version and emit nothing on `pipeline_instance`, a **STRICT-ORDER** F2 family whose inbox parks any version above `applied+1` — so the stream has **measured** gaps that would **permanently park** the first real consumer, and that consumer is M3. The adjudicator named this explicitly: *"It must be resolved before M3, and it is **not** discharged by M2 landing."* Resolving it is a canonical decision about the F2 contract, **not** something a builder may improvise |
+| ### **`M3` — and any other consumer of M2's F2 stream** | ### **STILL BLOCKED, AND NOW ON EXACTLY ONE THING: THE FINALIZER FOR THE `P6-D11` LANDING.** (1) `P6-CP-2` is **FULLY FINALIZED at `c2def38`** and owes **no** finalizer — the superseded claim that it owed one is corrected throughout this document (§5 rule 20). (2) ### **`P6-D11` IS RESOLVED, independently REVIEWED (ACCEPT), separately ADJUDICATED (ACCEPT) and LANDED** ([record](p6-d11-f2-ordering-contract-record.md) · [review](p6-d11-independent-review-report-021a9a2.md) · [adjudication](p6-d11-targeted-adjudication-report-021a9a2.md)); what it still owes is **exactly one canonical finalizer run**, by a session in none of the build, review, adjudication or landing lineages. (3) When `M3` begins it inherits **`P6-D24`** — its strict consumer must supply `drain_handler_for`, or a parked event leaves the park only by M-26 expiry — and **§8's complete-stream rule**: a strict-order consumer must consume the WHOLE aggregate stream, never a family subset, because an `IllegalTransitionAttempted` (F14) riding on the strict F2 aggregate can be the declared predecessor of the next F2 event. ### **The engineering boundary itself is closed:** §8 now states strict = ORDER, never contiguity, every strict-order producer declares `previous_aggregate_version`, and a real M3-shaped consumer reads a real M2 attempt end to end with nothing parked — while a genuinely lost event still parks. ### **SUPERSEDED WORDING (§5 rule 20), kept so it is recognisable if it returns:** *"`P6-D11` is a hard boundary:* eight of M2's 25 rows are `CONSUMES` — they advance the attempt's version and emit nothing on `pipeline_instance`, a **STRICT-ORDER** F2 family whose inbox parks any version above `applied+1` — so the stream has **measured** gaps that would **permanently park** the first real consumer, and that consumer is M3. The adjudicator named this explicitly: *"It must be resolved before M3, and it is **not** discharged by M2 landing."* Resolving it is a canonical decision about the F2 contract, **not** something a builder may improvise |
 | ### **Rebuilding or polishing the Pipeline Instance (M2)** | ### **LANDED at `P6-CP-2` — do not rebuild it and do not polish it (§13.8).** Candidate `1aaf943` was independently reviewed and separately re-adjudicated by sessions outside its build lineage, and **no blocking defect survives**. The recorded residuals `P6-D17`–`P6-D23` (plus `P6-D9`/`P6-D11`/`P6-D12`/`P6-D13`) are **debt rows, and the debt row is the complete deliverable** (§13.3). ### **NO FURTHER M2 CODE IS OWED.** The same applies to M1 at `P6-CP-1` |
 | ### **Treating the Pipeline Instance as an enabled effect path** | M2 is a platform primitive that ships **dark**: **zero production importers**, an import closure of 24 modules reaching **no** effect-capable adapter, the production `GateRegistry` still **EMPTY**, and `CLAIMED` unreachable without a real witness row, a real grant row and P3's untouched claim CAS. It performs no external effect |
 | ### **Treating the Work Item machine as a freight workflow** | M1 is a platform primitive that ships **dark**. It performs no external effect, holds no commit key, mints no witness and no grant, and has **zero** production callers. Freight workflow implementation still requires the remaining foundations |

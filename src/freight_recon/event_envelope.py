@@ -277,6 +277,28 @@ class EventEnvelope:
     schema_version: int = ENVELOPE_SCHEMA_VERSION
 
     # --- C: required-when-applicable, nullable otherwise --------------------------------------
+    # ### THE STREAM LINK (P6-D11). `events/registry.md` §1/§8.
+    #
+    # The `aggregate_version` of the event this producer emitted IMMEDIATELY BEFORE this one on
+    # THIS aggregate's stream — `0` when this is the stream's first event. Required-when-applicable
+    # means: **every producer emitting on a STRICT-ORDER aggregate declares it**, because on those
+    # aggregates a consumer must be able to tell "the earlier event has not arrived yet" from "there
+    # is no earlier event to wait for", and those two look identical from an absence.
+    #
+    # ### WHY AN ABSENCE WAS NOT ENOUGH, IN THE WORDS OF THE DEFECT IT CLOSES. §8 requires STRICT
+    # per-aggregate ORDER for F2/F3/F4/F11/F13. It has never required the version sequence to be
+    # CONTIGUOUS, and it cannot: GR-2 is discharged by a CO-COMMIT, so a transition whose canonical
+    # event belongs to ANOTHER machine's aggregate advances this aggregate's version and emits
+    # nothing here. NINE of M2's twenty-five rows are exactly that — the eight `CONSUMES` rows plus
+    # `PL-11d`, whose event rides on the grant's aggregate. The inbox's gap rule inferred
+    # "an earlier event is missing" from the absence of a version — and an intentional non-emission
+    # is indistinguishable from a lost event under that inference, so the consumer parked forever.
+    #
+    # ER-16's principle, applied one level down: ### **a fact is reconstructed from POSITIVE
+    # evidence, never from an absence.** The successor states what it follows; the consumer stops
+    # inferring. A genuinely missing event is still caught — its successor names a predecessor the
+    # consumer has not applied — so the park that SHOULD happen still happens.
+    previous_aggregate_version: int | None = None
     work_item_id: str | None = None
     pipeline_instance_id: str | None = None
     accountable_owner_id: str | None = None
@@ -325,6 +347,18 @@ class EventEnvelope:
         object.__setattr__(
             self, "aggregate_version",
             _require_positive_int(self.aggregate_version, field_name="aggregate_version"))
+        if self.previous_aggregate_version is not None:
+            previous = _require_positive_int(
+                self.previous_aggregate_version, field_name="previous_aggregate_version",
+                minimum=0)
+            if previous >= self.aggregate_version:
+                raise MalformedEnvelope(
+                    f"previous_aggregate_version {previous} is not BELOW aggregate_version "
+                    f"{self.aggregate_version}. The link points backwards along one aggregate's "
+                    f"history; a predecessor at or above this event's own version would make the "
+                    f"stream a cycle, and a consumer ordering on it would never advance."
+                )
+            object.__setattr__(self, "previous_aggregate_version", previous)
         if self.causation_id is not None:
             object.__setattr__(self, "causation_id",
                                _require_uuid4(self.causation_id, field_name="causation_id"))
@@ -424,6 +458,7 @@ class EventEnvelope:
             "payload": dict(self.payload),
         }
         optional = {
+            "previous_aggregate_version": self.previous_aggregate_version,
             "work_item_id": self.work_item_id,
             "pipeline_instance_id": self.pipeline_instance_id,
             "accountable_owner_id": self.accountable_owner_id,

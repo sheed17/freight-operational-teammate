@@ -27,9 +27,16 @@ THE SIX THINGS THAT HAPPEN TO AN ARRIVING EVENT, IN ORDER
    unconsumable, which is event loss wearing an idempotency guarantee.
 4. **Already in the inbox ⇒ NO-OP.** Not an error. Not a second effect. `AC-RACE-007`,
    `AC-RACE-009`, `AC-ADPT-010` and §4 field 21 all land here.
-5. **A reference that does not exist yet, or a version gap in a STRICT family ⇒ PARKED** in
-   `pending_references`, with its arrival order and a TTL — neither dropped nor failed (M-26).
+5. **A reference that does not exist yet, or an UNAPPLIED PREDECESSOR in a STRICT family ⇒ PARKED**
+   in `pending_references`, with its arrival order and a TTL — neither dropped nor failed (M-26).
    Drained in arrival order the moment the referent appears; TTL expiry surfaces an owned problem.
+   ### **"UNAPPLIED PREDECESSOR", NOT "MISSING VERSION" — THAT DISTINCTION IS P6-D11.** §8 requires
+   strict per-aggregate ORDER, never CONTIGUITY, and it cannot require contiguity: GR-2 is
+   discharged by a co-commit, so a transition whose canonical event belongs to another machine's
+   aggregate advances its own version and emits nothing on its own stream. NINE of M2's twenty-five
+   rows do exactly that — the eight `CONSUMES` rows plus `PL-11d`, whose event rides on the grant. A consumer that read every absent version as an unarrived event parked at
+   the first one and never unparked. So the successor declares `previous_aggregate_version` and this
+   inbox blocks on THAT — a lost or reordered event still parks, an intentional silence does not.
 6. **Otherwise ⇒ APPLIED**: the handler runs and the inbox row is inserted IN ONE COMMIT.
 
 WHY THE HANDLER RUNS INSIDE THE TRANSACTION
@@ -548,7 +555,44 @@ class DedupInbox:
                         f"order-tolerant and natural-key idempotent (events/registry.md §8)"
                     ),
                 )
-            if strict and event.aggregate_version > applied_version + 1:
+            # ### WHAT A STRICT AGGREGATE ACTUALLY REQUIRES IS *ORDER*, NOT *CONTIGUITY* (P6-D11).
+            #
+            # §8 requires strict per-aggregate ORDER for F2/F3/F4/F11/F13. It has never said the
+            # version sequence carries an event at every version, and it cannot: GR-2 is discharged
+            # by a CO-COMMIT, so a transition whose canonical event belongs to another machine's
+            # aggregate advances THIS aggregate's version and emits nothing on this stream. NINE of
+            # M2's twenty-five rows are exactly that (the eight `CONSUMES` rows plus `PL-11d`).
+            #
+            # This test used to be `aggregate_version > applied_version + 1`, which reads a gap as
+            # "an earlier event has not arrived". For a lost or reordered event that is right. For a
+            # version its producer DELIBERATELY never emitted on it is wrong, and wrong forever:
+            # nothing will ever fill it, the park never drains, its TTL hands a human an event that
+            # cannot be unblocked, and every later event on that attempt queues behind it. M3 —
+            # consuming `CheckpointPassed` to mint the grant — would have parked at M2's first
+            # `CONSUMES` row and never minted anything for any attempt.
+            #
+            # ### SO THE SUCCESSOR STATES WHAT IT FOLLOWS AND THE CONSUMER STOPS INFERRING.
+            # `previous_aggregate_version` is the version of the event this producer emitted
+            # immediately before this one on this stream (0 = first). Blocked iff that predecessor
+            # is above the high-water mark — i.e. iff there is a real event between the cursor and
+            # this one that has not been applied.
+            #
+            # ### THE PARK THAT SHOULD HAPPEN STILL HAPPENS, and that is the half worth checking: a
+            # genuinely lost or out-of-order event is caught because ITS successor names a
+            # predecessor the consumer has not applied. Only the intentional non-emission stops
+            # blocking, because only it is now positively declared to be nothing (ER-16 one level
+            # down: a fact from POSITIVE evidence, never from an absence).
+            #
+            # An envelope that declares NO link falls back to the contiguity rule verbatim. That is
+            # every historical event and every order-tolerant producer, whose behaviour is unchanged
+            # byte for byte — the link is required of strict-order producers going forward, and
+            # absence may not be read as "there is nothing before me".
+            predecessor = event.previous_aggregate_version
+            blocked = (
+                predecessor > applied_version if predecessor is not None
+                else event.aggregate_version > applied_version + 1
+            )
+            if strict and blocked:
                 self._park_locked(
                     event, referenced=(event.aggregate_type, event.aggregate_id),
                     reason="VERSION_GAP", now=now, accountable_owner_id=accountable_owner_id,
@@ -557,15 +601,25 @@ class DedupInbox:
                 self.observe({
                     "kind": "EventParked", "reason": "VERSION_GAP",
                     "consumer_id": self._consumer_id, "tenant": self._tenant,
-                    "event_id": event.event_id, "expected_version": applied_version + 1,
+                    "event_id": event.event_id,
+                    "expected_version": (
+                        predecessor if predecessor is not None else applied_version + 1),
                     "arrived_version": event.aggregate_version,
+                    "linked": predecessor is not None,
                 })
                 return ConsumeResult(
                     outcome=ConsumeOutcome.PARKED_VERSION_GAP, event_id=event.event_id,
                     detail=(
                         f"{event.aggregate_type} requires STRICT per-aggregate ordering "
-                        f"(events/registry.md §8); expected version {applied_version + 1}, got "
-                        f"{event.aggregate_version}. Parked until the gap fills."
+                        f"(events/registry.md §8); "
+                        + (
+                            f"this event follows version {predecessor} and only "
+                            f"{applied_version} is applied"
+                            if predecessor is not None else
+                            f"expected version {applied_version + 1}, got "
+                            f"{event.aggregate_version}"
+                        )
+                        + ". Parked until the gap fills."
                     ),
                 )
 

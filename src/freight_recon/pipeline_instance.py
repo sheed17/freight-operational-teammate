@@ -2447,6 +2447,20 @@ class PipelineMachine:
         human. Carrying them means `event_audit.explain(...)` reconstructs *who owed this* from the
         beliefs of that day rather than by asking who owns it now — an audit that answers with
         today's roster is one that cannot be trusted about the past.
+
+        ### AND `previous_aggregate_version` TRAVELS ON EVERY ONE, WHICH IS WHY THIS FACTORY IS THE
+        ONLY PLACE THIS MACHINE BUILDS AN ENVELOPE (P6-D11). `pipeline_instance` is a STRICT-ORDER
+        aggregate and eight of §14's twenty-five rows are `CONSUMES`: they advance the attempt's
+        version and emit nothing here, because the canonical event belongs to M3 or M4. The version
+        sequence on this stream is therefore NOT contiguous, by canonical design and not by defect,
+        and a consumer that read a missing version as "an earlier event is still coming" would park
+        at the first one and never unpark. Declaring the predecessor is what makes an intentional
+        non-emission legible as nothing instead of as a loss — see `events/registry.md` §8.
+
+        Derived from the outbox's own emitted record (`last_emitted_version`), never from a counter
+        this machine keeps: a counter is a second version to get wrong, and this machine already has
+        one. `emit` re-derives it and REFUSES a mismatch, so this value cannot become a lie about
+        what was emitted even if this method is wrong.
         """
         return EventEnvelope(
             event_id=event_id or str(uuid.uuid4()),
@@ -2458,6 +2472,10 @@ class PipelineMachine:
             aggregate_type=AGGREGATE_TYPE,
             aggregate_id=pipeline_instance_id,
             aggregate_version=aggregate_version,
+            previous_aggregate_version=TransactionalOutbox(
+                self._conn, tenant=self._tenant, clock=self._clock,
+            ).last_emitted_version(
+                AGGREGATE_TYPE, pipeline_instance_id, below=aggregate_version),
             causation_id=causation_id,
             correlation_id=correlation_id or work_item_id,
             producer_component=self._component,

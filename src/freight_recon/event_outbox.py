@@ -117,6 +117,18 @@ class StrictOrderViolation(OutboxError):
     """
 
 
+class StreamLinkViolation(OutboxError):
+    """An envelope declared a `previous_aggregate_version` that is not the one this aggregate's
+    emitted history actually holds (P6-D11, `events/registry.md` §8).
+
+    The link is what a strict-order consumer uses INSTEAD of assuming the version sequence is
+    contiguous, so a producer that could state an arbitrary predecessor could instruct every
+    consumer to skip past a real event — silently, permanently, and with a valid signature on the
+    fact. It is therefore VERIFIED against the outbox's own record here, at the boundary that owns
+    what has been emitted, rather than trusted from the producer that has an interest in it.
+    """
+
+
 @dataclass(frozen=True)
 class OutboxRow:
     """One durable emission record, as the relay sees it."""
@@ -238,6 +250,25 @@ class TransactionalOutbox:
         # same reason `emit` has no `allow_autocommit=True`. A flag is how a guarantee gets turned
         # off on a Friday.
         validate(envelope, mode=ValidationMode.PRODUCER)
+        # ### THE STREAM LINK, VERIFIED AGAINST THIS OUTBOX'S OWN HISTORY (P6-D11).
+        # Read in the caller's open transaction, so the answer is the one that will be true when
+        # the commit lands. A declared link that disagrees with the emitted record is refused
+        # BEFORE the INSERT, which means the state change travelling with it is rolled back too —
+        # the same discipline the contract gate above uses, and for the same reason.
+        if envelope.previous_aggregate_version is not None:
+            actual = self.last_emitted_version(
+                envelope.aggregate_type, envelope.aggregate_id,
+                below=envelope.aggregate_version)
+            if envelope.previous_aggregate_version != actual:
+                raise StreamLinkViolation(
+                    f"{envelope.event_name} declares previous_aggregate_version "
+                    f"{envelope.previous_aggregate_version} on "
+                    f"{envelope.aggregate_type}:{envelope.aggregate_id}, but the highest version "
+                    f"already emitted below {envelope.aggregate_version} is {actual}. A consumer "
+                    f"orders on this link (events/registry.md §8), so a wrong one tells it to "
+                    f"apply past an event it has not seen. Derive it with "
+                    f"`last_emitted_version(...)` in the SAME transaction as the state write."
+                )
         # MAX+1 under the caller's write lock — the same per-tenant allocation idiom
         # `WorkflowStore._next_id` uses, and safe for the same reason: BEGIN IMMEDIATE serializes
         # writers, so no second allocator can be between the read and the insert.
@@ -295,6 +326,30 @@ class TransactionalOutbox:
         return [self.emit(e) for e in envelopes]
 
     # --- read-side helpers (no transaction required; these do not mutate) --------------------
+
+    def last_emitted_version(
+        self, aggregate_type: str, aggregate_id: str, *, below: int | None = None
+    ) -> int:
+        """The highest `aggregate_version` already emitted on ONE aggregate's stream — `0` if none.
+
+        ### THIS IS THE SHARED DERIVATION EVERY STRICT-ORDER PRODUCER USES, AND IT IS DERIVED FROM
+        THE EMITTED RECORD RATHER THAN FROM A COUNTER. A per-aggregate emission counter would be a
+        SECOND monotonic identity beside `aggregate_version`, maintained by every machine, and the
+        day the two disagree is the day a consumer orders on the wrong one. The outbox already
+        holds exactly one truthful answer to "what has this aggregate emitted", it is append-only
+        and never pruned, and this reads it.
+
+        Call it inside the transaction that performs the state write, AFTER the OCC update has
+        succeeded: the update is what serializes two writers, so the answer cannot be stale by the
+        time the row lands.
+        """
+        sql = ("SELECT COALESCE(MAX(aggregate_version), 0) FROM event_outbox "
+               "WHERE tenant = ? AND aggregate_type = ? AND aggregate_id = ?")
+        params: tuple[Any, ...] = (self._tenant, aggregate_type, aggregate_id)
+        if below is not None:
+            sql += " AND aggregate_version < ?"
+            params = (*params, int(below))
+        return int(self._conn.execute(sql, params).fetchone()[0])
 
     def pending(self, limit: int | None = None) -> list[OutboxRow]:
         sql = ("SELECT * FROM event_outbox WHERE tenant = ? AND delivery_state = 'PENDING' "

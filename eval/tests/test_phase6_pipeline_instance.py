@@ -71,6 +71,7 @@ from phase6_pipeline_kit import (  # noqa: E402
 
 from freight_recon.checkpoint import GateDecision  # noqa: E402
 from freight_recon.commit_key import commit_key  # noqa: E402
+from freight_recon.event_envelope import EventEnvelope  # noqa: E402
 from freight_recon.event_inbox import ConsumeOutcome, DedupInbox  # noqa: E402
 from freight_recon.migrations.phase6_pipeline_instances import (  # noqa: E402
     GATE_DECISIONS,
@@ -1885,21 +1886,23 @@ def test_pl_11d_emission_is_deferred_to_m3_and_says_so(tmp_path):
 # ============================================ O. the F2 stream's version gaps — MEASURED, not assumed
 
 def test_the_f2_event_stream_has_gaps_where_a_CONSUMES_row_moved_the_attempt(tmp_path):
-    """### A RECORDED FINDING, PROVED RATHER THAN ASSERTED (debt P6-D11).
+    """### THE GAP IS REAL, IT IS INTENTIONAL, AND IT IS NOW HARMLESS (P6-D11 — RESOLVED).
 
     Eight of M2's twenty-five rows are `CONSUMES`: they advance the attempt's version (GR-3 writes
     the row) and emit nothing on `pipeline_instance`, because the canonical event belongs to M3 or
-    M4. So the F2 stream for one attempt contains gaps — and `pipeline_instance` is a STRICT-ORDER
-    family (`events/registry.md` §8), whose inbox rule parks any version above `applied + 1`.
+    M4. So the F2 stream for one attempt contains gaps — permanently, by canonical design, and this
+    machine must NOT close them by emitting an event about a machine that does not exist.
 
-    Nothing consumes M2's F2 stream today (M2 ships dark, and M3/M4 are unbuilt), so this cannot
-    produce a wrong outcome now. It is recorded, measured here so the next unit inherits a number
-    rather than a suspicion, and NOT resolved by inventing a semantic the specification does not
-    state.
+    What changed is the CONSUMER's reading of a gap, not the gap. `events/registry.md` §8 now states
+    that strict per-aggregate ordering is ORDER and never CONTIGUITY, and every event on this stream
+    declares `previous_aggregate_version` — so a version nobody emitted on is legible as nothing
+    instead of as a loss. This case keeps measuring the gap (the premise), and asserts the chain
+    across it is unbroken (the resolution). The hostile battery is
+    `test_p6_d11_strict_order_stream_link.py`.
     """
     store, m, clk, kernel, effect, world, r8 = _to_claimed(tmp_path)
-    versions = sorted(e["aggregate_version"] for e in outbox_events(store)
-                      if e["aggregate_type"] == AGGREGATE_TYPE)
+    emitted = [e for e in outbox_events(store) if e["aggregate_type"] == AGGREGATE_TYPE]
+    versions = sorted(e["aggregate_version"] for e in emitted)
     current = m.require(PIPELINE).version
     missing = sorted(set(range(1, current + 1)) - set(versions))
     assert missing, (
@@ -1909,6 +1912,20 @@ def test_the_f2_event_stream_has_gaps_where_a_CONSUMES_row_moved_the_attempt(tmp
     consumes_rows = [r.id for r in TRANSITIONS if r.kind is RowKind.CONSUMES]
     assert len(consumes_rows) == 8, f"the CONSUMES population moved: {consumes_rows}"
     assert len(missing) <= len(consumes_rows)
+
+    # ### AND THE STREAM ACROSS THAT GAP IS A CHAIN A CONSUMER CAN FOLLOW.
+    envelopes = [EventEnvelope.from_json(r["envelope_json"]) for r in store.conn.execute(
+        "SELECT envelope_json FROM event_outbox WHERE tenant = ? AND aggregate_type = ? "
+        "AND aggregate_id = ? ORDER BY aggregate_version, event_id",
+        (T_A, AGGREGATE_TYPE, PIPELINE)).fetchall()]
+    seen: list[int] = []
+    for envelope in envelopes:
+        assert envelope.previous_aggregate_version == max(
+            [v for v in seen if v < envelope.aggregate_version], default=0), (
+            f"{envelope.event_name} at v{envelope.aggregate_version} declares a predecessor the "
+            f"emitted stream does not hold — a consumer would park on it"
+        )
+        seen.append(envelope.aggregate_version)
 
 
 # ==================================================================== P. concurrency, on one store

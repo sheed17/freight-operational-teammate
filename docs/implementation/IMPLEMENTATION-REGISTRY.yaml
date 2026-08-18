@@ -2627,14 +2627,63 @@ units:
     # continuation checkpoint adds an entry to `landed_checkpoints`, it does not re-state the phase.
     # ### LANDED IS NOT ACCEPTED. `criteria_scored` is empty on BOTH checkpoints, no P6 weighted
     # criterion is scored, P6 is NOT COMPLETE, and the phase still owes M3-M13 and 95 of the 134
-    # transitions. M2 ships dark. ### AND THIS LANDING IS NOT A FINALIZATION: it owes exactly one
-    # canonical finalizer run by a fourth session, which re-runs the canonical suite and the
-    # clean-clone gate in full.
+    # transitions. M2 ships dark.
+    # ### THE `P6-CP-2` LANDING IS FULLY FINALIZED, AT c2def38, AND OWES NO FURTHER FINALIZER.
+    # SUPERSEDED WORDING kept so it is recognisable if it returns (CLAUDE.md sec 5 rule 20): this
+    # comment read "### AND THIS LANDING IS NOT A FINALIZATION: it owes exactly one canonical
+    # finalizer run by a fourth session, which re-runs the canonical suite and the clean-clone gate
+    # in full." TRUE WHEN WRITTEN, FALSE NOW. SUITE-RESULT.json and GATE-RESULT.json both bind to
+    # commit 1abcb229 / tree 1f98154d with exit_status 0 and clean-clone passed: true; the topology
+    # 1aaf943 -> b226717 -> 1abcb229 -> c2def38 mirrors P6-CP-1's exactly. It survived c2def38 only
+    # because a status-metadata commit may edit five status files and not narrative prose. The
+    # P6-D11 independent review raised it as F-1 and the targeted adjudication made correcting it
+    # hard landing condition A-2, because it is an ACTIVE FALSE INSTRUCTION - it sends a fresh
+    # session to run a finalizer that is not owed. Corrected at the P6-D11 landing.
     # ### M3 MAY NOT BEGIN ON THE STRENGTH OF THIS LANDING. `P6-D11` is a hard boundary the
     # adjudicator named explicitly: eight of M2's 25 rows are `CONSUMES` and emit nothing on the
     # STRICT-ORDER `pipeline_instance` F2 aggregate, so the stream has measured gaps that would
     # PERMANENTLY PARK the first real consumer - and that consumer is M3. It must be resolved
     # before M3, and it is NOT discharged by M2 landing.
+    # ### `P6-D11` IS NOW RESOLVED (2026-08-17), AS ITS OWN CONTENT CHANGE.
+    # `events/registry.md` sec 8 now states that STRICT per-aggregate ordering means ORDER and
+    # never CONTIGUITY - it never could mean contiguity, because GR-2 is discharged by a co-commit,
+    # so a transition whose canonical event belongs to another machine's aggregate advances its own
+    # version and emits nothing on its own stream. NINE of M2's transitions do that (the eight
+    # CONSUMES rows plus PL-11d), not eight. So the successor declares what it follows - one
+    # additive optional envelope field, `previous_aggregate_version` - and a consumer blocks iff
+    # that predecessor is ABOVE its applied high-water mark, never on the mere absence of a
+    # version. A genuinely lost or reordered event STILL PARKS. No canonical event was minted, no
+    # transition moved, no schema migrated, and every historical event is byte-identical.
+    # Record: docs/implementation/p6-d11-f2-ordering-contract-record.md
+    # ### P6-D11 IS NOW REVIEWED, ADJUDICATED AND LANDED - THREE OF ITS FOUR ROUTE STEPS ARE
+    # DISCHARGED. A fresh targeted INDEPENDENT review, by a session that neither implemented nor
+    # remediated it, returned ACCEPT FOR SEPARATE TARGETED ADJUDICATION with five findings and NONE
+    # blocking (docs/implementation/p6-d11-independent-review-report-021a9a2.md, preserved at
+    # refs/preserve/p6-d11-independent-review-021a9a2, commit 317fe12f, parented on 021a9a2). A
+    # SEPARATE targeted adjudication, by a third session in neither lineage, returned ACCEPT - no
+    # material correctness defect survives and NO product-code change is owed
+    # (docs/implementation/p6-d11-targeted-adjudication-report-021a9a2.md, preserved at
+    # refs/preserve/p6-d11-targeted-adjudication-021a9a2, commit c164cc81, parented on 021a9a2).
+    # ### STILL OWED: EXACTLY ONE CANONICAL FINALIZER RUN for the P6-D11 landing, by a session in
+    # none of the build, review, adjudication or landing lineages, from a host that permits
+    # socket.bind and reaches pypi.org over untampered TLS. ### IT IS THE ONLY FINALIZER OWED
+    # ANYWHERE IN P6, and M3 may not begin before it.
+    # ### THE ADJUDICATOR IMPOSED THREE LANDING CONDITIONS AND THE LANDING DISCHARGED ALL THREE.
+    # A-1 (HARD) preserve the independent review artifact - it existed on no ref and no disk, having
+    # been written to an ephemeral session scratchpad that was cleared; the adjudicator declined to
+    # substitute its own verification for it and required either recovery or a FRESH independent
+    # review. RECOVERED byte-exactly from the reviewing session's own durable tool-invocation record
+    # after an exhaustive search of trees, refs, preserve refs, stash, reflog, worktrees, lost-found
+    # and all 2531 blob objects (no blob in the object database mentions 021a9a2); nothing was
+    # reconstructed from builder prose, adjudicator prose, memory, summaries or test output.
+    # A-2 correct the stale P6-CP-2 finalizer prose - done here, in CURRENT.md and in CLAUDE.md.
+    # A-3 state in events/registry.md sec 8 that a strict-order consumer must consume the COMPLETE
+    # aggregate stream and never a family subset, because IllegalTransitionAttempted (F14) rides on
+    # the strict F2 pipeline_instance aggregate and can be the declared predecessor of the next F2
+    # event - done, additively, introducing no new sequencing mechanism.
+    # ### RECORDED, NOT ACTIONED (CLAUDE.md sec 13.3): P6-D24 (M3's strict consumer must supply
+    # drain_handler_for; the shared runtime is NOT modified for it here) and P6-D27 (the chain-fork
+    # gap, ruled UNREACHABLE through every canonical producer). Both are in `p6_d11_landing` below.
     landed_checkpoints:
       - id: P6-CP-1
         name: The Work Item, and ownership as a recorded authority rather than a string
@@ -2918,13 +2967,22 @@ units:
         # ONE finalizer. Only then may `landed_checkpoints` gain a second entry citing the report. No
         # P6 acceptance criterion is scored by this candidate and none may be." ### THREE OF ITS FOUR
         # CLAUSES ARE SATISFIED AND THE FOURTH IS A PROHIBITION THAT REMAINS IN FORCE:
-        # `criteria_scored` is empty below. ### THE FINALIZER CLAUSE IS NOT YET SATISFIED - this
-        # landing owes exactly one canonical finalizer run by a fourth session.
+        # `criteria_scored` is empty below. ### THE FINALIZER CLAUSE IS NOW SATISFIED TOO - c2def38.
+        # SUPERSEDED WORDING kept (CLAUDE.md sec 5 rule 20): this comment read "### THE FINALIZER
+        # CLAUSE IS NOT YET SATISFIED - this landing owes exactly one canonical finalizer run by a
+        # fourth session", and what_it_owed read "### STILL OWED: exactly ONE canonical finalizer
+        # run, by a session in none of the build, review or adjudication lineages, from a host that
+        # permits socket.bind and reaches pypi.org over untampered TLS." TRUE WHEN WRITTEN, FALSE
+        # NOW - and corrected at the P6-D11 landing under adjudication condition A-2.
         what_it_owed: >-
-          PARTIALLY DISCHARGED - fresh targeted independent review (ACCEPT), then a separate targeted
-          RE-adjudication against that review (ACCEPT). ### STILL OWED: exactly ONE canonical
-          finalizer run, by a session in none of the build, review or adjudication lineages, from a
-          host that permits `socket.bind` and reaches pypi.org over untampered TLS.
+          ### FULLY DISCHARGED - fresh targeted independent review (ACCEPT), then a separate targeted
+          RE-adjudication against that review (ACCEPT), then EXACTLY ONE CANONICAL FINALIZER RUN,
+          EXECUTED, whose status-metadata commit is `c2def38`. ### NO FURTHER `P6-CP-2` FINALIZER IS
+          OWED, AND A SESSION MUST NOT RUN ONE. Receipts: `SUITE-RESULT.json` and `GATE-RESULT.json`
+          both bind to commit `1abcb229` / tree `1f98154d` with `exit_status: 0` and the clean-clone
+          gate `passed: true`, and `BUILD-STATUS.yaml`'s finalizer-maintained `derived:` block is
+          rebound to the same pair. The fourth clause - that no P6 acceptance criterion is scored -
+          is a PROHIBITION and REMAINS IN FORCE: `criteria_scored` is empty.
         rejected_candidate_preserved_at: refs/preserve/p6-cp2-rejected-candidate-3d4046a
         commit_topology_note: >-
           ### THE REJECTED CANDIDATE IS REPLACED, NOT STACKED ON, AND THAT IS THE CONVENTION RATHER
@@ -3011,10 +3069,15 @@ units:
           reads `CheckpointFailed{step,reason}` + `PipelineVoided`, but `events/registry.md` §3
           attributes `PipelineVoided` to PL-7v/PL-9v ONLY and the contract gate enforces that
           attribution — so PL-8f emits `CheckpointFailed` alone and the state still becomes VOIDED.
-          (P6-D11) Eight of the 25 rows are `CONSUMES`: they advance the attempt's version and emit
-          nothing on `pipeline_instance`, so the F2 stream has GAPS — and F2 is a STRICT-ORDER family
-          whose inbox rule parks any version above applied+1. Measured, not assumed, by a dedicated
-          test. Nothing consumes M2's F2 stream today. (P6-D13) `VerificationDeferred` is the one
+          (P6-D11 — SINCE RESOLVED, 2026-08-17) Eight of the 25 rows are `CONSUMES`: they advance
+          the attempt's version and emit nothing on `pipeline_instance`, so the F2 stream has GAPS —
+          and F2 is a STRICT-ORDER family whose inbox rule parked any version above applied+1.
+          Measured, not assumed, by a dedicated test. ### RESOLVED by stating what §8 already meant:
+          strict ordering is ORDER, never CONTIGUITY, and every strict-order producer now declares
+          `previous_aggregate_version` so a consumer blocks on an UNAPPLIED PREDECESSOR rather than
+          on an absent version. The gap count was also wrong by one — `PL-11d` is a ninth
+          non-emission. See `p6-d11-f2-ordering-contract-record.md`; it owes its own review,
+          adjudication and finalizer. (P6-D13) `VerificationDeferred` is the one
           contract the registry attributes to a PL-* transition while declaring
           `aggregate_type: effect_grant`; its ordering key needs the GRANT's version, which is M3's,
           so PL-11d performs its durable write and does NOT emit rather than guessing a version that
@@ -3189,6 +3252,84 @@ units:
           place, so adding it is additive.
         severity: LOW
         closes_at: the first caller that needs a linked reopen
+      # ### THE TWO ROWS BELOW ARE THE P6-D11 LANDING'S, AND THEY ARE RECORDED RATHER THAN ACTIONED
+      # (CLAUDE.md sec 13.3 - the debt row is the complete deliverable). Neither is a code change to
+      # 021a9a2, and the landing made none.
+      - id: P6-D24
+        finding: >-
+          ### A STRICT-ORDER CONSUMER MUST SUPPLY `drain_handler_for`, OR A PARKED EVENT LEAVES THE
+          PARK ONLY BY M-26 EXPIRY. A redelivery of an already-parked event is counted
+          `ALREADY_PARKED` and does NOT re-evaluate the gap. Recorded by the P6-D11 builder;
+          REPRODUCED rather than deferred to by the independent review (without a drain factory v5
+          and v3 park while v1 applies and neither parked event is re-examined; with one supplied on
+          the unblocking consume the handler sees [1, 3, 5] and the park empties); and classified
+          `A` - a valid nonblocking M3 obligation, correctly characterized - by the targeted
+          adjudication.
+        disposition: >-
+          ### CARRIED FORWARD AS AN M3 OBLIGATION, NONBLOCKING, AND THE SHARED RUNTIME IS NOT
+          MODIFIED FOR IT BY THIS LANDING. (1) It is P6-CP-1's landed, adjudicated F-04 design and is
+          UNTOUCHED by the P6-D11 diff: the park predicate and the observability payload changed;
+          `_park_locked`, the drain path and `ALREADY_PARKED` did not. (2) It FAILS SAFE rather than
+          silently wrong - the event stays PARKED with its arrival order, its accountable owner and
+          an M-26 TTL that surfaces an owned exception; it is never dropped and never applied out of
+          order. (3) It is an EXPLICIT API CONTRACT, not a latent trap: `drain_handler_for` is a
+          named parameter on `consume`, and supplying it drains in order. (4) It is deliberate - a
+          caller may not consume another caller's parked envelope through a handler it guessed at.
+          (5) M3 does not exist, so no consumer can be wrong today, and P6-D11 STRICTLY REDUCES
+          exposure to it: pre-fix every attempt parked, post-fix only genuine loss or reorder does.
+          ### M3's strict consumer owes the drain_handler_for behaviour so a parked event is
+          re-evaluated when its predecessor becomes available, rather than waiting solely for M-26
+          expiry.
+        severity: LOW - nonblocking
+        closes_at: M3
+      - id: P6-D27
+        finding: >-
+          ### THE CHAIN-FORK / EMISSION-MONOTONICITY GAP. NEW, raised by the targeted adjudication of
+          021a9a2 and CONSTRUCTED at the outbox rather than reasoned about. The consumer's "apply
+          anything at or below the high-water mark" branch is safe only while the predecessor chain
+          is a PATH. If a producer emitted a LOWER aggregate_version after a higher one on one
+          aggregate, two events would declare the same predecessor and the later-arriving lower one
+          would apply AFTER the higher - a silent strict-order violation. The adjudicator built it
+          and it is NOT refused.
+        disposition: >-
+          ### THE ADJUDICATOR'S EXACT DISPOSITION, PRESERVED RATHER THAN PARAPHRASED: nonblocking,
+          because it is UNREACHABLE THROUGH EVERY CANONICAL PRODUCER - M2 allocates `item.version + 1`
+          under OCC and its F14 record rides at the CURRENT (maximal) version, so emitted versions
+          are NON-DECREASING; it ships dark with ZERO production importers; and it requires a future
+          producer defect that is independently a strict-order violation.
+          ### ITS HONEST CAVEAT, ALSO PRESERVED: "the old rule failed CLOSED here and the new one
+          fails OPEN, though only because the old rule parked everything, correct traffic included."
+          ### NAMED MECHANICAL CLOSE for whoever takes it: refuse at `emit` any strict-aggregate
+          envelope whose `aggregate_version` is strictly below that aggregate's maximum emitted
+          version - `<`, NEVER `<=`, because equality is the legitimate sibling and F14 case.
+          ### NOT REMEDIATED BY THIS LANDING, and it must not be remediated by a session that cannot
+          run the route.
+        severity: LOW - nonblocking, unreachable through current canonical producers
+        closes_at: the first strict-order producer added after M2, before it ships
+      - id: P6-D28
+        finding: >-
+          ### THE A-3 COMPLETE-STREAM CONSUMER RULE IS PROSE, NOT A MECHANISM - FOUND BY THE LANDING
+          SESSION'S OWN MUTATION TESTING AND REPORTED RATHER THAN LEFT IMPLIED. Deleting the
+          `events/registry.md` sec 8 bullet that requires a strict-order consumer to consume the
+          COMPLETE aggregate stream leaves `generate_event_contracts.py --check` GREEN and the whole
+          docs-control battery GREEN (108 passed). Nothing mechanically enforces the rule the
+          adjudicator's condition A-3 required be written down. The same mutation harness CAUGHT the
+          disarming-banner guard on the recovered review report, so the harness itself is proven able
+          to fail.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND THE RULE IS STILL WORTH STATING. A-3 asked that the
+          constraint be STATED IN CANON so M3's author - a fresh session with no history - inherits
+          it rather than rediscovering it as a permanent stall; an unwritten constraint is, by this
+          repository's own rule, not decided. That is discharged. What is NOT discharged is
+          MECHANICAL enforcement, and it cannot be here: the rule constrains a CONSUMER'S
+          SUBSCRIPTION, and the only consumer it binds is M3, which does not exist. A guard written
+          now would have an EMPTY population - the vacuous-negative false green CLAUDE.md sec 9
+          forbids by name. ### OWED WITH M3: a guard asserting that every strict-order subscription
+          reads the whole aggregate stream, with M3's consumer as its proven population, plus a
+          mutant that family-filters and is seen to go RED. Adjacent to but distinct from `P6-D26`,
+          which is about PRODUCER-side declaration; this is the CONSUMER side.
+        severity: LOW - nonblocking
+        closes_at: M3, with its first strict-order consumer
     next_units_unlocked: [P7]
 
   - unit_id: P7
