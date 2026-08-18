@@ -83,8 +83,8 @@ artificial ceilings and no assumed rip-and-replace.
 | **Durable handoff readiness** | ### **COMPLETE — the gate is CLOSED.** The second independent rehearsal PASSED 13/13; the hostile review's findings were corrected and mutation-proved by U-HANDOFF-1C; the SECOND HOSTILE review (**U-HANDOFF-2B**, independent) then defended its attack battery, and **U-HANDOFF-1D adjudicated all 13 criteria PASS** from that evidence ([`u-handoff-2b-hostile-review-report.md`](docs/implementation/u-handoff-2b-hostile-review-report.md)). |
 | **Product/production rebaseline** | ### **`U-REBASELINE-1` COMPLETE — RB-01..RB-24 ALL PASS**, adjudicated by U-REBASELINE-1A from the INDEPENDENT U-REBASELINE-REVIEW-1 ([preserved report](docs/implementation/u-rebaseline-review-1-independent-report.md) · [adjudication](docs/implementation/u-rebaseline-1a-founder-adjudication-review.md)). |
 | **Phase 5** | ✅ **COMPLETE — ADJUDICATED.** Canonical events, outbox/inbox, replay isolation and production persistence: the **118 canonical event contracts** (105 machine-emitted F1–F13 + 13 audit/security F14), the transactional outbox, the dedup inbox, the GC-1 golden corpus, deterministic replay, audit reconstruction, durable timers (M-36) and the runtime on **production PostgreSQL** (ADR-016). A **FRESH INDEPENDENT** review returned ACCEPT FOR SEPARATE FINAL ADJUDICATION with **zero material blocking defects** (45/45 hostile probes, eight of which it reported as its *own* defective probes); a **separate FINAL ADJUDICATION** then set all 14 weighted criteria `PASS` → **100/100** ([adjudication](docs/implementation/p5-final-adjudication-report-91ba4e6.md)), re-executing the suite, the clean-clone gate, the PostgreSQL gate, both mutation batteries and its own import-closure probe. ### **Ships dark — zero production callers.** ### **Replay cannot call an adapter because the capability is not reachable:** `event_replay`'s entire transitive import closure is five inert modules. |
-| **Phase 6** | 🔨 **IN PROGRESS — `P6-CP-1` LANDED, THE PHASE IS NOT COMPLETE.** The one and only READY unit. Machine **M1 — the Work Item, and an accountable human owner as a structural fact**: `owner_id` is a FOREIGN KEY into `tenant_humans` (a recorded, attributed authority that must be ACTIVE at assignment), 14 of the 134 transitions, terminal states final by trigger, OCC versioning, tenant-first. Accepted candidate `ca8c070` (tree `29ad9c25e`) via a **fresh targeted INDEPENDENT re-review** → **separate targeted adjudication** → **exactly one finalizer**, none of them the builder ([review](docs/implementation/p6-cp1-independent-rereview-report-ca8c070.md) · [adjudication](docs/implementation/p6-cp1-targeted-adjudication-report-ca8c070.md)). `execution_state: IN_PROGRESS`, `checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION`. ### **A CHECKPOINT IS NOT AN ACCEPTANCE: `criteria_scored` is EMPTY, no P6 criterion is scored, and M1 ships dark.** Still owed: **M2 (Pipeline Instance)**, **M3–M13**, 120 transitions, gate **G1**, **AC-SAFE-028**. `P7`–`P14` stay BLOCKED. The G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open and block nothing. |
-| **Next approved unit** | ### **`P6` — still the one and only READY unit, now IN PROGRESS.** Its next build unit is ### **`M2` — the Pipeline Instance**, the durable execution of a workflow for a Work Item and the reservation that makes it exclusive (25 of the 134 transitions). A fresh builder may begin it now. It owes the same route M1 took: candidate → fresh independent review → separate adjudication → one finalizer. `P7`–`P14` stay BLOCKED behind `P6`. |
+| **Phase 6** | 🔨 **IN PROGRESS — `P6-CP-1` AND `P6-CP-2` ARE LANDED, THE PHASE IS NOT COMPLETE.** The one and only READY unit. **M1 — the Work Item, and an accountable human owner as a structural fact**: `owner_id` is a FOREIGN KEY into `tenant_humans` (a recorded, attributed authority that must be ACTIVE at assignment), 14 transitions, terminal states final by trigger, OCC versioning, tenant-first — accepted candidate `ca8c070` (tree `29ad9c25e`) ([review](docs/implementation/p6-cp1-independent-rereview-report-ca8c070.md) · [adjudication](docs/implementation/p6-cp1-targeted-adjudication-report-ca8c070.md)), finalized by exactly one finalizer. **M2 — the Pipeline Instance**: one durable attempt per logical effect and the reservation that makes it exclusive, 25 transitions, PL-1's `UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal)` whose predicate IS §20's retry rule, and `GRANTED`/`CLAIMED` unreachable without a real witness row, a real grant row and P3's untouched claim CAS — accepted candidate `1aaf943` (tree `1d859547798c`) via a **fresh targeted INDEPENDENT review** → **separate targeted RE-adjudication** → **a landing content commit**, none of them the builder ([review](docs/implementation/p6-cp2-independent-review-report-1aaf943.md) · [re-adjudication](docs/implementation/p6-cp2-targeted-readjudication-report-1aaf943.md)). ### **`P6-CP-2` IS NOT YET FINALIZED — it owes exactly ONE canonical finalizer run by a fourth session.** `execution_state: IN_PROGRESS`, `checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION`. ### **A CHECKPOINT IS NOT AN ACCEPTANCE: `criteria_scored` is EMPTY on both, no P6 criterion is scored, and M1 and M2 both ship dark.** Still owed: **M3–M13**, 95 transitions, gate **G1**, **AC-SAFE-028**. `P7`–`P14` stay BLOCKED. The G2 residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay open and block nothing. |
+| **Next approved unit** | ### **`P6` — still the one and only READY unit, IN PROGRESS with two landed checkpoints.** ### **Its next act is NOT a build unit: `P6-CP-2` owes EXACTLY ONE CANONICAL FINALIZER RUN**, by a session in none of the build, review, adjudication or landing lineages, from a host that permits `socket.bind` and reaches pypi.org over untampered TLS. ### **`M3` may NOT begin on the strength of the M2 landing** — it is gated behind that finalizer AND behind **`P6-D11`**, the STRICT-ORDER F2 gap that would permanently park M3 as M2's first real consumer, which the adjudicator ruled is **not discharged by M2 landing**. When M3 does begin it owes the same route M1 and M2 took: candidate → fresh independent review → separate adjudication → one finalizer. `P7`–`P14` stay BLOCKED behind `P6`. |
 
 **The authoritative, updatable version of this table is
 [`docs/implementation/CURRENT.md`](docs/implementation/CURRENT.md).** If it disagrees with this
@@ -259,7 +259,28 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
   SHOULD BE WRITTEN.** Do not rebuild the Work Item surface and do not polish it (§13.8); the
   recorded residuals (R-01/R-02/R-03, A-01/A-02/A-03, P6-D6, P6-D8) are **debt rows, and the debt row
   is the complete deliverable** (§13.3). The same applies to P5: it is COMPLETE and owes no code.
-  ### **The next unit is `M2` — the Pipeline Instance — and a fresh builder may begin it now.**
+- ⛔ **Do not revisit, re-review or re-adjudicate `P6-CP-2` — it is LANDED.** Machine **M2, the
+  Pipeline Instance**, was accepted at candidate `1aaf943` (tree `1d859547798c`) by a fresh targeted
+  INDEPENDENT review (**ACCEPT FOR SEPARATE TARGETED ADJUDICATION**), then a **separate** targeted
+  **RE-adjudication** against that review (**ACCEPT — no blocking defect survives**), then this
+  landing content commit — none of them the builder. ### **NO FURTHER M2 CODE IS OWED, AND NONE
+  SHOULD BE WRITTEN.** Do not rebuild the Pipeline Instance and do not polish it (§13.8); the
+  recorded residuals (`P6-D17`–`P6-D23`, plus `P6-D9`/`P6-D11`/`P6-D12`/`P6-D13`) are **debt rows,
+  and the debt row is the complete deliverable** (§13.3).
+  ### **THE ROUTE HAD ONE IRREGULARITY, AND IT IS RECORDED RATHER THAN TIDIED:** an earlier targeted
+  adjudication of `1aaf943` was created **before any independent review existed**, inverting the
+  route. The reviewer caught it as finding R-4 without reading it; a third session re-performed the
+  adjudication against the review. The prior adjudication is **retained, not discarded** — it is
+  superseded as the adjudication of record.
+- ⛔ **`P6-CP-2` IS NOT FINALIZED. Do not treat this landing as a finalization, and do not begin
+  `M3`.** The landing owes **exactly one canonical finalizer run** by a session in none of the build,
+  review, adjudication or landing lineages, from a host that permits `socket.bind` and reaches
+  pypi.org over untampered TLS — `scripts/finalize_status.py` executes the clean-clone gate itself
+  and refuses on failure. ### **AND THE FINALIZER ALONE DOES NOT UNBLOCK `M3`:** `P6-D11` is a hard
+  boundary — eight of M2's 25 rows are `CONSUMES` and emit nothing on the **STRICT-ORDER**
+  `pipeline_instance` F2 aggregate, so the measured gaps would **permanently park** the first real
+  consumer, and that consumer is M3. The adjudicator ruled it **not discharged by M2 landing**.
+  Resolving it is a canonical decision about the F2 contract, not something a builder may improvise.
 - ⛔ **Do not score a P6 acceptance criterion, and do not mark P6 COMPLETE.** A checkpoint is a landed
   increment, never a phase acceptance: `criteria_scored` is `[]` and stays that way until all 13
   machines and 134 transitions land and a **separate final adjudication** — by a session in none of
@@ -292,13 +313,18 @@ Until [`CURRENT.md`](docs/implementation/CURRENT.md) says otherwise:
 
 **The current program is
 [P6 — FOUNDATIONAL ENTITIES AND STATE MACHINES](docs/implementation/CURRENT.md)** — the one and only
-`READY` unit, and now **IN PROGRESS** with exactly one landed checkpoint. `READY` is a **selection**,
+`READY` unit, and now **IN PROGRESS** with **two** landed checkpoints. `READY` is a **selection**,
 never a claim of progress in either direction; the execution fields carry the progress. Its
 capability, in one line: **every unit of work has an accountable owner — structurally, not by
 documentation**, which turns rule 13 from a written rule into a mechanism — and **`P6-CP-1` (machine
-M1, the Work Item) delivered the first of it.** ### **The next unit is `M2`, the Pipeline Instance,
-and a fresh builder may begin it.** ### **P6 IS NOT COMPLETE and no P6 criterion is scored** — a
-checkpoint is a landed increment, never a phase acceptance.
+M1, the Work Item) delivered the first of it.** **`P6-CP-2` (machine M2, the Pipeline Instance)
+delivered the second: one durable attempt per logical effect, so a billing sweep that proposes the
+same invoice three times bills the customer once — and a TMS write that times out lands in
+`NEEDS_VERIFICATION`, non-terminal, holding its reservation, moved by no timer, rather than decaying
+into "it failed" and being billed twice.** ### **The next act is the CANONICAL FINALIZER for the
+`P6-CP-2` landing, not a build unit; `M3` may not begin until that finalizer has run AND `P6-D11` is
+resolved.** ### **P6 IS NOT COMPLETE and no P6 criterion is scored** — a checkpoint is a landed
+increment, never a phase acceptance.
 P5 is **adjudicated COMPLETE** at 14/14 — a fresh INDEPENDENT review returned
 ACCEPT FOR SEPARATE FINAL ADJUDICATION with zero material blocking defects, and a **separate FINAL
 ADJUDICATION** set the fourteen criteria on evidence it reproduced itself

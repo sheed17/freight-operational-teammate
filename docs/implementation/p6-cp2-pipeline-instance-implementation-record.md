@@ -182,7 +182,7 @@ brake-release scene and the revoke-before-retry scene. That is recorded here rat
 | **What it attacks** | the reservation's UNIQUE and its predicate; PL-1b's evidence write and its identity; §20's retry rule; the witness requirement; the write-once binding; terminality; the version counter; identity immutability; `FAILED`'s proof at guard AND database; PL-15's outcome source; the timer prohibition; the illegal-attempt identity; the security half of [C-4]; the F14 ordering exemption in **both** directions; the two co-commits; the CAS's brake predicate; the confused-deputy check; the request's provenance; ER-13's pins; ownership at insert and update; the model prohibition; the H-transition check; GR-8; F-20; the fences; the caps; the fingerprint match; the projection source; verify+record; the second-ledger rule; the derived gate vocabulary; and one structural case that deletes a §14 row to prove `AC-MACH-000` is a set comparison |
 | **Population-derived, not sampled** | the (state × trigger) sweep enumerates all 400 pairs and asserts 23 legal / 377 illegal after **proving all sixteen states reachable**; `pipeline_must_exist` is derived from the table; the spec denominator comes from the acceptance document |
 | **Positive controls** | the AC-MACH-000 same-count substitution; the gate-mint scanner must FIND the kernel's own construction before its silence about other modules means anything; the second-ledger case builds a non-compliant table; the occurrence-key annotation case proves a payload read still fails; the F2 gap case fails if no gap is found |
-| **Composed-store concurrency** | two writers racing one transition on the SAME store (exactly one wins, one event); five proposals racing one effect (one reservation, four absorbed); and two fault-injection cases where a concurrent row write makes the machine's snapshot stale mid-checkpoint and mid-claim |
+| **Composed-store contention (SEQUENTIAL — corrected at the `P6-CP-2` landing)** | two writers contending for one transition on the SAME store (exactly one wins, one event); five proposals for one effect, issued **sequentially on one connection** (one reservation, four absorbed); and two fault-injection cases where a concurrent row write makes the machine's snapshot stale mid-checkpoint and mid-claim. ### **THESE CASES ARE SEQUENTIAL, NOT THREADED, AND THIS CELL PREVIOUSLY CALLED THEM "racing" — WHICH THEY ARE NOT.** The superseded wording read *"two writers **racing** one transition on the SAME store ...; five proposals **racing** one effect ..."*, kept here so the claim survives its own correction (CLAUDE.md §5 rule 20). There is no `threading` anywhere in this battery, `ReservationHeld` appears in it only as an import, and `test_two_attempts_racing_one_effect_produce_exactly_one_live_reservation` — whose NAME is left unchanged because it is a `TEST-NODE-MANIFEST.json` node identity — is sequential on one connection. Genuine 8-thread / 8-connection concurrency was exercised **by the independent reviewer and again by the adjudicator, not by this battery**: the safety invariant held (one attempt, one effect, no double bill — the Layer-1 UNIQUE index is the enforcer under real contention), but PL-1b **absorption** did not, so raced duplicates appear in no operator count. Recorded as **`P6-D18`**, nonblocking, and owed before M9's billing sweep — the first concurrent proposer |
 | **`state_digest`** | every no-op case asserts the digest is byte-identical across the second delivery, so "nothing happened" is a measurement |
 
 ---
@@ -221,6 +221,18 @@ should attack first.
 Carried forward unchanged and **not discharged by this unit**: `P6-D1`–`P6-D8`, `IR-R5`–`IR-R12`,
 `ADJ-P5-01`–`ADJ-P5-03`, `RR-01`–`RR-06`, `AD-01`, `AD-02`, `PD-02`, the G2 residuals
 `G2-D4/D6/D8/D9/D10/D15/D16`, and the hardcoded knowledge-base `tenant="default"`.
+
+> ### **`P6-D16` IS NOT THE LAST ASSIGNED ID — ADDED AT THE `P6-CP-2` LANDING.** The independent
+> review and the targeted re-adjudication of candidate `1aaf943` produced nine further nonblocking
+> residuals, recorded as **`P6-D17`–`P6-D23`** in this checkpoint's `landed_checkpoints` entry in
+> [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml). They are recorded, **not
+> actioned** (CLAUDE.md §13.3). ### **The ID space above was itself a finding:** `P6-D14` had been
+> given to three different things — this table's co-commit partner halves (the meaning kept here,
+> unchanged), the prior adjudication's unpreserved `3d4046a` rejection review, and the review's
+> PL-1b recommendation. The landing resolved the collision by assigning from `P6-D17` upward and
+> recorded the collision itself as `P6-D22`, so it survives its own repair. **`P6-D10` stays unused
+> rather than being recycled.** The PL-1b concurrency debt is **`P6-D18`**, and it is owed before
+> M9's billing sweep.
 
 ---
 
