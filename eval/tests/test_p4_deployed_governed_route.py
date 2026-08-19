@@ -845,7 +845,7 @@ def test_the_execution_kernel_seam_is_blocked_pending_adjudication(tmp_path):
         P8";
       * `test_phase0_null_gate.py` proves the production registration population is EMPTY and
         requires RE-ADJUDICATION if it ever stops being empty;
-      * `PROGRESS-PROTOCOL.md` §3 requires founder approval for such an acceptance-contract change.
+      * `CLAUDE.md` §7 makes such an acceptance-contract change tier 1: founder approval required.
 
     So the entry point wires the LOOKUP boundary and returns NO kernel, and the handler fails closed.
     This test pins that state deliberately: when the case is adjudicated and a registry is supplied,

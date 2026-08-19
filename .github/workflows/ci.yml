@@ -1,0 +1,163 @@
+name: CI
+
+# CI is the source of truth for whether this repository is green.
+#
+# Everything here runs from a FRESH CHECKOUT on a clean runner: no local .venv, no TMPDIR state,
+# no shell state, no preserve refs, no finalizer receipts, no committed status artifacts. If a
+# change is green here it is green, and if it is red here it is red - there is nothing else to
+# consult and no ceremony to perform.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  # The suite must never be silently reshaped by ambient pytest configuration.
+  PYTEST_ADDOPTS: ""
+
+jobs:
+  safety:
+    # Fast feedback on the invariants that protect real Neyma behaviour. This is a SUBSET chosen
+    # for speed, not a completeness claim: `suite` below runs everything, so a safety test that is
+    # not named here is still executed on every run. Nothing depends on this list being exhaustive.
+    name: Safety invariants (fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Effect boundary, checkpoint kernel, authority, tenancy, idempotency
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            eval/tests/test_import_gate.py \
+            eval/tests/test_adapter_boundary_acceptance.py \
+            eval/tests/test_p4_governed_write_route.py \
+            eval/tests/test_p4_governed_invoice_write.py \
+            eval/tests/test_p4_deployed_governed_route.py \
+            eval/tests/test_governed_approval_binding.py \
+            eval/tests/test_no_mock_effect_in_production.py \
+            eval/tests/test_consequential_read_boundary.py \
+            eval/tests/test_phase3_witness.py \
+            eval/tests/test_phase3_claim_cas.py \
+            eval/tests/test_phase3_step_order.py \
+            eval/tests/test_phase3_checkpoint_matrix.py \
+            eval/tests/test_phase3_brake.py \
+            eval/tests/test_phase1_commit_key.py \
+            eval/tests/test_phase1_occurrence_identity.py \
+            eval/tests/test_u26a_tenant_construction.py \
+            eval/tests/test_u26bc_tenant_scope.py \
+            eval/tests/test_u26bc_migration_matrix.py \
+            eval/tests/test_u26bc_migration_tenant_validation.py \
+            eval/tests/test_phase0_tenant_posture.py \
+            eval/tests/test_phase0_entry_points.py \
+            eval/tests/test_phase0_null_gate.py \
+            eval/tests/test_phase0_guard_integrity.py \
+            eval/tests/test_ac_sec_001_registry.py \
+            eval/tests/test_p5_replay_and_audit.py \
+            eval/tests/test_tool_permissions.py
+
+  suite:
+    name: Full test suite (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is pyproject's declared floor; 3.12 is what we develop against.
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Prove the package imports from the installed distribution
+        run: python -c "import freight_recon, sys; print('freight_recon ok on', sys.version)"
+
+      - name: Run the test suite
+        run: python -m pytest eval -q -p no:cacheprovider --durations=15
+
+  risk-radar:
+    # Advisory, never blocking. It tells the reviewer WHICH safety surface a pull request touches,
+    # so the review policy can be applied by a human instead of by a ritual applied to everything.
+    name: Risk radar
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed surface
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "$base" "$head")"
+
+          hit() { printf '%s\n' "$changed" | grep -Eq "$1"; }
+          flags=""
+          hit 'src/freight_recon/(effect_boundary|checkpoint|governed_approval|brake)\.py' \
+            && flags="$flags\n- effect boundary / checkpoint kernel / approval + grant lifecycle"
+          hit 'src/freight_recon/(tenant|cli_tenant|persistence)\.py|migrate_.*\.py' \
+            && flags="$flags\n- tenant isolation or data migration"
+          hit 'src/freight_recon/(event_outbox|event_inbox|event_replay|commit_key)\.py' \
+            && flags="$flags\n- idempotency / replay / event transport"
+          hit 'src/freight_recon/.*(actuator|_write|browser_use|cdp_)' \
+            && flags="$flags\n- write-capable adapter surface"
+          hit 'src/freight_recon/(delivery|delivery_dispatch|channels|alert_channel|email_adapter|slack).*\.py' \
+            && flags="$flags\n- outbound communications"
+          hit '(^|/)\.env|secrets|credential' \
+            && flags="$flags\n- secrets / credential handling"
+          hit 'eval/tests/test_(import_gate|adapter_boundary|p4_|phase3_|u26|ac_sec_)' \
+            && flags="$flags\n- a safety guard test (check it was strengthened, not weakened)"
+
+          {
+            echo "## Risk radar"
+            if [ -z "$flags" ]; then
+              echo
+              echo "No high-risk surface touched. Normal policy: builder + tests + CI."
+            else
+              echo
+              echo "This pull request touches:"
+              printf "$flags\n"
+              echo
+              echo "Policy: **one focused independent review before merge**, and for a change that"
+              echo "weakens or removes a safety guard, say so explicitly in the PR description."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          printf "$flags\n"

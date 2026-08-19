@@ -65,7 +65,6 @@ of the product — **not the product.** See [`PRODUCT.md`](PRODUCT.md) §12.
 | **6 production-reachable live-write paths** | ### **CUT AND RECORDED** — EP-6/7/9/10 deleted, EP-3/EP-8/EP-14 cut to structurally read-only, EP-1's write half routed through the governed write route |
 | **31 direct adapter-import edges** | ### **RESOLVED AND RECORDED** — 0 effect-capable violation edges remain (13 authorized detection edges) |
 | **RR-01 — `base_url` outside the payload hash and outside the approval mismatch check** | OPEN — a **binding P12 precondition**, compounded by F-08 and F-09; must be discharged before any live writer is injected |
-| **AD-02 — `finalizer_lock.py` has zero committed test coverage** | OPEN — safety-critical and load-bearing for the next finalizer run; a committed hostile battery is owed |
 | **Transition/event completeness** — G2 is adjudicated, the contract is mechanised, and the recorded finding — *"7 transitions perform durable writes and name no event outright"* (`PL-7a`, `AP-9`, `CF-7`, `EC-7`, `PO-2`, `PO-3`, `RU-8`), kept in its original words so it survives its own repair — is **discharged**: the seven were given **7 minted canonical events** under founder/architect authority, taking the registry 98 → 105. A row claiming it merely *consumes* another machine's event must **prove** that relationship from structured columns (`CONSUMES-VALID`); a row *delegating* its event must share a **trigger type** with its target. The earlier "24-name-no-event" figure and the "121/13" split were never correct and are both retired | ### **EVENT OBLIGATIONS DISCHARGED** — the residuals `G2-D4`/`D6`/`D8`/`D9`/`D10` stay OPEN ([audit](docs/implementation/TRANSITION-EVENT-AUDIT.yaml)) |
 | **Production Action Class gate registration** | ### **DEFERRED BY FOUNDER DECISION to U8.1 / P8** — the production `GateRegistry` population is EMPTY and must stay empty |
 | Hardcoded knowledge-base `tenant="default"` | OPEN — closes at **P7** |
@@ -144,8 +143,22 @@ cp .env.example .env       # secrets live here; .env is gitignored and must neve
 
 If `check_env.py` fails, create the venv with a newer interpreter (e.g. `python3.12 -m venv .venv`).
 Do not let pip start resolving on a non-compliant Python — the resolver error arrives twenty
-minutes later and says nothing useful. A true clean-clone verification (fresh directory, fresh
-venv, full suite) is one command: `.venv/bin/python scripts/clean_clone_gate.py`.
+minutes later and says nothing useful.
+
+## Development workflow
+
+```
+implement  ->  targeted tests  ->  git diff review  ->  commit  ->  push  ->  CI  ->  merge
+```
+
+```bash
+.venv/bin/python -m pytest eval -q          # the whole suite
+```
+
+**CI is the source of truth for green.** `.github/workflows/ci.yml` installs the declared
+dependencies from a fresh checkout and runs the suite plus a fast safety-invariant job, so a true
+clean-clone verification happens on every push and every pull request. Nothing needs to be
+committed to record that it ran. Review scales with risk - see [`CLAUDE.md`](CLAUDE.md) section 7.
 
 Neyma **minimizes handling of employees' raw personal credentials and prefers dedicated, scoped
 machine identities** ([`ADR-014`](docs/architecture/decisions/ADR-014-credential-and-machine-identity.md)).

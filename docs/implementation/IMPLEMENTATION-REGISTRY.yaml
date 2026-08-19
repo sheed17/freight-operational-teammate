@@ -41,21 +41,13 @@
 # Short-form status authority for humans: CURRENT.md. Machine authority for unit state: THIS FILE.
 
 meta:
-  version: 3
-  # The three fields below MIRROR the machine-maintained status block in CURRENT.md and are
-  # rewritten by scripts/finalize_status.py::_write_status (scripts/update_current_status.py has
-  # been a refusing shim since U-HANDOFF-1C and writes nothing). test_status_reality.py fails
-  # the build if they disagree with CURRENT.md or with the checked-out commit.
-  baseline_commit: 15a0fe5c7315ef244868b2678b8778bedb50e5ec
-  validated_tree: 134a9b6b9f868d2da069036802b1a077bfcb418c
-  suite: "3051 passed, 0 failed, 1 conditionally justified skip"
-  status_convention: >-
-    Two-commit convention: content commit first, then exactly one status-metadata commit that
-    records it. A commit cannot contain its own hash, so baseline_commit names the content
-    baseline and HEAD is either that commit or the single metadata commit on top of it.
+  version: 4
+  # The hand-maintained receipt fields (baseline_commit, validated_tree, suite counts) and the
+  # two-commit status convention were removed in the 2026-08 engineering-process simplification.
+  # CI is the authority on whether a tree is green; this file is the authority on unit state.
   graph_model: >-
-    U-HANDOFF-1B (M-1): `dependencies` is the AUTHORITATIVE graph field. `unlocked_by`, `blocks`
-    and `next_units_unlocked` are DERIVED views - unlocked_by mirrors dependencies exactly, and
+    `dependencies` is the AUTHORITATIVE graph field. `unlocked_by`, `blocks` and
+    `next_units_unlocked` are DERIVED views - unlocked_by mirrors dependencies exactly, and
     blocks/next_units_unlocked both mirror the exact dependent set - and a full-graph consistency
     guard fails the build on any divergence, missing node, cycle, or edge that would let a unit
     bypass the P3/P4/P5 safety wall. The independent rehearsal found eight reverse-edge
@@ -63,13 +55,6 @@ meta:
   phase_numbering: >-
     P0-P14 with gates G0-G10, per implementation-roadmap.md. This is the repository's approved
     numbering. The 8-stage roadmap in docs/PRODUCT_ROADMAP.md is SUPERSEDED and must not be used.
-  progress_protocol: >-
-    Progress is reported per docs/implementation/PROGRESS-PROTOCOL.md. Each phase's completion is
-    computed from its weighted acceptance contract (the acceptance_template in PROGRAM-WEIGHTS.yaml,
-    or a phase's committed acceptance_criteria override); overall program completion is the
-    program_weight-weighted sum in PROGRAM-WEIGHTS.yaml. The finalizer derives BUILD-STATUS.yaml
-    and refuses inflated numbers. Every session prints the NEYMA BUILD STATUS block and stops at
-    the next approved control boundary.
 
   # ---------------------------------------------------------------- the three-field status model
   # Added by the roadmap-completeness control correction. It introduces NO new status system: it
@@ -90,9 +75,7 @@ meta:
       deliberately_unchanged: >-
         THE SELECTOR MUST ALWAYS NAME EXACTLY ONE READY UNIT, and a unit may leave READY only when
         a successor takes it IN THE SAME COMMIT. READY is the field the whole control system
-        selects on: scripts/progress_status.py::single_ready_unit returns the unique READY unit,
-        the finalizer refuses a BUILD-STATUS whose single_ready_unit disagrees with it, and five
-        guards assert the exact READY set. Vacating READY without a successor would leave ZERO
+        selects on. Vacating READY without a successor would leave ZERO
         READY units, so the repository could no longer name its next approved unit - a
         control-system hole, not a tidy-up. This is why P4 stayed READY for the whole time it was
         executing (execution was recorded in execution_state, not by vacating the selector), and
@@ -121,8 +104,8 @@ meta:
       meaning: >-
         A checkpoint is a landed increment, NEVER an acceptance. Climbing this ladder moves no
         percentage and completes no phase: only the weighted acceptance_criteria do that, and
-        independent_review + final_adjudication structurally cannot be self-supplied
-        (PROGRESS-PROTOCOL.md sec 3, CLAUDE.md sec 11).
+        independent_review + final_adjudication may not be supplied by a session that built or
+        remediated the work (CLAUDE.md sec 10).
     invariants:
       - "status COMPLETE <=> execution_state COMPLETE <=> checkpoint_state PHASE_ACCEPTANCE_COMPLETE"
       - "status BLOCKED => execution_state NOT_STARTED and checkpoint_state NO_CHECKPOINT"
@@ -130,8 +113,7 @@ meta:
       - "execution_state NOT_STARTED => no landed_checkpoints entries"
       - "checkpoint_state INDEPENDENTLY_REVIEWED or ACCEPTED_FOR_CONTINUATION => the cited
          independent review report exists on disk"
-      - "at most one unit may be execution_state IN_PROGRESS, and it must equal the derived
-         BUILD-STATUS active_phase"
+      - "at most one unit may be execution_state IN_PROGRESS"
 
 units:
 

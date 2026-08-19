@@ -106,6 +106,9 @@ def test_the_green_safety_oracles_carry_no_xfail_or_skip():
 def test_the_red_by_design_cases_are_strict_xfails():
     """Any case declared red-by-design must RUN and FAIL - and break the build when it starts passing."""
     if not STRICT_XFAIL_CASES:
+        # APPROVED-SKIP: the red-by-design set is empty because AC-SAFE-012 and AC-SAFE-013 went
+        # green at Phase 1. Nothing to hold red, so nothing to assert; if a case is ever declared
+        # red-by-design again this body runs and enforces strict xfail.
         pytest.skip("no red-by-design cases remain: AC-SAFE-012/013 went green at Phase 1")
     found = {}
     for path in GUARD_FILES:

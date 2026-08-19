@@ -403,7 +403,7 @@ class WorkflowStorePendingWrites:
 #     that they "do not exist until P8";
 #   * test_phase0_null_gate.py proves the production registration population is EMPTY and says, in
 #     terms, that if it stops being empty the deferral must be RE-ADJUDICATED rather than inherited;
-#   * PROGRESS-PROTOCOL.md sec 3 requires an explicit acceptance-contract revision with FOUNDER
+#   * CLAUDE.md sec 7 makes this tier 1: an explicit acceptance-contract revision with FOUNDER
 #     APPROVAL before a frozen acceptance case changes.
 #
 # Registering gates here would therefore implement U8.1 inside P4 and silently invalidate a frozen,

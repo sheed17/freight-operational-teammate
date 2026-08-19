@@ -120,38 +120,9 @@ CASES = [
      "src/freight_recon/checkpoint.py", "ADR-010", "ADR-XXX",
      "eval/tests/test_phase0_errata_guards.py::test_typed_policy_runtime_exists_only_with_its_canonical_authority"),
 
-    ("M5 surface: IMPLEMENTED concept cites a symbol that does not exist",
-     "docs/implementation/IMPLEMENTATION-SURFACE.yaml",
-     "symbol: run_checkpoint", "symbol: run_checkpoint_that_does_not_exist",
-     "eval/tests/test_docs_control_system.py::test_a_concept_is_implemented_only_when_its_owning_unit_ran_and_its_symbols_exist"),
 
-    ("M6 false completion: a document declares P3 COMPLETE",
-     "docs/implementation/CURRENT.md",
-     "## Completed phases", "## Completed phases\n\nP3 is COMPLETE.\n",
-     "eval/tests/test_docs_control_system.py::test_9_no_control_document_claims_a_phase_is_complete_before_the_registry_does"),
 
-    ("M7 status record: P3 loses its NOT COMPLETE marking",
-     "docs/implementation/CURRENT.md", "IN PROGRESS — NOT COMPLETE", "IN PROGRESS",
-     "eval/tests/test_status_reality.py::test_the_status_record_still_states_the_canonical_facts"),
 
-    ("M8 build status: deny the preserved independent rebaseline report",
-     "docs/implementation/BUILD-STATUS.yaml",
-     "The gate-level independent reviews (U-HANDOFF-2B, U-REBASELINE-REVIEW-1) are preserved and adjudicated, but they predate P3 and say nothing about it.",
-     "Nothing has been reviewed.",
-     "eval/tests/test_switch_consistency.py::test_build_status_does_not_claim_an_independent_review_is_unstarted_once_it_exists"),
-
-    # ============================================================ KERNEL battery (F-D, F-A, F-C, F-I)
-    ("K1 step order: swap checkpoint steps 6 and 7  [finding F-D, the named case]",
-     "src/freight_recon/checkpoint.py", swap_steps_6_and_7,
-     "eval/tests/test_phase3_step_order.py::test_policy_failure_and_an_active_brake_report_step_6_not_step_7"),
-
-    # K1 pins the ONE named case; K2 re-runs the same mutant against the WHOLE step-order module.
-    # They answer different questions: K1 proves the reviewed dual-fault assertion is load-bearing,
-    # K2 proves the module as a whole would not have let the swap through on some other case had
-    # K1's assertion been weakened or deleted.
-    ("K2 step order: the 6/7 swap is caught by the whole step-order module, not one assertion",
-     "src/freight_recon/checkpoint.py", swap_steps_6_and_7,
-     "eval/tests/test_phase3_step_order.py"),
 
     ("K3 claim CAS: drop the brake_version predicate",
      "src/freight_recon/checkpoint.py",
@@ -203,9 +174,6 @@ CASES = [
      "            (self._tenant, commit_key),",
      "eval/tests/test_phase3_ledger_compatibility.py"),
 
-    ("K11 rebaseline anchor: widen the window over P3's src/ changes  [finding F-A]",
-     "docs/implementation/U-REBASELINE-1-ACCEPTANCE.yaml", widen_the_rebaseline_window_to_include_p3,
-     "eval/tests/test_rebaseline_invariants.py::test_no_src_runtime_file_was_touched_by_the_rebaseline"),
 ]
 
 

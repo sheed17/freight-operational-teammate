@@ -39,7 +39,7 @@ def test_effect_capable_entry_points_match_the_manifest():
 
 def test_r07_exposure_is_recorded_as_open_and_uncontained():
     """REPLACED at the R-07 CLOSURE CONTENT COMMIT (CLAUDE.md sec 5 rule 20 - the function NAME is
-    frozen to preserve its node identity in TEST-NODE-MANIFEST.json; the body is re-pointed).
+    kept under its original name so its node identity is stable; the body is re-pointed).
 
     PL-18 may not be falsely closed - and it may not be falsely left open either. The original body
     asserted `NOT CONTAINED` in the status and `NONE` in the mechanism, which was the truth from P0

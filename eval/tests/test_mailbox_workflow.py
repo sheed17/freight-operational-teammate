@@ -594,7 +594,9 @@ def test_mailbox_workflow_cli_smoke(tmp_path):
 
     result = subprocess.run(
         [
-            str(ROOT / ".venv" / "bin" / "python"),
+            # The interpreter RUNNING the suite, never a hardcoded ROOT/.venv - CI installs
+            # into the runner's own environment and has no .venv directory at all.
+            sys.executable,
             str(ROOT / "scripts" / "run_mailbox_workflow.py"),
             "--tenant", "tenant-fixture-a",
             "--corpus",

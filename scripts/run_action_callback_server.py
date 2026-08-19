@@ -353,7 +353,7 @@ def _build_governed_write_route(*, db_path: str, tenant: str, signer):
     # AC-CKPT-6-missing is recorded "DEFERRED_BY_DEPENDENCY - REQUIRED AT PHASE 8" on the explicit
     # ground that the production registration population is ZERO. `test_phase0_null_gate.py` proves
     # that ground mechanically and states that if it ever stops holding, the case must be
-    # RE-ADJUDICATED rather than quietly inherited; PROGRESS-PROTOCOL.md sec 3 requires founder
+    # RE-ADJUDICATED rather than quietly inherited; CLAUDE.md sec 7 makes this tier 1 - founder
     # approval and a committed acceptance-contract revision for exactly that.
     #
     # So this entry point wires the LOOKUP BOUNDARY (legal, and the part that makes the callback

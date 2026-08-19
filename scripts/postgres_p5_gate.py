@@ -11,12 +11,12 @@ WHY THIS IS A GATE SCRIPT AND NOT A PYTEST MODULE
 
 The canonical suite must be reproducible in a fresh clone with declared dependencies and nothing
 else. Making every clone require a running database server would change what "reproducible" means
-for the whole repository, and a pytest node that skipped when no server answered would be worse:
-`APPROVED-SKIPS.yaml` exists because *"a skip is a test that did not run, and a test that did not
-run proves nothing"*. A permanently-expected skip on the one requirement the P5 contract names by
-name would be precisely the silent pass this repository keeps finding in itself.
+for the whole repository, and a pytest node that skipped when no server answered would be worse: a
+skip is a test that did not run, and a test that did not run proves nothing. A permanently-expected
+skip on the one requirement the P5 contract names by name would be precisely the silent pass this
+repository keeps finding in itself.
 
-So this follows `scripts/clean_clone_gate.py`: an explicitly invoked gate that EXECUTES against a
+So this is an explicitly invoked gate that EXECUTES against a
 real PostgreSQL and writes a receipt. Either it ran and the receipt says what it proved, or it did
 not run and there is no receipt — no third state, and nothing green by default.
 

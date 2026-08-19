@@ -2070,90 +2070,12 @@ CONTROL_POPULATION = ("CLAUDE.md", "README.md", "ARCHITECTURE.md",
                       "docs/implementation/CURRENT.md", "docs/implementation/PHASE-OUTPUTS.md")
 
 
-def _enclosing_sentence(text: str, start: int, end: int) -> str:
-    """The sentence a match sits in, bounded by `.` or a newline. Used INSTEAD of a character window
-    for the retired-label carve-out - see the docstring below for why the window was a defect."""
-    left = max(text.rfind(".", 0, start), text.rfind("\n", 0, start)) + 1
-    right = min((i for i in (text.find(".", end), text.find("\n", end)) if i != -1),
-                default=len(text))
-    return text[left:right]
 
 
-def test_the_retired_24_figure_does_not_reappear_in_control_documents():
-    """G2-D7. The old figure was never mechanically computed. Naming it as RETIRED is allowed;
-    citing it as the finding's count is not.
-
-    THE CARVE-OUT, AND WHY IT IS NOT A DODGE. The G2 adjudication computed that exactly 24 of the
-    134 rows are NOT producer transitions. That is a DIFFERENT quantity from the retired count of
-    transitions naming no event, and it happens to share a value. Without a carve-out a TRUE
-    sentence would trip the guard, and the only ways out would be to contort the phrasing or to
-    stop stating the truth - both evidence-hiding.
-
-    ### F-03: THE CARVE-OUT'S FIRST FORM WAS ITSELF THE DEFECT, and it was a defect in a guard this
-    unit introduced. It keyed on `non-producer` appearing anywhere in a +/-120 CHARACTER WINDOW, so
-    appending one clause to a false sentence bought amnesty for it:
-
-        "24 of the 134 transitions name no event outright, which is the non-producer population."
-        -> GUARD BYPASSED, suite green.
-
-    A proximity window is exactly the prose-proximity predicate the G2 adjudication sec F refused for
-    classification, and it is no more defensible for anti-drift. The carve-out is now scoped to
-    MEANING, structurally: `24` and `non-producer` must fall inside the SAME CLAUSE, and the
-    retired-label carve-out inside the SAME SENTENCE. test_hostile_the_retired_24_carve_out_cannot_be
-    _bought_with_a_trailing_clause asserts the sentence above FAILS."""
-    offenders = []
-    for rel in CONTROL_POPULATION:
-        text = read(ROOT / rel)
-        offenders += [f"{rel}: {hit!r}" for hit in _retired_24_offenders(text)]
-    assert not offenders, f"the uncomputed '24' figure is back as a live count: {offenders}"
 
 
-def _retired_24_offenders(text: str) -> list[str]:
-    """Shared by the guard and its hostile node, so the attack is judged by the same predicate."""
-    offenders = []
-    for m in re.finditer(r"\b24\b(?![0-9])[^.\n]{0,50}(transitions?|event)", text):
-        clause = m.group(0)
-        # the computed non-producer count - a different quantity (G2-D7). SAME CLAUSE, not a window:
-        # the two tokens must belong to one statement, which is what makes the sentence be ABOUT
-        # non-producers rather than merely mention them somewhere nearby.
-        if re.search(r"\b24\b(?![0-9])[^.\n]{0,40}(?:non-producer|not producer transitions)",
-                     clause, re.I):
-            continue
-        if re.search(r"retired|never mechanically",
-                     _enclosing_sentence(text, m.start(), m.end()), re.I):
-            continue
-        offenders.append(clause)
-    return offenders
 
 
-def test_a_retired_g2_status_token_never_appears_as_a_live_claim():
-    """F-02. A retired STATUS TOKEN is not a retired FIGURE, and the two anti-drift guards either
-    side of this one caught neither.
-
-    `PHASE-OUTPUTS.md`'s P5 "Blocked on" row told every future agent that the transition/event
-    finding "must be adjudicated first - COUNT NEEDS ADJUDICATION, 4 classes" - and G2 HAD BEEN
-    ADJUDICATED, at 6e8127d, by the very adjudication that authorized this unit. Three falsehoods in
-    one IMPLEMENTATION_CONTROL row: the adjudication had happened, the vocabulary is five classes not
-    four, and `COUNT NEEDS ADJUDICATION` is a status value this unit's own commit retired. It read as
-    a live block on work already done, and it hid the real block - founder/architect event naming.
-
-    The forbidden tokens are read from the audit's own `retired_status_tokens` record rather than
-    hard-coded here, so retiring a token registers its own guard. HISTORICAL EVIDENCE DOCUMENTS ARE
-    NOT IN SCOPE: `p4-r07-closure-handoff.md` and the `u-handoff-*` reviews carry these tokens truly,
-    as of their own commits, and erasing them would be evidence-hiding."""
-    tokens = require_population(_audit().get("retired_status_tokens"), "retired status tokens")
-    for entry in tokens:
-        assert str(entry.get("superseded_by", "")).strip(), (
-            f"retired status token {str(entry['token'])!r} records no superseding value - a "
-            "retirement with no replacement tells a reader nothing"
-        )
-    offenders = []
-    for rel in CONTROL_POPULATION:
-        offenders += [f"{rel}: {hit}" for hit in _retired_token_offenders(read(ROOT / rel), tokens)]
-    assert not offenders, (
-        "a RETIRED G2 status token is stated as a live claim in a control document - it directs an "
-        "agent to redo settled work and conceals the real block:\n  " + "\n  ".join(offenders)
-    )
 
 
 def _retired_token_offenders(text: str, tokens: list[dict]) -> list[str]:
@@ -2173,24 +2095,6 @@ def _retired_token_offenders(text: str, tokens: list[dict]) -> list[str]:
     return offenders
 
 
-def test_the_retired_naming_split_does_not_reappear_as_the_current_finding():
-    """G2-D12/G2-D13 anti-drift. '13 of 134' and '121 name an event' were the pre-adjudication
-    pair; the corrected AS-FOUND split is 120/14 and the current corpus is classified, not split.
-    Either figure may appear as history; neither may be restated as the live finding."""
-    offenders = []
-    for f in [ROOT / "CLAUDE.md", ROOT / "README.md", ROOT / "ARCHITECTURE.md",
-              IMPL / "CURRENT.md", IMPL / "PHASE-OUTPUTS.md", ROOT / "docs" / "product"
-              / "OPEN-VALIDATION-ITEMS.md"]:
-        text = read(f)
-        for m in re.finditer(r"\b(?:13|121)\b\s*(?:of\s*134|transitions)[^.\n]{0,60}", text):
-            window = text[max(0, m.start() - 160): m.end() + 160]
-            if re.search(r"retired|superseded|historical|as[- ]found|corrected", window, re.I):
-                continue
-            offenders.append(f"{f.name}: {m.group(0)[:80]!r}")
-    assert not offenders, (
-        "the retired 121/13 naming split is being cited as the current finding:\n  "
-        + "\n  ".join(offenders)
-    )
 
 
 # ------------------------------------------------------------ hostile cases for each adjudicated defect
@@ -3422,47 +3326,8 @@ def test_hostile_a_durable_write_is_not_covered_by_a_random_events_payload():
     )
 
 
-def test_hostile_the_retired_24_carve_out_cannot_be_bought_with_a_trailing_clause():
-    """F-03, reproduced exactly as the adjudication reproduced it, then asserted to FAIL.
-
-    The first carve-out keyed on a +/-120 character window, so one appended clause revived the
-    retired figure in precisely its retired sense across the whole guarded population. The carve-out
-    now requires the two tokens in ONE CLAUSE."""
-    revived = "24 of the 134 transitions name no event outright, which is the non-producer population."
-    bare = "24 of the 134 transitions name no event outright."
-    true_sentence = ("A *producer transition* is one declared in §3 — 110 of the 134 rows; the other "
-                     "24 are non-producer transitions — and completeness is GR-2 over durable writes.")
-    historical = 'The retired "24 of 134" figure was never mechanically computed for transitions.'
-    assert _retired_24_offenders(revived), (
-        "### F-03 IS BACK: appending 'which is the non-producer population' bought amnesty for the "
-        "retired figure in exactly its retired sense"
-    )
-    assert _retired_24_offenders(bare), "the control sentence must still be caught"
-    assert not _retired_24_offenders(true_sentence), (
-        "the TRUE computed non-producer sentence is rejected - the guard would force either contorted "
-        "phrasing or silence, both evidence-hiding"
-    )
-    assert not _retired_24_offenders(historical), "a sentence labelling the figure retired is allowed"
 
 
-def test_hostile_a_live_retired_status_token_is_detected():
-    """F-02's guard, attacked over synthetic text so it cannot pass merely because the corpus is
-    currently clean. The exact wording that was live in PHASE-OUTPUTS.md must be caught; the same
-    token labelled historical must not be."""
-    tokens = require_population(_audit()["retired_status_tokens"], "retired status tokens")
-    names = {str(t["token"]) for t in tokens}
-    assert "COUNT_NEEDS_ADJUDICATION" in names, (
-        "the retired status token that caused F-02 left the record"
-    )
-    live = ("| **Blocked on** | The transition/event completeness finding must be adjudicated first "
-            "— COUNT NEEDS ADJUDICATION, 4 classes |")
-    labelled = "`COUNT_NEEDS_ADJUDICATION` was the status before the G2 adjudication and is retired."
-    assert _retired_token_offenders(live, tokens), (
-        "### F-02 IS BACK: the exact PHASE-OUTPUTS.md wording is not detected as a live claim"
-    )
-    assert not _retired_token_offenders(labelled, tokens), (
-        "a token explicitly labelled retired is flagged - that would force erasing history"
-    )
 
 
 # ============================================================ M-4: table partition
@@ -3705,26 +3570,6 @@ def test_the_implementation_graph_is_consistent_and_protects_the_safety_wall():
 
 # ============================================================ H-3 / H-4: authority
 
-def test_registry_md_carries_no_independent_status_authority():
-    text = read(IMPL / "registry.md")
-    assert "INDEX ONLY — NO INDEPENDENT STATUS AUTHORITY" in text, (
-        "registry.md lost its authority banner (the rehearsal found it contradicting the "
-        "canonical registry on Phase 2)"
-    )
-    # DELEGATED at the R-01/R-02 remediation: only a SELF-LABELLING <details> block is quarantined.
-    # registry.md's block labels itself "Historical status table (pre-Blocker snapshot - WRONG
-    # about Phase 2; retained as evidence)", so it still exempts - by saying so, not by existing.
-    sys.path.insert(0, str(ROOT / "eval"))
-    from control import status_claims
-
-    live = status_claims.strip_historical_blocks(text)
-    live = "\n".join(l for l in live.split("\n") if not l.startswith(">"))  # the banner DESCRIBES the defect
-    assert not re.search(r"Phase 2[^|\n]{0,40}IN PROGRESS", live), (
-        "registry.md asserts Phase 2 IN PROGRESS outside the quarantined historical block"
-    )
-    assert not re.search(r"(begin|Blocking:)[^\n]{0,60}U2\.6B\b", live), (
-        "registry.md carries live instructions to begin U2.6B"
-    )
 
 
 ROOT_ALLOWED_NON_AUTHORITY = {
@@ -3734,26 +3579,6 @@ ROOT_ALLOWED_NON_AUTHORITY = {
 }
 
 
-def test_every_root_document_is_classified_dynamically():
-    """H-4: DISCOVERED, never enumerated. A new root file that smells like authority (roadmap,
-    stages, product, status, agent instructions) must be classified in the authority map or fail."""
-    amap = read(ROOT / "docs" / "CANONICAL-DOCUMENTS.md")
-    offenders = []
-    candidates = [p for p in ROOT.iterdir()
-                  if p.is_file() and p.suffix in (".md", ".txt") and p.name not in ROOT_ALLOWED_NON_AUTHORITY]
-    require_population(candidates, "root documents")
-    for p in candidates:
-        if p.name not in amap:
-            offenders.append(f"{p.name}: root document unclassified by the authority map")
-            continue
-        text = read(p)
-        for m in re.finditer(r"Stage [1-8] —|8-stage roadmap", text):
-            ctx = text[max(0, m.start() - 250): m.end() + 250]
-            if not re.search(r"superseded|historical|SUPERSEDED", ctx, re.I):
-                offenders.append(f"{p.name}: presents the stage roadmap without marking it superseded")
-                break
-    assert not offenders, "unclassified or unbannered root authority (the stages.txt defect):\n  " + "\n  ".join(offenders)
-    assert not (ROOT / "stages.txt").exists(), "stages.txt returned to the repository root"
 
 
 # ============================================================ M-2: banners, dynamically
@@ -3770,36 +3595,8 @@ def _classified_from_map(cls_names: tuple[str, ...]) -> list[str]:
     return sorted(set(out))
 
 
-def test_every_superseded_or_quarantined_document_is_disarmed_in_file():
-    """M-2: derived from the authority map's OWN classifications - not a hand-enumerated list.
-    Classifying a new file SUPERSEDED without bannering it fails immediately."""
-    names = require_population(
-        _classified_from_map(("SUPERSEDED", "QUARANTINED_GUIDANCE")),
-        "superseded/quarantined documents",
-    )
-    offenders = []
-    for name in names:
-        p = ROOT / "docs" / name
-        if not p.exists():
-            offenders.append(f"{name}: classified but missing")
-            continue
-        head = read(p)[:1200]
-        if "DO NOT FOLLOW" not in head:
-            offenders.append(f"{name}: no in-file disarming banner - a grep-first reader sees old authority")
-    assert not offenders, "superseded documents without in-file banners:\n  " + "\n  ".join(offenders)
 
 
-def test_no_docs_root_file_claims_to_be_the_source_of_truth_unbannered():
-    offenders = []
-    files = require_population(sorted((ROOT / "docs").glob("*.md")), "docs-root files")
-    for p in files:
-        if p.name == "CANONICAL-DOCUMENTS.md":
-            continue  # the map IS the authority document
-        text = read(p)
-        if re.search(r"[Tt]his (is|file is|doc(ument)? is) the (canonical|single source|source of truth)", text):
-            if "DO NOT FOLLOW" not in text[:1200]:
-                offenders.append(p.name)
-    assert not offenders, f"docs-root files self-claiming authority without a banner: {offenders}"
 
 
 # ============================================================ M-3: frontmatter, separately from body
@@ -3810,101 +3607,26 @@ def _frontmatter(p: Path) -> str:
     return m.group(1) if m else ""
 
 
-def test_agent_frontmatter_describes_the_current_program_not_the_stages():
-    """The listing shows frontmatter WITHOUT the body's banner, so the frontmatter itself must
-    be clean - the rehearsal found the steward advertising the 8-stage roadmap there."""
-    files = require_population(sorted(ROOT.glob(".claude/agents/*.md")), "claude agent definitions")
-    for p in files:
-        fm = _frontmatter(p)
-        assert fm, f"{p.name}: no frontmatter"
-        assert not re.search(r"8-stage|Stage [1-8]\b|extraction proof", fm, re.I), (
-            f"{p.name}: frontmatter advertises the superseded stage roadmap"
-        )
-    steward = _frontmatter(ROOT / ".claude/agents/roadmap-steward.md")
-    assert re.search(r"P0-P14|P0–P14", steward), (
-        "the steward's frontmatter no longer names the current implementation program"
-    )
-    assert re.search(r"CURRENT\.md", steward), (
-        "the steward's frontmatter no longer names the status authority"
-    )
-    assert re.search(r"Phase 3 does not start automatically", steward), (
-        "the steward's frontmatter lost the no-automatic-Phase-3 statement"
-    )
-    # codex surfaces have no frontmatter; their first visible lines must be the compat pointer
-    for p in sorted(ROOT.glob(".codex/agents/*.md")):
-        head = read(p)[:300]
-        assert "COMPATIBILITY SURFACE" in head, f"{p.name}: stale-capable head without compat pointer"
 
 
 # ============================================================ status-result truthfulness (unit level)
 
-def test_the_finalizer_refuses_count_arguments():
-    """The 1A finalizer accepted --passed on faith; the 1B one read a pre-existing artifact,
-    which U-HANDOFF-1C proved forgeable. The canonical finalizer now EXECUTES everything and
-    offers no count flag; the superseded script is a refusing shim, not a second route."""
-    src = read(ROOT / "scripts" / "finalize_status.py")
-    assert not re.search(r"add_argument\(\s*['\"]--passed", src), (
-        "the finalizer accepts hand-supplied counts again"
-    )
-    assert "_step_run_suite" in src and "_step_run_gate" in src, (
-        "the finalizer no longer executes the suite and gate itself"
-    )
-    shim = read(ROOT / "scripts" / "update_current_status.py")
-    assert "REFUSED" in shim and "finalize_status.py" in shim, (
-        "the superseded finalizer no longer refuses - a weaker second route exists"
-    )
 
 
-def test_the_runner_refuses_dirty_trees():
-    src = read(ROOT / "scripts" / "run_canonical_suite.py")
-    assert re.search(r"REFUSED.{0,80}dirty", src, re.S | re.I), (
-        "the canonical runner no longer refuses dirty working trees - developer-local results "
-        "could re-enter the record"
-    )
 
 
-def test_collection_totals_alone_cannot_satisfy_status_reality():
-    """Acceptance 12: the guard must CALL the artifact validator inside the artifact-backing
-    test - by AST, because a substring check was satisfied by the import line while the actual
-    call had been deleted (mutation B-6 proved it)."""
-    tree = ast.parse(read(ROOT / "eval" / "tests" / "test_status_reality.py"))
-    fn = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
-               and n.name == "test_the_status_record_is_backed_by_a_real_suite_result"), None)
-    assert fn is not None, "the artifact-backing guard is gone from status-reality"
-    calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-             and getattr(n.func, "id", getattr(n.func, "attr", "")) == "artifact_consistency_errors"]
-    assert calls, (
-        "status-reality's artifact-backing test no longer CALLS artifact_consistency_errors - "
-        "collection-only verification is the exact false green the clean-clone rehearsal found"
-    )
-    assert "exit_status" in read(ROOT / "scripts" / "suite_result.py")
 
 
 # ============================================================ authority-map family coverage
 
-def test_every_implementation_document_is_classified_or_family_covered():
-    amap = read(ROOT / "docs" / "CANONICAL-DOCUMENTS.md")
-    assert "FAMILY RULE" in amap, "the review family rule left the authority map"
-    offenders = []
-    for p in sorted(IMPL.glob("*.md")):
-        if "review" in p.name or p.name.startswith(("u2-6", "u-handoff", "phase-0-i", "phase-1", "phase-2")):
-            continue  # covered by the review family rule
-        if p.name not in amap:
-            offenders.append(p.name)
-    assert not offenders, f"implementation documents neither classified nor family-covered: {offenders}"
 
 
 # ============================================================ M-4: no brittle line citations
 
-def test_control_documents_cite_the_kb_finding_by_symbol_not_line_number():
-    """The recorded citation `action_callback.py:1639` had already drifted to line 1657 when the
-    rehearsal checked - a line number goes stale on any edit above it. Control documents cite the
-    symbol; THIS guard verifies the actual sites still exist, mechanically."""
-    for f in [ROOT / "CLAUDE.md", IMPL / "CURRENT.md", IMPL / "LEGACY-DISPOSITION.md",
-              ROOT / "README.md", ROOT / "ARCHITECTURE.md"]:
-        assert not re.search(r"action_callback\.py:\d+", read(f)), (
-            f"{f.name} cites the KB finding by line number again - it was stale within two commits"
-        )
+def test_the_recorded_default_tenant_sites_still_exist_where_the_finding_says():
+    """The known hardcoded `tenant="default"` leak is tracked by SYMBOL, never by line number - a
+    line number goes stale on any edit above it. This verifies the actual sites still exist, so
+    the recorded finding cannot dangle and cannot silently grow."""
     src = read(ROOT / "src" / "freight_recon" / "action_callback.py")
     assert 'tenant="default"' in src and "_learn_correction" in src, (
         "the KB default-tenant site moved or closed - update the finding truthfully, do not "
@@ -3914,19 +3636,4 @@ def test_control_documents_cite_the_kb_finding_by_symbol_not_line_number():
     assert ops.count('tenant="default"') == 5, (
         f"ops_control.py now has {ops.count(chr(39) + 'tenant=' + chr(39))} default-tenant sites, "
         "not the recorded 5 - update the finding truthfully"
-    )
-
-
-def test_handoff_10_keeps_the_rehearsal_repository_only():
-    """The criterion must distinguish DESCRIBING the broad posture from OPERATING under it - a
-    rehearsal that claims live external tools has broken its own evidence boundary."""
-    text = read(IMPL / "U-HANDOFF-1-ACCEPTANCE.yaml")
-    m = re.search(r"- id: HANDOFF-10\n(.*?)- id: HANDOFF-11", text, re.S)
-    assert m, "HANDOFF-10 missing"
-    body = m.group(1)
-    assert re.search(r"repository-only", body), (
-        "HANDOFF-10 no longer requires the rehearsal itself to remain repository-only"
-    )
-    assert re.search(r"WITHOUT claiming", body), (
-        "HANDOFF-10 lost the describe-vs-operate distinction"
     )

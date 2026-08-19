@@ -74,7 +74,9 @@ def test_live_slack_mode_requires_signing_secret_and_bot_token(tmp_path, monkeyp
 def test_cli_local_outbox_smoke(tmp_path):
     result = subprocess.run(
         [
-            str(ROOT / ".venv" / "bin" / "python"),
+            # The interpreter RUNNING the suite, never a hardcoded ROOT/.venv - CI installs
+            # into the runner's own environment and has no .venv directory at all.
+            sys.executable,
             str(ROOT / "scripts" / "run_first_design_partner.py"),
             "--workspace",
             str(tmp_path / "cli_partner"),

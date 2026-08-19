@@ -181,9 +181,9 @@ def control_guard_modules() -> list[str]:
     marker = re.compile(
         r"CANONICAL-DOCUMENTS|CLAUDE\.md|PRODUCT\.md|ARCHITECTURE\.md|CURRENT\.md|"
         r"IMPLEMENTATION-REGISTRY|IMPLEMENTATION-SURFACE|TOOL-ACCESS-POLICY|"
-        r"U-HANDOFF-1-ACCEPTANCE|LEGACY-DISPOSITION|PHASE-OUTPUTS|SUITE-RESULT|"
+        r"U-HANDOFF-1-ACCEPTANCE|LEGACY-DISPOSITION|PHASE-OUTPUTS|"
         r"TRANSITION-EVENT-AUDIT|EFFECT-PATH-INVENTORY|baseline-manifest|"
-        r"suite_result|update_current_status|check_env|finalize_status|clean_clone_gate|"
+        r"check_env|"
         r'"implementation"|AUTO-LOADED-GUIDANCE'
     )
     for f in canonical_test_modules():

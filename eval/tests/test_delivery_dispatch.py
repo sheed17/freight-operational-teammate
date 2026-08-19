@@ -209,7 +209,9 @@ def test_local_email_outbox_writes_one_artifact_per_recipient(tmp_path):
 def test_dispatch_cli_requires_secret_or_explicit_local_flag(tmp_path):
     blocked = subprocess.run(
         [
-            str(ROOT / ".venv" / "bin" / "python"),
+            # The interpreter RUNNING the suite, never a hardcoded ROOT/.venv - CI installs
+            # into the runner's own environment and has no .venv directory at all.
+            sys.executable,
             str(ROOT / "scripts" / "dispatch_review.py"),
             "--mode",
             "DRY_RUN",
