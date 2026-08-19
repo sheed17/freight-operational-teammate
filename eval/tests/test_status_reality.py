@@ -92,8 +92,11 @@ def repo_state() -> str:
         return "PRODUCING"
     raise AssertionError(
         f"CURRENT.md records {recorded[:9]} but HEAD is {head[:9]} - the status authority is "
-        "stale beyond every legal state. Run the finalization cycle "
-        "(run_canonical_suite.py, then update_current_status.py, then the metadata commit)."
+        "stale beyond every legal state. Run the canonical finalizer "
+        "(scripts/finalize_status.py), then commit the status files it names as the single "
+        "metadata commit. If this followed a rebase, the recorded SHA no longer exists on the "
+        "first-parent chain and NO finalizer can repair it - see "
+        "docs/implementation/integration-topology-procedure.md (R-21b)."
     )
 
 

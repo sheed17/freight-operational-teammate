@@ -203,14 +203,29 @@ commit whose first parent is the base branch, which puts the repository into the
 names *"stale beyond every legal state."* This is not hypothetical: `main` reached `152574e` this
 way and fails the guard there today.
 
-> ### **The invariant: no merge commit may sit above a certified content commit. `main` advances by
-> FAST-FORWARD ONLY.**
+> ### **The invariant: the first-parent chain from `HEAD` must bind to the certified pair, the
+> status-metadata commit has exactly one parent, and `main` advances by FAST-FORWARD ONLY.**
 
-The full procedure — replay the unit onto `main`'s tip as one content commit *before* review,
-finalize on top, then advance `main` with a fast-forward push — is recorded in
-[`integration-topology-procedure.md`](integration-topology-procedure.md) and enforced by
+The **content** commit may itself be a merge of ### **at most two parents** — the branch and
+`origin/main` — provided its **first** parent is the previous metadata commit. That is how a
+diverged `origin/main` is integrated, and it is what keeps the chain binding. An **octopus** content
+commit is rejected outright: `topology_errors()` reads the content commit's parent count and bounds
+it at two, because a third lineage rides in as an empty patch under `git show`.
+The **first-parent** proviso, by contrast, is **not** a parent-shape check performed at rest — it is
+enforced through `repo_state()`, which resolves `HEAD^`/`HEAD^^` by first-parent lookup, so a
+mis-parented merge leaves the recorded pair off the chain and the state becomes stale or invalid —
+which bites **at finalizer time**, where a legitimate integrating merge instead lands in `PRODUCING`
+with a finalizer owed on it.
+### **Never rebase a branch that already carries a metadata commit:** a rebase rewrites the SHA
+`CURRENT.md` records, leaving the guard stale at every position and no finalizer able to repair it,
+because the finalizer executes the suite that is failing.
+
+The full procedure — check whether `origin/main` is already an ancestor, merge it in as one content
+commit if not, review, finalize on top, then advance `main` with a fast-forward push — is recorded
+in [`integration-topology-procedure.md`](integration-topology-procedure.md) and enforced by
 [`test_integration_topology.py`](../../eval/tests/test_integration_topology.py). It is registered
-as ### **R-21** in [`implementation-risk-register.md`](implementation-risk-register.md).
+as ### **R-21** in [`implementation-risk-register.md`](implementation-risk-register.md), with the
+procedure repair recorded as **R-21b**.
 
 This obligation blocks **integration**, not implementation: a unit may be built, reviewed,
 remediated and finalized locally without discharging it. It is discharged per unit, at the push —
