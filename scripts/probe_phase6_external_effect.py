@@ -94,7 +94,10 @@ FAULTS: dict[str, str] = {
     "readback-unavailable": "verify",       # EF-4u  no positive health signal — blind
     "redeliver": "consume",                 # §19    the consumed event arrives again
     "restart-before-claim": "claim",        # §36    process restart between mint and claim
-    "restart-after-claim": "claim",         # §36    process restart after the CAS — never re-execute
+    # §36: a restart AFTER the CAS commits. The risk is that RECOVERY re-runs the adapter and
+    # double-fires the effect — that is the OUTCOME phase, past the claim, so this is coherent with
+    # the post-CAS cases and NOT with a case that stops at the claim refusal.
+    "restart-after-claim": "outcome",
     "predecessor-unapplied": "consume",     # P6-D11 §8 / F14  a strict predecessor is not yet applied
     "park-and-drain": "consume",            # P6-D24 the event parks and drain_handler_for is invoked
 }
@@ -334,6 +337,23 @@ def _to_claimed(ctx: Ctx, scn: Scn):
     return mint, claim
 
 
+def _restart_after_claim(scn: Scn, mint) -> CaseResult:
+    """§36: a process restart AFTER the CAS re-presents the winner's handle. Recovery must NOT re-run
+    the adapter — the row is already CLAIMED, the CAS matches zero rows, EffectAttempted stays one,
+    and a retry can only be a NEW grant, which the live-hold ledger refuses while the effect is held.
+    ARCHITECTURE §1: never act twice when the world only wanted it once."""
+    attempts_before = scn.outbox_count("EffectAttempted")
+    replay = scn.m3.claim(mint.handle, scn.params, actor_id="restarted-worker")
+    retry = scn.mint()
+    if (replay.claimed or scn.claimed_rows() != 1
+            or scn.outbox_count("EffectAttempted") != attempts_before or attempts_before != 1):
+        return CaseResult(False, markers=["### DOUBLE EFFECT ### a restart re-executed the effect"])
+    if retry.authorized or retry.refusal is None or retry.refusal.reason != "COMMIT_KEY_HELD":
+        return CaseResult(False, markers=["### DOUBLE CLAIM ### a restart minted a second grant"])
+    # The exact retry/no-re-execution signature the restart_recovery risk is verified by.
+    return CaseResult(True, lines=[_SIGNATURES["replayed-capability"]])
+
+
 def case_witness_required_mint(ctx: Ctx) -> CaseResult:
     scn = _new_scn(ctx)
     mint = scn.mint()
@@ -561,6 +581,9 @@ def case_affirmative_non_occurrence_failed(ctx: Ctx) -> CaseResult:
 def case_timeout_lost_response_unknown(ctx: Ctx) -> CaseResult:
     scn = _new_scn(ctx)
     mint, _ = _to_claimed(ctx, scn)
+    if ctx.inject == "restart-after-claim":
+        # §36 restart_recovery: past the CAS, a restart must not re-fire the effect (P1 risk S09).
+        return _restart_after_claim(scn, mint)
     trig = {"adapter-timeout": Trigger.ADAPTER_TIMED_OUT, "adapter-crash": Trigger.PROCESS_CRASHED,
             "lost-response": Trigger.LOST_RESPONSE}.get(ctx.inject, Trigger.ADAPTER_TIMED_OUT)
     r = scn.m3.apply(mint.grant_id, trig, actor_id="sys", exposure="invoice load:4471 ~$2,850",
@@ -932,8 +955,13 @@ def main(argv: list[str] | None = None) -> int:
             print(name)
         return 0
     if args.list_dimensions:
+        # ### THE MUTATION FLAGS ARE PRINTED AS THE LITERAL FLAG TOKENS, WITH THE LEADING `--`.
+        # The permanent verification scenario matches `--concurrency`/`--delay-ms`/`--repeat`/
+        # `--tenants`/`--seed`/`--inject` as substrings — a bare `concurrency` would not be found.
+        # The 14 fault names stay BARE (`none`, `adapter-timeout`, …), which is how they are matched,
+        # so the two lists remain unambiguous: a flag carries `--`, a fault never does.
         for flag in DIMENSIONS:
-            print(flag)
+            print(f"--{flag}")
         for fault in FAULTS:
             print(fault)
         return 0
