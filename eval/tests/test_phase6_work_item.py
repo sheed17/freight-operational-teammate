@@ -2540,19 +2540,26 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
     """### IT SHIPS DARK, AND THAT IS ASSERTED RATHER THAN ANNOUNCED. Discovered by scanning the
     package and the operator scripts, never by an enumerated file list.
 
-    ### THE ONE PERMITTED IMPORTER IS THE P6 ENTITY LAYER ITSELF (amended at P6-CP-2, and NARROWED
-    rather than widened). Machine M2 imports M1 because
-    `02-pipeline-instance.machine.md` §5 makes the attempt's owner *the Work Item's owner*: M2 reads
-    that owner from M1's recorded roster instead of accepting a string, which is the whole
-    mechanism rule 13 rests on. Refusing the import would force M2 to keep its own roster — a second
-    ownership authority — so the guard would have driven the exact defect it exists to prevent.
+    ### THE PERMITTED IMPORTERS ARE THE P6 ENTITY LAYER ITSELF (M2 at P6-CP-2, M3 at P6/M3).
+    Machine M2 imports M1 because `02-pipeline-instance.machine.md` §5 makes the attempt's owner
+    *the Work Item's owner*: M2 reads that owner from M1's recorded roster instead of accepting a
+    string, which is the whole mechanism rule 13 rests on. Machine M3 imports M1's
+    `resolve_decision_ref` for the same class of reason: EF-5 closes an `UNKNOWN_OUTCOME` only on a
+    `decision_ref` that RESOLVES to an authenticated human decision (GR-14), and a second resolver is
+    a second place for one of them to start accepting the string "done". Refusing either import would
+    force the machine to keep its own copy — a second authority — so the guard would have driven the
+    exact defect it exists to prevent.
 
     What the guard now asserts is stronger than "zero importers", because "zero" was never the
     property that mattered: it is that no ADAPTER, WORKFLOW, SCRIPT, CALLBACK or ROUTE reaches
     either machine, and that the entity layer's importers are themselves dark. Both halves are
     checked, and the permitted set is derived from the P6 modules on disk rather than typed out.
     """
-    entity_layer = {"work_item.py", "pipeline_instance.py"}
+    # FIXED-SPECIFICATION: the permitted importers of M1 are the P6 entity-layer machines by name —
+    # M2 (owner-from-roster, §5) and M3 (decision-ref resolution for EF-5, GR-14). This is a
+    # deliberate closed set, not a discovered population: a fourth importer is a rollout-posture
+    # change that must be decided here, which is exactly what this guard makes visible.
+    entity_layer = {"work_item.py", "pipeline_instance.py", "external_effect.py"}
     assert entity_layer <= {p.name for p in (ROOT / "src" / "freight_recon").glob("*.py")}, (
         "the P6 entity layer no longer exists under these names — the permitted-importer set would "
         "be empty and this guard would confine nothing"

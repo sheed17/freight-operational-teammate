@@ -164,6 +164,23 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_pipeline_instances_terminal_is_final"
                for step in p6pi_performed)
     assert phase6_pipeline_readiness_problems(conn) == []
+    # ### AND A FIFTH TIME, FOR M3 — THE EXTERNAL EFFECT / EFFECT GRANT. Canonical moved once more:
+    # a ledger without the outcome columns cannot record `attempted_at`/`verified_at`/`failure_proof`,
+    # and a `checkpoint_id` with no foreign key into the witness is the decoration M3 exists to
+    # remove. So a P2..M2 database is still refused, and the migration that closes the gap rebuilds
+    # the ledger to carry both. The property is the one this node has always asserted: a migrated
+    # database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_external_effects import (  # noqa: E402
+        create_phase6_external_effects_schema,
+        phase6_external_effects_readiness_problems,
+    )
+
+    assert any("outcome column" in p or "foreign key into 'checkpoint_witnesses'" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ef_performed = create_phase6_external_effects_schema(conn, now=utc_now())
+    assert any(step.startswith("rebuild-table:effect_grants") for step in p6ef_performed), (
+        p6ef_performed)
+    assert phase6_external_effects_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

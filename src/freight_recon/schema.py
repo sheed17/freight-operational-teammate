@@ -62,6 +62,16 @@ from .migrations.phase5_event_transport import (
     phase5_readiness_problems,
     stamp_phase5_version,
 )
+from .migrations.phase6_external_effects import (
+    P6EF_EXEMPT_TABLES,
+    P6EF_INDEXES,
+    P6EF_REPLACED_INDEXES,
+    P6EF_TARGET_SCHEMA,
+    P6EF_TENANT_TABLES,
+    create_phase6_external_effects_schema,
+    phase6_external_effects_readiness_problems,
+    stamp_phase6_external_effects_version,
+)
 from .migrations.phase6_pipeline_instances import (
     P6PI_EXEMPT_TABLES,
     P6PI_INDEXES,
@@ -105,6 +115,11 @@ LEGACY_TABLES: tuple[str, ...] = ("operation_commit_claims",)
 _ALL_TARGET_SCHEMA: dict[str, str] = {
     **TARGET_SCHEMA, **P3_TARGET_SCHEMA, **P5_TARGET_SCHEMA, **P6_TARGET_SCHEMA,
     **P6PI_TARGET_SCHEMA,
+    # M3 overrides `effect_grants` LAST: the same ledger row (SD-2, one table), now carrying the
+    # outcome-aspect columns and the witness/pipeline foreign keys. The override is what makes the
+    # readiness oracle DERIVE the M3 FK and column contract from the DDL rather than from a second
+    # list — a fresh database is built from exactly this, and the migrated path rebuilds to it.
+    **P6EF_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -114,7 +129,7 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
 # authority is authority WITHIN one, and neither has an honest cross-tenant reading.
 ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
-    *P6PI_TENANT_TABLES,
+    *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -131,6 +146,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6_EXEMPT_TABLES,
     *P6PI_TENANT_TABLES,
     *P6PI_EXEMPT_TABLES,
+    *P6EF_TENANT_TABLES,
+    *P6EF_EXEMPT_TABLES,
 )
 
 
@@ -181,9 +198,10 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
             conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
     merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES,
-                                        **P6PI_INDEXES}.items()
+                                        **P6PI_INDEXES, **P6EF_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
-                      and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES}
+                      and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
+                      and n not in P6EF_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -224,6 +242,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_pipeline_schema(conn, now=_now())
     if not phase6_pipeline_readiness_problems(conn):
         stamp_phase6_pipeline_version(conn, now=_now())
+    # P6's M3, the External Effect / Effect Grant. Built AFTER the Pipeline Instance and the witness
+    # table because the ledger now holds a foreign key into each. On a fresh database the extended
+    # DDL already built the shape, so this is a no-op; on a migrated one it adds the outcome columns
+    # and rebuilds the ledger to carry the two FKs. Marker-last, like every other phase.
+    create_phase6_external_effects_schema(conn, now=_now())
+    if not phase6_external_effects_readiness_problems(conn):
+        stamp_phase6_external_effects_version(conn, now=_now())
     conn.commit()
 
 
@@ -298,6 +323,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(timer_readiness_problems(conn))
     problems.extend(phase6_readiness_problems(conn))
     problems.extend(phase6_pipeline_readiness_problems(conn))
+    problems.extend(phase6_external_effects_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

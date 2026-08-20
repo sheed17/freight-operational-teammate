@@ -1077,6 +1077,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6pi:{step}")
         conn.commit()
 
+        # M3, the External Effect / Effect Grant. Adds the outcome columns and rebuilds the ledger to
+        # carry its foreign keys into the witness and the Pipeline Instance — AFTER both of those
+        # exist, because it references each. This is the migrated path's half of "fresh == migrated":
+        # a fresh database is built M3-shaped directly, and this brings a P2-shaped ledger to the same
+        # shape. Idempotent; a no-op on a ledger that already carries them.
+        from .phase6_external_effects import create_phase6_external_effects_schema
+
+        for step in create_phase6_external_effects_schema(conn, now=_now()):
+            _mark(conn, f"phase6ef:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1092,6 +1103,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             # internally too, so neither marker can appear on a shape that did not prove itself.
             from .phase3_checkpoint import stamp_phase3_version
             from .phase5_event_transport import stamp_phase5_version
+            from .phase6_external_effects import stamp_phase6_external_effects_version
             from .phase6_pipeline_instances import stamp_phase6_pipeline_version
             from .phase6_work_items import stamp_phase6_version
 
@@ -1099,6 +1111,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase5_version(conn, now=_now())
             stamp_phase6_version(conn, now=_now())
             stamp_phase6_pipeline_version(conn, now=_now())
+            stamp_phase6_external_effects_version(conn, now=_now())
             conn.commit()
         return rep
     finally:
