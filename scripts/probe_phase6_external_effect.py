@@ -44,6 +44,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "eval" / "tests"))
+# `eval/` for the legacy-workspace fixture the repo's own migration equivalence check uses.
+sys.path.insert(0, str(ROOT / "eval"))
 
 # phase3_kit builds the checkpoint plumbing (kernel, approval, world) without importing M3; the probe
 # is the one script permitted to import the machine itself.
@@ -77,7 +79,7 @@ CASES: tuple[str, ...] = (
     "authenticated-human-resolution", "deterministic-proof-resolution",
     "replay-zero-external-effects", "d24-drain-handler-for", "complete-stream-strict-ordering",
     "f14-predecessor", "redelivery-idempotency", "tenant-isolation", "transactional-co-commit",
-    "m2-m3-consistency",
+    "m2-m3-consistency", "migration-legacy-upgrade",
 )
 
 # Every fault is a transition or a clause of 03-external-effect-grant.machine.md; none is invented
@@ -142,6 +144,10 @@ CASE_PHASES: dict[str, set[str]] = {
     "tenant-isolation": {"claim"},
     "transactional-co-commit": {"claim"},
     "m2-m3-consistency": {"claim", "outcome"},
+    # A schema-migration case reaches no runtime state-machine phase, so every runtime fault is
+    # incoherent with it (injecting a brake or a lost response into a migration is meaningless) — the
+    # `schema` phase matches no fault, so only `none` is coherent.
+    "migration-legacy-upgrade": {"schema"},
 }
 
 # The signature line each case prints when it behaved as specified — a subset of these are the exact
@@ -159,6 +165,9 @@ _SIGNATURES: dict[str, str] = {
     "revocation-unclaimed": "REVOKED IS NOT EXPIRED_UNCLAIMED",
     "replayed-capability": "A RETRY IS A NEW GRANT, NEVER A RE-CLAIM",
     "replay-zero-external-effects": "replay: 0 grants, 0 claims, 0 EffectAttempted, 0 external effects",
+    "migration-legacy-upgrade":
+        "A LEGACY DATABASE MIGRATES TO THE CANONICAL EFFECT SHAPE — "
+        "WITNESS FK, ATTEMPT FK, READINESS []",
 }
 
 
@@ -843,6 +852,72 @@ def _events(scn: Scn) -> list[dict]:
     return out
 
 
+def _effect_shape(conn) -> tuple:
+    """The readiness-relevant shape of `effect_grants`: its columns in order (name, type, notnull,
+    default, pk), its foreign keys, and the Layer-2 commit-once partial unique index. Enough to
+    prove a migrated ledger is the SAME shape a fresh canonical build produces — not merely that
+    both are individually ready."""
+    cols = [(r[1], (r[2] or "").upper(), bool(r[3]), r[4], bool(r[5]))
+            for r in conn.execute("PRAGMA table_info(effect_grants)")]
+    fks = sorted((r[2], r[3], r[4], r[5], r[6])
+                 for r in conn.execute("PRAGMA foreign_key_list(effect_grants)"))
+    idx = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name='ix_effect_grants_commit_once'"
+    ).fetchone()
+    return (cols, fks, " ".join((idx[0] or "").split()) if idx else None)
+
+
+def case_migration_legacy_upgrade(ctx: Ctx) -> CaseResult:
+    """A pre-M3 (phase-2-shaped) database, taken through the repo's OWN legacy migration entry point
+    (`phase2_tenant_first.migrate`, not `create_canonical_schema`), must reach the SAME effect_grants
+    shape a fresh canonical build produces: the six outcome-evidence columns, the tenant-first
+    foreign keys into checkpoint_witnesses and pipeline_instances, the Layer-2 commit-once index,
+    and readiness []. This closes the P1 persistence_failure gap with OBSERVED evidence — the migrated
+    ledger, not only the fresh one. Deterministic and seed-independent; the migration carries no
+    randomness."""
+    import sqlite3
+
+    from fixtures.legacy_workspace import build_legacy_workspace
+    from freight_recon.migrations.phase2_tenant_first import OwnerAssertion, migrate
+    from freight_recon.schema import (
+        create_canonical_schema,
+        enable_and_verify_foreign_keys,
+        schema_readiness_problems,
+    )
+
+    tmp = Path(tempfile.mkdtemp(prefix="p6m3-mig-"))
+    legacy = tmp / "legacy.db"
+    build_legacy_workspace(legacy)
+    migrate(str(legacy), assertion=OwnerAssertion(
+        actor_id="rasheed@neyma", tenant="acme-brokerage", scope="all legacy rows",
+        operational_basis="sole workspace onboarded for Acme; verified against record",
+        evidence_reference="docs/onboarding/acme.md"), dry_run=False)
+
+    migrated = sqlite3.connect(legacy)
+    migrated.row_factory = sqlite3.Row
+    enable_and_verify_foreign_keys(migrated)
+    cols = {r[1] for r in migrated.execute("PRAGMA table_info(effect_grants)")}
+    missing = [c for c in ("attempted_at", "verified_at", "failure_proof", "exposure",
+                           "health_signal", "reality_decision_ref") if c not in cols]
+    referents = {r[2] for r in migrated.execute("PRAGMA foreign_key_list(effect_grants)")}
+    problems = schema_readiness_problems(migrated)
+
+    fresh = sqlite3.connect(tmp / "fresh.db")
+    fresh.row_factory = sqlite3.Row
+    enable_and_verify_foreign_keys(fresh)
+    create_canonical_schema(fresh)
+    enable_and_verify_foreign_keys(fresh)
+    equal = _effect_shape(migrated) == _effect_shape(fresh)
+
+    ok = (not missing and "checkpoint_witnesses" in referents
+          and "pipeline_instances" in referents and problems == [] and equal)
+    if not ok:
+        return CaseResult(False, markers=[
+            f"### MISS ### migration: missing_cols={missing} refs={sorted(referents)} "
+            f"readiness_problems={len(problems)} fresh==migrated={equal}"])
+    return CaseResult(True, lines=[_SIGNATURES["migration-legacy-upgrade"]])
+
+
 CASE_FUNCS = {
     "witness-required-mint": case_witness_required_mint,
     "atomic-one-winner-claim": case_atomic_one_winner_claim,
@@ -873,6 +948,7 @@ CASE_FUNCS = {
     "tenant-isolation": case_tenant_isolation,
     "transactional-co-commit": case_transactional_co_commit,
     "m2-m3-consistency": case_m2_m3_consistency,
+    "migration-legacy-upgrade": case_migration_legacy_upgrade,
 }
 
 # The invariant sentences the verification scenario matches on a correct full run — printed once at
