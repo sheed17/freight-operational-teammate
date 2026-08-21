@@ -16,10 +16,16 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PY = str(ROOT / ".venv/bin/python")
+# The interpreter running THIS script — `.venv/bin/python` locally, the runner's Python under CI.
+# Hardcoding `.venv/bin/python` made the battery unrunnable on a fresh CI checkout (no local venv),
+# which is exactly why the mutation evidence could only ever be a builder's claim. `sys.executable`
+# keeps every mutant and guard identical (still 9/9) while letting the source-of-truth authority
+# execute it.
+PY = sys.executable
 
 M3 = "src/freight_recon/external_effect.py"
 MIG = "src/freight_recon/migrations/phase6_external_effects.py"

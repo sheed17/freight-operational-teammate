@@ -2670,9 +2670,13 @@ units:
     # AND THE REGISTRY DELIBERATELY DOES NOT YET RECORD IT AS LANDED. The candidate is build-complete:
     # `src/freight_recon/external_effect.py` and `src/freight_recon/migrations/phase6_external_effects.py`
     # wired into `schema.py` and the P2 migration path, with `eval/tests/test_phase6_external_effect.py`
-    # (46 pass), the deterministic probe `scripts/probe_phase6_external_effect.py` (behaviours as
-    # specified, 0 wrong), and the mutation battery `scripts/mutate_phase6_external_effect.py` (9/9
-    # caught); commits 4b87557..17d8981. ### IT IS ABSENT FROM `landed_checkpoints` ON PURPOSE: a landed
+    # (46 test functions, 49 parametrized cases), the deterministic probe
+    # `scripts/probe_phase6_external_effect.py` (behaviours as specified, 0 wrong), and the mutation
+    # battery `scripts/mutate_phase6_external_effect.py` (9/9 caught) - all three now EXECUTED BY CI
+    # (`.github/workflows/ci.yml`) on every push, not a committed receipt (CLAUDE.md sec 0 forbids
+    # those). The machine and migration are unchanged since build commit 4b87557; the later commits are
+    # probe-only observability corrections and this CI wiring, none touching the machine or migration.
+    # ### IT IS ABSENT FROM `landed_checkpoints` ON PURPOSE: a landed
     # checkpoint cites BOTH on-disk implementer evidence AND an on-disk INDEPENDENT REVIEW REPORT by a
     # session that neither implemented nor remediated it (the route M1/M2 took), and the build session
     # may not write one (CLAUDE.md sec 7 tier-2, sec 11). So `status`, `execution_state`,
