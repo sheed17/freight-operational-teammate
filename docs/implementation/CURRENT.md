@@ -56,10 +56,8 @@ the 9/9 mutation battery) is exactly that — a builder's evidence, which **does
 
 M3 is a **tier-2** change under [`CLAUDE.md`](../../CLAUDE.md) §7: builder + **one focused
 independent review** (by a session that did not build it), and CI. It does not need an adjudication
-chain or a finalizer — the finalizer, canonical suite receipt and clean-clone gate were removed in
-the 2026-08 engineering-process simplification and are **not** reintroduced for M3. Until that one
-independent review exists on disk, M3 is a candidate, not a landed checkpoint, and no P6 criterion is
-scored.
+chain or a finalizer. Until that one independent review exists on disk, M3 is a candidate, not a
+landed checkpoint, and no P6 criterion is scored.
 
 ## Risks and standing constraints
 
