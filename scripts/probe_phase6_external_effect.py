@@ -521,10 +521,13 @@ def case_brake_after_mint_before_claim(ctx: Ctx) -> CaseResult:
     BrakeStore(scn.store.conn).engage(
         tenant=scn.store.tenant, action_class=scn.effect.action_class, actor="ops-lead",
         actor_kind="HUMAN", reason="pause outbound while we investigate a duplicate")
-    r = scn.m3.claim(mint.handle, scn.params, actor_id="w")
-    ok = (not r.claimed and r.cause == "BRAKE_CHANGED"
+    # Race however many claimers the axis asks for: EVERY one must match zero rows under the brake,
+    # because the CAS revalidates brake_version at the claim instant. Concurrent claimers change the
+    # count of refusals, never the answer — the adapter does nothing (§30).
+    _winners, results = _race_claim(ctx, scn, mint)
+    ok = (all(not r.claimed and r.cause == "BRAKE_CHANGED" for r in results)
           and scn.m3.require(mint.grant_id).state is EffectGrantState.GRANTED
-          and scn.outbox_count("EffectAttempted") == 0)
+          and scn.claimed_rows() == 0 and scn.outbox_count("EffectAttempted") == 0)
     if not ok:
         return CaseResult(False, markers=["### DOUBLE EFFECT ### an attempt fired under a brake"])
     return CaseResult(True, lines=[_SIGNATURES["brake-after-mint-before-claim"],
