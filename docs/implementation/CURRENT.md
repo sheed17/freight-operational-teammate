@@ -41,18 +41,25 @@ documentation.** That turns engineering rule 13 from a written rule into a mecha
 | **M1 — the Work Item** (`P6-CP-1`, LANDED) | `owner_id` is a FOREIGN KEY into `tenant_humans` (a recorded, attributed authority that must be ACTIVE at assignment), 14 transitions, terminal states final by trigger, OCC versioning, tenant-first. [review](p6-cp1-independent-rereview-report-ca8c070.md) · [adjudication](p6-cp1-targeted-adjudication-report-ca8c070.md) |
 | **M2 — the Pipeline Instance** (`P6-CP-2`, LANDED) | One durable attempt per logical effect and the reservation that makes it exclusive; 25 transitions; `UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal)`; `GRANTED`/`CLAIMED` unreachable without a real witness row, a real grant row and P3's untouched claim CAS. **A billing sweep that proposes the same invoice three times bills the customer once, and a TMS write that times out lands in `NEEDS_VERIFICATION` — non-terminal, holding its reservation, moved by no timer — rather than decaying into "it failed" and being billed twice.** [review](p6-cp2-independent-review-report-1aaf943.md) · [re-adjudication](p6-cp2-targeted-readjudication-report-1aaf943.md) |
 | **`P6-D11` — the strict-order F2 ordering contract** | **RESOLVED, reviewed, adjudicated, landed.** `events/registry.md` §8 states that strict per-aggregate ordering means **ORDER, never CONTIGUITY**, and every strict-order producer declares `previous_aggregate_version`, so a consumer blocks on an **unapplied predecessor** rather than on an absent version. No canonical event minted; no transition moved. [record](p6-d11-f2-ordering-contract-record.md) · [review](p6-d11-independent-review-report-021a9a2.md) · [adjudication](p6-d11-targeted-adjudication-report-021a9a2.md) |
-| **Still owed** | **M3–M13**, 95 of the 134 transitions, gate **G1**, `AC-SAFE-028`. |
-| **Not scored** | `criteria_scored` is `[]` on both checkpoints. **A checkpoint is a landed increment, never a phase acceptance.** No P6 criterion is scored and P6 is not COMPLETE. |
-| **Posture** | M1 and M2 both **ship dark**: zero production importers, and M2's import closure reaches no effect-capable adapter. |
+| **M3 — the External Effect / Effect Grant** (`P6-CP-3` **CANDIDATE — build complete, INDEPENDENT REVIEW PENDING; NOT landed, NOT scored**) | One `effect_grants` row, eight states, one machine; the single atomic CAS that is the only serialization point between a decision and the outside world. Reuses P3's kernel for mint (EF-1) and the claim CAS (EF-2) — the checkpoint stays the one effect authority — and owns the outcome aspect (EF-3…EF-5) and the canonical `EF-*` event stream the kernel only observes. Discharges its two inherited obligations: **P6-D24** (its strict consumer supplies `drain_handler_for`) and **§8's complete-stream rule** (blocks on an unapplied F14 predecessor). Ships dark: zero production importers; only the probe imports it. **Build-session evidence only** — `src/freight_recon/external_effect.py`, `src/freight_recon/migrations/phase6_external_effects.py`, `eval/tests/test_phase6_external_effect.py` (46 pass), `scripts/probe_phase6_external_effect.py` (`behaviours as specified, 0 wrong`), `scripts/mutate_phase6_external_effect.py` (9/9 caught); commits `4b87557`…`17d8981`. ### **This is a LANDED-INCREMENT CANDIDATE, NOT A LANDED CHECKPOINT.** A landed checkpoint cites an on-disk **independent review by a session that did not build it** (CLAUDE.md §7, tier-2); the build session may not write one, so M3 is recorded here as a candidate and is absent from the registry's `landed_checkpoints`. |
+| **Still owed** | **M3's one focused independent review**, then **M4–M13**, 95 of the 134 transitions, gate **G1**, `AC-SAFE-028`. |
+| **Not scored** | `criteria_scored` is `[]` on the two landed checkpoints, and the M3 candidate scores nothing. **A checkpoint is a landed increment, never a phase acceptance.** No P6 criterion is scored and P6 is not COMPLETE. |
+| **Posture** | M1 and M2 both **ship dark**, and the M3 candidate ships dark too: zero production importers, and M2's/M3's import closure reaches no effect-capable adapter. |
 
-**`M3` is the next build unit.** It inherits two recorded obligations: **`P6-D24`** — its strict
-consumer must supply `drain_handler_for`, or a parked event leaves the park only by M-26 expiry —
-and **§8's complete-stream rule**: a strict-order consumer must consume the whole aggregate stream,
-never a family subset, because an `IllegalTransitionAttempted` (F14) riding on the strict F2
-aggregate can be the declared predecessor of the next F2 event.
+**`M3`'s code is implemented this build session (build complete), and it AWAITS its one focused
+independent review before it can land.** It discharged the two obligations it inherited: **`P6-D24`**
+— its strict consumer supplies `drain_handler_for`, so a parked event no longer leaves the park only
+by M-26 expiry — and **§8's complete-stream rule**: the consumer blocks on an unapplied predecessor,
+so an `IllegalTransitionAttempted` (F14) riding the strict aggregate is a legible member of the
+stream rather than a phantom gap. The build session's own evidence (targeted tests, the probe, and
+the 9/9 mutation battery) is exactly that — a builder's evidence, which **does not certify the unit**.
 
-M3 is a **tier-2** change under [`CLAUDE.md`](../../CLAUDE.md) §7: builder + one focused
-independent review, and CI. It does not need an adjudication chain or a finalizer.
+M3 is a **tier-2** change under [`CLAUDE.md`](../../CLAUDE.md) §7: builder + **one focused
+independent review** (by a session that did not build it), and CI. It does not need an adjudication
+chain or a finalizer — the finalizer, canonical suite receipt and clean-clone gate were removed in
+the 2026-08 engineering-process simplification and are **not** reintroduced for M3. Until that one
+independent review exists on disk, M3 is a candidate, not a landed checkpoint, and no P6 criterion is
+scored.
 
 ## Risks and standing constraints
 
