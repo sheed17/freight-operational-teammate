@@ -2608,8 +2608,8 @@ units:
     # `execution_state` and `checkpoint_state` already carry the values `P6-CP-1` set; a second
     # continuation checkpoint adds an entry to `landed_checkpoints`, it does not re-state the phase.
     # ### LANDED IS NOT ACCEPTED. `criteria_scored` is empty on BOTH checkpoints, no P6 weighted
-    # criterion is scored, P6 is NOT COMPLETE, and the phase still owes M3-M13 and 95 of the 134
-    # transitions. M2 ships dark.
+    # criterion is scored, P6 has NOT reached phase acceptance, and the phase still owes M3-M13 and
+    # 95 of the 134 transitions. M2 ships dark.
     # ### THE `P6-CP-2` LANDING IS FULLY FINALIZED, AT c2def38, AND OWES NO FURTHER FINALIZER.
     # SUPERSEDED WORDING kept so it is recognisable if it returns (CLAUDE.md sec 5 rule 20): this
     # comment read "### AND THIS LANDING IS NOT A FINALIZATION: it owes exactly one canonical
