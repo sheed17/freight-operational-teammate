@@ -122,8 +122,13 @@ jobs:
     # Running them HERE makes them verified by the source-of-truth authority on every push - not a
     # committed receipt (CLAUDE.md sec 0 forbids those), but an executed check on a fresh checkout.
     name: P6/M3 effect-grant probe + mutation
+    # Unlike safety/suite (which dedupe by skipping the same-repo PR event, since the branch push
+    # already covered it), this M3 certification job runs on branch pushes AND same-repo PRs (`==`,
+    # not `!=`). The probe's "0 wrong" and the battery's "9/9" are the artifacts a reviewer certifies
+    # M3 from, so the check must be present on the PR itself, not only on the antecedent branch push.
+    # Untrusted fork PRs still skip it: the dark cert battery is for our own branches.
     if: github.event_name != 'pull_request' ||
-        github.event.pull_request.head.repo.full_name != github.repository
+        github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

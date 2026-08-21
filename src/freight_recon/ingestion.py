@@ -448,5 +448,6 @@ def _thread_key(mime: MimeMessage) -> str | None:
         return message_id.strip()
     subject = mime.get("Subject", "")
     if subject:
-        return f"subject:{re.sub(r'^(re|fwd?):\\s*', '', subject.strip().lower())}"
+        normalized_subject = re.sub(r'^(re|fwd?):\\s*', '', subject.strip().lower())
+        return f"subject:{normalized_subject}"
     return None
