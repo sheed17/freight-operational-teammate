@@ -170,6 +170,18 @@ _SIGNATURES: dict[str, str] = {
         "WITNESS FK, ATTEMPT FK, READINESS []",
 }
 
+# ### THE TWO P0 SAFETY GUARANTEES OF THE EFFECT BOUNDARY, EACH WITH ITS OWN DISTINCT SENTENCE.
+# `restart_recovery` (§36) and `timeout_after_effect` (rule 12 / GR-5) are the load-bearing promises
+# M3 exists to make: a restart past the CAS re-drives nothing, and an ambiguous outcome resolves to
+# UNKNOWN_OUTCOME rather than FAILED — both with EXACTLY ONE EffectAttempted, so "we do not know" can
+# never hide a double-billing. These are printed only when the matching fault is actually injected, so
+# the sentence is evidence the fault was EXERCISED, not merely supported.
+_P0_RESTART_SIGNATURE = "RESTART AFTER THE CLAIM RE-EXECUTES NOTHING: EXACTLY ONE EffectAttempted"
+_P0_LOST_RESPONSE_SIGNATURE = (
+    "A LOST RESPONSE IS UNKNOWN_OUTCOME, NEVER FAILED: EXACTLY ONE EffectAttempted")
+_P0_TIMEOUT_SIGNATURE = (
+    "A TIMED-OUT RESPONSE IS UNKNOWN_OUTCOME, NEVER FAILED: EXACTLY ONE EffectAttempted")
+
 
 class ProbeExit(Exception):
     """A malformed-input refusal: exit code 2, a readable message, and NEVER a traceback."""
@@ -421,6 +433,7 @@ def case_atomic_one_winner_claim(ctx: Ctx) -> CaseResult:
         if replay.claimed or scn.claimed_rows() != 1 or scn.outbox_count("EffectAttempted") != 1:
             return CaseResult(False, markers=["### DOUBLE EFFECT ### a restart re-executed the claim"])
         lines.append("A RESTART AFTER THE CAS NEVER RE-EXECUTES")
+        lines.append(_P0_RESTART_SIGNATURE)
     # A fault after the win (lost-response) still leaves exactly one CLAIMED and one EffectAttempted.
     if ctx.inject in ("lost-response", "adapter-timeout", "adapter-crash"):
         scn.m3.apply(mint.grant_id, Trigger.LOST_RESPONSE, actor_id="sys", exposure="x",
@@ -603,12 +616,25 @@ def case_timeout_lost_response_unknown(ctx: Ctx) -> CaseResult:
     g = scn.m3.require(mint.grant_id)
     if r.to_state is not EffectGrantState.UNKNOWN_OUTCOME or g.failure_proof is not None:
         return CaseResult(False, markers=["### FAILED WITHOUT PROOF ### a timeout became FAILED"])
+    # rule 12 / timeout_after_effect (P0): the ambiguous outcome still carries EXACTLY ONE
+    # EffectAttempted — the effect was tried once and its fact recorded once, so "we do not know"
+    # cannot mask a second attempt or an orphan.
+    if scn.outbox_count("EffectAttempted") != 1:
+        return CaseResult(False, markers=[
+            "### DOUBLE EFFECT ### an ambiguous outcome moved EffectAttempted off exactly one"])
     owned = [x.grant_id for x in scn.m3.unknown_outcomes()] == [mint.grant_id]
     ev = [e for e in _events(scn) if e["event_name"] == "OutcomeUnknown"]
     named = bool(ev) and ev[0]["accountable_owner_id"] == OWNER
-    ok = owned and named
-    return CaseResult(ok, lines=[_SIGNATURES["timeout-lost-response-unknown"]] if ok else [],
-                      markers=[] if ok else ["### MISS ### UNKNOWN_OUTCOME has no named owner"])
+    if not (owned and named):
+        return CaseResult(False, markers=["### MISS ### UNKNOWN_OUTCOME has no named owner"])
+    lines = [_SIGNATURES["timeout-lost-response-unknown"]]
+    # The per-fault distinct sentence — printed only when that specific ambiguity was injected, so the
+    # permanent scenario can observe `timeout_after_effect` was actually exercised (lost vs timed-out).
+    extra = {"lost-response": _P0_LOST_RESPONSE_SIGNATURE,
+             "adapter-timeout": _P0_TIMEOUT_SIGNATURE}.get(ctx.inject)
+    if extra:
+        lines.append(extra)
+    return CaseResult(True, lines=lines)
 
 
 def case_conflicting_readback(ctx: Ctx) -> CaseResult:
@@ -963,6 +989,17 @@ _REQUIRED_ON_FULL_RUN: tuple[str, ...] = tuple(_SIGNATURES[c] for c in (
     "replayed-capability", "replay-zero-external-effects",
 )) + ("ZERO ROWS CLAIMED: THE ADAPTER DID NOTHING",)
 
+# ### THE TWO P0 FAULT AXES, EXECUTED IN THE DEFAULT BATTERY — NOT LEFT BEHIND AN EXPLICIT --inject.
+# A permanent scenario that runs every case with `--inject none` SUPPORTS restart_recovery and
+# timeout_after_effect without OBSERVING them: the probe knows how, but the run never asks. Each tuple
+# rides a real injected-fault case so the default run actually exercises the fault, on a fixed seed so
+# a discovered failure re-runs, printing the distinct sentence its case emits. (axis, case, fault.)
+_P0_FAULT_BATTERY: tuple[tuple[str, str, str], ...] = (
+    ("restart_recovery", "atomic-one-winner-claim", "restart-after-claim"),
+    ("timeout_after_effect", "timeout-lost-response-unknown", "lost-response"),
+    ("timeout_after_effect", "timeout-lost-response-unknown", "adapter-timeout"),
+)
+
 
 # ---- argument handling & the run --------------------------------------------------------------
 
@@ -1081,8 +1118,27 @@ def main(argv: list[str] | None = None) -> int:
             wrong += 1
             print(f"  case {case}: WRONG")
 
-    # On a full clean run, surface every invariant sentence the verification scenario matches.
+    # On a full clean run, execute the two P0 fault axes (restart_recovery, timeout_after_effect) so
+    # they are OBSERVED, not only supported — each seed-fixed and reproducible by its own `--case
+    # <case> --inject <fault> --seed <seed>` — then surface every invariant sentence the scenario
+    # matches. The default seed threads through, so the same default run reproduces the same battery.
     if args.case is None and ctx.inject == "none":
+        # The rng offset is the battery INDEX, not hash(...): Python salts string hashing per process
+        # (PYTHONHASHSEED), so a hash-seeded rng would not reproduce across runs — and the reviewer's
+        # contract is that `--seed` fully determines the interleaving. A fixed index does.
+        for offset, (axis, case, fault) in enumerate(_P0_FAULT_BATTERY, start=1):
+            p0_ctx = Ctx(seed=ctx.seed, inject=fault,
+                         rng=random.Random(ctx.seed * 1000 + offset))
+            result = _run_case(p0_ctx, case)
+            for line in result.lines:
+                if line not in printed:
+                    print(line)
+                    printed.add(line)
+            for marker in result.markers:
+                print(marker)
+            if not result.ok:
+                wrong += 1
+                print(f"  P0 {axis} [{case} +{fault}]: WRONG")
         for line in _REQUIRED_ON_FULL_RUN:
             if line not in printed:
                 print(line)

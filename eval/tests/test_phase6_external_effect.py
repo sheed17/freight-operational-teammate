@@ -252,6 +252,26 @@ def test_the_claim_is_atomic_never_both_never_neither(tmp_path):
     assert kit.count_event(scn.store, "EffectAttempted") == 1
 
 
+def test_a_restart_after_the_claim_re_executes_nothing_exactly_one_EffectAttempted(tmp_path):
+    """restart_recovery (P0, §36): a process restart AFTER the CAS re-presents the winner's handle.
+    Recovery must NOT re-drive the adapter — the row is already CLAIMED, a second claim matches zero
+    rows, EffectAttempted stays at one, and a retry can only be a NEW grant, which the live-hold ledger
+    refuses while the effect is held. Never act twice when the world only wanted it once."""
+    scn = kit.Scenario(tmp_path)
+    mint, _ = scn.claimed()
+    assert kit.count_event(scn.store, "EffectAttempted") == 1
+    replay = scn.m3.claim(mint.handle, scn.params, actor_id="restarted-worker")
+    assert not replay.claimed, "a restart re-claimed an already-CLAIMED grant"
+    claimed_rows = [g for g in kit.ledger(scn.store) if g["state"] == "CLAIMED"]
+    assert len(claimed_rows) == 1
+    assert kit.count_event(scn.store, "EffectAttempted") == 1, (
+        "a restart past the CAS re-drove the effect — a second EffectAttempted is a double effect")
+    retry = scn.mint()
+    assert not retry.authorized and retry.refusal is not None, (
+        "a retry after the claim must be refused — the live-hold ledger holds the commit key")
+    assert retry.refusal.reason == "COMMIT_KEY_HELD"
+
+
 # ============================================================ E. FAILED needs proof; unknown is unknown
 
 def test_a_pre_flight_rejection_with_proof_is_FAILED(tmp_path):
@@ -288,6 +308,28 @@ def test_a_timeout_crash_or_lost_response_is_UNKNOWN_never_FAILED(tmp_path, trig
     g = scn.m3.require(mint.grant_id)
     assert g.unknown_reason == "UNKNOWN_OUTCOME" and g.failure_proof is None
     assert kit.count_event(scn.store, "EffectFailed") == 0
+
+
+@pytest.mark.parametrize("trigger", [Trigger.ADAPTER_TIMED_OUT, Trigger.LOST_RESPONSE])
+def test_an_ambiguous_outcome_is_UNKNOWN_named_human_and_one_EffectAttempted(tmp_path, trigger):
+    """timeout_after_effect (P0, rule 12 / GR-5): a timed-out or lost response resolves to
+    UNKNOWN_OUTCOME — NEVER FAILED — owned by a NAMED human, and it still carries EXACTLY ONE
+    EffectAttempted, so "we do not know" can never mask a second attempt or an orphan. This is the
+    load-bearing distinction between "attempted" and "failed" that stops a broker being billed twice."""
+    scn = kit.Scenario(tmp_path)
+    mint, _ = scn.claimed()
+    assert kit.count_event(scn.store, "EffectAttempted") == 1
+    r = scn.m3.apply(mint.grant_id, trigger, actor_id="sys", exposure="invoice load:4471 ~$2,850",
+                     accountable_owner_id=OWNER)
+    assert r.to_state is EffectGrantState.UNKNOWN_OUTCOME
+    g = scn.m3.require(mint.grant_id)
+    assert g.failure_proof is None
+    assert kit.count_event(scn.store, "EffectFailed") == 0, "an ambiguous outcome became FAILED"
+    assert kit.count_event(scn.store, "EffectAttempted") == 1, (
+        "the ambiguous outcome moved EffectAttempted off exactly one — a hidden double effect")
+    unknown = [e for e in kit.effect_grant_events(scn.store) if e["event_name"] == "OutcomeUnknown"]
+    assert unknown and unknown[0]["accountable_owner_id"] == OWNER, (
+        "an UNKNOWN_OUTCOME with no named accountable human is the one obligation nobody owes (rule 13)")
 
 
 # ============================================================ F. verify — healthy match, or unknown
