@@ -2542,7 +2542,7 @@ units:
 
   - unit_id: P6
     name: Foundational entities and state machines
-    # ### P6 BECOMES THE SINGLE READY UNIT IN THE SAME COMMIT THAT COMPLETES P5 - the selector never
+    # ### P6 BECOMES THE SINGLE READY UNIT IN THE SAME COMMIT THAT CLOSES OUT P5 - the selector never
     # holds zero or two entries (meta.status_model.status). Its only dependency, P5, is COMPLETE at
     # 14/14 weighted criteria PASS on independent evidence, and P6's validation_blockers are EMPTY.
     # ### READY IS A SELECTION AND NOTHING MORE: no P6 code exists, execution_state is NOT_STARTED,
