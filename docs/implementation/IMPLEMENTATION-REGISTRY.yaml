@@ -2677,8 +2677,8 @@ units:
     # session that neither implemented nor remediated it (the route M1/M2 took), and the build session
     # may not write one (CLAUDE.md sec 7 tier-2, sec 11). So `status`, `execution_state`,
     # `checkpoint_state`, `landed_checkpoints` and every `criteria_scored` stay exactly where M1/M2
-    # left them - P6 is READY / IN_PROGRESS, NOT COMPLETE, and no P6 criterion is scored. M3 lands
-    # when, and only when, that one focused independent review exists on disk.
+    # left them - P6 is READY / IN_PROGRESS and has not reached phase acceptance, and no P6 criterion
+    # is scored. M3 lands when, and only when, that one focused independent review exists on disk.
     landed_checkpoints:
       - id: P6-CP-1
         name: The Work Item, and ownership as a recorded authority rather than a string
