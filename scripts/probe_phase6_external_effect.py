@@ -181,6 +181,11 @@ _P0_LOST_RESPONSE_SIGNATURE = (
     "A LOST RESPONSE IS UNKNOWN_OUTCOME, NEVER FAILED: EXACTLY ONE EffectAttempted")
 _P0_TIMEOUT_SIGNATURE = (
     "A TIMED-OUT RESPONSE IS UNKNOWN_OUTCOME, NEVER FAILED: EXACTLY ONE EffectAttempted")
+# ### THE CANONICAL SUBSTRING PRODUCT DRIVER'S GENERATOR MATCHES ON A FOCUSED FAULT RUN.
+# A generated scenario reads one focused command's own stdout — not the default battery — so every
+# focused restart/timeout run of a NATURAL case must carry this exact substring on its own. Sourced
+# from the one signature that already means it, so the two cannot drift apart.
+_EXACTLY_ONE_EFFECT_ATTEMPTED = _SIGNATURES["exactly-once-effect-attempted"]
 
 
 class ProbeExit(Exception):
@@ -371,8 +376,11 @@ def _restart_after_claim(scn: Scn, mint) -> CaseResult:
         return CaseResult(False, markers=["### DOUBLE EFFECT ### a restart re-executed the effect"])
     if retry.authorized or retry.refusal is None or retry.refusal.reason != "COMMIT_KEY_HELD":
         return CaseResult(False, markers=["### DOUBLE CLAIM ### a restart minted a second grant"])
-    # The exact retry/no-re-execution signature the restart_recovery risk is verified by.
-    return CaseResult(True, lines=[_SIGNATURES["replayed-capability"]])
+    # The retry/no-re-execution signatures the restart_recovery risk is verified by — PLUS the
+    # canonical EXACTLY ONE EffectAttempted substring, so a FOCUSED restart-after-claim run against
+    # THIS case (the generator may pick it, not just atomic-one-winner-claim) observes the guarantee
+    # in its own stdout rather than only in the default battery.
+    return CaseResult(True, lines=[_SIGNATURES["replayed-capability"], _P0_RESTART_SIGNATURE])
 
 
 def case_witness_required_mint(ctx: Ctx) -> CaseResult:
@@ -434,12 +442,23 @@ def case_atomic_one_winner_claim(ctx: Ctx) -> CaseResult:
             return CaseResult(False, markers=["### DOUBLE EFFECT ### a restart re-executed the claim"])
         lines.append("A RESTART AFTER THE CAS NEVER RE-EXECUTES")
         lines.append(_P0_RESTART_SIGNATURE)
-    # A fault after the win (lost-response) still leaves exactly one CLAIMED and one EffectAttempted.
+    # A fault after the win (lost / timed-out) leaves the outcome UNKNOWN_OUTCOME — never FAILED
+    # (rule 12) — with exactly one CLAIMED and one EffectAttempted. A FOCUSED run against this case
+    # must observe both in its own stdout, so the never-FAILED distinction and the canonical substring
+    # are printed here too.
     if ctx.inject in ("lost-response", "adapter-timeout", "adapter-crash"):
-        scn.m3.apply(mint.grant_id, Trigger.LOST_RESPONSE, actor_id="sys", exposure="x",
-                     accountable_owner_id=OWNER)
+        out = scn.m3.apply(mint.grant_id, Trigger.LOST_RESPONSE, actor_id="sys", exposure="x",
+                           accountable_owner_id=OWNER)
+        if (out.to_state is not EffectGrantState.UNKNOWN_OUTCOME
+                or scn.m3.require(mint.grant_id).failure_proof is not None):
+            return CaseResult(False, markers=[
+                "### FAILED WITHOUT PROOF ### a lost response became FAILED"])
         if scn.outbox_count("EffectAttempted") != 1:
-            return CaseResult(False, markers=["### DOUBLE EFFECT ###"])
+            return CaseResult(False, markers=[
+                "### DOUBLE EFFECT ### a lost response moved EffectAttempted off exactly one"])
+        lines.append({"lost-response": _P0_LOST_RESPONSE_SIGNATURE,
+                      "adapter-timeout": _P0_TIMEOUT_SIGNATURE}.get(
+                          ctx.inject, _EXACTLY_ONE_EFFECT_ATTEMPTED))
     return CaseResult(True, lines=lines)
 
 
@@ -628,12 +647,15 @@ def case_timeout_lost_response_unknown(ctx: Ctx) -> CaseResult:
     if not (owned and named):
         return CaseResult(False, markers=["### MISS ### UNKNOWN_OUTCOME has no named owner"])
     lines = [_SIGNATURES["timeout-lost-response-unknown"]]
-    # The per-fault distinct sentence — printed only when that specific ambiguity was injected, so the
-    # permanent scenario can observe `timeout_after_effect` was actually exercised (lost vs timed-out).
+    # On a FOCUSED fault run, emit the canonical EXACTLY ONE EffectAttempted substring plus the
+    # per-fault distinct sentence (lost vs timed-out). The default battery (inject == "none") is left
+    # byte-identical — the substring already surfaces there via the exactly-once case and _REQUIRED.
     extra = {"lost-response": _P0_LOST_RESPONSE_SIGNATURE,
              "adapter-timeout": _P0_TIMEOUT_SIGNATURE}.get(ctx.inject)
     if extra:
         lines.append(extra)
+    elif ctx.inject != "none":
+        lines.append(_EXACTLY_ONE_EFFECT_ATTEMPTED)
     return CaseResult(True, lines=lines)
 
 
