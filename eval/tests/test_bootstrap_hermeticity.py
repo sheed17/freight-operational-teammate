@@ -114,14 +114,27 @@ def test_every_third_party_import_in_src_is_declared():
 
 
 def test_collection_succeeds_with_zero_errors():
-    """Acceptance 5 (in-checkout form; the clean-clone gate proves the fresh-venv form)."""
+    """Acceptance 5 (in-checkout form; the clean-clone gate proves the fresh-venv form).
+
+    Collection success is pytest's OWN process result, not a substring of the collected node ids. A
+    collection error INTERRUPTS collection and exits non-zero (ExitCode.INTERRUPTED = 2, proven by a
+    positive control: a module with a broken import exits 2 while its summary still prints "N tests
+    collected"), so the returncode is the fail-closed signal and the collected-count line alone
+    cannot see a partial-collection error. The old check scanned `stdout.lower().split("=")[-1]` for
+    the substring "error"; that fired on legitimate node ids such as
+    test_write_fails_closed_on_error_flash, and on a clean run with no warnings banner (no `=` in the
+    output at all, e.g. Python 3.11 CI) `.split("=")[-1]` degraded to scanning the whole listing.
+    """
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "eval/", "--collect-only", "-q", "-p", "no:cacheprovider"],
         cwd=ROOT, capture_output=True, text=True,
     )
-    assert "error" not in r.stdout.lower().split("=")[-1], f"collection errors:\n{r.stdout[-800:]}"
+    assert r.returncode == 0, (
+        f"pytest reported a collection failure (exit {r.returncode}):\n"
+        f"{r.stdout[-800:]}\n{r.stderr[-400:]}"
+    )
     m = re.search(r"(\d+) tests? collected", r.stdout)
-    assert m and int(m.group(1)) > 1000
+    assert m and int(m.group(1)) > 1000, f"population floor not met:\n{r.stdout[-800:]}"
 
 
 # ============================================================ H-2: hermeticity
