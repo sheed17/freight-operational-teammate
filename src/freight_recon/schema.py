@@ -82,6 +82,16 @@ from .migrations.phase6_external_effects import (
     phase6_external_effects_readiness_problems,
     stamp_phase6_external_effects_version,
 )
+from .migrations.phase6_observations import (
+    P6OB_EXEMPT_TABLES,
+    P6OB_INDEXES,
+    P6OB_REPLACED_INDEXES,
+    P6OB_TARGET_SCHEMA,
+    P6OB_TENANT_TABLES,
+    create_phase6_observations_schema,
+    phase6_observations_readiness_problems,
+    stamp_phase6_observations_version,
+)
 from .migrations.phase6_pipeline_instances import (
     P6PI_EXEMPT_TABLES,
     P6PI_INDEXES,
@@ -133,6 +143,9 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # M4's Approval and its dual-control signatures: new tables, holding FKs into tenant_humans (M1)
     # and effect_grants (M3), so they are merged after both.
     **P6AP_TARGET_SCHEMA,
+    # M5's Observation: a new table holding an FK into tenant_humans (M1) for the named human who
+    # owns an UNBOUND/UNPARSEABLE exception, plus self-FKs for supersession. Merged after M1.
+    **P6OB_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -142,7 +155,7 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
 # authority is authority WITHIN one, and neither has an honest cross-tenant reading.
 ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
-    *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES,
+    *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES, *P6OB_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -163,6 +176,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6EF_EXEMPT_TABLES,
     *P6AP_TENANT_TABLES,
     *P6AP_EXEMPT_TABLES,
+    *P6OB_TENANT_TABLES,
+    *P6OB_EXEMPT_TABLES,
 )
 
 
@@ -213,10 +228,12 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
             conn.execute(_ALL_TARGET_SCHEMA[name])
     existing_indexes = _index_names(conn)
     merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES,
-                                        **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES}.items()
+                                        **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES,
+                                        **P6OB_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
-                      and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES}
+                      and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
+                      and n not in P6OB_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -271,6 +288,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_approvals_schema(conn, now=_now())
     if not phase6_approvals_readiness_problems(conn):
         stamp_phase6_approvals_version(conn, now=_now())
+    # P6's M5, the Observation. Built AFTER the Work Item because its `owner_id` holds a foreign key
+    # into `tenant_humans` (M1) — the named human who owns an UNBOUND/UNPARSEABLE exception. On a
+    # fresh database the merged DDL already built the shape; on a migrated one this creates the table.
+    # Marker-last, like every other phase.
+    create_phase6_observations_schema(conn, now=_now())
+    if not phase6_observations_readiness_problems(conn):
+        stamp_phase6_observations_version(conn, now=_now())
     conn.commit()
 
 
@@ -347,6 +371,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_pipeline_readiness_problems(conn))
     problems.extend(phase6_external_effects_readiness_problems(conn))
     problems.extend(phase6_approvals_readiness_problems(conn))
+    problems.extend(phase6_observations_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

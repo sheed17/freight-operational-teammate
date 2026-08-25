@@ -236,6 +236,18 @@ expected_noncanonical_schema:
     # spelled.
     - approvals
     - approval_signatures
+    # Phase 6 (the Observation, P6/M5) — born tenant-first, and NOT exempt.
+    # REG-1 adjudication, stated rather than assumed:
+    #   `observations` holds an immutable record that a source SAID something, at a time, within one
+    #   brokerage. "Whose fact is this" has no honest answer other than a tenant — a fact scoped to no
+    #   brokerage is one that will eventually be read by the wrong brokerage — and the natural key it
+    #   carries, UNIQUE(tenant, source_system, external_id, content_digest), would be a CROSS-BROKERAGE
+    #   collision without the tenant in it: the same email delivered to two brokerages is TWO facts,
+    #   not one. Tenant is the first primary-key column, the natural-key index and the state index are
+    #   tenant-first, the readiness oracle refuses the table otherwise, and every foreign key
+    #   (tenant_humans for the UNBOUND/UNPARSEABLE human owner, and its own supersession lineage)
+    #   carries the tenant in the reference itself, so a cross-tenant fact or owner cannot be spelled.
+    - observations
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

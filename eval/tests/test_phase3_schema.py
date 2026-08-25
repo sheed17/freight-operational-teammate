@@ -197,6 +197,22 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-table:approvals" for step in p6ap_performed), p6ap_performed
     assert any(step == "create-table:approval_signatures" for step in p6ap_performed), p6ap_performed
     assert phase6_approvals_readiness_problems(conn) == []
+    # ### AND A SEVENTH TIME, FOR M5 — THE OBSERVATION. Canonical moved once more: a database without
+    # `observations` cannot hold the immutable atom of truth — a source SAYING something, at a time —
+    # so a P2..M4 database is still refused, and the migration that closes the gap creates the
+    # tenant-first table with its natural-key UNIQUE index and its immutability triggers. The property
+    # is the one this node has always asserted: a migrated database and a fresh one agree about what
+    # canonical means.
+    from freight_recon.migrations.phase6_observations import (  # noqa: E402
+        create_phase6_observations_schema,
+        phase6_observations_readiness_problems,
+    )
+
+    assert any("phase6_observations" in p or "observations" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ob_performed = create_phase6_observations_schema(conn, now=utc_now())
+    assert any(step == "create-table:observations" for step in p6ob_performed), p6ob_performed
+    assert phase6_observations_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")
