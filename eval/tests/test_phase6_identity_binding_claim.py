@@ -28,7 +28,7 @@ from freight_recon.identity_binding_claim import (  # noqa: E402
     PRODUCED_CONTRACTS,
     TRANSITIONS,
     TRANSITIONS_BY_ID,
-    ClaimState,
+    BindingState,
     ContentSetProvenance,
     FailClosed,
     ForgedEvidence,
@@ -116,7 +116,7 @@ def test_the_seven_states_are_exactly_the_registry_set():
     assert set(CLAIM_STATES) == {"PROPOSED", "CONFIRMED", "AMBIGUOUS", "REJECTED", "SUPERSEDED",
                                  "CORRECTED", "CONFLICTING"}
     assert len(CLAIM_STATES) == 7
-    assert {s.value for s in ClaimState} == set(CLAIM_STATES)
+    assert {s.value for s in BindingState} == set(CLAIM_STATES)
 
 
 def test_no_eighth_state_exists_anywhere():
@@ -148,7 +148,7 @@ def test_fresh_canonical_database_is_ready():
 def test_ib_propose_sets_derived_provenance(m6, conn):
     r = m6.propose(_exact(conn))
     c = m6.get(r.claim.binding_claim_id)
-    assert r.transition_id == "IB-1" and c.state is ClaimState.PROPOSED
+    assert r.transition_id == "IB-1" and c.state is BindingState.PROPOSED
     assert c.provenance_class == "LINKER_INFERRED"
 
 
@@ -167,32 +167,32 @@ def test_provenance_is_the_derived_function_of_match_method(m6, conn, method, pr
 
 def test_ib_exact_id_confirms(m6, conn):
     r = m6.link(_exact(conn, open_entity_count=1))
-    assert m6.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    assert m6.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
     assert r.transition_id == "IB-2"
 
 
 def test_exact_id_with_two_open_entities_is_ambiguous(m6, conn):
     r = m6.link(_exact(conn, open_entity_count=2), owner_id=_human(conn))
-    assert m6.get(r.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    assert m6.get(r.claim.binding_claim_id).state is BindingState.AMBIGUOUS
 
 
 def test_ib_rule_or_reconcile_confirms(m6, conn):
     r = m6.link(MatchAttempt(subject_ref=_subject(conn), entity_ref="l", match_method=MatchMethod.RULE,
                              rule_id="r", rule_registered=True))
-    assert m6.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    assert m6.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
     u = m6.link(MatchAttempt(subject_ref=_subject(conn), entity_ref="l", match_method=MatchMethod.RULE,
                              rule_id="r", rule_registered=False), owner_id=_human(conn))
-    assert m6.get(u.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    assert m6.get(u.claim.binding_claim_id).state is BindingState.AMBIGUOUS
 
 
 def test_reconciliation_requires_two_sources(m6, conn):
     two = m6.link(MatchAttempt(subject_ref=_subject(conn), entity_ref="l",
                                match_method=MatchMethod.RECONCILIATION, source_count=2))
-    assert m6.get(two.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    assert m6.get(two.claim.binding_claim_id).state is BindingState.CONFIRMED
     one = m6.link(MatchAttempt(subject_ref=_subject(conn), entity_ref="l",
                                match_method=MatchMethod.RECONCILIATION, source_count=1),
                   owner_id=_human(conn))
-    assert m6.get(one.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    assert m6.get(one.claim.binding_claim_id).state is BindingState.AMBIGUOUS
 
 
 def test_ib_model_extract_is_evidence_not_confirmation(m6, conn):
@@ -200,7 +200,7 @@ def test_ib_model_extract_is_evidence_not_confirmation(m6, conn):
                              match_method=MatchMethod.MODEL_EXTRACT, evidence_id="pod.pdf",
                              span="page:1"))
     c = m6.get(r.claim.binding_claim_id)
-    assert c.state is ClaimState.PROPOSED and r.event_names == ("ClaimEvidenced",)
+    assert c.state is BindingState.PROPOSED and r.event_names == ("ClaimEvidenced",)
 
 
 def test_guess_never_confirms_at_confidence_1_0(m6, conn):
@@ -210,7 +210,7 @@ def test_guess_never_confirms_at_confidence_1_0(m6, conn):
                                  match_method=MatchMethod.MODEL_INFER, confidence=confidence),
                     owner_id=_human(conn))
         c = m6.get(r.claim.binding_claim_id)
-        assert c.state is ClaimState.AMBIGUOUS, f"confidence {confidence} confirmed a guess"
+        assert c.state is BindingState.AMBIGUOUS, f"confidence {confidence} confirmed a guess"
         assert c.provenance_class == "MODEL_INFERRED"
         assert c.ambiguous_reason == "model_inferred"
 
@@ -221,7 +221,7 @@ def test_single_weak_candidate_is_still_ambiguous(m6, conn):
                              match_method=MatchMethod.EXACT_ID, open_entity_count=1,
                              candidate_count=1, weak=True), owner_id=_human(conn))
     c = m6.get(r.claim.binding_claim_id)
-    assert c.state is ClaimState.AMBIGUOUS and c.ambiguous_reason == "single_weak"
+    assert c.state is BindingState.AMBIGUOUS and c.ambiguous_reason == "single_weak"
 
 
 def test_multiple_candidates_are_ambiguous(m6, conn):
@@ -245,7 +245,7 @@ def test_ib_human_assert_binds_immutable_id(m6, conn):
     r = m6.assert_human(subject_ref=_subject(conn), entity_ref="load:4471", decision_ref="dec-1",
                         decision_human_id=h, actor_id=h)
     c = m6.get(r.claim.binding_claim_id)
-    assert c.state is ClaimState.CONFIRMED and c.provenance_class == "OWNER_ASSERTED"
+    assert c.state is BindingState.CONFIRMED and c.provenance_class == "OWNER_ASSERTED"
     assert c.decision_ref == "dec-1" and c.match_method == "HUMAN"
 
 
@@ -331,10 +331,10 @@ def test_extracted_identifier_re_enters_deterministic_matching(m6, conn):
     ev = m6.link(MatchAttempt(subject_ref=subject, entity_ref="load:4471",
                               match_method=MatchMethod.MODEL_EXTRACT, evidence_id="pod.pdf",
                               span="0:4"))
-    assert m6.get(ev.claim.binding_claim_id).state is ClaimState.PROPOSED
+    assert m6.get(ev.claim.binding_claim_id).state is BindingState.PROPOSED
     det = m6.link(MatchAttempt(subject_ref=subject, entity_ref="load:4471",
                                match_method=MatchMethod.EXACT_ID, open_entity_count=1))
-    assert m6.get(det.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    assert m6.get(det.claim.binding_claim_id).state is BindingState.CONFIRMED
     assert det.claim.binding_claim_id != ev.claim.binding_claim_id
 
 
@@ -412,7 +412,7 @@ def test_linker_inferred_may_be_recomputed_and_the_old_row_is_retained(m6, conn)
     r = m6.link(_exact(conn, entity="load:4471"))
     m6.recompute(r.claim.binding_claim_id)
     old = m6.get(r.claim.binding_claim_id)
-    assert old.state is ClaimState.SUPERSEDED and old.entity_ref == "load:4471"
+    assert old.state is BindingState.SUPERSEDED and old.entity_ref == "load:4471"
 
 
 # ---- inferrer-vs-owner (IB-6) ------------------------------------------------------------------
@@ -426,9 +426,9 @@ def test_inferrer_vs_owner_raises_conflict_not_a_winner(m6, conn):
     c = m6.inferrer_disagrees(r.claim.binding_claim_id, disagreeing_entity_ref="load:9999",
                               owner_id=h)
     binding = m6.get(r.claim.binding_claim_id)
-    assert c.to_state is ClaimState.CONFLICTING
+    assert c.to_state is BindingState.CONFLICTING
     # ### THE CLAIM'S DURABLE STATE IS CONFLICTING, NOT SUPERSEDED — the inferrer did not win.
-    assert binding.state is ClaimState.CONFLICTING
+    assert binding.state is BindingState.CONFLICTING
     assert binding.entity_ref == "load:4471" and binding.provenance_class == "OWNER_ASSERTED"
     assert conn.execute(
         "SELECT COUNT(*) FROM event_outbox WHERE tenant = ? AND event_name = 'ConflictRaised'",
@@ -447,7 +447,7 @@ def test_correction_propagates_a_compensation(m6, conn):
                decision_human_id=h, actor_id=h, dependent_refs=["load:4471.documented"],
                completed_effects=["invoice#560010"])
     old = m6.get(r.claim.binding_claim_id)
-    assert old.state is ClaimState.CORRECTED and old.propagation_obligation is not None
+    assert old.state is BindingState.CORRECTED and old.propagation_obligation is not None
     obligation = json.loads(old.propagation_obligation)
     assert "invoice#560010" in obligation["completed_effects_needing_compensation"]
     # ### NO compensations table, and no fabricated completed compensation.
@@ -463,11 +463,11 @@ def test_correction_is_append_only_and_correction_of_correction_is_supported(m6,
     # The prior claim is retained.
     assert m6.get(r.claim.binding_claim_id) is not None
     new = m6.get(c1.corrected_claim_id)
-    assert new.corrected_from == r.claim.binding_claim_id and new.state is ClaimState.CONFIRMED
+    assert new.corrected_from == r.claim.binding_claim_id and new.state is BindingState.CONFIRMED
     # Correction-of-correction.
     c2 = m6.correct(c1.corrected_claim_id, new_entity_ref="load:44719", decision_ref="f2",
                     decision_human_id=h, actor_id=h)
-    assert m6.get(c1.corrected_claim_id).state is ClaimState.CORRECTED
+    assert m6.get(c1.corrected_claim_id).state is BindingState.CORRECTED
     assert m6.get(c2.corrected_claim_id).entity_ref == "load:44719"
 
 
@@ -509,7 +509,7 @@ def test_a_direct_second_confirmed_insert_is_refused_by_the_partial_index(m6, co
 
 def test_proposed_or_ambiguous_may_be_rejected(m6, conn):
     p = m6.propose(_exact(conn))
-    assert m6.reject(p.claim.binding_claim_id).to_state is ClaimState.REJECTED
+    assert m6.reject(p.claim.binding_claim_id).to_state is BindingState.REJECTED
 
 
 def test_cancelled_entity_supersedes_the_confirmed_binding(m6, conn):
@@ -517,7 +517,7 @@ def test_cancelled_entity_supersedes_the_confirmed_binding(m6, conn):
     r = m6.link(_exact(conn, entity="load:4471"))
     m6.cancel_entity(r.claim.binding_claim_id, owner_id=h)
     c = m6.get(r.claim.binding_claim_id)
-    assert c.state is ClaimState.SUPERSEDED and c.owner_id == h
+    assert c.state is BindingState.SUPERSEDED and c.owner_id == h
 
 
 def test_occ_on_claim_version_refuses_a_lost_update(m6, conn):
@@ -607,7 +607,7 @@ def test_replay_preserves_owner_asserted_byte_identical(m6, conn):
     after = dict(conn.execute(
         "SELECT * FROM identity_binding_claims WHERE tenant = ? AND binding_claim_id = ?",
         (TENANT, r.claim.binding_claim_id)).fetchone())
-    assert rebuilt.provenance_class == "OWNER_ASSERTED" and rebuilt.state is ClaimState.CONFIRMED
+    assert rebuilt.provenance_class == "OWNER_ASSERTED" and rebuilt.state is BindingState.CONFIRMED
     assert after == before
 
 
@@ -665,7 +665,7 @@ def test_correction_before_confirmation_is_parked(m6, conn):
     m6.resolve(p.claim.binding_claim_id, _exact_for(p.claim.subject_ref))
     drained = m6.consume_event(corrected, inbox=box)
     assert drained.consume.outcome.value == "APPLIED"
-    assert m6.get(p.claim.binding_claim_id).state is ClaimState.CORRECTED
+    assert m6.get(p.claim.binding_claim_id).state is BindingState.CORRECTED
 
 
 # ---- GR-1: illegal transitions ------------------------------------------------------------------

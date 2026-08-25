@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT / "eval" / "tests"))
 from freight_recon.identity_binding_claim import (  # noqa: E402
     AGGREGATE_TYPE,
     CONSUMER_ID,
-    ClaimState,
+    BindingState,
     ContentSetProvenance,
     FailClosed,
     ForgedEvidence,
@@ -512,7 +512,7 @@ def case_proposal_creates_proposed_with_derived_provenance(w: World) -> CaseResu
     m = w.machine()
     r = m.propose(_exact(w.subject()))
     c = m.get(r.claim.binding_claim_id)
-    ok = (r.transition_id == "IB-1" and c.state is ClaimState.PROPOSED
+    ok = (r.transition_id == "IB-1" and c.state is BindingState.PROPOSED
           and c.provenance_class == "LINKER_INFERRED" and c.match_method == "EXACT_ID"
           and w.events(m.tenant, "ClaimProposed") == 1)
     return CaseResult(ok, lines=[_SIG["proposal-creates-proposed-with-derived-provenance"]] if ok
@@ -642,7 +642,7 @@ def case_exact_trusted_id_confirms(w: World) -> CaseResult:
     m = w.machine()
     r = m.link(_exact(w.subject(), open_entity_count=1))
     c = m.get(r.claim.binding_claim_id)
-    ok = (r.transition_id == "IB-2" and c.state is ClaimState.CONFIRMED
+    ok = (r.transition_id == "IB-2" and c.state is BindingState.CONFIRMED
           and c.provenance_class == "LINKER_INFERRED" and w.events(m.tenant, "ClaimConfirmed") == 1)
     if not ok:
         return CaseResult(False, markers=["### MISS ### exact trusted id did not confirm"])
@@ -654,7 +654,7 @@ def case_exact_id_with_two_open_entities_is_ambiguous(w: World) -> CaseResult:
     n = max(2, w.ctx.candidates)
     r = m.link(_exact(w.subject(), open_entity_count=n), owner_id=w.human(m.tenant))
     c = m.get(r.claim.binding_claim_id)
-    ok = (r.transition_id == "IB-4" and c.state is ClaimState.AMBIGUOUS
+    ok = (r.transition_id == "IB-4" and c.state is BindingState.AMBIGUOUS
           and c.provenance_class != "OWNER_ASSERTED" and w.events(m.tenant, "ClaimConfirmed") == 0)
     if not ok:
         return CaseResult(False, markers=["### BEST GUESS ACCEPTED ###"])
@@ -672,8 +672,8 @@ def case_no_best_guess_fallback(w: World) -> CaseResult:
     r0 = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                              match_method=MatchMethod.EXACT_ID, open_entity_count=0),
                 owner_id=w.human(m.tenant))
-    ok = (c.state is ClaimState.AMBIGUOUS
-          and m.get(r0.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    ok = (c.state is BindingState.AMBIGUOUS
+          and m.get(r0.claim.binding_claim_id).state is BindingState.AMBIGUOUS
           and w.events(m.tenant, "ClaimConfirmed") == 0)
     if not ok:
         return CaseResult(False, markers=["### BEST GUESS ACCEPTED ###"])
@@ -686,12 +686,12 @@ def case_registered_rule_confirms(w: World) -> CaseResult:
     r = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                             match_method=MatchMethod.RULE, rule_id="rule:mc-date-amount",
                             rule_registered=True))
-    reg_ok = m.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    reg_ok = m.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
     # An UNREGISTERED rule may NOT — it goes to a human.
     r2 = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                              match_method=MatchMethod.RULE, rule_id="rule:unknown",
                              rule_registered=False), owner_id=w.human(m.tenant))
-    unreg_ok = m.get(r2.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    unreg_ok = m.get(r2.claim.binding_claim_id).state is BindingState.AMBIGUOUS
     ok = reg_ok and unreg_ok
     if not ok:
         return CaseResult(False, markers=["### BEST GUESS ACCEPTED ###"])
@@ -703,13 +703,13 @@ def case_reconciliation_requires_two_sources(w: World) -> CaseResult:
     # Two agreeing sources reconcile and confirm.
     r = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                             match_method=MatchMethod.RECONCILIATION, source_count=2))
-    two_ok = (m.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    two_ok = (m.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
               and m.get(r.claim.binding_claim_id).provenance_class == "RECONCILED")
     # A single source is not reconciliation -> a human.
     r1 = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                              match_method=MatchMethod.RECONCILIATION, source_count=1),
                 owner_id=w.human(m.tenant))
-    one_ok = m.get(r1.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    one_ok = m.get(r1.claim.binding_claim_id).state is BindingState.AMBIGUOUS
     ok = two_ok and one_ok
     if not ok:
         return CaseResult(False, markers=["### BEST GUESS ACCEPTED ###"])
@@ -722,7 +722,7 @@ def case_human_assertion_confirms_owner_asserted(w: World) -> CaseResult:
     r = m.assert_human(subject_ref=w.subject(), entity_ref="load:4471", decision_ref="dec-77",
                        decision_human_id=h, actor_id=h, actor_kind="human")
     c = m.get(r.claim.binding_claim_id)
-    ok = (r.transition_id == "IB-2h" and c.state is ClaimState.CONFIRMED
+    ok = (r.transition_id == "IB-2h" and c.state is BindingState.CONFIRMED
           and c.provenance_class == "OWNER_ASSERTED" and c.decision_ref == "dec-77"
           and c.decision_human_id == h and c.match_method == "HUMAN")
     if not ok:
@@ -776,7 +776,7 @@ def case_ordinal_target_resolves_to_immutable_id_or_fails_closed(w: World) -> Ca
     r = m.assert_human(entity_ref="load:4471", decision_ref="dec-2", decision_human_id=h, actor_id=h,
                        ordinal_target=target, current_unlinked=unlinked)
     c = m.get(r.claim.binding_claim_id)
-    ok = (c.subject_ref == s2 and c.state is ClaimState.CONFIRMED
+    ok = (c.subject_ref == s2 and c.state is BindingState.CONFIRMED
           and c.provenance_class == "OWNER_ASSERTED")
     if not ok:
         return CaseResult(False, markers=["### ORDINAL BOUND WITHOUT AN IMMUTABLE ID ###"])
@@ -819,7 +819,7 @@ def case_model_extract_is_evidence_not_confirmation(w: World) -> CaseResult:
                             match_method=MatchMethod.MODEL_EXTRACT, evidence_id="pod.pdf",
                             span="page:1", extracted_identifier="4471"))
     c = m.get(r.claim.binding_claim_id)
-    ok = (c.state is ClaimState.PROPOSED and c.provenance_class == "MODEL_EXTRACTED"
+    ok = (c.state is BindingState.PROPOSED and c.provenance_class == "MODEL_EXTRACTED"
           and r.event_names == ("ClaimEvidenced",) and w.events(m.tenant, "ClaimConfirmed") == 0)
     if not ok:
         return CaseResult(False, markers=["### MISS ### model extract was treated as confirmation"])
@@ -860,12 +860,12 @@ def case_extracted_identifier_re_enters_deterministic_matching(w: World) -> Case
     ev = m.link(MatchAttempt(subject_ref=subject, entity_ref="load:4471",
                              match_method=MatchMethod.MODEL_EXTRACT, evidence_id="pod.pdf",
                              span="0:4", extracted_identifier="4471"))
-    evidence_stays = m.get(ev.claim.binding_claim_id).state is ClaimState.PROPOSED
+    evidence_stays = m.get(ev.claim.binding_claim_id).state is BindingState.PROPOSED
     # The extracted identifier RE-ENTERS deterministic matching as a NEW EXACT_ID attempt: the linker
     # decides. The model found the string; the linker confirms.
     det = m.link(_exact(subject, entity="load:4471", open_entity_count=1))
     confirmed = m.get(det.claim.binding_claim_id)
-    ok = (evidence_stays and confirmed.state is ClaimState.CONFIRMED
+    ok = (evidence_stays and confirmed.state is BindingState.CONFIRMED
           and confirmed.provenance_class == "LINKER_INFERRED"
           and det.claim.binding_claim_id != ev.claim.binding_claim_id)
     if not ok:
@@ -896,7 +896,7 @@ def case_model_inferred_routes_to_ambiguous(w: World) -> CaseResult:
     r = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:4471",
                             match_method=MatchMethod.MODEL_INFER), owner_id=w.human(m.tenant))
     c = m.get(r.claim.binding_claim_id)
-    ok = (c.state is ClaimState.AMBIGUOUS and c.provenance_class == "MODEL_INFERRED"
+    ok = (c.state is BindingState.AMBIGUOUS and c.provenance_class == "MODEL_INFERRED"
           and c.ambiguous_reason == "model_inferred" and w.events(m.tenant, "ClaimConfirmed") == 0)
     if not ok:
         return CaseResult(False, markers=["### MODEL_INFERRED CONFIRMED ###"])
@@ -912,8 +912,8 @@ def case_model_guess_never_confirms_at_confidence_1_0(w: World) -> CaseResult:
     lo = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                              match_method=MatchMethod.MODEL_INFER, confidence=0.4),
                 owner_id=w.human(m.tenant))
-    ok = (m.get(hi.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
-          and m.get(lo.claim.binding_claim_id).state is ClaimState.AMBIGUOUS
+    ok = (m.get(hi.claim.binding_claim_id).state is BindingState.AMBIGUOUS
+          and m.get(lo.claim.binding_claim_id).state is BindingState.AMBIGUOUS
           and w.events(m.tenant, "ClaimConfirmed") == 0)
     if not ok:
         return CaseResult(False, markers=["### CONFIDENCE GATED A CONFIRMATION ###"])
@@ -928,7 +928,7 @@ def case_multiple_candidates_ambiguous(w: World) -> CaseResult:
                             match_method=MatchMethod.EXACT_ID, candidate_count=n, open_entity_count=n),
                owner_id=w.human(m.tenant))
     c = m.get(r.claim.binding_claim_id)
-    ok = c.state is ClaimState.AMBIGUOUS and c.ambiguous_reason == "multiple"
+    ok = c.state is BindingState.AMBIGUOUS and c.ambiguous_reason == "multiple"
     if not ok:
         return CaseResult(False, markers=["### BEST GUESS ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["multiple-candidates-ambiguous"]])
@@ -940,7 +940,7 @@ def case_single_weak_candidate_ambiguous(w: World) -> CaseResult:
                             match_method=MatchMethod.EXACT_ID, candidate_count=1, weak=True,
                             open_entity_count=1), owner_id=w.human(m.tenant))
     c = m.get(r.claim.binding_claim_id)
-    ok = c.state is ClaimState.AMBIGUOUS and c.ambiguous_reason == "single_weak"
+    ok = c.state is BindingState.AMBIGUOUS and c.ambiguous_reason == "single_weak"
     if not ok:
         return CaseResult(False, markers=["### WEAK CANDIDATE AUTO-CONFIRMED ###"])
     return CaseResult(True, lines=[_SIG["single-weak-candidate-ambiguous"]])
@@ -965,7 +965,7 @@ def case_ambiguous_is_human_owned(w: World) -> CaseResult:
     r = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="load:1",
                             match_method=MatchMethod.MODEL_INFER), owner_id=w.human(m.tenant))
     c = m.get(r.claim.binding_claim_id)
-    ok = (refused and refused_fake and c.state is ClaimState.AMBIGUOUS
+    ok = (refused and refused_fake and c.state is BindingState.AMBIGUOUS
           and c.owner_id == w.human(m.tenant))
     if not ok:
         return CaseResult(False, markers=["### MISS ### AMBIGUOUS without a named human owner"])
@@ -985,9 +985,9 @@ def case_confidence_is_invisible_to_every_guard(w: World) -> CaseResult:
                                    match_method=MatchMethod.MODEL_INFER, confidence=0.0),
                       owner_id=w.human(m.tenant))
     ok = (m.get(det_hi.claim.binding_claim_id).state
-          is m.get(det_lo.claim.binding_claim_id).state is ClaimState.CONFIRMED
+          is m.get(det_lo.claim.binding_claim_id).state is BindingState.CONFIRMED
           and m.get(guess_hi.claim.binding_claim_id).state
-          is m.get(guess_lo.claim.binding_claim_id).state is ClaimState.AMBIGUOUS)
+          is m.get(guess_lo.claim.binding_claim_id).state is BindingState.AMBIGUOUS)
     if not ok:
         return CaseResult(False, markers=["### CONFIDENCE GATED A CONFIRMATION ###"])
     return CaseResult(True, lines=[_SIG["confidence-is-invisible-to-every-guard"],
@@ -999,7 +999,7 @@ def case_linker_inferred_claim_may_be_recomputed(w: World) -> CaseResult:
     r = m.link(_exact(w.subject()))
     sup = m.recompute(r.claim.binding_claim_id)
     old = m.get(r.claim.binding_claim_id)
-    ok = (sup.to_state is ClaimState.SUPERSEDED and old.state is ClaimState.SUPERSEDED
+    ok = (sup.to_state is BindingState.SUPERSEDED and old.state is BindingState.SUPERSEDED
           and w.events(m.tenant, "ClaimSuperseded") == 1)
     if not ok:
         return CaseResult(False, markers=["### MISS ### LINKER_INFERRED could not be recomputed"])
@@ -1040,7 +1040,7 @@ def case_owner_asserted_overwrite_is_illegal_and_recorded(w: World) -> CaseResul
     except OwnerAssertedOverwrite:
         recorded = True
     sec = w.security(m.tenant)
-    ok = (recorded and m.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    ok = (recorded and m.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
           and "IllegalTransitionAttempted" in sec and "OwnerAssertedOverwriteAttempted" in sec
           and w.events(m.tenant, "ClaimSuperseded") == 0)
     if not ok:
@@ -1053,7 +1053,7 @@ def case_superseded_claim_is_retained(w: World) -> CaseResult:
     r = m.link(_exact(w.subject(), entity="load:4471"))
     m.recompute(r.claim.binding_claim_id)
     old = m.get(r.claim.binding_claim_id)
-    ok = (old is not None and old.state is ClaimState.SUPERSEDED and old.entity_ref == "load:4471"
+    ok = (old is not None and old.state is BindingState.SUPERSEDED and old.entity_ref == "load:4471"
           and w.claims(m.tenant) == 1)
     if not ok:
         return CaseResult(False, markers=["### CLAIM DELETED ###"])
@@ -1068,7 +1068,7 @@ def case_inferrer_vs_owner_raises_conflict_not_a_winner(w: World) -> CaseResult:
     c = m.inferrer_disagrees(r.claim.binding_claim_id, disagreeing_entity_ref="load:9999",
                              owner_id=h)
     binding = m.get(r.claim.binding_claim_id)
-    ok = (c.to_state is ClaimState.CONFLICTING and binding.entity_ref == "load:4471"
+    ok = (c.to_state is BindingState.CONFLICTING and binding.entity_ref == "load:4471"
           and c.event_names == ("ConflictRaised",) and w.events(m.tenant, "ConflictRaised") == 1)
     if not ok:
         return CaseResult(False, markers=["### INFERRER PICKED A WINNER ###"])
@@ -1082,7 +1082,7 @@ def case_conflicting_preserves_the_human_binding(w: World) -> CaseResult:
                        decision_human_id=h, actor_id=h)
     m.inferrer_disagrees(r.claim.binding_claim_id, disagreeing_entity_ref="load:9999", owner_id=h)
     b = m.get(r.claim.binding_claim_id)
-    ok = (b.state is ClaimState.CONFLICTING and b.entity_ref == "load:4471"
+    ok = (b.state is BindingState.CONFLICTING and b.entity_ref == "load:4471"
           and b.provenance_class == "OWNER_ASSERTED" and b.owner_id == h)
     if not ok:
         return CaseResult(False, markers=["### OWNER_ASSERTED OVERWRITTEN ###"])
@@ -1115,7 +1115,7 @@ def case_human_correction_moves_confirmed_to_corrected(w: World) -> CaseResult:
                      decision_human_id=h, actor_id=h, completed_effects=["invoice#560010"])
     old = m.get(r.claim.binding_claim_id)
     new = m.get(corr.corrected_claim_id)
-    ok = (old.state is ClaimState.CORRECTED and new.state is ClaimState.CONFIRMED
+    ok = (old.state is BindingState.CORRECTED and new.state is BindingState.CONFIRMED
           and new.provenance_class == "OWNER_ASSERTED" and new.entity_ref == "load:44718"
           and w.events(m.tenant, "ClaimCorrected") == 1)
     if not ok:
@@ -1154,7 +1154,7 @@ def case_correction_of_correction_is_supported(w: World) -> CaseResult:
                    decision_human_id=h, actor_id=h)
     mid = m.get(c1.corrected_claim_id)
     final = m.get(c2.corrected_claim_id)
-    ok = (mid.state is ClaimState.CORRECTED and final.state is ClaimState.CONFIRMED
+    ok = (mid.state is BindingState.CORRECTED and final.state is BindingState.CONFIRMED
           and final.entity_ref == "load:44719" and final.corrected_from == c1.corrected_claim_id
           and w.events(m.tenant, "ClaimCorrected") == 2)
     if not ok:
@@ -1209,7 +1209,7 @@ def case_proposed_or_ambiguous_may_be_rejected(w: World) -> CaseResult:
     a = m.link(MatchAttempt(subject_ref=w.subject(), entity_ref="e",
                             match_method=MatchMethod.MODEL_INFER), owner_id=w.human(m.tenant))
     rej2 = m.reject(a.claim.binding_claim_id, reason="entity cancelled")
-    ok = (rej.to_state is ClaimState.REJECTED and rej2.to_state is ClaimState.REJECTED
+    ok = (rej.to_state is BindingState.REJECTED and rej2.to_state is BindingState.REJECTED
           and w.events(m.tenant, "ClaimSuperseded") == 2)
     if not ok:
         return CaseResult(False, markers=["### MISS ### reject did not reach REJECTED"])
@@ -1222,7 +1222,7 @@ def case_cancelled_entity_supersedes_the_confirmed_binding(w: World) -> CaseResu
     r = m.link(_exact(w.subject(), entity="load:4471"))
     sup = m.cancel_entity(r.claim.binding_claim_id, owner_id=h)
     c = m.get(r.claim.binding_claim_id)
-    ok = (sup.to_state is ClaimState.SUPERSEDED and c.state is ClaimState.SUPERSEDED
+    ok = (sup.to_state is BindingState.SUPERSEDED and c.state is BindingState.SUPERSEDED
           and c.owner_id == h and w.events(m.tenant, "ClaimSuperseded") == 1)
     if not ok:
         return CaseResult(False, markers=["### MISS ### cancelled entity did not supersede"])
@@ -1287,7 +1287,7 @@ def case_occ_on_claim_version(w: World) -> CaseResult:
         m.resolve(p.claim.binding_claim_id, _exact(p.claim.subject_ref), expected=snap)
     except (StateConflict, GuardNotSatisfied):
         conflicted = True
-    ok = conflicted and m.get(p.claim.binding_claim_id).state is ClaimState.REJECTED
+    ok = conflicted and m.get(p.claim.binding_claim_id).state is BindingState.REJECTED
     if not ok:
         return CaseResult(False, markers=["### MISS ### lost update on a claim was not refused"])
     return CaseResult(True, lines=[_SIG["occ-on-claim-version"]])
@@ -1300,8 +1300,8 @@ def case_tenant_isolation(w: World) -> CaseResult:
     ra = a.link(_exact(w.subject(ta), entity="load:1"))
     rb = b.link(_exact(w.subject(tb), entity="load:1"))
     ok = (a.get(rb.claim.binding_claim_id) is None and b.get(ra.claim.binding_claim_id) is None
-          and a.get(ra.claim.binding_claim_id).state is ClaimState.CONFIRMED
-          and b.get(rb.claim.binding_claim_id).state is ClaimState.CONFIRMED)
+          and a.get(ra.claim.binding_claim_id).state is BindingState.CONFIRMED
+          and b.get(rb.claim.binding_claim_id).state is BindingState.CONFIRMED)
     if not ok:
         return CaseResult(False, markers=["### CROSS-TENANT CONFIRMATION ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["tenant-isolation"]])
@@ -1416,7 +1416,7 @@ def case_state_and_event_co_commit(w: World) -> CaseResult:
             and w.events(m.tenant, "ClaimProposed") == 1):
         return CaseResult(False, markers=["### STATE WITHOUT ITS EVENT ###"])
     m.resolve(r.claim.binding_claim_id, _exact(r.claim.subject_ref))
-    ok = (m.get(r.claim.binding_claim_id).state is ClaimState.CONFIRMED
+    ok = (m.get(r.claim.binding_claim_id).state is BindingState.CONFIRMED
           and w.events(m.tenant, "ClaimConfirmed") == 1)
     if not ok:
         return CaseResult(False, markers=["### EVENT WITHOUT ITS STATE ###"])
@@ -1475,7 +1475,7 @@ def case_replay_preserves_owner_asserted_byte_identical(w: World) -> CaseResult:
     before = _row(w, m.tenant, r.claim.binding_claim_id)
     rebuilt = m.rebuild(r.claim.binding_claim_id)
     after = _row(w, m.tenant, r.claim.binding_claim_id)
-    ok = (rebuilt.state is ClaimState.CONFIRMED and rebuilt.provenance_class == "OWNER_ASSERTED"
+    ok = (rebuilt.state is BindingState.CONFIRMED and rebuilt.provenance_class == "OWNER_ASSERTED"
           and after == before and rebuilt.rewritten_provenance == 0)
     if not ok:
         return CaseResult(False, markers=["### REPLAY REWROTE OWNER_ASSERTED PROVENANCE ###"])
@@ -1532,7 +1532,7 @@ def case_correction_before_confirmation_is_parked(w: World) -> CaseResult:
     m.resolve(p.claim.binding_claim_id, _exact(p.claim.subject_ref, entity="load:4471"))
     drained = m.consume_event(corrected_evt, inbox=box)
     ok = (drained.consume.outcome.value == "APPLIED"
-          and m.get(p.claim.binding_claim_id).state is ClaimState.CORRECTED
+          and m.get(p.claim.binding_claim_id).state is BindingState.CORRECTED
           and len(box.parked()) == 0)
     if not ok:
         return CaseResult(False, markers=["### PARKED CORRECTION DROPPED ###"])
@@ -1863,14 +1863,15 @@ def _resolve_ctx(args: argparse.Namespace) -> Ctx:
             f"control: it must change NOTHING, at 1.0 or 0.0. An out-of-range value is refused.")
     if args.inject in ("expire-claim", "expire-observation"):
         raise ProbeExit(
-            f"fault {args.inject!r} is REFUSED: a claim NEVER expires (entity §26) and has no "
-            f"deletion policy (entity §28). Accepting it would manufacture evidence for a transition "
-            f"the corpus states does not exist.")
+            f"unknown fault {args.inject!r} is REFUSED: it is not in the closed vocabulary because a "
+            f"claim NEVER expires (entity §26) and has no deletion policy (entity §28). Accepting it "
+            f"would manufacture evidence for a transition the corpus states does not exist.")
     if args.inject == "auto-resolve-conflict":
         raise ProbeExit(
-            "fault 'auto-resolve-conflict' is REFUSED: ADR-007 §5.3 makes AutoResolve an ILLEGAL "
-            "transition — a conflict that times out is a conflict resolved by a clock, and a clock is "
-            "not a decision. M6 does not own conflict resolution at all (task §3.7).")
+            "unknown fault 'auto-resolve-conflict' is REFUSED: it is not in the closed vocabulary "
+            "because ADR-007 §5.3 makes AutoResolve an ILLEGAL transition — a conflict that times out "
+            "is a conflict resolved by a clock, and a clock is not a decision. M6 does not own "
+            "conflict resolution at all (task §3.7).")
     if args.inject not in FAULTS:
         raise ProbeExit(
             f"unknown fault {args.inject!r}. The fault vocabulary is CLOSED and BOUNDED: "

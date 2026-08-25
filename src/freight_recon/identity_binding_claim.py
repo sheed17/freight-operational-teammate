@@ -44,8 +44,9 @@ nothing. If the inferrer merely DISAGREES, M6 does not pick a winner: IB-6 moves
 CONFLICTING, preserves the owner binding intact, and emits the registered `ConflictRaised` (F7).
 
 ### THE M7 SEAM — the CONFLICTING state, not the Conflict machine (task §3.7). `ConflictRaised` is
-registered with IB-6 in its producer list, so — unlike M5 refusing `ExceptionRaised` (EC-1 only) — M6
-emits it. It rides the `conflict` aggregate at a minted conflict id; the `event_outbox` holds no
+registered with IB-6 in its producer list, so — unlike M5 refusing the M9 exception event whose sole
+producer is another machine — M6 emits it. It rides the `conflict` aggregate at a minted conflict id;
+the `event_outbox` holds no
 foreign key into a `conflicts` table, so emitting it needs no M7 aggregate row. NO `conflicts` table,
 no `CF-*`, and above all NO resolution path — a conflict closes by a registered rule or a human, and
 `AutoResolve` is illegal (ADR-007 §5.3).
@@ -55,8 +56,8 @@ CORRECTED) is append-only (the prior claim is RETAINED) and PROPAGATES: it recor
 M6-owned obligation ON THE CLAIM ROW (`propagation_obligation`) naming the dependents to re-derive
 and the COMPLETED effects that rested on the wrong binding and therefore need a Compensation. It
 NAMES them; nothing silently drops or closes it, and NO Compensation is fabricated as completed. NO
-`compensations` table, no `CM-*`, no `CompensationRequired`, and no unregistered event name — M6-AQ-1
-is reported, not closed (task §3.9). Correction-of-correction re-runs propagation.
+`compensations` table, no `CM-*` transition, no compensation-family event name, and no unregistered
+event name — M6-AQ-1 is reported, not closed (task §3.9). Correction-of-correction re-runs propagation.
 
 ### THE F14 TRIPWIRES THAT ARE MINE (task §3.10). `IllegalTransitionAttempted` (GR-1, mandatory) and
 `OwnerAssertedOverwriteAttempted` (the B3 tripwire, F14 names M6 its sole producer). A counterparty
@@ -181,7 +182,7 @@ class ForgedEvidence(M6Error):
 
 # --------------------------------------------------------------------------------- the state set
 
-class ClaimState(str, Enum):
+class BindingState(str, Enum):
     PROPOSED = "PROPOSED"
     CONFIRMED = "CONFIRMED"
     AMBIGUOUS = "AMBIGUOUS"
@@ -223,8 +224,8 @@ class TransitionRow:
     """One row of §14. Data, so the acceptance battery can enumerate it against the specification."""
 
     id: str
-    from_states: tuple[ClaimState, ...]
-    to_state: ClaimState
+    from_states: tuple[BindingState, ...]
+    to_state: BindingState
     trigger: Trigger
     trigger_types: tuple[str, ...]     # S|H|X — registry §1
     event: str                         # the canonical event this transition emits (or the F14 one)
@@ -232,26 +233,26 @@ class TransitionRow:
 
 
 TRANSITIONS: tuple[TransitionRow, ...] = (
-    TransitionRow("IB-1", (), ClaimState.PROPOSED, Trigger.DETERMINISTIC_MATCH, ("S", "X"),
+    TransitionRow("IB-1", (), BindingState.PROPOSED, Trigger.DETERMINISTIC_MATCH, ("S", "X"),
                   "ClaimProposed"),
-    TransitionRow("IB-2", (ClaimState.PROPOSED,), ClaimState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
+    TransitionRow("IB-2", (BindingState.PROPOSED,), BindingState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
                   ("S",), "ClaimConfirmed", ("LINKER_INFERRED",)),
-    TransitionRow("IB-2r", (ClaimState.PROPOSED,), ClaimState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
+    TransitionRow("IB-2r", (BindingState.PROPOSED,), BindingState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
                   ("S",), "ClaimConfirmed", ("LINKER_INFERRED", "RECONCILED")),
-    TransitionRow("IB-2h", (ClaimState.PROPOSED, ClaimState.AMBIGUOUS), ClaimState.CONFIRMED,
+    TransitionRow("IB-2h", (BindingState.PROPOSED, BindingState.AMBIGUOUS), BindingState.CONFIRMED,
                   Trigger.HUMAN_ASSERTED, ("H",), "ClaimConfirmed", ("OWNER_ASSERTED",)),
-    TransitionRow("IB-3", (ClaimState.PROPOSED,), ClaimState.PROPOSED, Trigger.MODEL_READ_ARTIFACT,
+    TransitionRow("IB-3", (BindingState.PROPOSED,), BindingState.PROPOSED, Trigger.MODEL_READ_ARTIFACT,
                   ("S",), "ClaimEvidenced", ("MODEL_EXTRACTED",)),
-    TransitionRow("IB-4", (ClaimState.PROPOSED,), ClaimState.AMBIGUOUS, Trigger.MODEL_GUESSED,
+    TransitionRow("IB-4", (BindingState.PROPOSED,), BindingState.AMBIGUOUS, Trigger.MODEL_GUESSED,
                   ("S",), "ClaimAmbiguous"),
-    TransitionRow("IB-5", (ClaimState.CONFIRMED,), ClaimState.SUPERSEDED,
+    TransitionRow("IB-5", (BindingState.CONFIRMED,), BindingState.SUPERSEDED,
                   Trigger.RECOMPUTED_BY_INFERRER, ("S",), "ClaimSuperseded",
                   ("LINKER_INFERRED", "RECONCILED")),
-    TransitionRow("IB-6", (ClaimState.CONFIRMED,), ClaimState.CONFLICTING,
+    TransitionRow("IB-6", (BindingState.CONFIRMED,), BindingState.CONFLICTING,
                   Trigger.INFERRER_DISAGREES, ("S",), "ConflictRaised", ("OWNER_ASSERTED",)),
-    TransitionRow("IB-7", (ClaimState.CONFIRMED,), ClaimState.CORRECTED, Trigger.HUMAN_CORRECTED,
+    TransitionRow("IB-7", (BindingState.CONFIRMED,), BindingState.CORRECTED, Trigger.HUMAN_CORRECTED,
                   ("H",), "ClaimCorrected", ("OWNER_ASSERTED",)),
-    TransitionRow("IB-8", (ClaimState.PROPOSED, ClaimState.AMBIGUOUS), ClaimState.REJECTED,
+    TransitionRow("IB-8", (BindingState.PROPOSED, BindingState.AMBIGUOUS), BindingState.REJECTED,
                   Trigger.DISPROVEN, ("H", "S"), "ClaimSuperseded"),
 )
 
@@ -262,9 +263,9 @@ PRODUCED_CONTRACTS: frozenset[str] = frozenset(
     ("ClaimProposed", "ClaimConfirmed", "ClaimEvidenced", "ClaimAmbiguous", "ClaimSuperseded",
      "ClaimCorrected"))
 
-TERMINAL_STATES: frozenset[ClaimState] = frozenset(ClaimState(s) for s in TERMINAL_CLAIM_STATES)
-HUMAN_OWNED_STATES: frozenset[ClaimState] = frozenset(
-    ClaimState(s) for s in HUMAN_OWNED_CLAIM_STATES)
+TERMINAL_STATES: frozenset[BindingState] = frozenset(BindingState(s) for s in TERMINAL_CLAIM_STATES)
+HUMAN_OWNED_STATES: frozenset[BindingState] = frozenset(
+    BindingState(s) for s in HUMAN_OWNED_CLAIM_STATES)
 
 
 def _utc_now() -> datetime:
@@ -321,7 +322,7 @@ class IdentityBindingClaim:
     subject_ref: str
     entity_ref: str
     provenance_class: str
-    state: ClaimState
+    state: BindingState
     version: int
     match_method: str
     confidence: float | None
@@ -350,12 +351,12 @@ class IdentityBindingClaim:
         step 4 reads (`checkpoint.NativeClaim`) WITHOUT importing the checkpoint — a claim is an INPUT
         to the gate and never a gate. `status` is ACTIVE only for a live CONFIRMED/CORRECTED binding;
         a CONFLICTING/SUPERSEDED/REJECTED binding blocks (entity §38)."""
-        conflicting = self.state is ClaimState.CONFLICTING
-        if self.state in (ClaimState.CONFIRMED, ClaimState.CORRECTED):
+        conflicting = self.state is BindingState.CONFLICTING
+        if self.state in (BindingState.CONFIRMED, BindingState.CORRECTED):
             status = "ACTIVE"
-        elif self.state is ClaimState.SUPERSEDED:
+        elif self.state is BindingState.SUPERSEDED:
             status = "SUPERSEDED"
-        elif self.state is ClaimState.REJECTED:
+        elif self.state is BindingState.REJECTED:
             status = "RETRACTED"
         else:
             status = self.state.value          # PROPOSED / AMBIGUOUS / CONFLICTING — not ACTIVE
@@ -379,8 +380,8 @@ class NativeClaimProjection:
 class TransitionResult:
     transition_id: str
     claim: IdentityBindingClaim
-    from_state: ClaimState | None
-    to_state: ClaimState
+    from_state: BindingState | None
+    to_state: BindingState
     event_ids: tuple[str, ...] = ()
     event_names: tuple[str, ...] = ()
     conflict_id: str | None = None
@@ -396,7 +397,7 @@ class ReconstructedClaim:
     """
 
     binding_claim_id: str
-    state: ClaimState | None
+    state: BindingState | None
     provenance_class: str | None
     new_claims: int = 0
     rewritten_provenance: int = 0
@@ -539,7 +540,7 @@ class M6Machine:
             raise
         return TransitionResult(
             transition_id=transition_id, claim=created, from_state=None,
-            to_state=ClaimState.PROPOSED, event_ids=(envelope.event_id,), event_names=(event_name,))
+            to_state=BindingState.PROPOSED, event_ids=(envelope.event_id,), event_names=(event_name,))
 
     # --- IB-2 / IB-2r / IB-4: the deterministic ladder --------------------------------------------
 
@@ -564,7 +565,7 @@ class M6Machine:
         UNREGISTERED rule, or a single-source reconciliation all route to AMBIGUOUS — a human, not the
         closest candidate. Confidence is never read."""
         claim = expected or self.require(binding_claim_id)
-        if claim.state is not ClaimState.PROPOSED:
+        if claim.state is not BindingState.PROPOSED:
             raise GuardNotSatisfied(
                 f"the deterministic ladder resolves a PROPOSED claim; {binding_claim_id!r} is "
                 f"{claim.state.value}.")
@@ -579,9 +580,9 @@ class M6Machine:
                                  decision_human_id=None, correlation_id=correlation_id,
                                  causation_id=causation_id, trace_id=trace_id, event_id=event_id)
         # IB-4 → AMBIGUOUS, human-owned.
-        owner = self._require_named_human(owner_id, ClaimState.AMBIGUOUS)
+        owner = self._require_named_human(owner_id, BindingState.AMBIGUOUS)
         return self._advance(
-            claim, "IB-4", ClaimState.AMBIGUOUS, event_name="ClaimAmbiguous",
+            claim, "IB-4", BindingState.AMBIGUOUS, event_name="ClaimAmbiguous",
             payload={"reason": reason}, writes="ambiguous_reason = ?, owner_id = ?",
             write_args=(reason, owner), actor_type="system", actor_id=actor_id,
             correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id,
@@ -687,7 +688,7 @@ class M6Machine:
                 conn.rollback()
             raise
         return TransitionResult(
-            transition_id="IB-2h", claim=created, from_state=None, to_state=ClaimState.CONFIRMED,
+            transition_id="IB-2h", claim=created, from_state=None, to_state=BindingState.CONFIRMED,
             event_ids=(envelope.event_id,), event_names=("ClaimConfirmed",))
 
     # --- IB-5 / IB-5x: the relinker ---------------------------------------------------------------
@@ -713,7 +714,7 @@ class M6Machine:
         persists nothing, and emits `IllegalTransitionAttempted` AND `OwnerAssertedOverwriteAttempted`
         (the Sev-0 B3 tripwire). A retry storm changes nothing — the row does not move."""
         claim = expected or self.require(binding_claim_id)
-        if claim.state is not ClaimState.CONFIRMED:
+        if claim.state is not BindingState.CONFIRMED:
             raise GuardNotSatisfied(
                 f"IB-5 recomputes a CONFIRMED binding; {binding_claim_id!r} is {claim.state.value}.")
         if claim.is_owner_asserted:
@@ -726,7 +727,7 @@ class M6Machine:
                 f"recorded to audit and security. A projection rebuild rebuilds projections, not the "
                 f"owner's mind.")
         return self._advance(
-            claim, "IB-5", ClaimState.SUPERSEDED, event_name="ClaimSuperseded",
+            claim, "IB-5", BindingState.SUPERSEDED, event_name="ClaimSuperseded",
             payload=({"superseded_by": superseded_by} if superseded_by else {}),
             writes=("superseded_by = ?" if superseded_by else ""),
             write_args=((superseded_by,) if superseded_by else ()),
@@ -757,14 +758,14 @@ class M6Machine:
         emits it because IB-6 is a registered producer, and it builds no M7 machine (task §3.7).
         Every consequential action on the entity then blocks (ADR-002 C5/C6, checkpoint step 4)."""
         claim = expected or self.require(binding_claim_id)
-        if claim.state is not ClaimState.CONFIRMED:
+        if claim.state is not BindingState.CONFIRMED:
             raise GuardNotSatisfied(
                 f"IB-6 acts on a CONFIRMED binding; {binding_claim_id!r} is {claim.state.value}.")
         if not claim.is_owner_asserted:
             raise GuardNotSatisfied(
                 "IB-6 is the inferrer disagreeing with an OWNER_ASSERTED binding; a disagreement over "
                 "a machine-derived binding is an ordinary recompute (IB-5), not a conflict.")
-        owner = self._require_named_human(owner_id, ClaimState.CONFLICTING)
+        owner = self._require_named_human(owner_id, BindingState.CONFLICTING)
         conflict_id = f"conf-{uuid.uuid4().hex[:16]}"
         now = format_instant(self._clock())
         conn = self._conn
@@ -807,8 +808,8 @@ class M6Machine:
                 conn.rollback()
             raise
         return TransitionResult(
-            transition_id="IB-6", claim=after, from_state=ClaimState.CONFIRMED,
-            to_state=ClaimState.CONFLICTING, event_ids=(conflict_env.event_id,),
+            transition_id="IB-6", claim=after, from_state=BindingState.CONFIRMED,
+            to_state=BindingState.CONFLICTING, event_ids=(conflict_env.event_id,),
             event_names=("ConflictRaised",), conflict_id=conflict_id)
 
     # --- IB-7: the human correction ---------------------------------------------------------------
@@ -840,7 +841,7 @@ class M6Machine:
         them; nothing silently drops or closes it, and NO Compensation is fabricated as completed —
         M10 is not built here (task §3.8)."""
         claim = expected or self.require(binding_claim_id)
-        if claim.state is not ClaimState.CONFIRMED:
+        if claim.state is not BindingState.CONFIRMED:
             raise GuardNotSatisfied(
                 f"IB-7 corrects a CONFIRMED binding; {binding_claim_id!r} is {claim.state.value}. "
                 f"Correction-of-correction acts on the newly-corrected CONFIRMED claim.")
@@ -914,8 +915,8 @@ class M6Machine:
                 conn.rollback()
             raise
         return TransitionResult(
-            transition_id="IB-7", claim=corrected, from_state=ClaimState.CONFIRMED,
-            to_state=ClaimState.CORRECTED, event_ids=(corrected_env.event_id, confirm_env.event_id),
+            transition_id="IB-7", claim=corrected, from_state=BindingState.CONFIRMED,
+            to_state=BindingState.CORRECTED, event_ids=(corrected_env.event_id, confirm_env.event_id),
             event_names=("ClaimCorrected", "ClaimConfirmed"), corrected_claim_id=new_claim_id)
 
     # --- IB-8 / §25: rejection & cancellation -----------------------------------------------------
@@ -937,7 +938,7 @@ class M6Machine:
         (emitting `ClaimSuperseded`)."""
         claim = expected or self.require(binding_claim_id)
         return self._advance(
-            claim, "IB-8", ClaimState.REJECTED, event_name="ClaimSuperseded",
+            claim, "IB-8", BindingState.REJECTED, event_name="ClaimSuperseded",
             payload={}, writes="", write_args=(),
             actor_type=("human" if str(actor_kind).upper() == HUMAN else "system"),
             actor_id=actor_id, correlation_id=correlation_id, causation_id=causation_id,
@@ -961,13 +962,13 @@ class M6Machine:
         inferrer second-guessing, so it supersedes ANY provenance (it is not the B3 case). The
         superseded row is RETAINED and names the accountable human for the now-unbound subject."""
         claim = expected or self.require(binding_claim_id)
-        if claim.state is not ClaimState.CONFIRMED:
+        if claim.state is not BindingState.CONFIRMED:
             raise GuardNotSatisfied(
                 f"entity cancellation supersedes a CONFIRMED binding; {binding_claim_id!r} is "
                 f"{claim.state.value}.")
-        owner = self._require_named_human(owner_id, ClaimState.CONFLICTING)
+        owner = self._require_named_human(owner_id, BindingState.CONFLICTING)
         return self._advance(
-            claim, "IB-5", ClaimState.SUPERSEDED, event_name="ClaimSuperseded",
+            claim, "IB-5", BindingState.SUPERSEDED, event_name="ClaimSuperseded",
             payload={}, writes="owner_id = ?", write_args=(owner,),
             actor_type=("human" if str(actor_kind).upper() == HUMAN else "system"),
             actor_id=actor_id, correlation_id=correlation_id, causation_id=causation_id,
@@ -1046,14 +1047,14 @@ class M6Machine:
         binding is reproduced byte-identical from the OWNER_ASSERTED event that recorded it — never
         re-derived by the inferrer (ADR-007 §7)."""
         stream = events if events is not None else self._event_stream(binding_claim_id)
-        state: ClaimState | None = None
+        state: BindingState | None = None
         provenance: str | None = None
         for event in stream:
             target = _event_target_state(event)
             if target is not None:
                 state = target
             elif event.event_name in ("ClaimProposed", "ClaimEvidenced") and state is None:
-                state = ClaimState.PROPOSED
+                state = BindingState.PROPOSED
             # ### PROVENANCE COMES FROM THE POSITIVE EVIDENCE OF THE EVENT, NEVER RE-DERIVED.
             carried = event.payload.get("provenance_class")
             if isinstance(carried, str) and carried:
@@ -1079,7 +1080,7 @@ class M6Machine:
             payload["decision_ref"] = decision_ref
         try:
             return self._advance(
-                claim, transition_id, ClaimState.CONFIRMED, event_name="ClaimConfirmed",
+                claim, transition_id, BindingState.CONFIRMED, event_name="ClaimConfirmed",
                 payload=payload, writes="", write_args=(), actor_type=actor_type, actor_id=actor_id,
                 correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id,
                 event_id=event_id)
@@ -1091,7 +1092,7 @@ class M6Machine:
                 f"(entity §17): at most one CONFIRMED binding per subject. Refused: {exc}.") from exc
 
     def _advance(
-        self, claim: IdentityBindingClaim, transition_id: str, to_state: ClaimState, *,
+        self, claim: IdentityBindingClaim, transition_id: str, to_state: BindingState, *,
         event_name: str, payload: Mapping[str, Any], writes: str, write_args: tuple[Any, ...],
         actor_type: str, actor_id: str, correlation_id: str | None, causation_id: str | None,
         trace_id: str | None, event_id: str | None,
@@ -1141,7 +1142,7 @@ class M6Machine:
             event_ids=(envelope.event_id,), event_names=(event_name,))
 
     def _reconstruct_locked(
-        self, claim: IdentityBindingClaim, event: EventEnvelope, target: ClaimState,
+        self, claim: IdentityBindingClaim, event: EventEnvelope, target: BindingState,
     ) -> TransitionResult:
         """Advance a durable row to match a durable event — reconstruction, not a live transition.
 
@@ -1152,13 +1153,13 @@ class M6Machine:
         now = format_instant(self._clock())
         writes = ["state = ?", "version = version + 1", "updated_at = ?"]
         args: list[Any] = [target.value, now]
-        if target is ClaimState.SUPERSEDED and event.payload.get("superseded_by"):
+        if target is BindingState.SUPERSEDED and event.payload.get("superseded_by"):
             writes.append("superseded_by = ?")
             args.append(event.payload.get("superseded_by"))
-        elif target is ClaimState.AMBIGUOUS and event.payload.get("reason"):
+        elif target is BindingState.AMBIGUOUS and event.payload.get("reason"):
             writes.append("ambiguous_reason = ?")
             args.append(event.payload.get("reason"))
-        elif target is ClaimState.CORRECTED:
+        elif target is BindingState.CORRECTED:
             # ### THE CORRECTED STATE CARRIES ITS OBLIGATION (CHECK). A foreign correction replayed
             # through the inbox reconstructs a minimal obligation from the POSITIVE evidence the event
             # carries (prior/new); the full dependents/effects lived on the originating node's live
@@ -1257,7 +1258,7 @@ class M6Machine:
             raise GuardNotSatisfied("IB-2h binds a subject (an observation id or a resolved ordinal).")
         return subject
 
-    def _require_named_human(self, owner_id: str | None, state: ClaimState) -> str:
+    def _require_named_human(self, owner_id: str | None, state: BindingState) -> str:
         """### AMBIGUOUS / CONFLICTING IS OWNED BY A NAMED HUMAN (machine §5/§9). "A human" is
         decoration while owner_id is a free-text column: it must be a recorded, ACTIVE human of this
         tenant, FK-backed (M1's argument for owner_id, M5's for UNBOUND)."""
@@ -1488,20 +1489,20 @@ def _confirm_transition(attempt: MatchAttempt) -> str:
     return "IB-2" if attempt.match_method is MatchMethod.EXACT_ID else "IB-2r"
 
 
-def _event_target_state(event: EventEnvelope) -> ClaimState | None:
+def _event_target_state(event: EventEnvelope) -> BindingState | None:
     """The state a claim event reconstructs to, or None for an event that is not a state marker on
     this aggregate (a proposal/evidence marker, or an F14 event riding the aggregate)."""
     name = event.event_name
     if name == "ClaimConfirmed":
-        return ClaimState.CONFIRMED
+        return BindingState.CONFIRMED
     if name == "ClaimAmbiguous":
-        return ClaimState.AMBIGUOUS
+        return BindingState.AMBIGUOUS
     if name == "ClaimCorrected":
-        return ClaimState.CORRECTED
+        return BindingState.CORRECTED
     if name == "ClaimSuperseded":
         # IB-5 (CONFIRMED→SUPERSEDED) and IB-8 (→REJECTED) share this event; the target is read from
         # the producer transition rather than guessed.
-        return ClaimState.REJECTED if event.producer_transition_id == "IB-8" else ClaimState.SUPERSEDED
+        return BindingState.REJECTED if event.producer_transition_id == "IB-8" else BindingState.SUPERSEDED
     # ClaimProposed / ClaimEvidenced (creation/evidence markers), IllegalTransitionAttempted, etc.
     return None
 
@@ -1533,7 +1534,7 @@ def _row_to_claim(row: Any) -> IdentityBindingClaim:
     return IdentityBindingClaim(
         tenant=row["tenant"], binding_claim_id=row["binding_claim_id"],
         subject_ref=row["subject_ref"], entity_ref=row["entity_ref"],
-        provenance_class=row["provenance_class"], state=ClaimState(row["state"]),
+        provenance_class=row["provenance_class"], state=BindingState(row["state"]),
         version=row["version"], match_method=row["match_method"], confidence=row["confidence"],
         evidence_id=row["evidence_id"], span=row["span"], rule_id=row["rule_id"],
         decision_ref=row["decision_ref"], decision_human_id=row["decision_human_id"],

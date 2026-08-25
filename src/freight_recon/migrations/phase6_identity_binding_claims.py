@@ -252,7 +252,12 @@ P6IBC_TARGET_SCHEMA: dict[str, str] = {
             -- EXPIRED, no DELETED. Interpolated from CLAIM_STATES, the single source of truth.
             state TEXT NOT NULL CHECK (state IN (%(states)s)),
             version INTEGER NOT NULL,
-            match_method TEXT NOT NULL,
+            -- ### THE SIX CANONICAL match_method VALUES, ENUMERATED INLINE ON THE COLUMN (entity §12).
+            -- One physical line, exactly like `state` above, so DDL introspection finds the vocabulary
+            -- ON the column: EXACT_ID, RULE, RECONCILIATION, MODEL_EXTRACT, MODEL_INFER, HUMAN, and no
+            -- seventh (task §3.4). The composite SD-6 CHECK below then pins each to its derived
+            -- provenance_class. Interpolated from MATCH_METHODS, the single source of truth.
+            match_method TEXT NOT NULL CHECK (match_method IN (%(methods)s)),
             -- ### CONFIDENCE ORDERS A HUMAN QUEUE AND GATES NOTHING (GR-8, M-16, ADR-007 sec 8).
             -- Nullable, never read by a CHECK, never a guard input. provenance_class gates; confidence
             -- sorts.
@@ -307,7 +312,7 @@ P6IBC_TARGET_SCHEMA: dict[str, str] = {
             -- ### AN AMBIGUOUS OR CONFLICTING CLAIM NAMES A HUMAN, or it is a silent drop wearing a
             -- status (machine sec 5/9). On ONE line: a wrapped continuation reads as a column OR.
             CHECK (state NOT IN (%(human_owned)s) OR owner_id IS NOT NULL),
-            CHECK (match_method IN (%(methods)s)),
+            -- The match_method enumeration CHECK lives INLINE on the column above (declared once).
             CHECK (provenance_class IN (%(prov)s)),
             -- ### SD-6: provenance_class IS THE DERIVED FUNCTION OF match_method. One physical line;
             -- every legal pair and only those. A caller cannot choose provenance independently of
