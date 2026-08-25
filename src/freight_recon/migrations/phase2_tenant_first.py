@@ -1106,6 +1106,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6ob:{step}")
         conn.commit()
 
+        # M6's Identity Binding Claim — a NEW table, holding an FK into observations (M5, the subject),
+        # FKs into tenant_humans (M1, the decision-human and the AMBIGUOUS/CONFLICTING owner) and
+        # self-FKs for the correction/supersession lineage. Created after M5 and M1. Idempotent.
+        from .phase6_identity_binding_claims import (
+            create_phase6_identity_binding_claims_schema)
+
+        for step in create_phase6_identity_binding_claims_schema(conn, now=_now()):
+            _mark(conn, f"phase6ibc:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1123,6 +1133,8 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             from .phase5_event_transport import stamp_phase5_version
             from .phase6_approvals import stamp_phase6_approvals_version
             from .phase6_external_effects import stamp_phase6_external_effects_version
+            from .phase6_identity_binding_claims import (
+                stamp_phase6_identity_binding_claims_version)
             from .phase6_observations import stamp_phase6_observations_version
             from .phase6_pipeline_instances import stamp_phase6_pipeline_version
             from .phase6_work_items import stamp_phase6_version
@@ -1134,6 +1146,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase6_external_effects_version(conn, now=_now())
             stamp_phase6_approvals_version(conn, now=_now())
             stamp_phase6_observations_version(conn, now=_now())
+            stamp_phase6_identity_binding_claims_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

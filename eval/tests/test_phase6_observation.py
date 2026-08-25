@@ -706,11 +706,18 @@ def test_m5_authorizes_nothing():
 
 
 def test_m5_builds_no_m6_identity_binding_table():
-    """§3.7: M5 accepts a binding DECISION; it does not build M6. There is no identity_binding_claims
-    table and no foreign key into one."""
+    """§3.7: M5 accepts a binding DECISION; it does not build M6. Its OWN migration creates no
+    identity_binding_claims table, and `observations` carries no foreign key into one — its
+    `binding_claim_id` is a plain reference. (M6 has since landed and builds that table through its
+    OWN migration; this asserts M5 is not the one that does, and that M5 declares no dependency on it.)
+    """
+    from freight_recon.migrations.phase6_observations import P6OB_TENANT_TABLES
+    # M5's migration owns exactly `observations` — it does not create the M6 claim table.
+    assert P6OB_TENANT_TABLES == ("observations",)
+    assert "identity_binding_claims" not in P6OB_TENANT_TABLES
+    # And observations declares NO foreign key into identity_binding_claims: binding_claim_id is a
+    # plain reference to a table M5 does not own (task §3.7), unchanged by M6's arrival.
     conn = _conn()
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "identity_binding_claims" not in tables
     fks = {r[2] for r in conn.execute("PRAGMA foreign_key_list(observations)")}
     assert "identity_binding_claims" not in fks
 

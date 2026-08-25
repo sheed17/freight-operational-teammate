@@ -1224,20 +1224,21 @@ def case_restart_reingest_is_idempotent(w: World) -> CaseResult:
 
 
 def case_m6_binding_seam_is_inert(w: World) -> CaseResult:
+    from freight_recon.migrations.phase6_observations import P6OB_TENANT_TABLES
     m = w.machine()
     r = _received(w, m)
     m.parse(r.observation_id, parsed_value="ref")
-    # M5 does not compute a binding — it APPLIES a decision handed in. There is no
-    # identity_binding_claims table (M6 is not built), and binding_claim_id carries a plain reference
-    # with no FK into a table this unit does not own.
-    tables = {row[0] for row in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    no_m6_table = "identity_binding_claims" not in tables
-    # binding_claim_id has no foreign key.
+    # M5 does not compute a binding — it APPLIES a decision handed in. M5's OWN migration builds no
+    # identity_binding_claims table (M6 has since landed and builds it through its own migration; M5
+    # is not the one that does), and observations carries a plain `binding_claim_id` reference with NO
+    # foreign key into a table this unit does not own — unchanged by M6's arrival (task §3.7).
+    m5_builds_no_claim_table = "identity_binding_claims" not in P6OB_TENANT_TABLES
+    # binding_claim_id has no foreign key into identity_binding_claims.
     fks = {row[2] for row in w.conn.execute("PRAGMA foreign_key_list(observations)")}
     no_claim_fk = "identity_binding_claims" not in fks
     m.bind(r.observation_id, _det(claim="m6-claim-ref-supplied", entity="load:9"))
     a = m.require(r.observation_id)
-    ok = (no_m6_table and no_claim_fk and a.binding_claim_id == "m6-claim-ref-supplied"
+    ok = (m5_builds_no_claim_table and no_claim_fk and a.binding_claim_id == "m6-claim-ref-supplied"
           and a.state is ProcessingState.BOUND)
     return CaseResult(ok, lines=[_SIG["m6-binding-seam-is-inert"]] if ok else [],
                       markers=[] if ok else ["### MISS ### M6 seam is not inert"])

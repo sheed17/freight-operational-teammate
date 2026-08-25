@@ -213,6 +213,23 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     p6ob_performed = create_phase6_observations_schema(conn, now=utc_now())
     assert any(step == "create-table:observations" for step in p6ob_performed), p6ob_performed
     assert phase6_observations_readiness_problems(conn) == []
+    # ### AND AN EIGHTH TIME, FOR M6 — THE IDENTITY BINDING CLAIM. Canonical moved once more: a
+    # database without `identity_binding_claims` cannot make identity a first-class, evidenced,
+    # correctable decision, so a P2..M5 database is still refused, and the migration that closes the
+    # gap creates the tenant-first table with its SD-6 mapping CHECK, its one-CONFIRMED-per-subject
+    # partial unique index and its immutability triggers. The property is the one this node has always
+    # asserted: a migrated database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_identity_binding_claims import (  # noqa: E402
+        create_phase6_identity_binding_claims_schema,
+        phase6_identity_binding_claims_readiness_problems,
+    )
+
+    assert any("phase6_identity_binding_claims" in p or "identity_binding_claims" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ibc_performed = create_phase6_identity_binding_claims_schema(conn, now=utc_now())
+    assert any(step == "create-table:identity_binding_claims" for step in p6ibc_performed), (
+        p6ibc_performed)
+    assert phase6_identity_binding_claims_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

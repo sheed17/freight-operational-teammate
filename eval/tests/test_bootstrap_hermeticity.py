@@ -3375,6 +3375,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase6_approvals import (
         P6AP_EXEMPT_TABLES, P6AP_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase6_identity_binding_claims import (
+        P6IBC_EXEMPT_TABLES, P6IBC_TENANT_TABLES,
+    )
     from freight_recon.migrations.phase6_observations import (
         P6OB_EXEMPT_TABLES, P6OB_TENANT_TABLES,
     )
@@ -3406,6 +3409,11 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"P6 declared a tenant-exempt observation table {sorted(P6OB_EXEMPT_TABLES)}: a fact nobody "
         f"scoped is a fact that will eventually be read by the wrong brokerage. Defend it here first."
     )
+    assert set(P6IBC_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt identity-binding-claim table {sorted(P6IBC_EXEMPT_TABLES)}: a "
+        f"claim that artifact X belongs to entity Y is a claim WITHIN one brokerage, and there is no "
+        f"honest cross-tenant reading of a binding. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3417,6 +3425,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_pipeline_tenant": set(P6PI_TENANT_TABLES),
         "p6_approvals_tenant": set(P6AP_TENANT_TABLES),
         "p6_observations_tenant": set(P6OB_TENANT_TABLES),
+        "p6_identity_binding_claims_tenant": set(P6IBC_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3434,7 +3443,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p5_tenant": 4, "p6_tenant": 2,
                      "p6_pipeline_tenant": 1,
                      "p6_approvals_tenant": 2,
-                     "p6_observations_tenant": 1}, f"the partition shape drifted: {shape}"
+                     "p6_observations_tenant": 1,
+                     "p6_identity_binding_claims_tenant": 1}, (
+        f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")
     assert "autonomous_run_counters" in text, (

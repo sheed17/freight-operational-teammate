@@ -248,6 +248,18 @@ expected_noncanonical_schema:
     #   (tenant_humans for the UNBOUND/UNPARSEABLE human owner, and its own supersession lineage)
     #   carries the tenant in the reference itself, so a cross-tenant fact or owner cannot be spelled.
     - observations
+    # Phase 6 (the Identity Binding Claim, P6/M6) — born tenant-first, and NOT exempt.
+    # REG-1 adjudication, stated rather than assumed:
+    #   `identity_binding_claims` holds a claim that artifact X belongs to entity Y, WITHIN one
+    #   brokerage. "Whose binding is this" has no honest answer other than a tenant — a binding scoped
+    #   to no brokerage is one whose confirmation, correction or conflict would eventually be read by
+    #   the wrong brokerage. Tenant is the first primary-key column, the one-CONFIRMED-per-subject
+    #   partial unique index and the ambiguous-queue and lineage indexes are tenant-first, the
+    #   readiness oracle refuses the table otherwise, and every foreign key (observations for the
+    #   subject, tenant_humans for the decision-human and the AMBIGUOUS/CONFLICTING owner, and its own
+    #   correction/supersession lineage) carries the tenant in the reference itself, so a cross-tenant
+    #   binding, owner or human decision cannot be spelled.
+    - identity_binding_claims
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
