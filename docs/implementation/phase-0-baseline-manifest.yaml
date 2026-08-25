@@ -218,6 +218,24 @@ expected_noncanonical_schema:
     # checkpoint_witnesses, effect_grants, and its own lineage) carry the tenant in the reference
     # itself, so a cross-tenant obligation, owner, witness or grant cannot be spelled.
     - pipeline_instances
+    # Phase 6 (the Approval, P6/M4) — born tenant-first, and NOT exempt.
+    # REG-1 adjudication, stated rather than assumed:
+    #   `approvals` holds one human's CONSENT bound to the exact facts that made an action correct,
+    #   within one brokerage. "Whose consent is this, and to what" has no honest answer other than a
+    #   tenant — a consent scoped to no brokerage is a consent nobody gave — and the same commit_key
+    #   in two tenants is two isolated approvals by design. The Layer-1 reservation it carries —
+    #   UNIQUE(tenant, commit_key) WHERE state IN ('REQUESTED','GRANTED') — would be a CROSS-BROKERAGE
+    #   lock without the tenant in it.
+    #   `approval_signatures` holds the dual-control signatures attached to an approval; a signature
+    #   nobody's authority backs, at no brokerage, is not a control. Its primary key
+    #   (tenant, approval_id, actor_id) is what makes "a duplicate actor does not satisfy quorum"
+    #   a database fact.
+    # Tenant is the first primary-key column of both, every index is tenant-first, the readiness
+    # oracle refuses them otherwise, and every foreign key (tenant_humans, effect_grants, approvals)
+    # carries the tenant in the reference itself, so a cross-tenant consent or signature cannot be
+    # spelled.
+    - approvals
+    - approval_signatures
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

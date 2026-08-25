@@ -181,6 +181,22 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step.startswith("rebuild-table:effect_grants") for step in p6ef_performed), (
         p6ef_performed)
     assert phase6_external_effects_readiness_problems(conn) == []
+    # ### AND A SIXTH TIME, FOR M4 — THE APPROVAL. Canonical moved once more: a database without
+    # `approvals` and `approval_signatures` cannot hold a human's consent bound to the exact facts,
+    # so a P2..M3 database is still refused, and the migration that closes the gap creates both
+    # tenant-first tables. The property is the one this node has always asserted: a migrated database
+    # and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_approvals import (  # noqa: E402
+        create_phase6_approvals_schema,
+        phase6_approvals_readiness_problems,
+    )
+
+    assert any("phase6_approvals" in p or "approval" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ap_performed = create_phase6_approvals_schema(conn, now=utc_now())
+    assert any(step == "create-table:approvals" for step in p6ap_performed), p6ap_performed
+    assert any(step == "create-table:approval_signatures" for step in p6ap_performed), p6ap_performed
+    assert phase6_approvals_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

@@ -3346,7 +3346,8 @@ def test_hostile_a_durable_write_is_not_covered_by_a_random_events_payload():
 # ============================================================ M-4: table partition
 
 def test_the_canonical_table_partition_is_exact_and_disjoint():
-    """P3 widened the partition from three classes to five; P5 adds a sixth, P6 a seventh. The
+    """P3 widened the partition from three classes to five; P5 adds a sixth, P6 the Work Item and
+    Pipeline Instance, and M4 the Approval and its dual-control signatures. The
     doctrine is unchanged: the classes must be PAIRWISE disjoint and must together explain EVERY
     canonical table, by membership and not by count - a same-count substitution must still fail. The
     counts below are asserted only after the membership equality, so they document the shape rather
@@ -3371,6 +3372,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase5_event_transport import (
         P5_EXEMPT_TABLES, P5_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase6_approvals import (
+        P6AP_EXEMPT_TABLES, P6AP_TENANT_TABLES,
+    )
     from freight_recon.migrations.phase6_pipeline_instances import (
         P6PI_EXEMPT_TABLES, P6PI_TENANT_TABLES,
     )
@@ -3391,6 +3395,10 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"P6 declared a tenant-exempt attempt table {sorted(P6PI_EXEMPT_TABLES)}: an attempt made "
         f"on nobody's behalf, against nobody's TMS. Defend it here first."
     )
+    assert set(P6AP_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt approval table {sorted(P6AP_EXEMPT_TABLES)}: a human consent "
+        f"scoped to no brokerage, and a signature nobody's authority backs. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3400,6 +3408,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p5_tenant": set(P5_TENANT_TABLES),
         "p6_tenant": set(P6_TENANT_TABLES),
         "p6_pipeline_tenant": set(P6PI_TENANT_TABLES),
+        "p6_approvals_tenant": set(P6AP_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3415,7 +3424,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     assert shape == {"migrated": 7, "already_tenant_first": 1, "exempt": 3,
                      "p3_tenant": 2, "p3_exempt": 1,
                      "p5_tenant": 4, "p6_tenant": 2,
-                     "p6_pipeline_tenant": 1}, f"the partition shape drifted: {shape}"
+                     "p6_pipeline_tenant": 1,
+                     "p6_approvals_tenant": 2}, f"the partition shape drifted: {shape}"
 
     text = read(IMPL / "CURRENT.md")
     assert "autonomous_run_counters" in text, (

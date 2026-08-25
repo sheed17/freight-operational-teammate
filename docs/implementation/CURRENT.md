@@ -90,10 +90,11 @@ missing from the written account.
 | **P5 tenant** (4) | `event_inbox`, `event_outbox`, `inbox_aggregate_cursor`, `pending_references` |
 | **P6 tenant — M1** (2) | `tenant_humans`, `work_items` |
 | **P6 tenant — M2** (1) | `pipeline_instances` |
+| **P6 tenant — M4** (2) | `approvals`, `approval_signatures` |
 
-P5, P6/M1 and P6/M2 declare **no** tenant-exempt table, and the guard asserts that emptiness rather
-than omitting it: an event nobody owns is an event that will eventually be read by the wrong
-brokerage.
+P5, P6/M1, P6/M2 and P6/M4 declare **no** tenant-exempt table, and the guard asserts that emptiness
+rather than omitting it: an event nobody owns is an event that will eventually be read by the wrong
+brokerage, an approval scoped to no brokerage is a consent nobody gave.
 
 ## ⛔ What must NOT begin
 
