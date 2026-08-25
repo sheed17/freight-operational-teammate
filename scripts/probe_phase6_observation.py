@@ -373,6 +373,22 @@ def _received(w: World, m: M5Machine, *, raw: str = "RATE=2850 GBP load 4471",
                     as_of="2026-08-24T10:00:00.000Z", provenance_class=prov)
 
 
+def _raw_row(w: World, m: M5Machine, observation_id: str) -> dict:
+    """The full observations row as a column->value dict, for a byte-level before/after read-back."""
+    row = w.conn.execute(
+        "SELECT * FROM observations WHERE tenant = ? AND observation_id = ?",
+        (m.tenant, observation_id)).fetchone()
+    return dict(row) if row is not None else {}
+
+
+# The only columns a confirmation legitimately touches: `as_of` (the freshness sighting it exists to
+# update) and the two internal mechanics `version` (the OCC counter a later state transition guards
+# on) and `updated_at` (the write timestamp). ### EVERY OTHER COLUMN — the immutable fact and its
+# processing status — MUST be byte-identical across a confirmation (§3.5, "A CONFIRMATION UPDATES
+# as_of AND NOTHING ELSE"). Neither mechanic is the FACT, and neither is touched by a state change.
+_CONFIRMATION_MAY_TOUCH: frozenset[str] = frozenset(("as_of", "version", "updated_at"))
+
+
 # ---- the cases ---------------------------------------------------------------------------------
 
 def case_natural_key_creates_received(w: World) -> CaseResult:
@@ -457,19 +473,39 @@ def case_changed_content_is_a_new_observation(w: World) -> CaseResult:
 def case_duplicate_is_one_row_one_confirmation_zero_work(w: World) -> CaseResult:
     m = w.machine()
     ext = w.ext()
-    r1 = _received(w, m, ext=ext)
-    r2 = _received(w, m, ext=ext)  # identical content -> confirmation
-    ok = (r1.created and r2.confirmed and r1.observation_id == r2.observation_id
+    raw = "RATE=2850 GBP load 4471"
+    r1 = m.ingest(source_system=SOURCES[0], external_id=ext, raw_value=raw,
+                  as_of="2026-08-24T10:00:00.000Z")
+    before = _raw_row(w, m, r1.observation_id)                 # the fact, before any duplicate
+    # The carrier's mail server retries the identical message; the TMS is re-polled unchanged. Each
+    # identical re-ingest carries a strictly-newer as_of and is a confirmation (OB-1c), never a new
+    # row and never downstream work. --repeat drives how many duplicates arrive.
+    n = max(1, w.ctx.repeat)
+    confirmed = 0
+    for i in range(n):
+        rc = m.ingest(source_system=SOURCES[0], external_id=ext, raw_value=raw,
+                      as_of=f"2026-08-24T1{i + 1}:00:00.000Z")
+        confirmed += 1 if rc.confirmed else 0
+    after = _raw_row(w, m, r1.observation_id)                  # ...and after
+    # ### THE as_of-ONLY INVARIANT, OBSERVED AT THE POINT THE DUPLICATE IS APPLIED — grounded in this
+    # real before/after read-back, not a bare string. as_of advanced; every column carrying the FACT
+    # or its processing status is byte-identical (only the confirmation-mechanics columns may move).
+    as_of_advanced = bool(before) and bool(after) and after["as_of"] > before["as_of"]
+    fact_unchanged = bool(before) and all(
+        after.get(k) == v for k, v in before.items() if k not in _CONFIRMATION_MAY_TOUCH)
+    ok = (r1.created and confirmed == n and after.get("observation_id") == r1.observation_id
           and w.rows(m.tenant) == 1 and w.events(m.tenant, "ObservationReceived") == 1
-          and w.events(m.tenant, "ObservationConfirmed") == 1
+          and w.events(m.tenant, "ObservationConfirmed") == n
           and w.events(m.tenant, "ObservationParsed") == 0
-          and w.events(m.tenant, "ObservationBound") == 0)
+          and w.events(m.tenant, "ObservationBound") == 0
+          and as_of_advanced and fact_unchanged)
     if not ok:
         marker = ("### DUPLICATE OBSERVATION ROW ###" if w.rows(m.tenant) != 1
                   else "### DUPLICATE INGEST DID WORK ###")
         return CaseResult(False, markers=[marker])
     return CaseResult(True, lines=[_SIG["duplicate-is-one-row-one-confirmation-zero-work"],
-                                   _SIG["confirmation-flood-triggers-no-work"]])
+                                   _SIG["confirmation-flood-triggers-no-work"],
+                                   _SIG["confirmation-updates-as-of-only"]])
 
 
 def case_confirmation_updates_as_of_only(w: World) -> CaseResult:
@@ -498,6 +534,7 @@ def case_confirmation_flood_triggers_no_work(w: World) -> CaseResult:
     r = _received(w, m, ext=ext)
     m.parse(r.observation_id, parsed_value="p")
     m.bind(r.observation_id, _det())
+    before = _raw_row(w, m, r.observation_id)                  # the BOUND fact, before the flood
     n = max(4, w.ctx.repeat)
     confirms = 0
     for i in range(n):
@@ -505,13 +542,20 @@ def case_confirmation_flood_triggers_no_work(w: World) -> CaseResult:
                       as_of=f"2026-08-24T12:0{i}:00.000Z")
         confirms += 1 if rc.confirmed else 0
     a = m.require(r.observation_id)
+    after = _raw_row(w, m, r.observation_id)
     # A flood of confirmations updates as_of and nothing else: one row, still BOUND, zero re-work.
+    # Grounded in the before/after read-back — as_of advanced, every fact/status column identical.
+    as_of_advanced = bool(before) and after.get("as_of", "") > before.get("as_of", "z")
+    fact_unchanged = bool(before) and all(
+        after.get(k) == v for k, v in before.items() if k not in _CONFIRMATION_MAY_TOUCH)
     ok = (confirms == n and w.rows(m.tenant) == 1 and a.state is ProcessingState.BOUND
           and w.events(m.tenant, "ObservationConfirmed") == n
           and w.events(m.tenant, "ObservationParsed") == 1
-          and w.events(m.tenant, "ObservationBound") == 1)
+          and w.events(m.tenant, "ObservationBound") == 1
+          and as_of_advanced and fact_unchanged)
     return CaseResult(ok, lines=[_SIG["confirmation-flood-triggers-no-work"],
-                                 _SIG["duplicate-is-one-row-one-confirmation-zero-work"]] if ok else [],
+                                 _SIG["duplicate-is-one-row-one-confirmation-zero-work"],
+                                 _SIG["confirmation-updates-as-of-only"]] if ok else [],
                       markers=[] if ok else ["### DUPLICATE INGEST DID WORK ###"])
 
 
