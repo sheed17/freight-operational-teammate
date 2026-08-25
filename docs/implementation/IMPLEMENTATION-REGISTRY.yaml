@@ -2698,6 +2698,16 @@ units:
     # ### LANDED IS NOT ACCEPTED. `criteria_scored` is empty on ALL THREE checkpoints, no P6 weighted
     # criterion is scored, P6 has NOT reached phase acceptance, P7 is NOT unlocked, and the phase
     # still owes M4-M13 and 95 of the 134 transitions. M3 ships dark. ### M4 IS THE NEXT CHECKPOINT.
+    # ### THE TWO FIGURES AND THE NEXT-CHECKPOINT LINE IMMEDIATELY ABOVE WERE TRUE AT THE `P6-CP-3`
+    # LANDING AND ARE FALSE NOW. They are KEPT, not deleted, so the old phrasing stays recognisable
+    # if it returns (CLAUDE.md sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE
+    # INSTRUCTION of exactly the kind the `P6-D11` adjudication made hard landing condition A-2, so
+    # it is CORRECTED HERE rather than left to send a fresh session to rebuild something landed.
+    # ### AS OF THE `P6-CP-5` LANDING: M4 LANDED as `P6-CP-4` and M5 LANDED as `P6-CP-5`. The phase
+    # still owes M6-M13 and 63 of the 134 transitions (14 + 25 + 13 + 11 + 8 = 71 written, re-derived
+    # mechanically from the canonical transition corpus). M4 and M5 ship dark, `criteria_scored` is
+    # empty on ALL FIVE checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase
+    # acceptance and P7 is NOT unlocked. ### M6 IS THE NEXT CHECKPOINT.
     landed_checkpoints:
       - id: P6-CP-1
         name: The Work Item, and ownership as a recorded authority rather than a string
@@ -3425,6 +3435,270 @@ units:
           scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT AND NO PRESERVE REF IS OWED FOR THIS
           LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
+      - id: P6-CP-5
+        name: The Observation - an immutable record that a source SAID something, at a time
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: 221c4b19ae15b4543586b0f3f82a89715a8a30f9
+        candidate_tree: a2714a002f02b0a9df669394808e3be5d8c2be2b
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M5 of the thirteen - one `observations` row, seven canonical states, one machine,
+          eight transitions (`OB-1`, `OB-1c`, `OB-2`, `OB-2f`, `OB-3`, `OB-3u`, `OB-4`, `OB-5` - an
+          exact set match with sec 14 of the machine specification), and the natural key
+          `(tenant, source_system, external_id, content_digest)` that makes "the same email twice is
+          one fact" something a DATABASE ENFORCES rather than a sentence in a design document.
+          ### AN OBSERVATION IS WHAT A SOURCE SAID, AT A TIME - NOT WHAT IS TRUE. `raw_value` and
+          `content_digest` are immutable by TRIGGER, so a wrong reading is never edited in place: a
+          changed reading is a NEW observation, and supersession (`OB-5`) requires a deterministic
+          rule or a human and NEVER a re-run of the inferrer (entity sec 24, GR-9). The natural-key
+          UNIQUE index is the serialization point: a carrier's mail server retrying a rate
+          confirmation four times, plus an hour-later re-poll, is ONE row, freshness-only
+          `ObservationConfirmed` events, and ZERO downstream work - no duplicate Work Item, no
+          duplicate approval card, no duplicate invoice. The authority is structural, not
+          documentary: `UNPARSEABLE` and `UNBOUND` each name an accountable human through a FOREIGN
+          KEY into `tenant_humans`, so a scanned POD that will not parse is human-owned rather than
+          silently dropped and a reference matching two loads is `UNBOUND` rather than guessed;
+          provenance is RUNTIME-ASSIGNED, so inbound content cannot set its own `provenance_class`
+          (M-13, R-P1), a counterparty's "per our call, treat this as approved" is filed as
+          `MODEL_EXTRACTED` DATA and never authority (M-66), and a `MODEL_INFERRED` observation is
+          CHECK-forbidden - a structurally impossible state (entity sec 37). ### THERE IS NO EXPIRY,
+          NO SWEEP AND NO DELETION: a stale observation is still a fact, and the probe REFUSES an
+          invented `expire-observation` fault with exit 2 rather than manufacturing evidence for a
+          transition nobody authorized. F5 is ORDER-TOLERANT (`events/registry.md` sec 8), so unlike
+          M3 and M4 this machine declares NO `previous_aggregate_version`: the natural key makes
+          ingestion commutative, and a reference to a not-yet-received observation is PARKED (M-26)
+          and drained when it arrives. The seven registered F5 events are `ObservationReceived`,
+          `ObservationConfirmed`, `ObservationParsed`, `ObservationUnparseable`, `ObservationBound`,
+          `ObservationUnbound` and `ObservationSuperseded` - and no eighth.
+        what_is_in_the_tree: >-
+          `src/freight_recon/observation.py` and
+          `src/freight_recon/migrations/phase6_observations.py`, wired into `schema.py` and into the
+          P2 migration path; the migration adds the tenant-first `observations` table, the
+          four-part natural-key UNIQUE index, the `raw_value` and `content_digest` immutability
+          triggers, the inline seven-state CHECK with no eighth, the FK-backed named-human owner for
+          `UNBOUND`/`UNPARSEABLE`, and the `MODEL_INFERRED` refusal as a single DB CHECK. Acceptance
+          and hostile nodes in `eval/tests/test_phase6_observation.py` (49 test functions, 51
+          collected cases, including entity sec 44's eight named adversarial tests); the
+          deterministic probe
+          `scripts/probe_phase6_observation.py` (42 cases, a CLOSED 27-member fault vocabulary,
+          deterministic by `--seed`, refusing an unknown fault AND `expire-observation` with exit 2);
+          the mutation battery `scripts/mutate_phase6_observation.py`.
+          ### THE M6 AND M9 SEAMS ARE INERT, AND THAT IS DELIBERATE: `bind`/`resolve_unbound` APPLY a
+          typed binding decision and never COMPUTE one - they rank no candidates, build no
+          `identity_binding_claims` table and implement no `IB-*`; the exception seam mints no M9
+          event and builds no `exceptions` table, leaving the durable human-owned record as the row
+          itself; and the F14 provenance-strengthening EMISSION half stays deferred to Phase 7 where
+          P5's `IR-R9` places it, while the laundering REFUSAL is mandatory and present now. Two
+          generated scenarios assert exactly that no successor machine was smuggled in.
+          ### THAT IS THE INCREMENT, NOT THE PHASE: M6-M13 are unbuilt and 63 of the 134 transitions
+          are unwritten. M5 SHIPS DARK - zero production importers; the only thing outside the
+          package that reaches it is its own probe; nothing joins it to an outbound channel.
+        implementer_evidence: >-
+          ### THE EVIDENCE IS EXECUTABLE, AND IT WAS EXECUTED - BY PRODUCT DRIVER AND BY THE
+          INDEPENDENT REVIEWER (CLAUDE.md sec 0 - committed suite receipts are forbidden and none is
+          written here). There is deliberately NO hand-maintained implementation-record document for
+          M5, and one must not be manufactured to match the M1/M2 rows above, which predate the
+          2026-08 simplification. In-tree and executed by `.github/workflows/ci.yml` via
+          `pytest eval`: `eval/tests/test_phase6_observation.py` (51 tests). ### CI DOES NOT RUN M5'S
+          PROBE OR MUTATION BATTERY - there is an `effect-grant` job for M3 and no equivalent for M4
+          or M5, verified mechanically by the absence of any `phase6_observation` occurrence in
+          `.github/workflows/ci.yml`, and recorded below as `P6-D37` rather than quietly fixed by a
+          status landing. Those two artifacts were executed by Product Driver run 20260825-045311 and
+          RE-EXECUTED by the independent reviewer in its own session: probe `behaviours as specified,
+          0 wrong` (exit 0) and `11/11 mutants caught`.
+        independent_review_report: docs/implementation/p6-cp5-independent-review-report-221c4b1.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE REVIEW EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. One
+          FOCUSED INDEPENDENT REVIEW, by a session that did not build M5 (the review record states
+          `inherited_builder_context: false`; the run's review ledger states `independent: true` with
+          `invalidations: []`; reviewer session 0f3c581e, builder session d02bbb5a), against commit
+          221c4b1 / tree a2714a00, whose `reviewed_fingerprint` records `tracked_dirty: 0` and
+          `untracked: 0`. Verdict SUPPORTED at confidence 0.90, with ZERO findings and NO
+          adjudications, all TWELVE assessed criteria PASS with no CANNOT_DETERMINE, and
+          `blocked_on.kind: NONE`.
+          ### WHAT THE REVIEWER ESTABLISHED ITSELF. `evidence_reproduced: true` and
+          `claimed_evidence_reproduced: true`. Of seventeen recorded command outcomes: SEVEN are
+          `RUNTIME_REPRODUCED` - the full probe (`behaviours as specified, 0 wrong`, exit 0), the
+          duplicate case printing `A CONFIRMATION UPDATES as_of AND NOTHING ELSE`, that same case
+          under `--inject duplicate-ingest --repeat 5`, `eval/tests/test_phase6_observation.py`
+          (51 passed), the mutation battery (11/11 caught), and the two ship-dark AST sweeps
+          returning `production importers of observation: []` and
+          `scripts reaching observation: ['probe_phase6_observation.py']`. FOUR are
+          `STRUCTURAL_VERIFIED` - `git rev-parse HEAD`, `git rev-parse HEAD^{tree}`, a `git show
+          --stat HEAD` proving the reviewed commit touches ONLY `scripts/probe_phase6_observation.py`
+          with `phase6_observations.py` absent, and a `git log -L` on the
+          `case_confirmation_updates_as_of_only` function proving it last changed at 58852a6 and NOT
+          at HEAD - so the pre-existing as-of-only case was not rewritten to make a new assertion
+          pass. ONE is `REVIEWER_INSPECTED` with NO named expectation and therefore ESTABLISHES
+          NOTHING BY MACHINE; it is not counted as evidence. TWO were REFUSED by the reviewer's
+          command boundary for shell composition outside quotes - a limit on the review, never a
+          defect in the product, and in both cases the reviewer re-issued a single-command form that
+          ran. THE REMAINING THREE CARRY FAILURE-SHAPED STATUSES THAT ARE NOT FAILURES and are
+          recorded rather than tidied: two `COMMAND_ERRORED` rows are the negative controls exiting 2
+          EXACTLY AS DESIGNED, and one `EXPECTATION_FAILED` row is `git status --porcelain=v1` on a
+          CLEAN tree, where an empty capture makes any substring assertion vacuous - so the
+          clean-tree claim rests on the reviewer's `reviewed_fingerprint`, not on that row. Tracked
+          as `P6-D39`.
+          ### WHAT PRODUCT DRIVER ITSELF EXERCISED, independently of the reviewer: 14 of 14 required
+          scenarios PASSED (one permanent `p6_m5_observation` plus 13 generated), 333 assertions with
+          0 failed, `assembly_problems: []`, `full_run: true`, and every scenario's evidence
+          independently verified; the mutation battery 11/11; negative controls
+          `--inject not-a-real-fault` and `--inject expire-observation` both exit 2; and regressions
+          run WITH M5'S TABLE PRESENT IN THE SCHEMA - P3 216 / P4 99 / P5 561 / M1+M2+M3+M4 432, with
+          M3's own probe AND M4's own probe both still `behaviours as specified, 0 wrong`. TWO
+          generated scenarios failed at earlier iterations and were re-established here; the run's
+          evaluator records both as a mis-stated expectation and a probe OBSERVABILITY gap, "no
+          meaningful behavioural defect was exposed", and the correction commit closed the gap by
+          grounding the printed invariant in a REAL before/after full-row read-back. There are NO
+          unresolved material Product Driver scenario failures. `scoped-completion.json` records
+          `task_result: VERIFIED` with `task_outstanding: []` and `parent_phase_accepted: false`, and
+          `completion-audit.json` records `decision: VERIFIED`, `implementation_present: true`,
+          `missing_evidence: []`, `contradictions: []`.
+          ### CI DID NOT CONCLUDE SUCCESS ON THIS COMMIT, AND NO GREEN CI IS CLAIMED HERE. See
+          `P6-D36` below and sec 7 of the cited report. The workflow conclusion is `cancelled`.
+          ### NO ADJUDICATION FOLLOWED, AND NONE IS OWED. M5 is tier-1 (CLAUDE.md sec 7 - it lands a
+          migration, it is load-bearing for tenant isolation, and it is the boundary where untrusted
+          counterparty content enters): builder + ONE focused independent review by someone who did
+          not write it + mutation proof that the guard can fail + CI. All but the CI clause are
+          satisfied here, and the CI clause is recorded honestly as unsatisfied rather than asserted.
+          The adjudication chains, finalizer runs, preserve-ref bindings, clean-clone ceremony and
+          committed receipts named in the `P6-CP-1` and `P6-CP-2` rows above are RETIRED process and
+          must not be revived.
+        nonblocking_residuals: >-
+          ### THE INDEPENDENT REVIEW RETURNED ZERO FINDINGS. The six residuals below are NOT reviewer
+          findings and must not be cited as such: they were identified at this landing from the run's
+          own structured evidence, the M5 source, the specification corpus, the CI record and this
+          landing's own mutation battery against the status guards. Each is
+          RECORDED, NOT ACTIONED (CLAUDE.md sec 13 - the debt row is the complete deliverable). None
+          can produce a wrong customer outcome, violate an invariant, or make a later phase unsafe,
+          and the machine ships dark.
+          (P6-D35, MINOR, SPECIFICATION SEAM) The THREE sec 3.9 M5 authority questions are REPORTED,
+          NOT RESOLVED, and the code implements ONLY what every reading agrees on, INVENTS NO
+          RECONCILIATION, and says so in its own module docstring. `M5-AQ-1` - is `BOUND` terminal?
+          The machine registry sec 4, entity sec 12, machine sec 8 and the target spec sec 12.5 ALL
+          mark `BOUND (T)`, yet the SAME documents carry `OB-5: {BOUND,PARSED} -> SUPERSEDED`, giving
+          `BOUND` an outgoing edge; the code implements `OB-5` exactly as written and "fixes" the
+          classification in neither direction, so the only absolutely final states are `SUPERSEDED`
+          and `UNPARSEABLE`. `M5-AQ-2` - is `UNPARSEABLE` terminal or non-terminal human-owned?
+          Entity sec 12, machine sec 8 and the target spec sec 12.5 say terminal; the machine
+          registry sec 4 (`UNPARSEABLE (NH)`) and machine sec 9 say non-terminal human-owned, so
+          machine sec 8 and sec 9 CONTRADICT EACH OTHER INSIDE ONE FILE; the code builds it
+          human-owned with an FK-backed owner, no outgoing transition, and nothing sweeping or
+          dropping it. `M5-AQ-3` - what does a duplicate do to a row that has already advanced?
+          `OB-1c`'s From-To reads (re-ingest) -> `CONFIRMED`, but its Writes column reads "as_of
+          updated only", F5 calls the event "a FRESHNESS update, NOT a new business fact", and machine
+          sec 16 says `CONFIRMED` short-circuits before any parse/bind re-work; the code implements
+          the `as_of`-ONLY reading - a re-ingest advances `as_of` (never backwards) and emits
+          `ObservationConfirmed` and NEVER rewrites `state` - because the required-observable sentence
+          "A CONFIRMATION UPDATES as_of AND NOTHING ELSE" is decisive and discarding an already
+          established processing status is the loss sec 3.1 warns against. What every reading agrees
+          on in all three cases is what the code guarantees. These are specification questions owed to
+          a founder/architect decision, not M5 defects, and they close when that decision is made -
+          NOT by a session choosing a reading (CLAUDE.md sec 5).
+          (P6-D36, MINOR, CI) This commit has NO GREEN CI CONCLUSION. Pushed run 32819208290 on head
+          221c4b1 concluded `cancelled`. `Safety invariants (fast)` success, `Full test suite (py3.12)`
+          success, `P6/M3 effect-grant probe + mutation` success, `Risk radar` skipped
+          (pull-request-only), and `Full test suite (py3.11)` CANCELLED BY THE WORKFLOW/RUNTIME
+          CEILING WHILE STILL EXECUTING, at approximately 60%, with NO pytest failure emitted before
+          the cancellation. A true bound: `eval/tests/test_phase6_observation.py` is inside
+          `pytest eval`, which is what the suite job runs, and that job PASSED on Python 3.12 on this
+          commit; the safety job's 26 files are all under `eval/tests/` and are a strict subset of the
+          same command. ### THAT IS NOT A CLAIM THAT PYTHON 3.11 WOULD HAVE PASSED - a different
+          interpreter is a different execution, and the honest statement is that the repository has NO
+          Python 3.11 result for this commit at all, neither failing nor passing. ### THE JOB
+          CONCLUSIONS ABOVE WERE SUPPLIED BY THE FOUNDER AND WERE NOT RE-READ BY THE LANDING SESSION -
+          api.github.com is unreachable from that sandbox (TLS interception; both `gh` and a direct
+          API call were refused), so a later session with network access should read the run itself
+          rather than trust this transcription. The founder has explicitly chosen to continue,
+          treating the cancellation as a NON-PRODUCT CI RUNTIME LIMITATION rather than as evidence of
+          an M5 defect; that is recorded as a founder DECISION, not as a verification. It closes only
+          by a CI run on this branch that concludes SUCCESS.
+          (P6-D37, MINOR, CI COVERAGE) CI does not execute M5's probe or mutation battery. The
+          `effect-grant` job runs M3's probe and battery on every push precisely because `pytest eval`
+          does not invoke them; there is no equivalent job for M4 (`P6-D33`) and none for M5, verified
+          mechanically by the absence of any `phase6_observation` occurrence in
+          `.github/workflows/ci.yml`. `eval/tests/test_phase6_observation.py` IS inside `pytest eval`
+          and did run in the suite job. Closing this is a change to CI wiring, which a status/evidence
+          landing deliberately does not make.
+          (P6-D38, MINOR, EVIDENTIARY) The run's gate snapshot reads
+          `protocol_resolution.gates.independent_review: NOT_RUN` with detail "no independent review
+          recorded for this state" - a snapshot taken BEFORE the review executed at
+          2026-08-25T06:49:42+00:00. The run's `independent-review-ledger.json` records that review at
+          iteration 3 with `independent: true`, a reviewer session distinct from the builder's,
+          `inherited_builder_context: false`, verdict SUPPORTED, `invalidations: []` and
+          `superseded_by: ""`. THE STRUCTURED LEDGER AND THE REVIEW RECORD ARE AUTHORITATIVE AND THE
+          GATE SNAPSHOT IS STALE; recorded so a later session reading only the gate block does not
+          conclude a review is still owed. This is the M5 analogue of `P6-D34`, except that unlike
+          M4's run this run's EVALUATOR PROSE does NOT contradict the record - it states the review is
+          part of this run.
+          (P6-D39, MINOR, EVIDENTIARY) The reviewer harness's status vocabulary labels correct
+          behaviour as failure. Two `COMMAND_ERRORED` rows are the negative controls exiting 2 exactly
+          as designed (the harness classifies any non-zero exit that way, and for one of them the
+          scenario-derived expectation was `expect_exit_code: 0`, which correct behaviour could never
+          satisfy); one `EXPECTATION_FAILED` row is `git status --porcelain=v1` on a CLEAN tree, where
+          an empty capture makes any substring assertion vacuous - the vacuous-negative failure mode
+          CLAUDE.md sec 6 names. Recorded so nobody reading the raw review JSON mistakes a correct
+          refusal for a defect, and so nobody cites that `git status` row as a clean-tree proof it
+          cannot be.
+          (P6-D40, MINOR, GUARD COVERAGE) NO GUARD ENFORCES TWO OF THIS LANDING'S OWN PROHIBITIONS,
+          and that was proven rather than assumed. This landing ran a five-mutant battery against the
+          status/control guard set, every mutant verified to APPLY and to MISBEHAVE before any result
+          was believed (CLAUDE.md sec 6). CAUGHT: `CURRENT.md` stops naming the `observations` tenant
+          table; P7 flipped BLOCKED -> READY; P6 flipped READY -> COMPLETE. ### MISSED: `P6-CP-5`
+          scoring a P6 acceptance criterion, and `P6-CP-5` citing an `independent_review_report` that
+          is not on disk. 3 of 5 caught. Both misses are PRE-EXISTING GAPS, not defects this landing
+          introduced, and both concern P6's checkpoints specifically:
+          `test_p5_canonical_event_mint.py` asserts empty `criteria_scored` and
+          evidence-plus-review-present for P5's landed checkpoints and there is NO P6 equivalent, so
+          the empty `criteria_scored` on all five P6 checkpoints currently rests on discipline rather
+          than on a guard; and the invariant this file's own `meta.status_model.invariants` states -
+          "checkpoint_state INDEPENDENTLY_REVIEWED or ACCEPTED_FOR_CONTINUATION => the cited
+          independent review report exists on disk" - was enforced by
+          `test_roadmap_completeness_control.py`, the module the `P6-CP-2` re-adjudication cited when
+          it OVERTURNED a review finding, and THAT MODULE NO LONGER EXISTS IN THE TREE (removed in the
+          2026-08 simplification, nothing replaced it). A first round of the battery reported three
+          misses, two of which were the BATTERY's defects and not the guards': one mutant deleted the
+          partition row while the word `observations` still appeared elsewhere in a whole-file
+          substring check, and one run named the removed module, so a pytest COLLECTION ERROR was
+          briefly mistaken for a caught mutant. Both were corrected before anything was believed, and
+          that correction is recorded because it is precisely the failure mode CLAUDE.md sec 6 exists
+          to catch. Closing this means WRITING GUARDS, which a status/evidence landing deliberately
+          does not do.
+          ### STANDING ITEMS CARRIED AND UNCHANGED, not new debt: `V4` (registered identity rules)
+          remains OPEN VALIDATION per machine spec sec 43 with the fail-closed default the
+          specification states (exact ID match, else `UNBOUND`/human) and explicitly "not a block", and
+          it requires design-partner evidence and may never be guessed; the exhaustive
+          (state x trigger) illegal sweep is exercised at REPRESENTATIVE points for M5 as it is for M3
+          (`P6-D30`) and M4, structurally mitigated because `apply()` derives legality SOLELY from
+          `legal_transitions()`, which returns empty for any non-enumerated pair, and `GR-1` then
+          refuses uniformly - the same G1 phase-acceptance item, not an M5 defect; the F14
+          provenance-strengthening EMISSION half stays deferred to Phase 7 where P5's `IR-R9` places
+          it, while the REFUSAL is present and mandatory now; and `G2-D15`, `V2`, `V3` and
+          `P6-D31`-`P6-D34` are unchanged by this landing. The build session's own suite caveat is
+          environmental and unchanged: on its sandbox, `test_action_callback.py` and
+          `test_p4_deployed_governed_route.py` fail with `Operation not permitted` on
+          `socketserver.server_bind` - the sandbox refusing to bind a socket, not M5 - and those files
+          ran green in CI's Python 3.12 suite job on this commit.
+        what_it_owed: >-
+          ### DISCHARGED IN PART, AND THE UNDISCHARGED PART IS NAMED RATHER THAN ASSUMED AWAY. M5 is
+          tier-1 (CLAUDE.md sec 7): it lands a migration, it is load-bearing for tenant isolation, and
+          it is the boundary where untrusted counterparty content enters the system. Of what that
+          requires: ONE FOCUSED INDEPENDENT REVIEW BY A SESSION THAT DID NOT BUILD IT - DISCHARGED
+          (SUPPORTED, 0.90, zero findings, twelve criteria PASS, and the reviewer executed the product
+          rather than only reading it). MUTATION PROOF THAT THE GUARD CAN FAIL - DISCHARGED (11/11
+          load-bearing guards proven to fail when mutated - the natural-key UNIQUE, both immutability
+          triggers, the duplicate short-circuit, the `MODEL_INFERRED` refusal, the guess/ambiguity
+          guard, the supersession guard, the provenance-from-content refusal, the tenant predicate,
+          the GR-2 co-commit and the OCC predicate - and reproduced by the reviewer). CI -
+          ### NOT DISCHARGED: the workflow concluded `cancelled`, which is recorded as `P6-D36` and is
+          NOT upgraded to green anywhere in this record. The founder chose to land on the evidence that
+          does exist; that choice is recorded as a choice.
+          ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
+          this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion
+          is scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
