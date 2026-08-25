@@ -3258,6 +3258,174 @@ units:
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT AND NO PRESERVE REF IS OWED FOR
           THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
+      - id: P6-CP-4
+        name: The Approval - human consent bound to the exact facts, and void the moment they drift
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: 1524fc3a32243c86d3c5fb510659e8a6282caf04
+        candidate_tree: 542fbe447c521540d227e8e6b6b9c1d5a493a06b
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M4 of the thirteen - one `approvals` row, eight canonical states, one machine, eleven
+          transitions (`AP-1`, `AP-2`, `AP-2d`, `AP-3`, `AP-4`, `AP-4p`, `AP-5`, `AP-6`, `AP-7`, `AP-8`,
+          `AP-9` - an exact set match with sec 14 of the machine specification), and the `fp_v1`
+          fingerprint that makes "the human agreed to THIS" a fact a database can CHECK. It closes
+          ADR-005 F-01 structurally: at re-check every material fact is re-read LIVE and re-fingerprinted
+          under the approval's STORED version, so a drifted fact is not a weaker approval - it is
+          `VOID_ON_DRIFT` with a field-level diff, no grant, no effect. `provenance_class` and
+          `evidence_condition` are INSIDE the fingerprint, so the same amount believed for a different
+          reason voids too, and an unreadable source fails closed rather than reading as "no drift".
+          The authority is structural, not documentary: `granted_by` is a FOREIGN KEY into
+          `tenant_humans` PLUS a CHECK, so a model cannot grant, a counterparty cannot grant, a
+          confidence score cannot grant. `GRANTED -> CONSUMED` is a single CAS co-committed with M3's
+          claim through P3's kernel (`claim_grant_cas_locked`), so M3 REMAINS THE SINGLE EFFECT
+          AUTHORITY: M4 mints no gate decision and constructs no second CAS (CLAUDE.md rule 17).
+          `UNIQUE(tenant, commit_key) WHERE state IN ('REQUESTED','GRANTED')` admits at most one LIVE
+          approval per commit key. A frozen approval (`AP-9`, after an `UNKNOWN_OUTCOME` attempt) is
+          quarantined and NOT reusable, and NO timer unfreezes it - `G2-D15` is PRESERVED, not closed,
+          and `frozen` is reconstructed from the PRESENCE of `ApprovalFrozen`, never from an absence
+          (`ER-16`). It consumes `fp_v1` from `fingerprint.py` and never reimplements it, because a
+          serialization change is the single most dangerous bug in ADR-005 sec 7: it produces a false
+          no-drift, which is a wrong payment.
+        what_is_in_the_tree: >-
+          `src/freight_recon/approval.py` and `src/freight_recon/migrations/phase6_approvals.py`, wired
+          into `schema.py` and into the P2 migration path; the migration adds tenant-first `approvals`
+          and `approval_signatures`, the live-approval partial UNIQUE index, the `granted_by` FK + CHECK,
+          the autonomous-gate CHECK derived from the kernel vocabulary rather than restated, and the
+          frozen-binds-its-chain CHECK (`ER-16`). Acceptance and hostile nodes in
+          `eval/tests/test_phase6_approval.py` (35 tests); the deterministic probe
+          `scripts/probe_phase6_approval.py` (45 cases, a closed fault vocabulary, deterministic by
+          `--seed`, refusing an unknown fault AND 'unfreeze' with exit 2); the mutation battery
+          `scripts/mutate_phase6_approval.py`.
+          ### THAT IS THE INCREMENT, NOT THE PHASE: M5-M13 are unbuilt and 71 of the 134 transitions are
+          unwritten. M4 SHIPS DARK - zero production importers; only the probe reaches it; nothing joins
+          it to an outbound channel.
+        implementer_evidence: >-
+          ### THE EVIDENCE IS EXECUTABLE, AND IT WAS EXECUTED - BY PRODUCT DRIVER AND BY THE INDEPENDENT
+          REVIEWER (CLAUDE.md sec 0 - committed suite receipts are forbidden and none is written here).
+          There is deliberately NO hand-maintained implementation-record document for M4, and one must
+          not be manufactured to match the M1/M2 rows above, which predate the 2026-08 simplification.
+          In-tree and executed by `.github/workflows/ci.yml` via `pytest eval`:
+          `eval/tests/test_phase6_approval.py` (35 tests). ### CI DOES NOT YET RUN M4'S PROBE OR
+          MUTATION BATTERY - there is an `effect-grant` job for M3 and no equivalent for M4, which is
+          recorded below as `P6-D33` rather than quietly fixed by a status landing. Those two artifacts
+          were executed by Product Driver run 20260825-000934 and re-executed by the independent
+          reviewer in its own session: probe `behaviours as specified, 0 wrong` (exit 0) and
+          `10/10 mutants caught`.
+        independent_review_report: docs/implementation/p6-cp4-independent-review-report-1524fc3.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE REVIEW EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. One
+          FOCUSED INDEPENDENT REVIEW, by a session that did not build M4 (the review record states
+          `inherited_builder_context: false`; the run's review ledger states `independent: true`;
+          reviewer session 3111f388, builder session 05011ca5), against commit 1524fc3 / tree 542fbe44
+          on a working tree the reviewer confirmed clean itself with its own `git rev-parse` and
+          `git status`. Verdict SUPPORTED at confidence 0.86, with ZERO findings and NO adjudications,
+          and all fourteen assessed criteria PASS with no CANNOT_DETERMINE.
+          ### THIS IS THE MATERIAL DIFFERENCE FROM THE `P6-CP-3` ROW ABOVE, whose reviewer was read-only
+          and could only corroborate behaviour. `evidence_reproduced: true`: SIXTEEN commands the
+          reviewer ran in its own session executed the product and satisfied a named expectation - the
+          full probe (`behaviours as specified, 0 wrong`, exit 0), the mutation battery (10/10 caught),
+          `eval/tests/test_phase6_approval.py` (35 passed), the corrected `--case database-invariants`,
+          the M3 regression probe (0 wrong), the inline eight-state CHECK vocabulary (exactly the eight
+          canonical states, no SUPERSEDED, no ninth), the `approvals` FKs -> [effect_grants,
+          tenant_humans], `granted_by is a CHECK: True`, the live-approval partial UNIQUE index, schema
+          readiness `problems: []`, the three dark-posture AST scans, the gate-mint confinement to
+          `checkpoint.py` and the absent unfreeze surfaces. ONE further command verified structurally
+          that the HEAD change is confined to the probe and touches no DDL, CHECK, index or guard. Seven
+          further commands carried no named expectation and ESTABLISH NOTHING BY MACHINE; they are not
+          counted as evidence. The reviewer's command boundary refused three commands for shell
+          composition outside quotes - a limit on the review, never a defect in the product.
+          ### WHAT PRODUCT DRIVER ITSELF EXERCISED, independently of the reviewer: 14 of 14 required
+          scenarios PASSED (one permanent `p6_m4_approval` plus 13 generated), 406 assertions with 0
+          failed and no assembly problems; the mutation battery 10/10; negative controls
+          `--inject not-a-real-fault` and `--inject unfreeze` both exit 2; regressions P3 205 / P4 99 /
+          P5 209 / M1+M2+M3 397 with M3's own probe still 0 wrong. `scoped-completion.json` records
+          `task_result: VERIFIED` with `task_outstanding: []`, and `completion-audit.json` records
+          `decision: VERIFIED`, `implementation_present: true`, `missing_evidence: []`,
+          `contradictions: []`.
+          ### CI DID NOT CONCLUDE SUCCESS ON THIS COMMIT, AND NO GREEN CI IS CLAIMED HERE. See
+          `P6-D32` below and sec 6 of the cited report. The workflow conclusion is `cancelled`.
+          ### NO ADJUDICATION FOLLOWED, AND NONE IS OWED. M4 is tier-1 (CLAUDE.md sec 7 - the
+          approval/grant lifecycle): builder + ONE focused independent review by someone who did not
+          write it + mutation proof that the guard can fail + CI. All but the CI clause are satisfied
+          here, and the CI clause is recorded honestly as unsatisfied rather than asserted. The
+          adjudication chains, finalizer runs, preserve-ref bindings and committed receipts named in the
+          `P6-CP-1` and `P6-CP-2` rows above are RETIRED process and must not be revived.
+        nonblocking_residuals: >-
+          ### THE INDEPENDENT REVIEW RETURNED ZERO FINDINGS. The four residuals below are NOT reviewer
+          findings and must not be cited as such: they were identified at this landing from the run's own
+          structured evidence, the M4 source, the specification and the CI record. Each is RECORDED, NOT
+          ACTIONED (CLAUDE.md sec 13 - the debt row is the complete deliverable). None can produce a
+          wrong customer outcome, violate an invariant, or make a later phase unsafe, and the machine
+          ships dark.
+          (P6-D31, MINOR, SPECIFICATION SEAM) The sec 3.9 authority-seam conflict is REPORTED, NOT
+          RESOLVED. Three authorities put `GRANTED -> CONSUMED` INSIDE the claim transaction (entity
+          sec 15, machine sec 14 `AP-7`, `EF-2`), while two rows are written from `GRANTED` on triggers
+          that can only arrive AFTER that transaction committed (`AP-8` on `AttemptFailedProvably` =
+          `EF-3f` from `CLAIMED`; `AP-9` on `AttemptOutcomeUnknown` = `EF-3u` from `CLAIMED`). Under the
+          claim-time reading `AP-8`/`AP-9` are unreachable; under the commit-time reading `AP-7`'s "same
+          txn as the claim" is false. The code implements `AP-7` exactly as the three claim-transaction
+          clauses state it and `AP-8`/`AP-9` exactly as written, INVENTS NO RECONCILIATION - no state, no
+          flag, no un-consume path - and says so in its own module docstring. What every reading agrees
+          on, and what the code guarantees: no second effect, no second grant of authority, nothing
+          reusable. It is a specification question owed to a founder/architect decision, not an M4
+          defect, and it closes when that decision is made.
+          (P6-D32, MINOR, CI) This commit has NO GREEN CI CONCLUSION. Pushed run 32801579476 on head
+          1524fc3 concluded `cancelled`. Both full suites passed (`Full test suite (py3.11)` success,
+          `Full test suite (py3.12)` success) as did `P6/M3 effect-grant probe + mutation`; `Risk radar`
+          is a pull-request-only job and skipped; and `Safety invariants (fast)` was CANCELLED at
+          02:59:32Z, exactly 30 minutes after it started, against its declared `timeout-minutes: 30`.
+          Its log shows the step emitting only its command echo and then `The operation was canceled` -
+          NO pytest output and NO failure line of any kind. A true bound that is NOT a claim of green:
+          that job's 26 test files are all under `eval/tests/` and are therefore a strict subset of
+          `pytest eval`, which the two passing suite jobs ran on this same commit - so the cancelled job
+          covered no test file a passing job did not. ### THAT IS A SUBSET ARGUMENT, NOT A CI RECEIPT,
+          and it may not be quoted as one. The founder has explicitly chosen to continue, treating the
+          cancellation as a NON-PRODUCT CI RUNTIME LIMITATION rather than as evidence of an M4 defect;
+          that is recorded as a founder DECISION, not as a verification. It closes only by a CI run on
+          this branch that concludes SUCCESS.
+          (P6-D33, MINOR, CI COVERAGE) CI does not execute M4's probe or mutation battery. The
+          `effect-grant` job runs M3's probe and battery on every push precisely because `pytest eval`
+          does not invoke them; there is no equivalent job for M4, verified mechanically by the absence
+          of any `phase6_approval` occurrence in `.github/workflows/ci.yml`.
+          `eval/tests/test_phase6_approval.py` IS inside `pytest eval` and did run in both full-suite
+          jobs. Closing this is a change to CI wiring, which a status/evidence landing deliberately does
+          not make.
+          (P6-D34, MINOR, EVIDENTIARY) The run's free-form evaluator prose contradicts the run's own
+          structured record. `final_decision.summary` closes "a focused independent review by a session
+          that did not build it remains a REQUIRED separate run step", while
+          `independent-review-ledger.json` records that review at iteration 3 with `independent: true`,
+          a reviewer session distinct from the builder's, `inherited_builder_context: false` and verdict
+          SUPPORTED, and the run's founder summary answers "Did it satisfy what this task owed?" with
+          "Yes - a supported review of this exact implementation". Relatedly `record.json`'s
+          `protocol_resolution.gates.independent_review` reads `NOT_RUN`, a gate snapshot taken BEFORE
+          the review executed at 02:11:01Z. The STRUCTURED evidence is authoritative and the prose is
+          stale; recorded so a later session reading only the prose does not conclude a review is still
+          owed.
+          ### STANDING ITEMS CARRIED AND UNCHANGED, not new debt: `G2-D15` (the unfreeze direction)
+          remains OPEN and M4 preserves it rather than closing it; `V2` (approval TTLs) and `V3`
+          (dual-control classes and thresholds) remain OPEN VALIDATION per machine spec sec 43, with
+          fail-closed defaults and the mechanism complete, explicitly "not blocks", and they require
+          design-partner evidence and may never be guessed; and the exhaustive (state x trigger) illegal
+          sweep is exercised at REPRESENTATIVE points for M4 as it is for M3, the same G1
+          phase-acceptance item as `P6-D30`, structurally mitigated because `apply()` derives legality
+          SOLELY from `legal_transitions()`, which returns empty for any non-enumerated pair, and `GR-1`
+          then refuses uniformly. That last observation is this landing's own mechanical read; THE
+          REVIEWER DID NOT RAISE IT.
+        what_it_owed: >-
+          ### DISCHARGED IN PART, AND THE UNDISCHARGED PART IS NAMED RATHER THAN ASSUMED AWAY. M4 is
+          tier-1 (CLAUDE.md sec 7). Of what that requires: ONE FOCUSED INDEPENDENT REVIEW BY A SESSION
+          THAT DID NOT BUILD IT - DISCHARGED (SUPPORTED, 0.86, zero findings, and the reviewer executed
+          the product rather than only reading it). MUTATION PROOF THAT THE GUARD CAN FAIL - DISCHARGED
+          (10/10 load-bearing guards proven to fail when mutated, reproduced by the reviewer). CI -
+          ### NOT DISCHARGED: the workflow concluded `cancelled`, which is recorded as `P6-D32` and is
+          NOT upgraded to green anywhere in this record. The founder chose to land on the evidence that
+          does exist; that choice is recorded as a choice.
+          ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
+          this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
+          scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT AND NO PRESERVE REF IS OWED FOR THIS
+          LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]

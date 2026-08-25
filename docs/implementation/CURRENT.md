@@ -10,7 +10,7 @@
 > simplification. The pre-simplification version of this document, with its full narrative history,
 > is in git history at `cff82d5`.
 
-**Last updated:** 2026-08-22, at the `P6-CP-3` (M3) landing.
+**Last updated:** 2026-08-25, at the `P6-CP-4` (M4) landing.
 
 ---
 
@@ -24,7 +24,7 @@
 | **P3** — the checkpoint kernel: seven-step atomic checkpoint, unconstructable witness, grant mint + claim CAS, brake admission | **COMPLETE** — 14/14 | [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) |
 | **P4** — adapter containment: the governed write route, the two-key rule at the effect boundary, the CI import gate | **COMPLETE** — 13/14 | [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) |
 | **P5** — canonical events, outbox/inbox, replay isolation, durable timers, production PostgreSQL | **COMPLETE** — 14/14 | [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) |
-| **P6** — foundational entities and state machines | **IN PROGRESS** | three landed checkpoints; see below |
+| **P6** — foundational entities and state machines | **IN PROGRESS** | four landed checkpoints; see below |
 | **P7–P14** | **BLOCKED** behind P6 | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 Gates **G0** and **G1**… **G2 is adjudicated** and its seven event obligations are discharged; the
@@ -42,9 +42,10 @@ documentation.** That turns engineering rule 13 from a written rule into a mecha
 | **M2 — the Pipeline Instance** (`P6-CP-2`, LANDED) | One durable attempt per logical effect and the reservation that makes it exclusive; 25 transitions; `UNIQUE(tenant, commit_key) WHERE state NOT IN (terminal)`; `GRANTED`/`CLAIMED` unreachable without a real witness row, a real grant row and P3's untouched claim CAS. **A billing sweep that proposes the same invoice three times bills the customer once, and a TMS write that times out lands in `NEEDS_VERIFICATION` — non-terminal, holding its reservation, moved by no timer — rather than decaying into "it failed" and being billed twice.** [review](p6-cp2-independent-review-report-1aaf943.md) · [re-adjudication](p6-cp2-targeted-readjudication-report-1aaf943.md) |
 | **`P6-D11` — the strict-order F2 ordering contract** | **RESOLVED, reviewed, adjudicated, landed.** `events/registry.md` §8 states that strict per-aggregate ordering means **ORDER, never CONTIGUITY**, and every strict-order producer declares `previous_aggregate_version`, so a consumer blocks on an **unapplied predecessor** rather than on an absent version. No canonical event minted; no transition moved. [record](p6-d11-f2-ordering-contract-record.md) · [review](p6-d11-independent-review-report-021a9a2.md) · [adjudication](p6-d11-targeted-adjudication-report-021a9a2.md) |
 | **M3 — the External Effect / Effect Grant** (`P6-CP-3`, LANDED) | One `effect_grants` row, eight states, one machine; the single atomic CAS that is the only serialization point between a decision and the outside world. Reuses P3's kernel for mint (EF-1) and the claim CAS (EF-2) — the checkpoint stays the one effect authority — and owns the outcome aspect (EF-3…EF-5) and the canonical `EF-*` event stream the kernel only observes. Discharges its two inherited obligations: **P6-D24** (its strict consumer supplies `drain_handler_for`) and **§8's complete-stream rule** (blocks on an unapplied F14 predecessor). Ships dark: zero production importers; only the probe imports it. **Behavioural checks are executed by CI (`.github/workflows/ci.yml`) on every push — not a committed receipt (CLAUDE.md §0 forbids those)**: `eval/tests/test_phase6_external_effect.py` (46 test functions, 49 parametrized cases) via `pytest eval`; the deterministic `scripts/probe_phase6_external_effect.py` (`behaviours as specified, 0 wrong`) and the `scripts/mutate_phase6_external_effect.py` battery (9/9 caught) via the `effect-grant` job. The machine (`external_effect.py`) and migration (`phase6_external_effects.py`) are unchanged since the build commit `4b87557`; the later commits are probe-only observability corrections and this CI wiring, none touching the machine or the migration. ### **A LANDED INCREMENT, NEVER A PHASE ACCEPTANCE.** It cites the on-disk **focused independent review by a session that did not build it** (CLAUDE.md §7, tier-2), which returned **SUPPORTED, confidence 0.82** against this exact tree with two `minor`, nonblocking findings: [review](p6-cp3-independent-review-report-5f9779f.md). That reviewer was read-only, so it verified the structural conformance and the ship-dark posture itself and **corroborated** the behavioural results from evidence captured against the same tree rather than re-executing them; it observed **no CI result**, and none is claimed here. |
-| **Still owed** | **M4–M13**, 95 of the 134 transitions, gate **G1**, `AC-SAFE-028`. **M4 is the next build checkpoint.** |
-| **Not scored** | `criteria_scored` is `[]` on all three landed checkpoints. **A checkpoint is a landed increment, never a phase acceptance.** No P6 criterion is scored, and P6 has not reached phase acceptance (registry `status: READY`, `execution_state: IN_PROGRESS`). |
-| **Posture** | M1, M2 and M3 all **ship dark**: zero production importers, and M2's/M3's import closure reaches no effect-capable adapter. |
+| **M4 — the Approval** (`P6-CP-4`, LANDED) | One `approvals` row, eight states, one machine, eleven transitions (`AP-1`…`AP-9`, an exact set match with §14), and the `fp_v1` fingerprint that makes "the human agreed to THIS" a fact a database can `CHECK`. **A broker approves £2,850 and the TMS says £3,100 at claim time: the approval is not weaker, it is `VOID_ON_DRIFT` with a field-level diff, no grant, no effect** — and because `provenance_class` and `evidence_condition` are INSIDE the fingerprint, the same amount believed for a different reason voids too. `granted_by` is a FOREIGN KEY into `tenant_humans` plus a `CHECK`: a model cannot grant, a counterparty cannot grant. `GRANTED → CONSUMED` is one CAS co-committed with M3's claim through P3's kernel, so **M3 stays the single effect authority** and M4 mints no gate decision (CLAUDE.md rule 17). `UNIQUE(tenant, commit_key) WHERE state IN ('REQUESTED','GRANTED')` — at most one live approval per commit key. A frozen approval (`AP-9`) is quarantined and **no timer unfreezes it**; `G2-D15` is preserved, not closed. Ships dark: zero production importers, only the probe imports it, nothing joins it to an outbound channel. ### **A LANDED INCREMENT, NEVER A PHASE ACCEPTANCE.** It cites the on-disk **focused independent review by a session that did not build it** (CLAUDE.md §7, **tier-1** — the approval lifecycle), which returned **SUPPORTED, confidence 0.86** against this exact tree with **zero findings** and zero adjudications: [review](p6-cp4-independent-review-report-1524fc3.md). Unlike M3's read-only reviewer, **this one executed the product**: 16 commands it ran itself reproduced the probe (`behaviours as specified, 0 wrong`), the mutation battery (**10/10 caught**), the 35-test M4 suite, the DDL introspection and the dark-posture scans. Product Driver independently exercised 14/14 scenarios (406 assertions, 0 failed). ### **CI DID NOT CONCLUDE `SUCCESS` ON THIS COMMIT** — run `32801579476` concluded **`cancelled`**: both full suites (py3.11, py3.12) and the M3 effect-grant job passed, and the *Safety invariants (fast)* job hit its declared 30-minute job timeout with no test failure in its log. **That is not green, and nothing here claims it is** — see §6 of the review report and residual `P6-D32`. |
+| **Still owed** | **M5–M13**, 71 of the 134 transitions, gate **G1**, `AC-SAFE-028`. **M5 is the next build checkpoint.** (The transition figure is derived, not carried: M1's 14 + M2's 25 + M3's 13 + M4's 11 = 63 of 134 written, so 71 remain. The `95` this cell read until the `P6-CP-4` landing was the post-M2 figure and went stale at the M3 landing.) |
+| **Not scored** | `criteria_scored` is `[]` on all four landed checkpoints. **A checkpoint is a landed increment, never a phase acceptance.** No P6 criterion is scored, and P6 has not reached phase acceptance (registry `status: READY`, `execution_state: IN_PROGRESS`). |
+| **Posture** | M1, M2, M3 and M4 all **ship dark**: zero production importers; M2's/M3's import closure reaches no effect-capable adapter, and nothing joins M4 to an outbound channel. **No production effect is enabled by any of them.** |
 
 **`M3` has received its one focused independent review and is LANDED.** It discharged the two
 obligations it inherited: **`P6-D24`** — its strict consumer supplies `drain_handler_for`, so a
@@ -57,11 +58,31 @@ by a session that did not build M3, against commit `5f9779f` / tree `e0aff5f5`.
 
 M3 is a **tier-2** change under [`CLAUDE.md`](../../CLAUDE.md) §7: builder + **one focused
 independent review** (by a session that did not build it), and CI. That is satisfied. It needs no
-adjudication chain and no finalizer, and none may be run for it. **The next build checkpoint is
-M4.** Two `minor` findings are **recorded, not actioned**: the reviewer was read-only, so the
-behavioural results are corroborated rather than reviewer-reproduced; and the illegal
+adjudication chain and no finalizer, and none may be run for it. Two `minor` findings are
+**recorded, not actioned**: the reviewer was read-only, so the behavioural results are
+corroborated rather than reviewer-reproduced; and the illegal
 `(state × trigger)` sweep is exercised at representative points rather than exhaustively enumerated
 — a **gate G1** phase-acceptance item, not an M3 defect. Landing M3 scores no P6 criterion.
+
+**`M4` has received its one focused independent review and is LANDED as `P6-CP-4`.** The review is
+[`p6-cp4-independent-review-report-1524fc3.md`](p6-cp4-independent-review-report-1524fc3.md), by a
+session that did not build M4, against commit `1524fc3` / tree `542fbe44` on a clean tree it
+confirmed itself: **SUPPORTED, confidence 0.86, zero findings, zero adjudications, fourteen criteria
+PASS and none `CANNOT_DETERMINE`.** M4 is **tier-1** under [`CLAUDE.md`](../../CLAUDE.md) §7 — the
+approval lifecycle — so it owes builder evidence, **one** focused independent review by someone who
+did not write it, mutation proof that the guard can fail, and CI. The first three are discharged:
+that reviewer **executed the product** rather than only reading it, and the 10/10 mutation battery
+proves each load-bearing guard can actually fail. ### **THE CI CLAUSE IS NOT DISCHARGED, AND IS
+RECORDED AS UNDISCHARGED RATHER THAN ASSERTED.** Run `32801579476` on this commit concluded
+**`cancelled`** — the *Safety invariants (fast)* job expired against its declared `timeout-minutes:
+30` with no test failure in its log, while both full suites and the M3 effect-grant job passed. **The
+workflow is not green and this document does not say it is.** The founder chose to land on the
+evidence that exists, treating the cancellation as a non-product CI runtime limitation; that is
+recorded as a decision, not as a verification (`P6-D32`). Four `minor` items are **recorded, not
+actioned** — `P6-D31` (the §3.9 authority seam, reported and unresolved), `P6-D32` (no green CI
+conclusion), `P6-D33` (CI runs no M4 probe or mutation job), `P6-D34` (the run's evaluator prose
+contradicts its own structured review record) — and **none is a reviewer finding**; the review
+returned none. Landing M4 scores no P6 criterion. **The next build checkpoint is M5.**
 
 ## Risks and standing constraints
 
@@ -102,7 +123,7 @@ brokerage, an approval scoped to no brokerage is a consent nobody gave.
 |---|---|
 | **Enabling any external effect on live traffic** | The capability ships dark. Enabling it is a separate, founder-authorized decision, and live supervised writes are P12 behind the undischarged **RR-01**. |
 | **Weakening the checkpoint kernel** | `CheckpointPassed` stays unconstructable, the witness table append-only, and the claim CAS's WHERE-clause revalidation may never lose a predicate. |
-| **Rebuilding or polishing M1, M2 or M3** | All three are landed and no further code is owed. Their residuals are debt rows. |
+| **Rebuilding or polishing M1, M2, M3 or M4** | All four are landed and no further code is owed. Their residuals are debt rows. |
 | **Declaring P6's phase acceptance, or scoring a P6 criterion, from a build lineage** | A phase acceptance needs a reviewer who did not build it. That is the one place the independent-review requirement is about a phase rather than a diff — and P6 has not reached it. |
 | **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires P6's phase acceptance first. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands there, not earlier. |
 | **Freight workflow implementation** | Requires the P6–P9 foundations. |
