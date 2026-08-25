@@ -177,7 +177,11 @@ P6AP_TARGET_SCHEMA: dict[str, str] = {
             -- Instance; the AMOUNT IS NOT IN IT (ADR-009, rule 8) — it is inside canonical_payload.
             commit_key TEXT NOT NULL,
             action_class TEXT NOT NULL,
-            state TEXT NOT NULL,
+            -- ### THE EIGHT CANONICAL STATES, ENUMERATED INLINE ON THE COLUMN (registry §4, M4). One
+            -- physical line so `schema._canonical_columns` still reads `state` as a NOT NULL column,
+            -- and so DDL introspection finds the vocabulary ON the column: there is no ninth state
+            -- and no SUPERSEDED. Interpolated from APPROVAL_STATES, the single source of truth.
+            state TEXT NOT NULL CHECK (state IN (%(states)s)),
             version INTEGER NOT NULL,
 
             -- ADR-005 sec 3.4/3.5: the fast equality check AND the full fp_v1 bytes it was hashed
@@ -233,7 +237,7 @@ P6AP_TARGET_SCHEMA: dict[str, str] = {
             -- effect authority (rule 17). It reserves an approval, never a claim.
             FOREIGN KEY (tenant, granted_by) REFERENCES tenant_humans (tenant, human_id),
             FOREIGN KEY (tenant, effect_grant_id) REFERENCES effect_grants (tenant, grant_id),
-            CHECK (state IN (%(states)s)),
+            -- The state-vocabulary CHECK lives INLINE on the column above (declared once).
             CHECK (version >= 1),
             CHECK (required_signatures >= 1),
             CHECK (frozen IN (0, 1)),

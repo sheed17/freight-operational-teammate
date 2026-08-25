@@ -533,6 +533,44 @@ def test_m4_mints_no_second_authority():
                 "M4 imports M3 — it must co-commit via the P3 kernel, not import the effect machine")
 
 
+def test_the_eight_canonical_states_are_a_database_constraint_no_ninth(tmp_path):
+    """### THE EIGHT STATES ARE A DATABASE CONSTRAINT, DECLARED INLINE ON THE COLUMN — NO NINTH, NO
+    SUPERSEDED (registry §4, entity §16). Durable state must be enforced, not merely claimed: the
+    state-vocabulary CHECK is introspectable ON the `state` column, and a ninth state is refused."""
+    import re
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    enable_and_verify_foreign_keys(conn)
+    create_canonical_schema(conn)
+    enable_and_verify_foreign_keys(conn)
+    ddl = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='approvals'").fetchone()[0]
+    inline = re.search(r"state\s+TEXT\s+NOT\s+NULL\s+CHECK\s*\(\s*state\s+IN\s*\(([^)]*)\)\)", ddl)
+    assert inline is not None, (
+        "the approvals table declares no INLINE CHECK on the state column: the eight-state vocabulary "
+        "must be a database constraint ON the column, introspectable, not a table-level afterthought.")
+    declared = set(re.findall(r"'([A-Z_]+)'", inline.group(1)))
+    assert declared == set(APPROVAL_STATES), (
+        f"the inline state CHECK enumerates {sorted(declared)}; the canonical eight are "
+        f"{sorted(APPROVAL_STATES)}. No ninth, and no SUPERSEDED.")
+    assert "SUPERSEDED" not in declared
+    assert ddl.count("CHECK (state IN (") == 1, "the state-vocabulary CHECK is declared exactly once"
+    # And it actually fires: a ninth state is refused by the database.
+    conn.execute(
+        "INSERT INTO tenant_humans (tenant,human_id,display_name,authority_role,state,recorded_at,"
+        "recorded_by,recorded_by_kind) VALUES ('t','h','H','AUTHORIZED_HUMAN','ACTIVE','x','f','human')")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO approvals (tenant,approval_id,commit_key,action_class,state,version,"
+            "material_facts_fingerprint,canonical_payload,fingerprint_version,entity_versions_json,"
+            "policy_version,brake_version,gate_decision,required_authority,required_signatures,"
+            "rendered_facts,requested_at,expires_at,granted_by,granted_at,consumed_at,void_reason,"
+            "drift_diff,frozen,unknown_outcome_ref,effect_grant_id,frozen_at,created_at,updated_at) "
+            "VALUES ('t','a9','ck','raise_invoice','SUPERSEDED',1,'fp','fp_v1|x','fp_v1','{}','pv1',"
+            "'bv','HUMAN_APPROVAL_REQUIRED',NULL,1,'{}','t','t2',NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,"
+            "NULL,'t','t')")
+
+
 def test_the_database_enforces_the_authority_invariants(tmp_path):
     """The DB — not the application — enforces: a GRANTED approval carries a granted_by; an
     autonomous gate is unwritable; a frozen approval binds its chain; one live approval per key."""
