@@ -59,8 +59,8 @@ from freight_recon.observation import (  # noqa: E402
     ContentIsData,
     GuardNotSatisfied,
     IllegalTransition,
-    ObservationMachine,
-    ObservationState,
+    M5Machine,
+    ProcessingState,
     StateConflict,
     UnknownObservation,
 )
@@ -338,10 +338,10 @@ class World:
             self._humans.add((tenant, human_id))
         return human_id
 
-    def machine(self, tenant: str | None = None) -> ObservationMachine:
+    def machine(self, tenant: str | None = None) -> M5Machine:
         t = tenant or self.tenant()
         self.human(t)
-        return ObservationMachine(self.conn, tenant=t, clock=self.clock)
+        return M5Machine(self.conn, tenant=t, clock=self.clock)
 
     def ext(self, prefix: str = "rc") -> str:
         self._n += 1
@@ -367,7 +367,7 @@ def _det(entity: str = "load:1", claim: str = "claim-1", method: str = "EXACT_ID
                            binding_claim_id=claim, match_method=method, provenance_class=prov)
 
 
-def _received(w: World, m: ObservationMachine, *, raw: str = "RATE=2850 GBP load 4471",
+def _received(w: World, m: M5Machine, *, raw: str = "RATE=2850 GBP load 4471",
               source: str = SOURCES[0], ext: str | None = None, prov: str = "SYSTEM_IMPORTED"):
     return m.ingest(source_system=source, external_id=(ext or w.ext()), raw_value=raw,
                     as_of="2026-08-24T10:00:00.000Z", provenance_class=prov)
@@ -379,7 +379,7 @@ def case_natural_key_creates_received(w: World) -> CaseResult:
     m = w.machine()
     r = _received(w, m)
     a = m.require(r.observation_id)
-    ok = (r.created and not r.confirmed and a.state is ObservationState.RECEIVED
+    ok = (r.created and not r.confirmed and a.state is ProcessingState.RECEIVED
           and a.raw_value == "RATE=2850 GBP load 4471" and a.content_digest == r.content_digest
           and w.events(m.tenant, "ObservationReceived") == 1)
     return CaseResult(ok, lines=[_SIG["natural-key-creates-received"]] if ok else [],
@@ -484,7 +484,7 @@ def case_confirmation_updates_as_of_only(w: World) -> CaseResult:
     m.ingest(source_system=SOURCES[0], external_id=ext, raw_value="v",
              as_of="2026-08-24T11:00:00.000Z")
     after = m.require(r.observation_id)
-    ok = (after.as_of == "2026-08-24T11:00:00.000Z" and after.state is ObservationState.PARSED
+    ok = (after.as_of == "2026-08-24T11:00:00.000Z" and after.state is ProcessingState.PARSED
           and after.raw_value == before.raw_value and after.content_digest == before.content_digest
           and after.parsed_value == before.parsed_value and w.rows(m.tenant) == 1
           and w.events(m.tenant, "ObservationConfirmed") == 1)
@@ -506,7 +506,7 @@ def case_confirmation_flood_triggers_no_work(w: World) -> CaseResult:
         confirms += 1 if rc.confirmed else 0
     a = m.require(r.observation_id)
     # A flood of confirmations updates as_of and nothing else: one row, still BOUND, zero re-work.
-    ok = (confirms == n and w.rows(m.tenant) == 1 and a.state is ObservationState.BOUND
+    ok = (confirms == n and w.rows(m.tenant) == 1 and a.state is ProcessingState.BOUND
           and w.events(m.tenant, "ObservationConfirmed") == n
           and w.events(m.tenant, "ObservationParsed") == 1
           and w.events(m.tenant, "ObservationBound") == 1)
@@ -520,7 +520,7 @@ def case_parse_success_parsed(w: World) -> CaseResult:
     r = _received(w, m)
     res = m.parse(r.observation_id, parsed_value={"amount": 2850, "ccy": "GBP"})
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.PARSED and a.parsed_value is not None
+    ok = (a.state is ProcessingState.PARSED and a.parsed_value is not None
           and res.transition_id == "OB-2" and w.events(m.tenant, "ObservationParsed") == 1)
     return CaseResult(ok, lines=[_SIG["parse-success-parsed"]] if ok else [],
                       markers=[] if ok else ["### MISS ### parse success did not reach PARSED"])
@@ -532,7 +532,7 @@ def case_parse_failure_unparseable(w: World) -> CaseResult:
     res = m.parse(r.observation_id, ok=False, owner_id=w.human(m.tenant),
                   unparse_reason="OCR produced nothing legible")
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.UNPARSEABLE and a.owner_id == w.human(m.tenant)
+    ok = (a.state is ProcessingState.UNPARSEABLE and a.owner_id == w.human(m.tenant)
           and res.transition_id == "OB-2f" and w.events(m.tenant, "ObservationUnparseable") == 1)
     if not ok:
         return CaseResult(False, markers=["### UNPARSEABLE SILENTLY DROPPED ###"])
@@ -546,7 +546,7 @@ def case_unparseable_feeds_the_exception_path(w: World) -> CaseResult:
     a = m.require(r.observation_id)
     # Never a silent drop: durable UNPARSEABLE row, a named human owner, its own canonical event (M9
     # is the F5 consumer). And it is NOT swept away — it stays owned.
-    ok = (a.state is ObservationState.UNPARSEABLE and a.owner_id is not None
+    ok = (a.state is ProcessingState.UNPARSEABLE and a.owner_id is not None
           and a.unparse_reason and w.events(m.tenant, "ObservationUnparseable") == 1
           and w.rows(m.tenant) == 1)
     if not ok:
@@ -560,7 +560,7 @@ def case_deterministic_binding_bound(w: World) -> CaseResult:
     m.parse(r.observation_id, parsed_value="ref 4471")
     res = m.bind(r.observation_id, _det(entity="load:4471", method="EXACT_ID"))
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.BOUND and a.bound_entity_ref == "load:4471"
+    ok = (a.state is ProcessingState.BOUND and a.bound_entity_ref == "load:4471"
           and a.match_method == "EXACT_ID" and res.transition_id == "OB-3"
           and w.events(m.tenant, "ObservationBound") == 1)
     return CaseResult(ok, lines=[_SIG["deterministic-binding-bound"]] if ok else [],
@@ -574,7 +574,7 @@ def _unbound(w: World, kind: BindingKind, count: int = 0) -> CaseResult:
     res = m.bind(r.observation_id, BindingDecision(kind=kind, candidate_count=count),
                  owner_id=w.human(m.tenant))
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.UNBOUND and a.owner_id == w.human(m.tenant)
+    ok = (a.state is ProcessingState.UNBOUND and a.owner_id == w.human(m.tenant)
           and a.bound_entity_ref is None and res.transition_id == "OB-3u"
           and w.events(m.tenant, "ObservationUnbound") == 1
           and w.events(m.tenant, "ObservationBound") == 0)
@@ -616,7 +616,7 @@ def case_unbound_is_human_owned(w: World) -> CaseResult:
     # With a real recorded human it goes UNBOUND, owned.
     m.bind(r.observation_id, BindingDecision(kind=BindingKind.AMBIGUOUS), owner_id=w.human(m.tenant))
     a = m.require(r.observation_id)
-    ok = (refused and refused_fake and a.state is ObservationState.UNBOUND
+    ok = (refused and refused_fake and a.state is ProcessingState.UNBOUND
           and a.owner_id == w.human(m.tenant))
     if not ok:
         return CaseResult(False, markers=["### UNBOUND WITHOUT A HUMAN OWNER ###"])
@@ -632,7 +632,7 @@ def case_unbound_resolved_by_later_deterministic_match(w: World) -> CaseResult:
     # A later deterministic match resolves it.
     res = m.resolve_unbound(r.observation_id, _det(entity="load:4471", method="RULE"))
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.BOUND and a.bound_entity_ref == "load:4471"
+    ok = (a.state is ProcessingState.BOUND and a.bound_entity_ref == "load:4471"
           and res.transition_id == "OB-4" and w.events(m.tenant, "ObservationBound") == 1)
     return CaseResult(ok, lines=[_SIG["unbound-resolved-by-later-deterministic-match"]] if ok else [],
                       markers=[] if ok else ["### MISS ### later deterministic match did not resolve"])
@@ -654,7 +654,7 @@ def case_unbound_resolved_by_owner_asserted(w: World) -> CaseResult:
                                                    prov="OWNER_ASSERTED"),
                             actor_id=w.human(m.tenant), actor_kind="HUMAN")
     a = m.require(r.observation_id)
-    ok = (refused_machine and a.state is ObservationState.BOUND
+    ok = (refused_machine and a.state is ProcessingState.BOUND
           and a.provenance_class == "OWNER_ASSERTED" and res.transition_id == "OB-4")
     return CaseResult(ok, lines=[_SIG["unbound-resolved-by-owner-asserted"]] if ok else [],
                       markers=[] if ok else ["### MISS ### owner assertion did not resolve UNBOUND"])
@@ -672,7 +672,7 @@ def case_a_guess_never_auto_binds(w: World) -> CaseResult:
                            provenance_class="MODEL_INFERRED", candidate_count=1),
            owner_id=w.human(m.tenant))
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.UNBOUND and a.bound_entity_ref is None
+    ok = (a.state is ProcessingState.UNBOUND and a.bound_entity_ref is None
           and w.events(m.tenant, "ObservationBound") == 0)
     if not ok:
         return CaseResult(False, markers=["### GUESSED BINDING ACCEPTED ###"])
@@ -689,7 +689,7 @@ def case_supersession_requires_rule_or_human(w: World) -> CaseResult:
     # A deterministic rule supersedes.
     res = m.supersede(r.observation_id, superseded_by=newer.observation_id, rule_id="newest-wins")
     a = m.require(r.observation_id)
-    ok = (a.state is ObservationState.SUPERSEDED and a.superseded_by == newer.observation_id
+    ok = (a.state is ProcessingState.SUPERSEDED and a.superseded_by == newer.observation_id
           and res.transition_id == "OB-5" and w.events(m.tenant, "ObservationSuperseded") == 1)
     # A human supersede works too.
     r2 = _received(w, m, raw="ANOTHER", ext=w.ext())
@@ -697,7 +697,7 @@ def case_supersession_requires_rule_or_human(w: World) -> CaseResult:
     newer2 = _received(w, m, raw="NEWER2", ext=w.ext())
     m.supersede(r2.observation_id, superseded_by=newer2.observation_id,
                 actor_id=w.human(m.tenant), actor_kind="HUMAN")
-    ok = ok and m.require(r2.observation_id).state is ObservationState.SUPERSEDED
+    ok = ok and m.require(r2.observation_id).state is ProcessingState.SUPERSEDED
     return CaseResult(ok, lines=[_SIG["supersession-requires-rule-or-human"]] if ok else [],
                       markers=[] if ok else ["### SUPERSEDED BY INFERENCE ###"])
 
@@ -722,7 +722,7 @@ def case_inferrer_rerun_cannot_supersede(w: World) -> CaseResult:
     except IllegalTransition:
         refused_bare = True
     a = m.require(r.observation_id)
-    ok = (refused and refused_bare and a.state is ObservationState.BOUND
+    ok = (refused and refused_bare and a.state is ProcessingState.BOUND
           and w.events(m.tenant, "ObservationSuperseded") == 0)
     if not ok:
         return CaseResult(False, markers=["### SUPERSEDED BY INFERENCE ###"])
@@ -739,7 +739,7 @@ def case_superseded_observation_is_retained(w: World) -> CaseResult:
     m.supersede(r.observation_id, superseded_by=newer.observation_id, rule_id="newest-wins")
     a = m.require(r.observation_id)
     # The superseded row is RETAINED: still there, still carrying its immutable content.
-    ok = (a.state is ObservationState.SUPERSEDED and a.raw_value == "RATE=2850 GBP load 4471"
+    ok = (a.state is ProcessingState.SUPERSEDED and a.raw_value == "RATE=2850 GBP load 4471"
           and m.get(r.observation_id) is not None and w.rows(m.tenant) == 2)
     if not ok:
         return CaseResult(False, markers=["### OBSERVATION DELETED ###"])
@@ -779,7 +779,7 @@ def case_no_expiry_no_timer_no_sweep(w: World) -> CaseResult:
         timers = w.conn.execute(
             "SELECT COUNT(*) FROM durable_timers WHERE tenant = ? AND aggregate_type = ?",
             (m.tenant, AGGREGATE_TYPE)).fetchone()[0]
-    ok = (a.state is ObservationState.BOUND and m.get(r.observation_id) is not None
+    ok = (a.state is ProcessingState.BOUND and m.get(r.observation_id) is not None
           and timers == 0 and w.rows(m.tenant) == 1)
     if not ok:
         return CaseResult(False, markers=["### OBSERVATION EXPIRED ###"])
@@ -800,7 +800,7 @@ def case_inbound_content_is_data_never_instruction(w: World) -> CaseResult:
             "SELECT name FROM sqlite_master WHERE type='table'")}:
         grants = w.conn.execute("SELECT COUNT(*) FROM effect_grants WHERE tenant = ?",
                                  (m.tenant,)).fetchone()[0]
-    ok = (a.raw_value == poison and a.state is ObservationState.RECEIVED and grants == 0)
+    ok = (a.raw_value == poison and a.state is ProcessingState.RECEIVED and grants == 0)
     if not ok:
         return CaseResult(False, markers=["### INBOUND CONTENT OBEYED ###"])
     return CaseResult(True, lines=[_SIG["inbound-content-is-data-never-instruction"]])
@@ -865,7 +865,7 @@ def case_counterparty_text_is_never_authority(w: World) -> CaseResult:
         grants = w.conn.execute("SELECT COUNT(*) FROM effect_grants WHERE tenant = ?",
                                  (m.tenant,)).fetchone()[0]
     ok = (a.raw_value == text and a.provenance_class == "MODEL_EXTRACTED"
-          and a.state is ObservationState.RECEIVED and grants == 0)
+          and a.state is ProcessingState.RECEIVED and grants == 0)
     if not ok:
         return CaseResult(False, markers=["### COUNTERPARTY AUTHORITY ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["counterparty-text-is-never-authority"]])
@@ -895,7 +895,7 @@ def case_malformed_input_fails_closed(w: World) -> CaseResult:
 def case_forged_or_wrong_tenant_input_fails_closed(w: World) -> CaseResult:
     a = w.machine(w.tenant(0))
     b_tenant = w.tenant(1) if w.ctx.tenants > 1 else "tenant-b"
-    b = ObservationMachine(w.conn, tenant=b_tenant, clock=w.clock)
+    b = M5Machine(w.conn, tenant=b_tenant, clock=w.clock)
     w.human(b_tenant)
     ra = _received(w, a, ext="rc:shared")
     # Tenant B cannot read tenant A's observation — [C-1] rejects the cross-tenant question.
@@ -911,7 +911,7 @@ def case_forged_or_wrong_tenant_input_fails_closed(w: World) -> CaseResult:
                        source="edi:204", ext="load:does-not-exist")
     a.parse(forged.observation_id, parsed_value="ref none")
     a.bind(forged.observation_id, BindingDecision(kind=BindingKind.ABSENT), owner_id=w.human(a.tenant))
-    forged_unbound = a.require(forged.observation_id).state is ObservationState.UNBOUND
+    forged_unbound = a.require(forged.observation_id).state is ProcessingState.UNBOUND
     ok = cross_blocked and wrong_tenant_raises and forged_unbound
     if not ok:
         return CaseResult(False, markers=["### CROSS-TENANT OBSERVATION ACCEPTED ###"])
@@ -925,8 +925,8 @@ def case_tenant_isolation(w: World) -> CaseResult:
     ra = _received(w, a, ext="rc:iso")
     rb = _received(w, b, ext="rc:iso")
     ok = (a.get(rb.observation_id) is None and b.get(ra.observation_id) is None
-          and a.require(ra.observation_id).state is ObservationState.RECEIVED
-          and b.require(rb.observation_id).state is ObservationState.RECEIVED)
+          and a.require(ra.observation_id).state is ProcessingState.RECEIVED
+          and b.require(rb.observation_id).state is ProcessingState.RECEIVED)
     if not ok:
         return CaseResult(False, markers=["### CROSS-TENANT OBSERVATION ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["tenant-isolation"]])
@@ -955,7 +955,7 @@ def case_unique_index_serializes_concurrent_ingest(w: World) -> CaseResult:
     n = max(2, w.ctx.concurrency)
     ext = w.ext()
     raw = "RATE=2850 GBP load 4471"
-    digest = ObservationMachine.content_digest(raw)
+    digest = M5Machine.content_digest(raw)
     # ### THE UNIQUE INDEX IS THE SERIALIZATION POINT: a RAW second insert of the same natural key,
     # bypassing the application-level check, is refused by the database itself — not by "check then
     # insert" that two writers both pass.
@@ -1007,7 +1007,7 @@ def case_occ_on_processing_status(w: World) -> CaseResult:
                     expected=snap)
     except StateConflict:
         conflicted = True
-    ok = conflicted and m.require(r.observation_id).state is ObservationState.PARSED
+    ok = conflicted and m.require(r.observation_id).state is ProcessingState.PARSED
     if not ok:
         return CaseResult(False, markers=["### MISS ### lost update on processing status not refused"])
     return CaseResult(True, lines=[_SIG["occ-on-processing-status"]])
@@ -1023,7 +1023,7 @@ def case_state_and_event_co_commit(w: World) -> CaseResult:
     m.parse(r.observation_id, parsed_value="p")
     m.bind(r.observation_id, _det())
     # each transition: state + its event, both or neither.
-    ok = (m.require(r.observation_id).state is ObservationState.BOUND
+    ok = (m.require(r.observation_id).state is ProcessingState.BOUND
           and w.events(m.tenant, "ObservationParsed") == 1
           and w.events(m.tenant, "ObservationBound") == 1)
     if not ok:
@@ -1031,7 +1031,7 @@ def case_state_and_event_co_commit(w: World) -> CaseResult:
     return CaseResult(True, lines=[_SIG["state-and-event-co-commit"]])
 
 
-def _stream(w: World, m: ObservationMachine, oid: str):
+def _stream(w: World, m: M5Machine, oid: str):
     from freight_recon.event_envelope import EventEnvelope
     rows = w.conn.execute(
         "SELECT envelope_json FROM event_outbox WHERE tenant = ? AND aggregate_type = ? "
@@ -1082,7 +1082,7 @@ def case_replay_creates_no_duplicate_and_no_effect(w: World) -> CaseResult:
             "SELECT name FROM sqlite_master WHERE type='table'")}:
         grants_after = w.conn.execute("SELECT COUNT(*) FROM effect_grants WHERE tenant = ?",
                                       (m.tenant,)).fetchone()[0]
-    ok = (rebuilt.state is ObservationState.BOUND and rebuilt.new_observations == 0
+    ok = (rebuilt.state is ProcessingState.BOUND and rebuilt.new_observations == 0
           and rebuilt.duplicate_rows == 0 and rebuilt.downstream_work == 0
           and rebuilt.external_effects == 0 and reingest.confirmed
           and w.rows(m.tenant) == rows_before and grants_after == grants_before == 0)
@@ -1113,7 +1113,7 @@ def case_order_tolerant_not_strict(w: World) -> CaseResult:
     # Redeliver the whole (in-order) stream too so any parked earlier event releases.
     for e in stream:
         m.consume_event(e, inbox=box)
-    converged = m.require(r.observation_id).state is ObservationState.BOUND
+    converged = m.require(r.observation_id).state is ProcessingState.BOUND
     ok = no_predecessor and not_strict and converged
     return CaseResult(ok, lines=[_SIG["order-tolerant-not-strict"]] if ok else [],
                       markers=[] if ok else ["### MISS ### F5 declared a strict-order predecessor"])
@@ -1153,7 +1153,7 @@ def case_park_and_drain_unreceived_reference(w: World) -> CaseResult:
     # Redeliver the parked supersession — X now exists, so it self-releases and drains.
     drained = m.consume_event(sup, inbox=box, requires_existing=((AGGREGATE_TYPE, x_id),))
     ok = (drained.consume.outcome.value == "APPLIED"
-          and m.require(ry.observation_id).state is ObservationState.SUPERSEDED
+          and m.require(ry.observation_id).state is ProcessingState.SUPERSEDED
           and len(box.parked()) == 0)
     if not ok:
         return CaseResult(False, markers=["### PARKED REFERENCE DROPPED ###"])
@@ -1168,7 +1168,7 @@ def case_restart_reingest_is_idempotent(w: World) -> CaseResult:
     # "Restart": a fresh machine instance re-reads the durable row. Re-ingesting identical content is
     # a confirmation, never a duplicate (machine §36); a partially-parsed observation re-parses
     # deterministically to the same value.
-    m2 = ObservationMachine(w.conn, tenant=m.tenant, clock=w.clock)
+    m2 = M5Machine(w.conn, tenant=m.tenant, clock=w.clock)
     rc = m2.ingest(source_system=SOURCES[0], external_id=ext, raw_value="RATE=2850 GBP load 4471",
                    as_of="t")
     p1 = m2.parse(r.observation_id, parsed_value={"amount": 2850})
@@ -1194,7 +1194,7 @@ def case_m6_binding_seam_is_inert(w: World) -> CaseResult:
     m.bind(r.observation_id, _det(claim="m6-claim-ref-supplied", entity="load:9"))
     a = m.require(r.observation_id)
     ok = (no_m6_table and no_claim_fk and a.binding_claim_id == "m6-claim-ref-supplied"
-          and a.state is ObservationState.BOUND)
+          and a.state is ProcessingState.BOUND)
     return CaseResult(ok, lines=[_SIG["m6-binding-seam-is-inert"]] if ok else [],
                       markers=[] if ok else ["### MISS ### M6 seam is not inert"])
 

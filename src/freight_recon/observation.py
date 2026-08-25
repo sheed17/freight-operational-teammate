@@ -13,8 +13,8 @@ a time, and can never quietly rewrite, duplicate, guess at, obey, or age out tha
 It owns the seven states and the OB-1…OB-5 transitions of `05-observation.machine.md` §14, and it is
 the canonical PRODUCER of the seven already-registered F5 `Observation*` events on the `observation`
 aggregate. It does NOT compute bindings (that is M6, which is NOT built — see the M6 seam below), does
-NOT mint an `ExceptionRaised` (that is M9's contract, P6/U5.3 — see the Exception seam below), and
-does NOT emit `ProvenanceStrengtheningAttempted` (that F14 emission half lands in Implementation
+NOT mint the M9 exception event (that is M9's contract, P6/U5.3 — see the Exception seam below), and
+does NOT emit the F14 provenance-strengthening audit event (that emission half lands in Implementation
 Phase 7 per CURRENT.md — see the provenance seam below). It rides P5's transactional outbox and dedup
 inbox exactly as M3 and M4 do.
 
@@ -63,17 +63,17 @@ table, and implement no `IB-*`. `binding_claim_id` is entity §11 OPTIONAL; it i
 claim reference a decision hands in, with NO foreign key into a table this unit does not own.
 
 ### THE EXCEPTION SEAM DOES NOT MINT M9's CONTRACT (task §3.8). `OB-2f` and `OB-3u` end "→ Exception".
-M9 is not built and `ExceptionRaised` is M9's contract. Like `event_inbox.expire_overdue`, this
+M9 is not built and the M9 exception event is M9's contract. Like `event_inbox.expire_overdue`, this
 machine emits its OWN canonical events (`ObservationUnparseable`, `ObservationUnbound`, whose F5
 consumer is M9) and leaves a DURABLE, HUMAN-OWNED record — the row sits in `UNPARSEABLE`/`UNBOUND`,
-names an accountable human, and nothing silently drops or closes it. It mints no `ExceptionRaised`,
+names an accountable human, and nothing silently drops or closes it. It mints no M9 exception event,
 builds no `exceptions` table, and implements no `EC-*`.
 
 ### THE PROVENANCE SEAM REFUSES THE LAUNDERING BUT DOES NOT MINT THE F14 EVENT (task §3.10). Inbound
 content that carries, implies or asks for a `provenance_class` is REFUSED — provenance is
 runtime-assigned (M-13, R-P1), and this refusal is mandatory and not deferred anywhere. The F14
-`ProvenanceStrengtheningAttempted` EMISSION half is scoped to Implementation Phase 7 by CURRENT.md and
-P5's `IR-R9`, so it is NOT minted here.
+provenance-strengthening audit event's EMISSION half is scoped to Implementation Phase 7 by CURRENT.md
+and P5's `IR-R9`, so it is NOT minted here.
 
 ### IT SHIPS DARK. Nothing under `src/freight_recon/` imports this module; the only script that may is
 `scripts/probe_phase6_observation.py`. It joins no importer, mailbox or live channel, authorizes no
@@ -140,29 +140,29 @@ _KNOWN_PROVENANCE: frozenset[str] = frozenset(
     (*OBSERVATION_PROVENANCE_ALLOWED, OBSERVATION_FORBIDDEN_PROVENANCE))
 
 
-class ObservationError(RuntimeError):
+class M5Error(RuntimeError):
     """This machine will not do what was asked. Never degraded into a partial transition."""
 
 
-class UnknownObservation(ObservationError):
+class UnknownObservation(M5Error):
     """No `observations` row with this id exists FOR THIS TENANT. Indistinguishable from "belongs to
     another tenant" on purpose — [C-1] rejects a cross-tenant question rather than answering it."""
 
 
-class GuardNotSatisfied(ObservationError):
+class GuardNotSatisfied(M5Error):
     """The (state, trigger) pair IS legal here and a precondition is false. No event is emitted."""
 
 
-class IllegalTransition(ObservationError):
+class IllegalTransition(M5Error):
     """GR-1 / [C-4]. The (state, trigger) pair is not enumerated (or §15 forbids the shape). Raised
     AFTER `IllegalTransitionAttempted` is recorded, which is the point of recording it."""
 
 
-class StateConflict(ObservationError):
+class StateConflict(M5Error):
     """A state-guarded UPDATE matched zero rows: the observation moved under us (GR-3). Reload."""
 
 
-class ContentIsData(ObservationError):
+class ContentIsData(M5Error):
     """### INBOUND CONTENT IS DATA, NEVER INSTRUCTION, NEVER AUTHORITY (M-66). Raised when a caller
     tries to let inbound content choose its own provenance — provenance is runtime-assigned (M-13,
     R-P1), never carried in content, never settable through an API untrusted data can reach."""
@@ -170,7 +170,7 @@ class ContentIsData(ObservationError):
 
 # --------------------------------------------------------------------------------- the state set
 
-class ObservationState(str, Enum):
+class ProcessingState(str, Enum):
     RECEIVED = "RECEIVED"
     PARSED = "PARSED"
     BOUND = "BOUND"
@@ -183,7 +183,7 @@ class ObservationState(str, Enum):
 class Trigger(str, Enum):
     """The closed set of driving facts, named from §14's triggers and §33's "Events consumed"."""
 
-    OBSERVATION_INGESTED = "ObservationIngested"        # OB-1 / OB-1c (X)
+    OBSERVATION_INGESTED = "Ingested"        # OB-1 / OB-1c (X)
     PARSED = "Parsed"                                   # OB-2 (S)
     PARSE_FAILED = "ParseFailed"                        # OB-2f (S)
     BINDING_CONFIRMED = "BindingConfirmed"              # OB-3 / OB-4 (S | H)
@@ -210,8 +210,8 @@ class TransitionRow:
     """One row of §14. Data, so the acceptance battery can enumerate it against the specification."""
 
     id: str
-    from_states: tuple[ObservationState, ...]
-    to_state: ObservationState
+    from_states: tuple[ProcessingState, ...]
+    to_state: ProcessingState
     triggers: tuple[Trigger, ...]
     trigger_types: tuple[str, ...]     # X|S|H — the registry §1 codes
     event: str
@@ -220,36 +220,36 @@ class TransitionRow:
 
 TRANSITIONS: tuple[TransitionRow, ...] = (
     TransitionRow(
-        id="OB-1", from_states=(), to_state=ObservationState.RECEIVED,
+        id="OB-1", from_states=(), to_state=ProcessingState.RECEIVED,
         triggers=(Trigger.OBSERVATION_INGESTED,), trigger_types=("X",),
         event="ObservationReceived"),
     TransitionRow(
         # OB-1c writes as_of only and emits ObservationConfirmed; it does NOT move the `state` column
         # (§3.9 M5-AQ-3, reported). Modelled here with from==to==CONFIRMED so the table enumerates the
         # canonical state, while `confirm()` implements the as_of-only reading.
-        id="OB-1c", from_states=(ObservationState.RECEIVED,), to_state=ObservationState.CONFIRMED,
+        id="OB-1c", from_states=(ProcessingState.RECEIVED,), to_state=ProcessingState.CONFIRMED,
         triggers=(Trigger.OBSERVATION_INGESTED,), trigger_types=("X",),
         event="ObservationConfirmed"),
     TransitionRow(
-        id="OB-2", from_states=(ObservationState.RECEIVED,), to_state=ObservationState.PARSED,
+        id="OB-2", from_states=(ProcessingState.RECEIVED,), to_state=ProcessingState.PARSED,
         triggers=(Trigger.PARSED,), trigger_types=("S",), event="ObservationParsed"),
     TransitionRow(
-        id="OB-2f", from_states=(ObservationState.RECEIVED,), to_state=ObservationState.UNPARSEABLE,
+        id="OB-2f", from_states=(ProcessingState.RECEIVED,), to_state=ProcessingState.UNPARSEABLE,
         triggers=(Trigger.PARSE_FAILED,), trigger_types=("S",), event="ObservationUnparseable",
         human_owned_result=True),
     TransitionRow(
-        id="OB-3", from_states=(ObservationState.PARSED,), to_state=ObservationState.BOUND,
+        id="OB-3", from_states=(ProcessingState.PARSED,), to_state=ProcessingState.BOUND,
         triggers=(Trigger.BINDING_CONFIRMED,), trigger_types=("S",), event="ObservationBound"),
     TransitionRow(
-        id="OB-3u", from_states=(ObservationState.PARSED,), to_state=ObservationState.UNBOUND,
+        id="OB-3u", from_states=(ProcessingState.PARSED,), to_state=ProcessingState.UNBOUND,
         triggers=(Trigger.BINDING_AMBIGUOUS, Trigger.BINDING_ABSENT), trigger_types=("S",),
         event="ObservationUnbound", human_owned_result=True),
     TransitionRow(
-        id="OB-4", from_states=(ObservationState.UNBOUND,), to_state=ObservationState.BOUND,
+        id="OB-4", from_states=(ProcessingState.UNBOUND,), to_state=ProcessingState.BOUND,
         triggers=(Trigger.BINDING_CONFIRMED,), trigger_types=("H", "S"), event="ObservationBound"),
     TransitionRow(
-        id="OB-5", from_states=(ObservationState.BOUND, ObservationState.PARSED),
-        to_state=ObservationState.SUPERSEDED, triggers=(Trigger.NEWER_OBSERVATION_SUPERSEDES,),
+        id="OB-5", from_states=(ProcessingState.BOUND, ProcessingState.PARSED),
+        to_state=ProcessingState.SUPERSEDED, triggers=(Trigger.NEWER_OBSERVATION_SUPERSEDES,),
         trigger_types=("S", "H"), event="ObservationSuperseded"),
 )
 
@@ -257,10 +257,10 @@ TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSIT
 
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(row.event for row in TRANSITIONS)
 
-TERMINAL_STATES: frozenset[ObservationState] = frozenset(
-    ObservationState(s) for s in ABSOLUTELY_TERMINAL_OBSERVATION_STATES)
-HUMAN_OWNED_STATES: frozenset[ObservationState] = frozenset(
-    ObservationState(s) for s in HUMAN_OWNED_OBSERVATION_STATES)
+TERMINAL_STATES: frozenset[ProcessingState] = frozenset(
+    ProcessingState(s) for s in ABSOLUTELY_TERMINAL_OBSERVATION_STATES)
+HUMAN_OWNED_STATES: frozenset[ProcessingState] = frozenset(
+    ProcessingState(s) for s in HUMAN_OWNED_OBSERVATION_STATES)
 
 
 def _utc_now() -> datetime:
@@ -311,7 +311,7 @@ class Observation:
     raw_value: str
     as_of: str
     received_at: str
-    state: ObservationState
+    state: ProcessingState
     version: int
     provenance_class: str
     parsed_value: str | None
@@ -341,7 +341,7 @@ class IngestOutcome:
     observation_id: str
     created: bool
     confirmed: bool
-    state: ObservationState
+    state: ProcessingState
     content_digest: str
     event_id: str
 
@@ -350,8 +350,8 @@ class IngestOutcome:
 class TransitionResult:
     transition_id: str
     observation: Observation
-    from_state: ObservationState
-    to_state: ObservationState
+    from_state: ProcessingState
+    to_state: ProcessingState
     event_ids: tuple[str, ...] = ()
     event_names: tuple[str, ...] = ()
 
@@ -365,7 +365,7 @@ class ReconstructedObservation:
     """
 
     observation_id: str
-    state: ObservationState | None
+    state: ProcessingState | None
     new_observations: int = 0
     duplicate_rows: int = 0
     downstream_work: int = 0
@@ -388,7 +388,7 @@ class ConsumedTransition:
 
 # --------------------------------------------------------------------------------- the machine
 
-class ObservationMachine:
+class M5Machine:
     """M5, on an existing connection, bound to ONE tenant. Bound at construction rather than per call,
     so a caller cannot re-point it at another tenant and put [C-1] in its own hands."""
 
@@ -401,11 +401,11 @@ class ObservationMachine:
         producer_component: str = PRODUCER_COMPONENT,
     ) -> None:
         if getattr(conn, "row_factory", None) is not sqlite3.Row:
-            raise ObservationError(
-                "ObservationMachine reads columns by name and requires `row_factory = sqlite3.Row`."
+            raise M5Error(
+                "M5Machine reads columns by name and requires `row_factory = sqlite3.Row`."
             )
         self._conn = conn
-        self._tenant = require_tenant(tenant, context="ObservationMachine")
+        self._tenant = require_tenant(tenant, context="M5Machine")
         self._clock = clock or _utc_now
         self._component = producer_component
 
@@ -538,7 +538,7 @@ class ObservationMachine:
                 conn.rollback()
             raise
         return IngestOutcome(observation_id=oid, created=True, confirmed=False,
-                             state=ObservationState.RECEIVED, content_digest=digest,
+                             state=ProcessingState.RECEIVED, content_digest=digest,
                              event_id=envelope.event_id)
 
     def _confirm(
@@ -600,7 +600,7 @@ class ObservationMachine:
 
         ### A PARSE FAILURE IS UNPARSEABLE, NEVER A SILENT DROP (entity §36). UNPARSEABLE feeds the
         Exception path and is HUMAN-OWNED: it names an accountable recorded human (`owner_id`), the
-        way M1's `owner_id` does. This machine mints NO `ExceptionRaised` (that is M9's, §3.8)."""
+        way M1's `owner_id` does. This machine mints NO M9 exception event (that is M9's, §3.8)."""
         obs = expected or self.require(observation_id)
         if ok:
             value = _canonical_text(parsed_value if parsed_value is not None else "")
@@ -609,14 +609,14 @@ class ObservationMachine:
                     "OB-2 records the parsed value the extractor produced; it was empty. A parse that "
                     "produced nothing is a parse failure (OB-2f), not a PARSED observation.")
             return self._advance(
-                obs, Trigger.PARSED, ObservationState.PARSED, event_name="ObservationParsed",
+                obs, Trigger.PARSED, ProcessingState.PARSED, event_name="ObservationParsed",
                 payload={"parsed_value": value}, writes="parsed_value = ?", write_args=(value,),
                 actor_type="system", actor_id=actor_id, correlation_id=correlation_id,
                 causation_id=causation_id, trace_id=trace_id, event_id=event_id)
-        owner = self._require_named_human(owner_id, ObservationState.UNPARSEABLE)
+        owner = self._require_named_human(owner_id, ProcessingState.UNPARSEABLE)
         reason = str(unparse_reason or "extraction failed").strip()
         return self._advance(
-            obs, Trigger.PARSE_FAILED, ObservationState.UNPARSEABLE,
+            obs, Trigger.PARSE_FAILED, ProcessingState.UNPARSEABLE,
             event_name="ObservationUnparseable", payload={},
             writes="owner_id = ?, unparse_reason = ?", write_args=(owner, reason),
             actor_type="system", actor_id=actor_id, correlation_id=correlation_id,
@@ -648,7 +648,7 @@ class ObservationMachine:
         obs = expected or self.require(observation_id)
         if decision.is_deterministic:
             return self._advance(
-                obs, Trigger.BINDING_CONFIRMED, ObservationState.BOUND,
+                obs, Trigger.BINDING_CONFIRMED, ProcessingState.BOUND,
                 event_name="ObservationBound",
                 payload={"provenance_class": decision.provenance_class,
                          "bound_entity_ref": decision.bound_entity_ref,
@@ -660,9 +660,9 @@ class ObservationMachine:
                 actor_type=("human" if str(actor_kind).upper() == HUMAN else "system"),
                 actor_id=actor_id, correlation_id=correlation_id, causation_id=causation_id,
                 trace_id=trace_id, event_id=event_id)
-        owner = self._require_named_human(owner_id, ObservationState.UNBOUND)
+        owner = self._require_named_human(owner_id, ProcessingState.UNBOUND)
         return self._advance(
-            obs, Trigger.BINDING_AMBIGUOUS, ObservationState.UNBOUND,
+            obs, Trigger.BINDING_AMBIGUOUS, ProcessingState.UNBOUND,
             event_name="ObservationUnbound", payload={}, writes="owner_id = ?", write_args=(owner,),
             actor_type="system", actor_id=actor_id, correlation_id=correlation_id,
             causation_id=causation_id, trace_id=trace_id, event_id=event_id)
@@ -685,7 +685,7 @@ class ObservationMachine:
         a system decision. Either way the decision must be deterministic — a guess still never binds
         (GR-8), and GR-9 forbids a machine recompute from overwriting an owner-asserted value."""
         obs = expected or self.require(observation_id)
-        if obs.state is not ObservationState.UNBOUND:
+        if obs.state is not ProcessingState.UNBOUND:
             raise GuardNotSatisfied(
                 f"OB-4 resolves an UNBOUND observation; {observation_id!r} is {obs.state.value}.")
         if not decision.is_deterministic:
@@ -699,7 +699,7 @@ class ObservationMachine:
                 "an OWNER_ASSERTED binding is a human assertion (machine OB-4); a machine actor "
                 "cannot assert it (GR-9 / ER-10).")
         return self._advance(
-            obs, Trigger.BINDING_CONFIRMED, ObservationState.BOUND, event_name="ObservationBound",
+            obs, Trigger.BINDING_CONFIRMED, ProcessingState.BOUND, event_name="ObservationBound",
             payload={"provenance_class": decision.provenance_class,
                      "bound_entity_ref": decision.bound_entity_ref,
                      "binding_claim_id": decision.binding_claim_id},
@@ -754,7 +754,7 @@ class ObservationMachine:
                 f"OB-5's superseded_by {newer!r} names an observation that does not exist for tenant "
                 f"{self._tenant!r}: a NEWER observation supersedes, not a promise of one.")
         return self._advance(
-            obs, Trigger.NEWER_OBSERVATION_SUPERSEDES, ObservationState.SUPERSEDED,
+            obs, Trigger.NEWER_OBSERVATION_SUPERSEDES, ProcessingState.SUPERSEDED,
             event_name="ObservationSuperseded", payload={"superseded_by": newer},
             writes="superseded_by = ?", write_args=(newer,),
             actor_type=("human" if is_human else "system"), actor_id=actor_id,
@@ -822,13 +822,13 @@ class ObservationMachine:
         `ObservationReceived` is idempotent by the natural key, so replay produces zero duplicates.
         """
         stream = events if events is not None else self._event_stream(observation_id)
-        state: ObservationState | None = None
+        state: ProcessingState | None = None
         for event in stream:
             target = _event_target_state(event)
             if target is not None:
                 state = target
             elif event.event_name == "ObservationReceived" and state is None:
-                state = ObservationState.RECEIVED
+                state = ProcessingState.RECEIVED
         return ReconstructedObservation(
             observation_id=observation_id, state=state, new_observations=0, duplicate_rows=0,
             downstream_work=0, external_effects=0)
@@ -836,7 +836,7 @@ class ObservationMachine:
     # --- shared transition plumbing ---------------------------------------------------------------
 
     def _advance(
-        self, obs: Observation, trigger: Trigger, to_state: ObservationState, *,
+        self, obs: Observation, trigger: Trigger, to_state: ProcessingState, *,
         event_name: str, payload: Mapping[str, Any], writes: str, write_args: tuple[Any, ...],
         actor_type: str, actor_id: str, correlation_id: str | None, causation_id: str | None,
         trace_id: str | None, event_id: str | None,
@@ -889,7 +889,7 @@ class ObservationMachine:
             event_ids=(envelope.event_id,), event_names=(event_name,))
 
     def _reconstruct_locked(
-        self, obs: Observation, event: EventEnvelope, target: ObservationState,
+        self, obs: Observation, event: EventEnvelope, target: ProcessingState,
     ) -> TransitionResult:
         """Advance a durable row to match a durable event — reconstruction, not a live transition.
 
@@ -901,17 +901,17 @@ class ObservationMachine:
         now = format_instant(self._clock())
         writes = ["state = ?", "version = version + 1", "updated_at = ?"]
         args: list[Any] = [target.value, now]
-        if target is ObservationState.PARSED:
+        if target is ProcessingState.PARSED:
             writes.append("parsed_value = ?")
             args.append(event.payload.get("parsed_value"))
-        elif target is ObservationState.BOUND:
+        elif target is ProcessingState.BOUND:
             writes.append("bound_entity_ref = ?")
             args.append(event.payload.get("bound_entity_ref"))
             writes.append("binding_claim_id = ?")
             args.append(event.payload.get("binding_claim_id"))
             writes.append("provenance_class = ?")
             args.append(event.payload.get("provenance_class") or obs.provenance_class)
-        elif target is ObservationState.SUPERSEDED:
+        elif target is ProcessingState.SUPERSEDED:
             writes.append("superseded_by = ?")
             args.append(event.payload.get("superseded_by"))
         conn.execute(
@@ -927,7 +927,7 @@ class ObservationMachine:
     def _reject_provenance_from_content(self, raw_value: str | Mapping[str, Any]) -> None:
         """### CONTENT CANNOT CHOOSE ITS OWN PROVENANCE (M-13, R-P1). A mapping that carries a
         `provenance_class` key is inbound data trying to strengthen itself; refused. (The F14
-        `ProvenanceStrengtheningAttempted` EMISSION half is Implementation Phase 7's, not M5's — §3.10.)
+        provenance-strengthening F14 audit event's EMISSION half is Implementation Phase 7's, not M5's — §3.10.)
         """
         if isinstance(raw_value, Mapping) and "provenance_class" in {str(k) for k in raw_value}:
             raise ContentIsData(
@@ -950,7 +950,7 @@ class ObservationMachine:
                 f"provenance_class {value!r} is not a canonical provenance class "
                 f"{sorted(_KNOWN_PROVENANCE)} — it is runtime-assigned (M-13).")
 
-    def _require_named_human(self, owner_id: str | None, state: ObservationState) -> str:
+    def _require_named_human(self, owner_id: str | None, state: ProcessingState) -> str:
         """### UNBOUND / UNPARSEABLE IS OWNED BY A NAMED HUMAN (entity §36, machine §9). "A human" is
         decoration while owner_id is a text column any string satisfies (M1's argument for owner_id):
         it must be a recorded, ACTIVE human of this tenant, FK-backed."""
@@ -1054,20 +1054,20 @@ class ObservationMachine:
 
 # ------------------------------------------------------------------------------------- plumbing
 
-def _event_target_state(event: EventEnvelope) -> ObservationState | None:
+def _event_target_state(event: EventEnvelope) -> ProcessingState | None:
     """The processing status an observation event reconstructs to, or None for a non-state event (a
     creation/freshness marker or an F14 marker riding the aggregate)."""
     name = event.event_name
     if name == "ObservationParsed":
-        return ObservationState.PARSED
+        return ProcessingState.PARSED
     if name == "ObservationUnparseable":
-        return ObservationState.UNPARSEABLE
+        return ProcessingState.UNPARSEABLE
     if name == "ObservationBound":
-        return ObservationState.BOUND
+        return ProcessingState.BOUND
     if name == "ObservationUnbound":
-        return ObservationState.UNBOUND
+        return ProcessingState.UNBOUND
     if name == "ObservationSuperseded":
-        return ObservationState.SUPERSEDED
+        return ProcessingState.SUPERSEDED
     # ObservationReceived (creation), ObservationConfirmed (freshness), IllegalTransitionAttempted.
     return None
 
@@ -1094,7 +1094,7 @@ def _row_to_observation(row: Any) -> Observation:
         tenant=row["tenant"], observation_id=row["observation_id"],
         source_system=row["source_system"], external_id=row["external_id"],
         content_digest=row["content_digest"], raw_value=row["raw_value"], as_of=row["as_of"],
-        received_at=row["received_at"], state=ObservationState(row["state"]), version=row["version"],
+        received_at=row["received_at"], state=ProcessingState(row["state"]), version=row["version"],
         provenance_class=row["provenance_class"], parsed_value=row["parsed_value"],
         bound_entity_ref=row["bound_entity_ref"], binding_claim_id=row["binding_claim_id"],
         match_method=row["match_method"], owner_id=row["owner_id"],
