@@ -1241,14 +1241,32 @@ def case_database_invariants(ctx: Ctx) -> CaseResult:
     except sqlite3.IntegrityError:
         autonomous_refused = True
 
+    # ### THE LIVE-APPROVAL PARTIAL UNIQUE INDEX, EXERCISED HERE (entity §17). One live
+    # (REQUESTED/GRANTED) approval per (tenant, commit_key); a SECOND live insert for the SAME
+    # (acme, ck) must be REFUSED by the database, not by the application. The sentence below is
+    # printed ONLY on that genuine refusal — a non-enforcing DB fails the case, never prints it.
+    live_unique = False
+    two_live_accepted = False
+    try_insert(approval_id="live-1")            # first live approval for (acme, ck) — must succeed
+    try:
+        try_insert(approval_id="live-2")        # a second live approval for the SAME (acme, ck)
+    except sqlite3.IntegrityError:
+        live_unique = True                      # the database refused it, as required
+    else:
+        two_live_accepted = True                # the DB let two live approvals coexist — a defect
+
     ok = ("approvals" in m_tables and "approval_signatures" in m_tables and m_ready and equal
-          and granted_needs_human and autonomous_refused)
+          and granted_needs_human and autonomous_refused and live_unique)
     if not ok:
-        return CaseResult(False, markers=[
-            f"### MISS ### migrate: ready={m_ready} equal={equal} granted_check={granted_needs_human} "
-            f"autonomous_refused={autonomous_refused}"])
+        marker = ("### MISS ### two live approvals for one commit key were accepted"
+                  if two_live_accepted else
+                  f"### MISS ### migrate: ready={m_ready} equal={equal} "
+                  f"granted_check={granted_needs_human} autonomous_refused={autonomous_refused} "
+                  f"live_unique={live_unique}")
+        return CaseResult(False, markers=[marker])
     return CaseResult(True, lines=[_SIG["database-invariants"],
-                                   "THE DATABASE ENFORCES THE APPROVAL AUTHORITY INVARIANTS"])
+                                   "THE DATABASE ENFORCES THE APPROVAL AUTHORITY INVARIANTS",
+                                   _SIG["live-approval-uniqueness"]])
 
 
 CASE_FUNCS = {
