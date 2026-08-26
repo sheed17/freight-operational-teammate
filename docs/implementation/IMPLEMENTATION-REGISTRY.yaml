@@ -2708,6 +2708,26 @@ units:
     # mechanically from the canonical transition corpus). M4 and M5 ship dark, `criteria_scored` is
     # empty on ALL FIVE checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase
     # acceptance and P7 is NOT unlocked. ### M6 IS THE NEXT CHECKPOINT.
+    # ### THE FIGURES AND THE NEXT-CHECKPOINT LINE IMMEDIATELY ABOVE WERE TRUE AT THE `P6-CP-5`
+    # LANDING AND ARE FALSE NOW. They are KEPT, not deleted, so the old phrasing stays recognisable if
+    # it returns (CLAUDE.md sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE
+    # INSTRUCTION, so it is CORRECTED HERE rather than left to send a fresh session to rebuild
+    # something landed.
+    # ### AS OF THE `P6-CP-6` LANDING: M6 LANDED as `P6-CP-6`. The phase still owes M7-M13 and 52 of
+    # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 = 82 written, re-derived mechanically at that
+    # landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS - not by carrying the
+    # prior figure). M6 ships dark, `criteria_scored` is empty on ALL SIX checkpoints, no P6 weighted
+    # criterion is scored, P6 has NOT reached phase acceptance and P7 is NOT unlocked.
+    # ### M7 IS THE NEXT CHECKPOINT.
+    # ### THE `P6-CP-6` LANDING ALSO CARRIES A CORRECTION THAT IS NOT M6'S: after `460d5c7` was pushed,
+    # CI run 32925093992 exposed a REAL P3/P4 exactly-once concurrency defect (one sqlite3.Connection
+    # shared across threads, so a transaction belonged to the connection and not the caller and the
+    # claim CAS was never serialized). It was corrected at `d70a4e7` - ONE CONNECTION PER THREAD, no
+    # process-local mutex, the DATABASE CAS still the sole serialization authority with its six WHERE
+    # predicates untouched, M6 runtime unchanged, and the race test STRENGTHENED rather than weakened.
+    # ### THAT CORRECTION IS LANDED AND MUST NOT BE REWORKED. The FIRST M6 review, bound to `460d5c7`,
+    # went STALE when the tree moved and MAY NOT BE CITED AS FINAL EVIDENCE; the `P6-CP-6` row cites
+    # the FRESH run against `d70a4e7`.
     landed_checkpoints:
       - id: P6-CP-1
         name: The Work Item, and ownership as a recorded authority rather than a string
@@ -3697,6 +3717,364 @@ units:
           ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
           this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion
           is scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
+      - id: P6-CP-6
+        name: The Identity Binding Claim - identity as a decision, not a guess
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: d70a4e78c6426e4cf1f880804d4c36b5893347bf
+        candidate_tree: d74cf84bb4bcc25dd8fc8e18d81cc1d13cf16a86
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M6 of the thirteen - one `identity_binding_claims` row, seven canonical states, one
+          machine, ELEVEN transitions (`IB-1`, `IB-2`, `IB-2r`, `IB-2h`, `IB-3`, `IB-4`, `IB-5`,
+          `IB-5x`, `IB-6`, `IB-7`, `IB-8` - an exact set match with sec 14 of the machine
+          specification), and the SD-6 rule that `provenance_class` is a DERIVED, IMMUTABLE FUNCTION
+          of `match_method`, enforced by a database CHECK and a trigger rather than by a comment.
+          ### IDENTITY IS THE MOST COMMON AND MOST DANGEROUS CLAIM IN FREIGHT, AND M6 MAKES IT A
+          DECISION RATHER THAN A GUESS. A carrier invoice whose PRO number matches two open loads is
+          `AMBIGUOUS`, owned by a NAMED HUMAN through a FOREIGN KEY into `tenant_humans` - never
+          assigned to the more likely one. There is NO BEST-GUESS FALLBACK: an exact trusted-ID match
+          to EXACTLY ONE open entity confirms (IB-2), a registered deterministic rule or
+          reconciliation across at least two sources confirms (IB-2r), and everything else goes to a
+          human. A `MODEL_INFERRED` guess is still `AMBIGUOUS` at CONFIDENCE 1.0, because confidence
+          orders a queue and gates nothing (GR-8, entity sec 41) - it is structurally invisible to
+          every guard. A `MODEL_EXTRACTED` reading is EVIDENCE that re-enters deterministic matching
+          (IB-3) and cannot exist without an evidence span (a CHECK, not a convention).
+          ### AN `OWNER_ASSERTED` BINDING SURVIVES THE RELINKER: `RecomputedByInferrer` against it is
+          `IB-5x`, an ILLEGAL transition that persists nothing and records `IllegalTransitionAttempted`
+          AND `OwnerAssertedOverwriteAttempted` (the Sev-0 B3 tripwire, GR-9, R-P3), so a retry storm
+          changes nothing; a mere DISAGREEMENT raises the registered `ConflictRaised` (IB-6) and
+          PRESERVES the owner's binding intact - Neyma never picks a winner. A human assertion is
+          `OWNER_ASSERTED`, authenticated, carries a `decision_ref` and binds an IMMUTABLE ID, NEVER
+          AN ORDINAL: a rendered "assign unlinked 2" resolves to an observation id and the action
+          binds THAT id or FAILS CLOSED (L-B), never the new occupant of a moved slot. A counterparty
+          is `MODEL_EXTRACTED` at best and a fraud signal, never authority. Correction (IB-7) is
+          APPEND-ONLY and PROPAGATES: it records a durable, M6-owned obligation NAMING the completed
+          effects that rested on the wrong binding and therefore need a Compensation - it names them,
+          and FABRICATES NONE AS DISCHARGED. `UNIQUE (tenant_id, subject_ref) WHERE state =
+          'CONFIRMED'` is a PARTIAL index giving at most one canonical binding per subject, with OCC
+          on the claim version and tenant-first throughout, and every `OWNER_ASSERTED` binding
+          REPLAYS BYTE-IDENTICAL - a rebuild rebuilds projections, not the owner's mind. The six
+          registered F6 events are `ClaimProposed`, `ClaimConfirmed`, `ClaimEvidenced`,
+          `ClaimAmbiguous`, `ClaimCorrected` and `ClaimSuperseded` - AND NO SEVENTH.
+        what_is_in_the_tree: >-
+          `src/freight_recon/identity_binding_claim.py` and
+          `src/freight_recon/migrations/phase6_identity_binding_claims.py`, wired into `schema.py` and
+          into the P2 migration path; the migration adds the tenant-first `identity_binding_claims`
+          table, the SD-6 total-function provenance CHECK over the full six-way mapping, immutability
+          TRIGGERS on `provenance_class` and `match_method`, inline CHECK vocabularies for the SEVEN
+          states and the SIX match methods (no eighth state, no seventh method, and no imported
+          `RESOLVED`/`EXPIRED`/`ARCHIVED`/`DELETED`), the `MODEL_EXTRACTED` evidence-span CHECK, the
+          `LINKER_INFERRED`/`RECONCILED` rule_id CHECK, the CORRECTED propagation-obligation CHECK,
+          the `WHERE state = 'CONFIRMED'` PARTIAL unique index, and FOREIGN KEYS ONLY INTO TABLES THAT
+          EXIST (`observations`, `tenant_humans`, self) - none into an unbuilt `conflicts`,
+          `exceptions`, `compensations` or `evidence` table. Acceptance and hostile nodes in
+          `eval/tests/test_phase6_identity_binding_claim.py` (55 test functions, 59 collected cases,
+          including entity sec 44's nine named adversarial tests); the deterministic probe
+          `scripts/probe_phase6_identity_binding_claim.py` (62 cases, a CLOSED fault vocabulary,
+          refusing an unknown fault AND `expire-claim` AND `auto-resolve-conflict` with exit 2 and a
+          corpus-grounded reason); the mutation battery
+          `scripts/mutate_phase6_identity_binding_claim.py`.
+          ### THE M7 AND M10 SEAMS ARE INERT, AND THAT IS DELIBERATE: `CONFLICTING` has NO
+          M6-INTERNAL EXIT - a conflict closes by a registered rule or a human, `AutoResolve` is
+          ILLEGAL (ADR-007 sec 5.3), and no `conflicts` table or `CF-*` transition is built;
+          `ConflictRaised` is an F7 contract that NAMES IB-6 among its producers, so M6 legitimately
+          emits it riding a minted conflict aggregate, and `event_outbox` holds no foreign key into a
+          `conflicts` table so no M7 row is needed. The correction obligation is a COLUMN ON THE CLAIM
+          ROW, not a `compensations` table and not a `CM-*`. The F14
+          `ProvenanceStrengtheningAttempted` EMISSION half stays deferred to Phase 7 where P5's
+          `IR-R9` places it, while the laundering REFUSAL is mandatory and present now; the F14
+          tripwires that ARE M6's - `IllegalTransitionAttempted` and `OwnerAssertedOverwriteAttempted`
+          - are emitted, and `CounterpartySelfAuthorizationDetected` is present.
+          ### THAT IS THE INCREMENT, NOT THE PHASE: M7-M13 are unbuilt and 52 of the 134 transitions
+          are unwritten. M6 SHIPS DARK - zero production importers; the only thing outside the package
+          that reaches it is its own probe; nothing joins it to an outbound channel; `checkpoint.py`
+          remains the SOLE minter of a gate decision.
+        implementer_evidence: >-
+          ### THE EVIDENCE IS EXECUTABLE, AND IT WAS EXECUTED - BY PRODUCT DRIVER AND BY THE
+          INDEPENDENT REVIEWER (CLAUDE.md sec 0 - committed suite receipts are forbidden and none is
+          written here). There is deliberately NO hand-maintained implementation-record document for
+          M6, and one must not be manufactured to match the M1/M2 rows above, which predate the
+          2026-08 simplification. In-tree and executed by `.github/workflows/ci.yml` via
+          `pytest eval`: `eval/tests/test_phase6_identity_binding_claim.py` (59 tests). ### CI DOES
+          NOT RUN M6'S PROBE OR MUTATION BATTERY - there is an `effect-grant` job for M3 and no
+          equivalent for M4, M5 or M6, verified mechanically at this landing by the absence of ANY
+          `phase6_identity_binding_claim` occurrence in `.github/workflows/ci.yml`, and recorded below
+          as `P6-D43` rather than quietly fixed by a status landing. Those two artifacts were executed
+          by Product Driver run 20260826-071443 and RE-EXECUTED by the independent reviewer in its own
+          session: probe `behaviours as specified, 0 wrong` (exit 0, 62 cases) and `13/13 mutants
+          caught`.
+        independent_review_report: docs/implementation/p6-cp6-independent-review-report-d70a4e7.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE REVIEW EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. One
+          FOCUSED INDEPENDENT REVIEW, by a session that did not build M6 (the review record states
+          `inherited_builder_context: false`; the run's review ledger states `independent: true` with
+          `invalidations: []` and `superseded_by: ""`; reviewer session cff18da2, builder session
+          d36efac2), against commit d70a4e7 / tree d74cf84b, whose `reviewed_fingerprint` records
+          `tracked_dirty: 0` and `untracked: 0`. Verdict SUPPORTED at confidence 0.90, with ZERO
+          findings and NO adjudications, all NINE assessed criteria PASS with no CANNOT_DETERMINE, and
+          `blocked_on.kind: NONE`.
+          ### THE PREVIOUS M6 REVIEW IS STALE AND IS NOT CITED AS EVIDENCE HERE. Product Driver run
+          20260825-204229 reviewed M6 at commit 460d5c7 / tree 3f143d6c and returned SUPPORTED 0.90
+          with zero findings over TEN scenarios (the permanent one plus nine generated, all PASSED).
+          After that commit was pushed, CI run 32925093992 (`Safety invariants (fast)`) FAILED
+          `eval/tests/test_adapter_boundary_acceptance.py::test_concurrent_execute_yields_exactly_one_effect`
+          with two contenders racing one Effect Grant and TOTAL EXTERNAL WRITES = 0. ### THAT WAS A
+          REAL EXACTLY-ONCE PRODUCT DEFECT, NOT A TEST DEFECT: `WorkflowStore` shared ONE
+          `sqlite3.Connection` across threads, and a SQLite transaction belongs to the CONNECTION
+          rather than the calling thread, so overlapping threads interleaved BEGIN/COMMIT/ROLLBACK on
+          one transaction and the write lock that serializes the claim CAS was never contended for;
+          BOTH the zero-write and the two-write timelines were REPRODUCED on the pre-fix tree rather
+          than inferred. The correction, commit d70a4e7, opens ONE CONNECTION PER THREAD to the same
+          database file keyed on the Thread OBJECT (an ident is recycled, a Thread object is not),
+          introduces NO PROCESS-LOCAL MUTEX so nothing can hide a cross-process defect, leaves the
+          DATABASE CAS AS THE SOLE SERIALIZATION AUTHORITY with its six WHERE predicates untouched,
+          CHANGES NO M6 RUNTIME, and STRENGTHENS the race test (120 races instead of one, assertion
+          unchanged and unweakened) rather than weakening it. Mutation proof: reinstating the shared
+          connection reproduces the defect at 15/600 races, the corrected tree is 0/800 with exactly
+          one write in every race, and the strengthened test catches the mutant 8/8 runs. BECAUSE THE
+          TREE MOVED, THE 460d5c7 REVIEW STOPPED BEING A REVIEW OF ANYTHING IN THE REPOSITORY, and a
+          FRESH Product Driver M6 run was executed against d70a4e7. Everything cited in this row comes
+          from that fresh run.
+          ### WHAT THE REVIEWER ESTABLISHED ITSELF. `evidence_reproduced: true` and
+          `claimed_evidence_reproduced: true`. Of TWENTY-NINE recorded command outcomes: EIGHT are
+          `RUNTIME_REPRODUCED` - the full probe (`behaviours as specified, 0 wrong`, exit 0),
+          `--list-cases` enumerating 62 cases, the mutation battery (13/13 caught),
+          `eval/tests/test_phase6_identity_binding_claim.py` (59 passed), an AST sweep returning the
+          only script reaching the machine is its own probe, an AST sweep returning ZERO production
+          importers, an AST channel sweep over 23 named inbound/outbound modules returning NONE, and a
+          read of `event_contracts_data.json` confirming F6 registers exactly six contracts with
+          `ConflictRaised` an F7 contract naming IB-6 among its producers. ELEVEN are
+          `REVIEWER_INSPECTED` with NO named expectation and therefore ESTABLISH NOTHING BY MACHINE -
+          including `git rev-parse HEAD`/`HEAD^{tree}`, an empty `git status --porcelain`, and the
+          four git commands by which the reviewer SCOPED THE CONCURRENCY CORRECTION ITSELF and
+          concluded from the diff that it changes connection lifecycle only and touches neither the
+          claim CAS WHERE predicates nor M6 runtime; the clean-tree claim therefore rests on the
+          `reviewed_fingerprint`, NOT on that `git status` row. SIX were REFUSED by the reviewer's
+          command boundary (shell composition outside quotes, or an ad-hoc `python -c` outside the
+          approved set) - a limit on the review, never a defect in the product, and `blocked_on.kind`
+          is NONE because the reviewer obtained the same facts by other approved means. THE REMAINING
+          FOUR CARRY `COMMAND_ERRORED` AND ARE NOT FAILURES: three are negative controls exiting 2
+          EXACTLY AS DESIGNED (and their scenario-derived expectation was `expect_exit_code: 0`, which
+          correct behaviour could never satisfy), and one is an argparse USAGE error from a reviewer
+          typo (`--fault` is not a flag this probe defines), which establishes nothing about the
+          product and is not counted as if it did. Tracked as `P6-D45`.
+          ### WHAT PRODUCT DRIVER ITSELF EXERCISED, independently of the reviewer: the permanent
+          `p6_m6_identity_binding_claim` scenario PASSED with 293 assertions and 0 FAILED,
+          `failed_assertions: []`, `evidence_verified: true`, `assembly_problems: []`,
+          `full_run: true`, across FIFTEEN risk families each `established: true` (authorization,
+          unexpected_state_transition, conflicting_evidence, missing_data, safety_invariant,
+          concurrency, cross_tenant, malformed_input, idempotency, retry_safety, restart_recovery,
+          stale_state, approval_required, persistence_failure, regression); the probe printed 56 required
+          invariant sentences including "THERE IS NO BEST-GUESS FALLBACK", "CONFIDENCE IS INVISIBLE TO
+          EVERY GUARD", "AN OWNER_ASSERTED BINDING SURVIVES THE RELINKER", "NO COMPENSATION IS
+          FABRICATED AS COMPLETED" and "M6 MINTS NO GATE DECISION"; the mutation battery 13/13; three
+          invented faults each refused with exit 2 and a corpus-grounded, traceback-free message; DDL
+          introspection against a FRESHLY CREATED canonical schema confirming the SD-6 CHECK, both
+          immutability triggers, the seven-state and six-method vocabularies, the partial unique index,
+          the evidence-span and rule_id CHECKs and FKs only into built tables, with
+          `schema_readiness_problems() == []`; and regressions run WITH M6'S TABLE PRESENT IN THE
+          SCHEMA - P3 216 / P4 99 / P5 561 / M1-M5 483, with the M4 probe AND the M5 probe both still
+          `behaviours as specified, 0 wrong`. ### THE P4 ADAPTER-BOUNDARY BATTERY IS THE ONE THAT WENT
+          RED ON 460d5c7, AND IT IS GREEN HERE ON THE CORRECTED TREE. `scoped-completion` records
+          `task_result: VERIFIED` with `task_outstanding: []` and `parent_phase_accepted: false`;
+          `completion-audit` records `decision: VERIFIED`, `implementation_present: true`,
+          `missing_evidence: []`, `contradictions: []`, headline "P6/M6 is supported by the repository;
+          P6 remains IN_PROGRESS"; the evaluator decision is ACCEPT at 0.86 with `problems: []`. There
+          are NO unresolved material Product Driver scenario failures. ### BUT THE FRESH RUN ACCEPTED
+          ZERO GENERATED SCENARIOS - nine were proposed and ALL NINE REJECTED AT ASSEMBLY for an
+          unrecognised `risk_category` string, so this tree has NO RESULT for the nine adversarial
+          scenarios that passed against the stale 460d5c7 tree. That is recorded as `P6-D46` rather
+          than averaged away.
+          ### CI DID NOT CONCLUDE SUCCESS ON THIS COMMIT, AND NO GREEN CI IS CLAIMED HERE. See
+          `P6-D42` below and sec 9 of the cited report. The workflow conclusion is `cancelled`.
+          ### NO ADJUDICATION FOLLOWED, AND NONE IS OWED. M6 is tier-1 (CLAUDE.md sec 7 - it lands a
+          migration, it is load-bearing for tenant isolation, and it decides which real-world entity an
+          artifact belongs to, which is an input to money): builder + ONE focused independent review by
+          someone who did not write it + mutation proof that the guard can fail + CI. All but the CI
+          clause are satisfied here, and the CI clause is recorded honestly as unsatisfied rather than
+          asserted. The adjudication chains, finalizer runs, preserve-ref bindings, clean-clone
+          ceremony and committed receipts named in the `P6-CP-1` and `P6-CP-2` rows above are RETIRED
+          process and must not be revived.
+        nonblocking_residuals: >-
+          ### THE INDEPENDENT REVIEW RETURNED ZERO FINDINGS. The six residuals below are NOT reviewer
+          findings and must not be cited as such: they were identified at this landing from the run's
+          own structured evidence, the M6 source, the specification corpus and the CI record. Each is
+          RECORDED, NOT ACTIONED (CLAUDE.md sec 13 - the debt row is the complete deliverable). None
+          can produce a wrong customer outcome, violate an invariant, or make a later phase unsafe, and
+          the machine ships dark.
+          (P6-D41, MINOR, SPECIFICATION SEAM) The THREE sec 3.9 M6 authority questions are REPORTED,
+          NOT RESOLVED, and the code implements ONLY what every reading agrees on, INVENTS NO
+          RECONCILIATION, and says so in its own module docstring and at the migration site.
+          `M6-AQ-1` - IB-7's propagation raises a Compensation for each completed effect that rested on
+          a wrong binding, but `CorrectionInvalidatedAnEffect` appears in M1 sec 33 "events consumed"
+          with NO sec 14 row and NO registered contract (the same seam `P6-D2` records for M1, whose
+          `closes_at` is M10); the code emits the REGISTERED `ClaimCorrected` and records a durable
+          `propagation_obligation` on the claim row NAMING the completed effects, and MINTS NO
+          UNREGISTERED EVENT NAME. `M6-AQ-2` - entity sec 16's CHECK requires
+          `LINKER_INFERRED`/`RECONCILED` to carry a `rule_id`, but ADR-007 sec 4.1 step 1 (exact
+          trusted-ID match) and reconciliation carry no customer rule; the code KEEPS the CHECK exactly
+          as written and supplies a BUILT-IN MECHANISM ID (`rule:builtin-exact-trusted-id`,
+          `rule:builtin-reconciliation`) for the two deterministic mechanisms, which honours the CHECK
+          WITHOUT INVENTING A FREIGHT IDENTITY RULE - no MC+date+amount, BOL or PRO rule is defined and
+          V4 STAYS OPEN - and the alternative reading (IB-2 carries no rule_id) is REPORTED.
+          `M6-AQ-3` - `CONFLICTING` is non-terminal human-owned but M6's sec 14 gives it NO OUTGOING
+          TRANSITION, because resolution belongs to M7 which is not built; the code gives it NO
+          M6-INTERNAL EXIT while preserving the human binding intact, invents no resolution path, and
+          leaves `AutoResolve` illegal. What every reading agrees on in all three cases is what the code
+          guarantees. These are specification questions owed to a founder/architect decision, not M6
+          defects, and they close when that decision is made - NOT by a session choosing a reading
+          (CLAUDE.md sec 5).
+          (P6-D42, MINOR, CI) This commit has NO GREEN CI CONCLUSION. Pushed run 32944840998 on head
+          d70a4e7 concluded `cancelled`. `Safety invariants (fast)` success, `Full test suite (py3.11)`
+          success, `P6/M3 effect-grant probe + mutation` success, `Risk radar` skipped
+          (pull-request-only), and `Full test suite (py3.12)` CANCELLED BY THE WORKFLOW/RUNTIME CEILING
+          WHILE STILL EXECUTING, at approximately 59%, with NO pytest failure emitted and GitHub's own
+          "The operation was canceled." ### THE ONE THING THIS RUN ESTABLISHES THAT THE PREVIOUS TWO
+          DID NOT: the EXACT JOB that exposed the concurrency defect - `Safety invariants (fast)`,
+          which contains `eval/tests/test_adapter_boundary_acceptance.py`, verified mechanically at this
+          landing against `.github/workflows/ci.yml` - now PASSES on the corrected tree. A true bound:
+          `eval/tests/test_phase6_identity_binding_claim.py` is inside `pytest eval`, which is what the
+          suite job runs, and that job PASSED on Python 3.11 on this commit; the safety job's 26 files
+          are all under `eval/tests/` and are a strict subset of the same command. ### THAT IS NOT A
+          CLAIM THAT PYTHON 3.12 PASSED - a different interpreter is a different execution, and the
+          honest statement is that the repository has NO Python 3.12 result for this commit at all,
+          neither failing nor passing. (The polarity is inverted from the `P6-CP-5` landing, where 3.12
+          passed and 3.11 was cancelled; neither run gives this branch both interpreters on one commit.)
+          ### THE JOB CONCLUSIONS ABOVE WERE SUPPLIED BY THE FOUNDER AND WERE NOT RE-READ BY THE LANDING
+          SESSION - `gh run view 32944840998` was attempted from that sandbox and failed with
+          `tls: failed to verify certificate: x509: OSStatus -26276`, so a later session with network
+          access should read the run itself rather than trust this transcription. The founder has
+          explicitly chosen to proceed with the M6 landing on the evidence that exists, treating the
+          cancellation as a NON-PRODUCT CI RUNTIME LIMITATION rather than as evidence of an M6 defect;
+          that is recorded as a founder DECISION, not as a verification. It closes only by a CI run on
+          this branch that concludes SUCCESS.
+          (P6-D43, MINOR, CI COVERAGE) CI does not execute M6's probe or mutation battery. The
+          `effect-grant` job runs M3's probe and battery on every push precisely because `pytest eval`
+          does not invoke them; there is no equivalent job for M4 (`P6-D33`), M5 (`P6-D37`) or M6,
+          verified mechanically by the absence of ANY `phase6_identity_binding_claim` occurrence in
+          `.github/workflows/ci.yml`. `eval/tests/test_phase6_identity_binding_claim.py` IS inside
+          `pytest eval` and did run in the suite jobs. Closing this is a change to CI wiring, which a
+          status/evidence landing deliberately does not make.
+          (P6-D44, MINOR, EVIDENTIARY) TWO snapshots in the run's `protocol_resolution` read as
+          blockers and are STALE. `gates.independent_review: NOT_RUN` with detail "no independent review
+          recorded for this state" - a snapshot taken at 2026-08-26T07:37:35+00:00, BEFORE the review
+          executed at 07:44:00; the run's `independent-review-ledger.json` records that review with
+          `independent: true`, a reviewer session distinct from the builder's,
+          `inherited_builder_context: false`, verdict SUPPORTED, `invalidations: []` and
+          `superseded_by: ""`, and THE STRUCTURED LEDGER AND THE REVIEW RECORD ARE AUTHORITATIVE (the M6
+          analogue of `P6-D34`/`P6-D38`). And `topology.state.state: ILLEGAL`, because the driver's
+          legacy topology model read a recorded commit d59b7400a472 out of this file and compared it to
+          HEAD d70a4e78c642 - ### THAT MODEL IS THE RETIRED TWO-COMMIT CONTENT+METADATA CONVENTION the
+          2026-08 simplification removed (CLAUDE.md sec 0: no status receipt, no two-commit convention,
+          no preserve refs, no special Git topology). The run's OWN `protocol_resolution.status` is
+          CONSISTENT with `violations: []`, `deadlocks: []` and
+          `next_safe_action: "proceed: topology and authority are consistent"`. NOTHING IS OWED HERE and
+          no topology ceremony may be run on the strength of that field. Recorded so a later session
+          reading only those two blocks does not conclude a review or a finalizer is still owed.
+          (P6-D45, MINOR, EVIDENTIARY) The reviewer harness's status vocabulary labels correct behaviour
+          as failure, and eleven inspected rows establish nothing by machine. FOUR `COMMAND_ERRORED`
+          rows: three are negative controls exiting 2 exactly as designed (the harness classifies any
+          non-zero exit that way, and their scenario-derived expectation was `expect_exit_code: 0`,
+          which correct behaviour could never satisfy) and one is an argparse usage error from a
+          reviewer typo. SIX `REFUSED` rows are the reviewer's own command boundary, a limit on the
+          review and never a defect in the product, with `blocked_on.kind: NONE`. ELEVEN
+          `REVIEWER_INSPECTED` rows name NO expectation and therefore ESTABLISH NOTHING BY MACHINE,
+          including the `git status --porcelain` whose empty capture makes any substring assertion
+          vacuous - the failure mode CLAUDE.md sec 6 names - so the clean-tree claim rests on the
+          `reviewed_fingerprint` instead. Recorded so nobody reading the raw review JSON mistakes a
+          correct refusal for a defect, and so nobody cites an inspected-only row as a machine proof.
+          (P6-D46, MINOR, COVERAGE DISCLOSURE) THE FRESH RUN ACCEPTED ZERO GENERATED SCENARIOS. Nine
+          were proposed and ALL NINE REJECTED AT ASSEMBLY, each for the same reason - an unrecognised
+          `risk_category` string - with `reasoner_error: ""` and `assembly_problems: []`:
+          S1-ship-dark-isolation, S2-no-gate-no-overreach, S3-b3-relinker-retry-storm,
+          S4-competing-confirmations-race, S5-confidence-invisible-defeat, S6-cross-tenant-concurrent-race,
+          S7-correction-of-correction-obligation, S8-replay-byte-identical, S9-mutation-battery-guards-fail.
+          So the fresh run's suite is ONE permanent scenario at 293 assertions, where the STALE 460d5c7
+          run ran ten scenarios - the same permanent one plus nine generated, ALL PASSED, a further 67
+          assertions with 0 failed. A true bound: the nine rejected proposals target surfaces the
+          permanent scenario DOES exercise in its own 30 commands and 293 assertions - the ship-dark AST
+          sweeps, the gate-minter check, the B3/IB-5x guard, competing-confirmation serialization, the
+          confidence-invisibility cases, the cross-tenant cases, the correction obligation, byte-identical
+          replay and the 13/13 mutation battery - and it passed on the corrected tree. ### THAT IS NOT A
+          CLAIM THAT THE NINE GENERATED SCENARIOS WOULD HAVE PASSED ON d70a4e7: they were never assembled
+          and never run against this tree, and the honest statement is that this tree has NO RESULT for
+          them, neither passing nor failing. The stale run's passes are evidence about 460d5c7, and the
+          diff between the trees does not touch M6 - but a different tree is a different execution, and
+          this record does not launder one into the other. Closing this means a harness-taxonomy fix in
+          the Product Driver repository, which a status/evidence landing in THIS repository does not make.
+          ### `P6-D40` IS CARRIED FORWARD UNCHANGED AND UNFIXED, AND NOW CARRIES A THIRD MISS. It was
+          RE-VERIFIED AS STILL OPEN at this landing by an in-memory SIX-mutant battery over the
+          status/control guard set (`test_bootstrap_hermeticity`, `test_false_green_defenses`,
+          `test_p5_canonical_event_mint`, `test_phase0_identifiers`, `test_phase0_errata_guards`,
+          `test_phase2_guard_registry`), every mutant verified to APPLY before any result was believed,
+          the two documents saved and restored FROM MEMORY (git checkout/restore/stash/clean are
+          forbidden - CLAUDE.md sec 6), and the unmutated tree confirmed green afterwards. THE
+          DENOMINATOR IS SIX. CAUGHT: `CURRENT.md` stops naming `identity_binding_claims` ANYWHERE; P7
+          flipped BLOCKED -> READY; P6 flipped READY -> COMPLETE. ### MISSED: `CURRENT.md` deleting the
+          `identity_binding_claims` PARTITION ROW while the token still appears elsewhere in the file;
+          `P6-CP-6` scoring a P6 acceptance criterion; and `P6-CP-6` citing an
+          `independent_review_report` that is not on disk. 3 OF 6 CAUGHT. All three misses are
+          PRE-EXISTING GAPS, not defects this landing introduced. The two `P6-CP-6` misses are
+          `P6-D40`'s unchanged: `test_p5_canonical_event_mint.py` asserts empty `criteria_scored` and
+          evidence-plus-review-present for P5's landed checkpoints and there is NO P6 equivalent, so the
+          empty `criteria_scored` on all SIX P6 checkpoints rests on discipline rather than on a guard;
+          and the invariant this file's own `meta.status_model.invariants` states was enforced by
+          `test_roadmap_completeness_control.py`, which NO LONGER EXISTS IN THE TREE. ### THE THIRD MISS
+          IS NEW AND IS A REAL PROPERTY OF THE GUARD, NOT A BATTERY ARTIFACT:
+          `test_the_canonical_table_partition_is_exact_and_disjoint` asserts each table name with
+          `assert t in text` over the WHOLE of `CURRENT.md`, so deleting the partition ROW does not fail
+          it whenever the token appears anywhere else - and it now does, in this landing's own M6 cell.
+          Only COMPLETE removal fails the guard. CLAUDE.md sec 6 names this shape exactly: use
+          whole-token or structural matching, not substrings. The `P6-CP-5` record met the same
+          behaviour and classified it as a defect in ITS BATTERY; run against a second table it is
+          better read as a bound on THE GUARD. The partition's real strength is unaffected: the same
+          test asserts the SHAPE (`p6_identity_binding_claims_tenant: 1`) and the EXACTNESS and
+          DISJOINTNESS of the classes against the migrations, and both are structural.
+          ### A CORRECTION TO THIS BATTERY IS RECORDED BECAUSE IT IS THE FAILURE MODE SEC 6 EXISTS TO
+          CATCH: a first run reported two mutants as COLLECTION_ERROR and scored 0/5, because the
+          harness's classifier searched for the substring `error` anywhere in pytest output and matched
+          the interpreter's DeprecationWarning noise; both had in fact been CAUGHT (`2 failed, 103
+          passed`). The classifier was corrected to detect a real collection error and to require a
+          `failed` count before calling a non-zero exit a catch, and NO RESULT WAS BELIEVED UNTIL AFTER
+          THAT CORRECTION. Closing any of the three means WRITING GUARDS, which a status/evidence
+          landing deliberately does not do.
+          ### STANDING ITEMS CARRIED AND UNCHANGED, not new debt: `V4` (registered identity rules)
+          remains OPEN VALIDATION per machine spec sec 43 with the fail-closed default the specification
+          states (exact ID match only, else AMBIGUOUS -> human) and explicitly "not a block", and it
+          requires design-partner evidence and may never be guessed; the entity sec 45 MIGRATION HAZARD
+          is carried not closed - existing owner corrections must be re-captured as `OWNER_ASSERTED` or
+          they will be silently re-derived as `LINKER_INFERRED`, noted and not a block, and there is no
+          data to migrate while M6 ships dark; the exhaustive (state x trigger) illegal sweep is
+          exercised at REPRESENTATIVE points for M6 as it is for M3 (`P6-D30`), M4 and M5, structurally
+          mitigated because `apply()` derives legality SOLELY from `legal_transitions()`, which returns
+          empty for any non-enumerated pair, and `GR-1` then refuses uniformly - the same G1
+          phase-acceptance item, not an M6 defect; the F14 provenance-strengthening EMISSION half stays
+          deferred to Phase 7 where P5's `IR-R9` places it, while the REFUSAL is present and mandatory
+          now; `P6-D2` INTERSECTS `M6-AQ-1` and is NOT closed by it (`CorrectionInvalidatedAnEffect` has
+          no registered contract, its `closes_at` is M10, and M6 mints no substitute); and `G2-D15`,
+          `V2`, `V3` and `P6-D1`-`P6-D40` are unchanged by this landing.
+        what_it_owed: >-
+          ### DISCHARGED IN PART, AND THE UNDISCHARGED PART IS NAMED RATHER THAN ASSUMED AWAY. M6 is
+          tier-1 (CLAUDE.md sec 7): it lands a migration, it is load-bearing for tenant isolation, and it
+          decides which real-world entity an artifact belongs to, which is an input to money. Of what
+          that requires: ONE FOCUSED INDEPENDENT REVIEW BY A SESSION THAT DID NOT BUILD IT - DISCHARGED
+          (SUPPORTED, 0.90, zero findings, nine criteria PASS, bound to the CORRECTED tree d70a4e7, and
+          the reviewer executed the product rather than only reading it). MUTATION PROOF THAT THE GUARD
+          CAN FAIL - DISCHARGED (13/13 load-bearing guards proven to fail when mutated - the IB-4
+          guess-routing guard, the confidence-threshold defeat, the IB-5x OWNER_ASSERTED-overwrite guard
+          which is the B3 regression, the weak-candidate guard, the SD-6 mapping CHECK, the
+          provenance_class immutability trigger, the MODEL_EXTRACTED evidence-span CHECK, the
+          one-CONFIRMED-per-subject partial unique index, the ordinal slot-change guard, IB-6-as-overwrite,
+          the tenant predicate, the correction's propagation obligation and replay re-deriving provenance
+          - and reproduced by the reviewer). CI - ### NOT DISCHARGED: the workflow concluded `cancelled`,
+          which is recorded as `P6-D42` and is NOT upgraded to green anywhere in this record. The founder
+          chose to land on the evidence that does exist; that choice is recorded as a choice.
+          ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
+          this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
+          scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
           PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
