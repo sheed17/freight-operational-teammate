@@ -553,25 +553,52 @@ def test_illegal_transition_rolls_back_with_no_partial_state(tmp_path):
 # ================================================================ concurrency: one winner
 
 
+# The race is run REPEATEDLY, not once. The defect this guards — two threads sharing ONE SQLite
+# connection, so `BEGIN IMMEDIATE` opened the CONNECTION's transaction rather than the caller's —
+# lost the race for roughly one attempt in forty. A single-shot race is a guard that almost never
+# fires (CLAUDE.md §6), which is exactly how it reached CI as an intermittent red rather than being
+# caught here. At ~25ms per race this costs a few seconds and it can actually fail.
+CONCURRENT_RACES = 120
+
+
 def test_concurrent_execute_yields_exactly_one_effect(tmp_path):
     """Two threads race the same grant through the boundary. The claim CAS is the sole
-    serialization point: exactly one touches the world."""
-    store, kernel, clock, effect, handle, fp, request = mint_only(tmp_path)
-    adapters = [FakeTmsAdapter(approved=fp), FakeTmsAdapter(approved=fp)]
-    results: list = []
-    barrier = threading.Barrier(2)
+    serialization point: exactly one touches the world — never two, and never ZERO.
 
-    def run(a):
-        barrier.wait()
-        try:
-            results.append(eb.execute_effect(kernel, handle, params_for(effect), a.operation()))
-        except Exception as exc:  # noqa: BLE001 — SQLite may serialize with a lock error
-            results.append(exc)
+    ADR-004 §8: *"two concurrent pipelines, same commit key ⇒ exactly ONE claims"*. Zero writers is
+    not a pass merely because two writers were prevented — a valid fresh grant with two live
+    contenders owes the broker its one invoice, and a winner that dies between the claim CAS and the
+    adapter leaves a CLAIMED grant with nothing behind it. The loser may take a clean claim refusal
+    or a serialization error; what it may never take is a trip to the outside world.
+    """
+    for race in range(CONCURRENT_RACES):
+        store, kernel, clock, effect, handle, fp, request = mint_only(tmp_path / f"race{race}")
+        adapters = [FakeTmsAdapter(approved=fp), FakeTmsAdapter(approved=fp)]
+        results: dict[int, str] = {}
+        barrier = threading.Barrier(2)
 
-    threads = [threading.Thread(target=run, args=(a,)) for a in adapters]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    total_writes = sum(len(a.writes) for a in adapters)
-    assert total_writes == 1, f"exactly one thread must touch the world, saw {total_writes}"
+        def run(index, a):
+            barrier.wait()
+            try:
+                outcome = eb.execute_effect(kernel, handle, params_for(effect), a.operation())
+                results[index] = (f"returned claimed={outcome.claimed} state={outcome.state} "
+                                  f"cause={outcome.cause}")
+            except BaseException as exc:  # noqa: BLE001 — SQLite may serialize with a lock error
+                results[index] = f"raised {type(exc).__name__}: {exc}"
+
+        threads = [threading.Thread(target=run, args=(i, a)) for i, a in enumerate(adapters)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        # Report what BOTH racers did. The assertion used to print only the total, so the CI red
+        # read "saw 0" and said nothing about which thread died or why; the whole diagnosis had to
+        # be rebuilt from scratch. A concurrency assertion that cannot name the losing thread's
+        # exception is a guard that reports the symptom and withholds the evidence.
+        story = " | ".join(f"thread {i}: {len(a.writes)} write(s), {results.get(i, 'no result')}"
+                           for i, a in enumerate(adapters))
+        total_writes = sum(len(a.writes) for a in adapters)
+        assert total_writes == 1, (
+            f"exactly one thread must touch the world, saw {total_writes} "
+            f"(race {race + 1} of {CONCURRENT_RACES}) — {story}")
+        store.close()

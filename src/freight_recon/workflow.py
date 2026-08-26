@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
 from dataclasses import dataclass
@@ -177,34 +178,118 @@ class WorkflowStore:
         self._tenant = require_tenant(tenant, context=f"WorkflowStore({db_path})")
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        # The callback now runs concurrent threads (background agent operations + Slack reads + the
-        # loop), all sharing this on-disk store. WAL lets a reader and the writer proceed at once
-        # instead of blocking each other, and an explicit busy timeout turns a transient lock into a
-        # short wait rather than an OperationalError that would kill a background operation mid-write.
-        try:
-            self.conn.execute("PRAGMA journal_mode=WAL")
-        except sqlite3.OperationalError:
-            # Another process/thread may be initializing the same store. The busy timeout still protects
-            # normal transactions; this connection can proceed with the existing journal mode.
-            pass
-        self.conn.execute("PRAGMA busy_timeout=30000")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
-        # The tenant-consistent foreign keys are half of the cross-tenant relationship rule, and they
-        # do nothing at all unless this pragma actually took. It is verified, not assumed.
-        enable_and_verify_foreign_keys(self.conn)
+        # ### ONE CONNECTION PER THREAD, NEVER ONE CONNECTION SHARED BY THREADS.
+        # A SQLite transaction belongs to a CONNECTION, not to the thread that opened it. When two
+        # threads shared one connection, `BEGIN IMMEDIATE` in `_write_txn` was not "my transaction"
+        # but "the connection's transaction", so one thread's BEGIN could land inside another's,
+        # one thread's `commit()`/`rollback()` settled the other thread's work, and the write lock
+        # that is supposed to serialize a compare-and-set was never actually contended for. That is
+        # not a hypothetical: it let two threads racing ONE Effect Grant both take `rowcount == 1`
+        # on the `state = 'GRANTED'` CAS and both reach the adapter, and it let the legitimate
+        # winner die at `cannot start a transaction within a transaction` BEFORE touching the world.
+        # Both outcomes break the exactly-once contract of ADR-004 section 8 ("two concurrent
+        # pipelines, same commit key => exactly one claims").
+        #
+        # `governed_write_registry` already recorded the rule this restores - "SQLite connections
+        # are not shareable across a threading HTTP server's request threads" - and the deployed
+        # callback already opens a fresh store per request thread. This makes the store honour that
+        # by construction instead of by every caller remembering: each thread gets its OWN
+        # connection to the SAME database file, and SQLite's own write lock (with WAL and the busy
+        # timeout below) serializes them exactly as it serializes two OS processes. Nothing here is
+        # a process-local mutex, so nothing here can hide a cross-process defect.
+        self._closed = False
+        self._connections: dict[threading.Thread, sqlite3.Connection] = {}
+        self._connections_lock = threading.Lock()
         # Cached against SQLite's own DDL counter rather than a bare bool: `PRAGMA schema_version`
         # changes on every schema change, so a database altered under a live store is re-checked and
         # fails closed instead of coasting on a verdict that was true an hour ago.
         self._schema_ready_version: int | None = None
+        # `_migrate` reads through `self.conn`, so this thread's connection is opened here and an
+        # unusable database still fails at CONSTRUCTION rather than at the first query.
         self._migrate()
         # Fail HERE, not at the first query. A new binary must not open a legacy database at all:
         # its unscoped predecessor and this tenant-first schema cannot both be right.
         self._require_schema_ready()
 
+    def _open_connection(self) -> sqlite3.Connection:
+        """Open and configure ONE connection. Every thread's connection gets the identical setup -
+        a connection that reached a query without these pragmas would enforce different rules than
+        its siblings, which is worse than not having them."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        # The callback runs concurrent threads (background agent operations + Slack reads + the
+        # loop) over this on-disk store. WAL lets a reader and the writer proceed at once instead of
+        # blocking each other, and an explicit busy timeout turns a transient lock into a short wait
+        # rather than an OperationalError that would kill a background operation mid-write. Both are
+        # per-connection settings and mean nothing until each thread HAS its own connection.
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            # Another process/thread may be initializing the same store. The busy timeout still protects
+            # normal transactions; this connection can proceed with the existing journal mode.
+            pass
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        # The tenant-consistent foreign keys are half of the cross-tenant relationship rule, and they
+        # do nothing at all unless this pragma actually took. It is verified, not assumed.
+        enable_and_verify_foreign_keys(conn)
+        return conn
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """This thread's connection to this store's database. Opened on first use per thread.
+
+        Keyed on the calling THREAD OBJECT, not on `threading.get_ident()`: an OS thread id is
+        recycled after the thread ends, so an ident-keyed cache can hand a brand-new thread a dead
+        one's connection - and if that thread died mid-transaction, its unsettled transaction with
+        it. A `Thread` object is never reused while it is alive, so the mapping cannot alias.
+
+        The ONLY per-thread state here is a file handle. Tenant is not per-thread and never becomes
+        per-thread: it stays `self._tenant`, bound once at construction, with no setter - `conn`
+        cannot tell you WHO the caller is, only which connection is theirs.
+
+        Deliberately a property and not an attribute: an attribute is assignable, and a caller that
+        handed one thread's connection to another thread would reintroduce exactly the shared-
+        transaction defect this replaced.
+        """
+        if self._closed:
+            # The same failure a closed connection gave before, so a use-after-close still fails
+            # closed rather than silently reopening the database underneath the caller.
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+        me = threading.current_thread()
+        with self._connections_lock:
+            conn = self._connections.get(me)
+            if conn is not None:
+                return conn
+            # Reap the connections of threads that have ended. A long-lived store handed out one
+            # connection per worker thread would otherwise hold every file descriptor those threads
+            # ever opened. A thread that is not alive cannot be mid-transaction on its connection,
+            # and closing one that died mid-transaction rolls that transaction back, which is right.
+            dead = [self._connections.pop(t) for t in list(self._connections) if not t.is_alive()]
+        for connection in dead:  # closed OUTSIDE the lock: never hold it across I/O
+            connection.close()
+        conn = self._open_connection()
+        with self._connections_lock:
+            if self._closed:
+                # Closed while this connection was being opened: do not leak it, and do not hand
+                # back a connection to a store that has been told to stop.
+                conn.close()
+                raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+            self._connections[me] = conn
+        return conn
+
     def close(self) -> None:
-        self.conn.close()
+        """Close every connection this store opened, on whatever thread opened it.
+
+        `check_same_thread=False` is what makes closing another thread's connection legal here; it
+        is NOT a licence to run that thread's transactions, which is why `conn` is per-thread.
+        """
+        self._closed = True
+        with self._connections_lock:
+            connections = list(self._connections.values())
+            self._connections.clear()
+        for connection in connections:
+            connection.close()
 
     @property
     def tenant(self) -> str:
