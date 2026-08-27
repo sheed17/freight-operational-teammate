@@ -710,6 +710,12 @@ def test_ships_dark_no_production_importer():
 
 def test_m7_does_not_import_m6_or_m3():
     src = (ROOT / "src" / "freight_recon" / "conflict.py").read_text(encoding="utf-8")
+    # Prove the population before asserting over it: three `not in` claims are all vacuously true
+    # against an empty or truncated read, and against a re-export shim left at this path after the
+    # real M7 module moved elsewhere. Assert positively that this IS the M7 module and that its
+    # sibling-import region - the exact region the negative claims scan - was actually read.
+    assert "class M7Machine:" in src, "conflict.py is not the M7 module"
+    assert "from .event_envelope import" in src, "conflict.py sibling-import region not read"
     assert "from .identity_binding_claim import" not in src
     assert "from .external_effect import" not in src
     assert "GateDecision(" not in src and "GateRegistry(" not in src
