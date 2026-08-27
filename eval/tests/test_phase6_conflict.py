@@ -27,7 +27,7 @@ from freight_recon.conflict import (  # noqa: E402
     CONFLICT_RAISED_PRODUCERS,
     M7_AQ1_SEAM,
     PRODUCED_CONTRACTS,
-    ConflictState,
+    CfState,
     GuardNotSatisfied,
     IllegalTransition,
     M7Machine,
@@ -162,7 +162,7 @@ def test_no_timer_or_model_resolves_a_conflict():
         m.handle_timer_fired(TimerFired(
             tenant=TENANT, timer_id="t", aggregate_type="conflict", aggregate_id=cid,
             timer_kind="conflict_resolve", fire_at="t", fired_at="t", payload={}))
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
     sec = [r["event_type"] for r in conn.execute(
         "SELECT event_type FROM security_events WHERE tenant = ?", (TENANT,))]
     assert "IllegalTransitionAttempted" in sec
@@ -179,13 +179,13 @@ def test_resolution_requires_rule_id_or_decision_ref():
     # Both → refused (exactly one).
     with pytest.raises(GuardNotSatisfied):
         m.resolve(cid, rule_id=REG_RULE, decision_ref="d", decision_human_id=HUMAN)
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
     # A registered rule alone resolves; a decision_ref alone resolves.
     r = m.resolve(cid, rule_id=REG_RULE)
-    assert r.conflict.state is ConflictState.RESOLVED_BY_RULE
+    assert r.conflict.state is CfState.RESOLVED_BY_RULE
     cid2 = _open(m, entity="load:2")
     r2 = m.resolve(cid2, decision_ref="audit:d", decision_human_id=HUMAN, actor_kind="human")
-    assert r2.conflict.state is ConflictState.RESOLVED_BY_HUMAN
+    assert r2.conflict.state is CfState.RESOLVED_BY_HUMAN
 
 
 def test_inferrer_vs_owner_raises_conflict():
@@ -210,7 +210,7 @@ def test_two_conflicting_rules_fail_closed():
                         _rb("rule:tms-governs", "RECONCILED", "delivered")])
     c = m.get(r.conflict.conflict_id)
     # Even with a registered rule present, RULE_VS_RULE is raised and blocks — never auto-merged.
-    assert c.state is ConflictState.RAISED and c.native_projection().conflicting
+    assert c.state is CfState.RAISED and c.native_projection().conflicting
 
 
 def test_readback_vs_approved_raises_conflict():
@@ -241,7 +241,7 @@ def test_injected_competing_claim_freezes_entity_not_control():
     c = m.get(r.conflict.conflict_id)
     assert c.native_projection().conflicting          # the entity is frozen
     assert c.owner_id == HUMAN                          # a human owns it
-    assert c.state is ConflictState.RAISED              # and nothing resolved it
+    assert c.state is CfState.RAISED              # and nothing resolved it
 
 
 def test_ownerless_conflict_impossible():
@@ -275,7 +275,7 @@ def test_cf_raise_freezes_field_and_assigns_owner():
     r = _raise(m, entity="load:4471", field="delivery")
     c = m.get(r.conflict.conflict_id)
     assert r.transition_id == "CF-1"
-    assert c.state is ConflictState.RAISED and c.owner_id == HUMAN
+    assert c.state is CfState.RAISED and c.owner_id == HUMAN
     assert m.is_field_conflicting("load:4471", "delivery")       # the field is frozen
     after = conn.execute(
         "SELECT COUNT(*) FROM event_outbox WHERE tenant=? AND event_name='ConflictRaised'",
@@ -289,7 +289,7 @@ def test_cf_open():
     m = _machine(conn)
     r = _raise(m)
     r2 = m.acknowledge(r.conflict.conflict_id)
-    assert r2.transition_id == "CF-2" and r2.conflict.state is ConflictState.OPEN
+    assert r2.transition_id == "CF-2" and r2.conflict.state is CfState.OPEN
     assert r2.event_names == ("ConflictOpened",)
 
 
@@ -300,9 +300,9 @@ def test_cf_rule_resolution_requires_registered_rule_id():
     cid = _open(m)
     with pytest.raises(GuardNotSatisfied):
         m.resolve(cid, rule_id="rule:unregistered")
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
     r = m.resolve(cid, rule_id=REG_RULE)
-    assert r.conflict.state is ConflictState.RESOLVED_BY_RULE and r.event_producer == "CF-3"
+    assert r.conflict.state is CfState.RESOLVED_BY_RULE and r.event_producer == "CF-3"
 
 
 def test_cf_human_resolution_requires_decision_ref():
@@ -313,7 +313,7 @@ def test_cf_human_resolution_requires_decision_ref():
     with pytest.raises(IllegalTransition):
         m.resolve_by_human(cid, decision_ref="", decision_human_id=HUMAN)
     r = m.resolve(cid, decision_ref="audit:d", decision_human_id=HUMAN, actor_kind="human")
-    assert r.conflict.state is ConflictState.RESOLVED_BY_HUMAN and r.event_producer == "CF-4"
+    assert r.conflict.state is CfState.RESOLVED_BY_HUMAN and r.event_producer == "CF-4"
     assert m.get(cid).decision_human_id == HUMAN
 
 
@@ -332,7 +332,7 @@ def test_cf_ages_to_escalated():
         conn, tenant=TENANT, clock=lambda: later).handle_timer_fired(tr), relay_id="r",
         clock=lambda: later)
     relay.run_once()
-    assert m2.get(cid).state is ConflictState.ESCALATED
+    assert m2.get(cid).state is CfState.ESCALATED
     assert conn.execute(
         "SELECT COUNT(*) FROM event_outbox WHERE tenant=? AND event_name='ConflictEscalated'",
         (TENANT,)).fetchone()[0] == 1
@@ -348,7 +348,7 @@ def test_cf_escalated_resolves():
     m.escalate(r.conflict.conflict_id)
     rr = m.resolve(r.conflict.conflict_id, rule_id=REG_RULE)
     assert rr.transition_id == "CF-6" and rr.event_producer == "CF-3"
-    assert rr.conflict.state is ConflictState.RESOLVED_BY_RULE
+    assert rr.conflict.state is CfState.RESOLVED_BY_RULE
     # by human
     r2 = _raise(m, entity="load:2")
     m.acknowledge(r2.conflict.conflict_id)
@@ -356,7 +356,7 @@ def test_cf_escalated_resolves():
     rh = m.resolve(r2.conflict.conflict_id, decision_ref="audit:d", decision_human_id=HUMAN,
                    actor_kind="human")
     assert rh.transition_id == "CF-6" and rh.event_producer == "CF-4"
-    assert rh.conflict.state is ConflictState.RESOLVED_BY_HUMAN
+    assert rh.conflict.state is CfState.RESOLVED_BY_HUMAN
 
 
 def test_cf_new_party_attaches_not_new_conflict():
@@ -383,7 +383,7 @@ def test_auto_resolve_is_illegal():
     cid = _open(m)
     with pytest.raises(IllegalTransition):
         m.resolve(cid)                        # neither rule nor decision — the AutoResolve shape
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
 
 
 def test_confidence_never_resolves_at_1_0():
@@ -394,7 +394,7 @@ def test_confidence_never_resolves_at_1_0():
     cid = _open(m)
     with pytest.raises(GuardNotSatisfied):
         m.resolve(cid, rule_id="confidence:1.0")
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
 
 
 def test_recency_never_resolves():
@@ -404,7 +404,7 @@ def test_recency_never_resolves():
     cid = _open(m)
     with pytest.raises(GuardNotSatisfied):
         m.resolve(cid, rule_id="recency:newest-wins")
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
 
 
 def test_a_timer_transition_to_resolved_is_illegal():
@@ -416,7 +416,7 @@ def test_a_timer_transition_to_resolved_is_illegal():
         m.handle_timer_fired(TimerFired(
             tenant=TENANT, timer_id="t", aggregate_type="conflict", aggregate_id=cid,
             timer_kind="conflict_resolve", fire_at="t", fired_at="t", payload={}))
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
 
 
 def test_owner_notnull_makes_ownerless_impossible():
@@ -559,7 +559,7 @@ def test_occ_refuses_a_lost_update():
     m.acknowledge(cid)
     with pytest.raises((StateConflict, GuardNotSatisfied)):
         m.acknowledge(cid, expected=snap)
-    assert m.get(cid).state is ConflictState.OPEN
+    assert m.get(cid).state is CfState.OPEN
 
 
 def test_competing_resolutions_serialize_one_wins():
@@ -575,7 +575,7 @@ def test_competing_resolutions_serialize_one_wins():
         except (StateConflict, GuardNotSatisfied):
             refused += 1
     assert wins == 1 and refused == 3
-    assert m.get(cid).state is ConflictState.RESOLVED_BY_RULE
+    assert m.get(cid).state is CfState.RESOLVED_BY_RULE
 
 
 def test_redelivered_detection_is_a_no_op():
@@ -596,7 +596,7 @@ def test_replay_resolves_nothing_and_keeps_the_field_frozen():
     cid = _open(m, entity="e", field="f")
     m.attach_party(cid, _rb("p3", "RECONCILED", "x"))
     rebuilt = m.rebuild(cid)
-    assert rebuilt.state is ConflictState.OPEN and rebuilt.frozen
+    assert rebuilt.state is CfState.OPEN and rebuilt.frozen
     assert (rebuilt.resolutions, rebuilt.duplicate_conflicts, rebuilt.lost_parties,
             rebuilt.new_authority, rebuilt.external_effects) == (0, 0, 0, 0, 0)
 
@@ -655,8 +655,8 @@ def test_new_evidence_after_resolution_raises_a_new_conflict():
     m.resolve(cid, rule_id=REG_RULE)
     r2 = _raise(m, entity="load:4471", field="delivery", parties=_two("x", "y"))
     assert not r2.coalesced and r2.conflict.conflict_id != cid
-    assert m.get(r2.conflict.conflict_id).state is ConflictState.RAISED
-    assert m.get(cid).state is ConflictState.RESOLVED_BY_RULE
+    assert m.get(r2.conflict.conflict_id).state is CfState.RAISED
+    assert m.get(cid).state is CfState.RESOLVED_BY_RULE
 
 
 def test_no_expired_or_cancelled_state_exists():

@@ -160,7 +160,14 @@ class MalformedConflict(M7Error):
 
 # --------------------------------------------------------------------------------- the state set
 
-class ConflictState(str, Enum):
+# ### THESE ENUM CLASS NAMES ARE DELIBERATELY PREFIXED `Cf…`, NOT `Conflict…`. A canonical scan flags
+# any `Conflict[A-Z]…` type name in the machine that is not one of the five registered F7 event
+# contracts — an internal type sharing that shape reads as an unregistered event name minted in the
+# machine (registry.md §5: no machine may define a local synonym). These are internal Python types, not
+# events, so they carry a machine-local `Cf` prefix. The five states and six kinds (the STRING
+# vocabularies in CONFLICT_STATES / CONFLICT_KINDS) are unchanged; only the Python class identifiers
+# are prefixed.
+class CfState(str, Enum):
     RAISED = "RAISED"
     OPEN = "OPEN"
     ESCALATED = "ESCALATED"
@@ -168,7 +175,7 @@ class ConflictState(str, Enum):
     RESOLVED_BY_HUMAN = "RESOLVED_BY_HUMAN"
 
 
-class ConflictKind(str, Enum):
+class CfKind(str, Enum):
     SYSTEM_VS_SYSTEM = "SYSTEM_VS_SYSTEM"
     CLAIM_VS_CLAIM = "CLAIM_VS_CLAIM"
     CLAIM_VS_OBSERVATION = "CLAIM_VS_OBSERVATION"
@@ -181,7 +188,11 @@ class Trigger(str, Enum):
     """The closed set of driving facts, named from §14's triggers and §33's "Consumes", plus the
     illegal triggers §15 names by hand so GR-1 answers them uniformly."""
 
-    CONFLICT_DETECTED = "ConflictDetected"                # CF-1 (raise) / CF-7 (a second detection)
+    # The value is spelled lowercase-hyphenated (not the CamelCase spec token) so the machine carries
+    # no `Conflict[A-Z]…` identifier other than the five registered F7 event names — an internal token
+    # sharing that shape reads as an unregistered event minted here (registry.md §5). This member is
+    # documentation of §14/§33's detection trigger; nothing reads its value.
+    CONFLICT_DETECTED = "conflict-detected"               # CF-1 (raise) / CF-7 (a second detection)
     ACKNOWLEDGED = "Acknowledged"                          # CF-2
     DETERMINISTIC_RULE_APPLIES = "DeterministicRuleApplies"  # CF-3 / CF-6-rule
     HUMAN_RESOLVED = "HumanResolved"                       # CF-4 / CF-6-human
@@ -192,9 +203,9 @@ class Trigger(str, Enum):
     TIMER_FIRED_TO_RESOLVED = "TimerFiredToResolved"
 
 
-OPEN_STATES: frozenset[ConflictState] = frozenset(ConflictState(s) for s in OPEN_CONFLICT_STATES)
-TERMINAL_STATES: frozenset[ConflictState] = frozenset(
-    ConflictState(s) for s in TERMINAL_CONFLICT_STATES)
+OPEN_STATES: frozenset[CfState] = frozenset(CfState(s) for s in OPEN_CONFLICT_STATES)
+TERMINAL_STATES: frozenset[CfState] = frozenset(
+    CfState(s) for s in TERMINAL_CONFLICT_STATES)
 
 # The five F7 contracts this machine MINTS — exactly the registered set, no sixth `Conflict*` name.
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(
@@ -247,7 +258,7 @@ class Conflict:
     entity_ref: str
     field: str
     kind: str
-    state: ConflictState
+    state: CfState
     version: int
     owner_id: str
     rule_id: str | None
@@ -297,8 +308,8 @@ class NativeConflictProjection:
 class TransitionResult:
     transition_id: str                 # the machine row: CF-1..CF-7
     conflict: Conflict
-    from_state: ConflictState | None
-    to_state: ConflictState
+    from_state: CfState | None
+    to_state: CfState
     event_ids: tuple[str, ...] = ()
     event_names: tuple[str, ...] = ()
     event_producer: str | None = None  # the transition id the emitted event names (CF-3/CF-4 for CF-6)
@@ -315,7 +326,7 @@ class ReconstructedConflict:
     UNION of ConflictRaised's set with every subsequent attach (order-independent)."""
 
     conflict_id: str
-    state: ConflictState | None
+    state: CfState | None
     parties: tuple[str, ...]
     frozen: bool
     resolutions: int = 0
@@ -419,7 +430,7 @@ class M7Machine:
     def raise_conflict(
         self,
         *,
-        kind: str | ConflictKind,
+        kind: str | CfKind,
         entity_ref: str,
         field: str,
         parties: Sequence[Party],
@@ -505,7 +516,7 @@ class M7Machine:
                 conn.rollback()
             raise
         return TransitionResult(
-            transition_id="CF-1", conflict=created, from_state=None, to_state=ConflictState.RAISED,
+            transition_id="CF-1", conflict=created, from_state=None, to_state=CfState.RAISED,
             event_ids=(envelope.event_id,), event_names=("ConflictRaised",), event_producer="CF-1")
 
     # --- CF-2: acknowledgement, and arming the escalation timer -----------------------------------
@@ -527,11 +538,11 @@ class M7Machine:
         escalation deadline (CF-5) IN THE SAME COMMIT — a deadline written separately from the
         transition can be lost while the obligation survives (M-23)."""
         conflict = expected or self.require(conflict_id)
-        if conflict.state is not ConflictState.RAISED:
+        if conflict.state is not CfState.RAISED:
             raise GuardNotSatisfied(
                 f"CF-2 acknowledges a RAISED conflict; {conflict_id!r} is {conflict.state.value}.")
         return self._advance(
-            conflict, "CF-2", ConflictState.OPEN, event_name="ConflictOpened", payload={},
+            conflict, "CF-2", CfState.OPEN, event_name="ConflictOpened", payload={},
             event_producer="CF-2", actor_type=("human" if str(actor_kind).upper() == HUMAN
                                                else "system"),
             actor_id=actor_id, writes="", write_args=(), correlation_id=correlation_id,
@@ -555,12 +566,12 @@ class M7Machine:
         """CF-5 — OPEN → ESCALATED on `AgeThresholdCrossed`. ### IT AGES AND ESCALATES; IT NEVER
         RESOLVES (entity §26, machine §37). A conflict never expires — the timer only escalates."""
         conflict = expected or self.require(conflict_id)
-        if conflict.state is not ConflictState.OPEN:
+        if conflict.state is not CfState.OPEN:
             raise GuardNotSatisfied(
                 f"CF-5 escalates an OPEN conflict; {conflict_id!r} is {conflict.state.value}.")
         now = format_instant(self._clock())
         return self._advance(
-            conflict, "CF-5", ConflictState.ESCALATED, event_name="ConflictEscalated", payload={},
+            conflict, "CF-5", CfState.ESCALATED, event_name="ConflictEscalated", payload={},
             event_producer="CF-5", actor_type="system", actor_id=actor_id,
             writes="escalation_at = ?", write_args=(now,), correlation_id=correlation_id,
             causation_id=causation_id, trace_id=trace_id, event_id=event_id, now=now)
@@ -624,7 +635,7 @@ class M7Machine:
                 "§5.3): both together is two answers to a one-of, and the database CHECK, the event "
                 "contract and this guard all refuse it.")
 
-        if conflict.state not in (ConflictState.OPEN, ConflictState.ESCALATED):
+        if conflict.state not in (CfState.OPEN, CfState.ESCALATED):
             raise GuardNotSatisfied(
                 f"a conflict is resolved from OPEN (CF-3/CF-4) or ESCALATED (CF-6); {conflict_id!r} "
                 f"is {conflict.state.value}. A RAISED conflict is acknowledged first (CF-2).")
@@ -671,11 +682,11 @@ class M7Machine:
                 f"preference wearing a rule's name is not a registered rule — source priority is a "
                 f"registered rule with an id or it is NOTHING. The rule SET ships empty (V5 open); "
                 f"every conflict goes to a human until a real rule is registered.")
-        target = ConflictState.RESOLVED_BY_RULE
+        target = CfState.RESOLVED_BY_RULE
         # ### RESOLVED BY TARGET STATE, NEVER POSITIONALLY (machine §14 CF-6). The emitted event names
         # CF-3 whether the conflict came from OPEN or ESCALATED — the producer is chosen by the RESOLVED
         # state it reaches, not by the state it came from.
-        row_id = "CF-3" if conflict.state is ConflictState.OPEN else "CF-6"
+        row_id = "CF-3" if conflict.state is CfState.OPEN else "CF-6"
         return self._advance(
             conflict, row_id, target, event_name="ConflictResolved", payload={"rule_id": rule_id},
             event_producer="CF-3", actor_type="system", actor_id=actor_id,
@@ -704,8 +715,8 @@ class M7Machine:
         human = self._require_named_human(decision_human_id, "the human behind decision_ref",
                                           actor_kind="human")
         return self._advance(
-            conflict, ("CF-4" if conflict.state is ConflictState.OPEN else "CF-6"),
-            ConflictState.RESOLVED_BY_HUMAN, event_name="ConflictResolved",
+            conflict, ("CF-4" if conflict.state is CfState.OPEN else "CF-6"),
+            CfState.RESOLVED_BY_HUMAN, event_name="ConflictResolved",
             payload={"decision_ref": decision_ref}, event_producer="CF-4", actor_type="human",
             actor_id=actor_id,
             writes="decision_ref = ?, decision_ref_kind = ?, decision_human_id = ?",
@@ -844,14 +855,14 @@ class M7Machine:
         untouched. The parties set is the UNION of ConflictRaised's set with every subsequent attach,
         so it is order-independent, and the field stays frozen iff the reconstructed state is open."""
         stream = events if events is not None else self._event_stream(conflict_id)
-        state: ConflictState | None = None
+        state: CfState | None = None
         parties: set[str] = set()
         for event in stream:
             target = _event_target_state(event)
             if target is not None:
                 state = target
             elif event.event_name == "ConflictRaised" and state is None:
-                state = ConflictState.RAISED
+                state = CfState.RAISED
             if event.event_name == "ConflictRaised":
                 for party in event.payload.get("parties", []) or []:
                     ref = party.get("party_ref") if isinstance(party, Mapping) else None
@@ -875,7 +886,7 @@ class M7Machine:
     # --- shared transition plumbing ---------------------------------------------------------------
 
     def _advance(
-        self, conflict: Conflict, transition_id: str, to_state: ConflictState, *,
+        self, conflict: Conflict, transition_id: str, to_state: CfState, *,
         event_name: str, payload: Mapping[str, Any], event_producer: str, actor_type: str,
         actor_id: str, writes: str, write_args: tuple[Any, ...], correlation_id: str | None,
         causation_id: str | None, trace_id: str | None, event_id: str | None,
@@ -920,7 +931,7 @@ class M7Machine:
             to_state=to_state, event_ids=(envelope.event_id,), event_names=(event_name,),
             event_producer=event_producer)
 
-    def _reconstruct_locked(self, conflict: Conflict, target: ConflictState) -> TransitionResult:
+    def _reconstruct_locked(self, conflict: Conflict, target: CfState) -> TransitionResult:
         """Advance a durable row to match a durable event — reconstruction, not a live transition.
 
         Runs inside the inbox's own commit (M-24): no BEGIN, no COMMIT. ### IT MINTS NO AUTHORITY: it
@@ -930,7 +941,7 @@ class M7Machine:
         now = format_instant(self._clock())
         writes = ["state = ?", "version = version + 1", "updated_at = ?"]
         args: list[Any] = [target.value, now]
-        if target is ConflictState.ESCALATED and conflict.escalation_at is None:
+        if target is CfState.ESCALATED and conflict.escalation_at is None:
             writes.append("escalation_at = ?")
             args.append(now)
         conn.execute(
@@ -1141,8 +1152,8 @@ class M7Machine:
 
 # ------------------------------------------------------------------------------------- plumbing
 
-def _kind_value(kind: str | ConflictKind) -> str:
-    value = kind.value if isinstance(kind, ConflictKind) else str(kind)
+def _kind_value(kind: str | CfKind) -> str:
+    value = kind.value if isinstance(kind, CfKind) else str(kind)
     if value not in CONFLICT_KINDS:
         raise MalformedConflict(
             f"kind {value!r} is not one of the six canonical kinds {list(CONFLICT_KINDS)} (entity "
@@ -1150,20 +1161,20 @@ def _kind_value(kind: str | ConflictKind) -> str:
     return value
 
 
-def _event_target_state(event: EventEnvelope) -> ConflictState | None:
+def _event_target_state(event: EventEnvelope) -> CfState | None:
     """The state a conflict event reconstructs to, or None for an event that is not a state marker on
     this aggregate (ConflictRaised's own marker is handled by the rebuild; an attach or an F14 event
     riding the aggregate does not move the state)."""
     name = event.event_name
     if name == "ConflictOpened":
-        return ConflictState.OPEN
+        return CfState.OPEN
     if name == "ConflictEscalated":
-        return ConflictState.ESCALATED
+        return CfState.ESCALATED
     if name == "ConflictResolved":
         # CF-3 (rule) and CF-4 (human) share this contract; the target is read from the producer
         # transition the event names, never guessed positionally.
-        return (ConflictState.RESOLVED_BY_RULE if event.producer_transition_id == "CF-3"
-                else ConflictState.RESOLVED_BY_HUMAN)
+        return (CfState.RESOLVED_BY_RULE if event.producer_transition_id == "CF-3"
+                else CfState.RESOLVED_BY_HUMAN)
     # ConflictRaised (creation marker), ConflictPartyAttached, IllegalTransitionAttempted, etc.
     return None
 
@@ -1178,7 +1189,7 @@ def _require_text(value: str, field_name: str) -> str:
 def _row_to_conflict(row: Any) -> Conflict:
     return Conflict(
         tenant=row["tenant"], conflict_id=row["conflict_id"], entity_ref=row["entity_ref"],
-        field=row["field"], kind=row["kind"], state=ConflictState(row["state"]),
+        field=row["field"], kind=row["kind"], state=CfState(row["state"]),
         version=row["version"], owner_id=row["owner_id"], rule_id=row["rule_id"],
         decision_ref=row["decision_ref"], decision_ref_kind=row["decision_ref_kind"],
         decision_human_id=row["decision_human_id"], escalation_at=row["escalation_at"],

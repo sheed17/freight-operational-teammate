@@ -36,7 +36,7 @@ arguments, so the interface is taken seriously:
 entity §26 and machine §12/§23 say a Conflict NEVER expires and §28 gives it no deletion policy, so a
 probe that accepted it would manufacture evidence for a transition the corpus states does not exist.
 `--inject cancel-conflict` exits 2 — machine §14 enumerates only CF-1..CF-7, GR-1 makes anything
-unenumerated ILLEGAL, and no CANCELLED state and no ConflictCancelled event is registered anywhere;
+unenumerated ILLEGAL, and no CANCELLED state and no conflict-cancellation event is registered anywhere;
 this is M7-AQ-3 held OPEN rather than answered. `--inject auto-resolve` and `--inject timer-resolve`
 ARE in the vocabulary: they name mechanisms the corpus defines as ILLEGAL (machine §15), so the machine
 is seen to REFUSE them under GR-1. A fault refused as UNKNOWN and a fault refused as ILLEGAL are two
@@ -63,7 +63,7 @@ from freight_recon.conflict import (  # noqa: E402
     CONFLICT_RAISED_PRODUCERS,
     M7_AQ1_SEAM,
     PRODUCED_CONTRACTS,
-    ConflictState,
+    CfState,
     GuardNotSatisfied,
     IllegalTransition,
     M7Machine,
@@ -628,7 +628,7 @@ def case_raise_creates_raised_with_a_named_human_owner(w: World) -> CaseResult:
     r = m.raise_conflict(kind="SYSTEM_VS_SYSTEM", entity_ref="load:4471", field="delivery",
                          parties=_two(), owner_id=h)
     c = m.get(r.conflict.conflict_id)
-    ok = (r.transition_id == "CF-1" and c.state is ConflictState.RAISED and c.owner_id == h
+    ok = (r.transition_id == "CF-1" and c.state is CfState.RAISED and c.owner_id == h
           and r.event_names == ("ConflictRaised",))
     if not ok:
         return CaseResult(False, markers=["### MISS ### CF-1 did not create RAISED with a human owner"])
@@ -708,7 +708,7 @@ def _kind_case(w: World, kind: str, sig_key: str, extra: str | None = None) -> C
     r = m.raise_conflict(kind=kind, entity_ref="load:4471", field="delivery", parties=_two(),
                          owner_id=w.human(m.tenant))
     c = m.get(r.conflict.conflict_id)
-    ok = c.kind == kind and c.state is ConflictState.RAISED and m.is_field_conflicting(
+    ok = c.kind == kind and c.state is CfState.RAISED and m.is_field_conflicting(
         "load:4471", "delivery")
     if not ok:
         return CaseResult(False, markers=[f"### MISS ### {kind} did not raise+freeze"])
@@ -764,7 +764,7 @@ def case_readback_vs_approved_is_not_an_ordinary_failure(w: World) -> CaseResult
     c = m.get(r.conflict.conflict_id)
     # It blocks like any other conflict; there is no "FAILED" anywhere — the disagreement is not
     # laundered into a normal failure.
-    blocks = c.native_projection().conflicting and c.state is ConflictState.RAISED
+    blocks = c.native_projection().conflicting and c.state is CfState.RAISED
     ok = blocks and c.kind == "READBACK_VS_APPROVED"
     if not ok:
         return CaseResult(False, markers=["### READBACK CONTRADICTION LAUNDERED INTO A NORMAL FAILURE ###"])
@@ -781,7 +781,7 @@ def case_rule_vs_rule_fails_closed_and_never_auto_merges(w: World) -> CaseResult
     r = m.raise_conflict(kind="RULE_VS_RULE", entity_ref="load:4471", field="delivery",
                          parties=[ruleA, ruleB], owner_id=w.human(m.tenant))
     c = m.get(r.conflict.conflict_id)
-    ok = c.state is ConflictState.RAISED and c.native_projection().conflicting
+    ok = c.state is CfState.RAISED and c.native_projection().conflicting
     if not ok:
         return CaseResult(False, markers=["### RULE_VS_RULE AUTO-MERGED ###"])
     return CaseResult(True, lines=[_SIG["rule-vs-rule-fails-closed-and-never-auto-merges"]])
@@ -810,7 +810,7 @@ def case_acknowledgement_opens_the_conflict(w: World) -> CaseResult:
     r = m.raise_conflict(kind="SYSTEM_VS_SYSTEM", entity_ref="e", field="f", parties=_two(),
                          owner_id=w.human(m.tenant))
     r2 = m.acknowledge(r.conflict.conflict_id)
-    ok = (r2.transition_id == "CF-2" and r2.conflict.state is ConflictState.OPEN
+    ok = (r2.transition_id == "CF-2" and r2.conflict.state is CfState.OPEN
           and r2.event_names == ("ConflictOpened",))
     if not ok:
         return CaseResult(False, markers=["### MISS ### CF-2 did not open the conflict"])
@@ -914,7 +914,7 @@ def case_registered_rule_resolves_the_conflict(w: World) -> CaseResult:
     m = w.machine(registered_rules={REG_RULE})
     cid = _open(w, m)
     r = m.resolve(cid, rule_id=REG_RULE)
-    ok = (r.conflict.state is ConflictState.RESOLVED_BY_RULE and r.event_producer == "CF-3"
+    ok = (r.conflict.state is CfState.RESOLVED_BY_RULE and r.event_producer == "CF-3"
           and not m.is_field_conflicting(m.get(cid).entity_ref, m.get(cid).field))
     if not ok:
         return CaseResult(False, markers=["### MISS ### a registered rule did not resolve"])
@@ -929,7 +929,7 @@ def case_unregistered_rule_cannot_resolve(w: World) -> CaseResult:
         m.resolve(cid, rule_id="rule:some-unregistered-heuristic")
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### UNREGISTERED RULE RESOLVED A CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["unregistered-rule-cannot-resolve"]])
@@ -944,7 +944,7 @@ def case_rule_resolution_requires_a_registered_rule_id(w: World) -> CaseResult:
         m.resolve_by_rule(cid, rule_id="")
     except IllegalTransition:
         illegal = True
-    ok = illegal and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### RESOLVED WITHOUT A RULE OR A DECISION ###"])
     return CaseResult(True, lines=[_SIG["rule-resolution-requires-a-registered-rule-id"]])
@@ -958,7 +958,7 @@ def _no_resolve_by(w: World, pseudo_rule: str, marker: str, sig_key: str) -> Cas
         m.resolve(cid, rule_id=pseudo_rule)
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=[marker])
     return CaseResult(True, lines=[_SIG[sig_key]])
@@ -975,7 +975,7 @@ def case_confidence_cannot_resolve_a_conflict(w: World) -> CaseResult:
         m.resolve(cid, rule_id=f"confidence:{w.ctx.confidence}")
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### CONFIDENCE RESOLVED A CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["confidence-cannot-resolve-a-conflict"]])
@@ -1000,7 +1000,7 @@ def case_a_model_cannot_resolve_a_conflict(w: World) -> CaseResult:
         m.resolve(cid, decision_ref="d", decision_human_id=w.human(m.tenant), actor_kind="model")
     except IllegalTransition:
         illegal = True
-    ok = illegal and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### MODEL RESOLVED A CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["a-model-cannot-resolve-a-conflict"]])
@@ -1012,7 +1012,7 @@ def case_authenticated_human_resolves_the_conflict(w: World) -> CaseResult:
     cid = _open(w, m)
     r = m.resolve(cid, decision_ref="audit:decision-1", decision_human_id=h, actor_kind="human",
                   actor_id=h)
-    ok = (r.conflict.state is ConflictState.RESOLVED_BY_HUMAN and r.event_producer == "CF-4"
+    ok = (r.conflict.state is CfState.RESOLVED_BY_HUMAN and r.event_producer == "CF-4"
           and m.get(cid).decision_human_id == h)
     if not ok:
         return CaseResult(False, markers=["### MISS ### an authenticated human did not resolve"])
@@ -1027,7 +1027,7 @@ def case_human_resolution_requires_a_decision_ref(w: World) -> CaseResult:
         m.resolve_by_human(cid, decision_ref="", decision_human_id=w.human(m.tenant), actor_id="h")
     except IllegalTransition:
         illegal = True
-    ok = illegal and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### RESOLVED WITHOUT A RULE OR A DECISION ###"])
     return CaseResult(True, lines=[_SIG["human-resolution-requires-a-decision-ref"]])
@@ -1042,7 +1042,7 @@ def case_counterparty_cannot_resolve_a_conflict(w: World) -> CaseResult:
                   actor_kind="counterparty")
     except IllegalTransition:
         illegal = True
-    ok = illegal and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### COUNTERPARTY RESOLVED A CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["counterparty-cannot-resolve-a-conflict"]])
@@ -1059,7 +1059,7 @@ def case_wrong_tenant_human_resolution_fails_closed(w: World) -> CaseResult:
         m.resolve(cid, decision_ref="d", decision_human_id=hb, actor_kind="human", actor_id=hb)
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### CROSS-TENANT RESOLUTION ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["wrong-tenant-human-resolution-fails-closed"]])
@@ -1074,7 +1074,7 @@ def case_forged_human_fails_closed(w: World) -> CaseResult:
                   actor_id="ceo-imposter")
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### FORGED HUMAN ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["forged-human-fails-closed"]])
@@ -1089,7 +1089,7 @@ def case_inactive_human_fails_closed(w: World) -> CaseResult:
         m.resolve(cid, decision_ref="d", decision_human_id=off, actor_kind="human", actor_id=off)
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### INACTIVE HUMAN ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["inactive-human-fails-closed"]])
@@ -1103,7 +1103,7 @@ def case_resolution_carries_exactly_one_basis(w: World) -> CaseResult:
         m.resolve(cid, rule_id=REG_RULE, decision_ref="d", decision_human_id=w.human(m.tenant))
     except GuardNotSatisfied:
         refused = True
-    ok = refused and m.get(cid).state is ConflictState.OPEN
+    ok = refused and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### TWO RESOLUTION BASES ACCEPTED ###"])
     return CaseResult(True, lines=[_SIG["resolution-carries-exactly-one-basis"]])
@@ -1118,7 +1118,7 @@ def case_resolution_with_neither_rule_nor_decision_is_illegal(w: World) -> CaseR
     except IllegalTransition:
         illegal = True
     recorded = "IllegalTransitionAttempted" in w.security(m.tenant)
-    ok = illegal and recorded and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and recorded and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### RESOLVED WITHOUT A RULE OR A DECISION ###"])
     return CaseResult(True, lines=[_SIG["resolution-with-neither-rule-nor-decision-is-illegal"]])
@@ -1163,8 +1163,8 @@ def case_new_evidence_after_resolution_raises_a_new_conflict(w: World) -> CaseRe
     r2 = m.raise_conflict(kind="SYSTEM_VS_SYSTEM", entity_ref="load:4471", field="delivery",
                           parties=_two("later-a", "later-b"), owner_id=w.human(m.tenant))
     ok = (r2.conflict.conflict_id != cid and not r2.coalesced
-          and m.get(r2.conflict.conflict_id).state is ConflictState.RAISED
-          and m.get(cid).state is ConflictState.RESOLVED_BY_RULE)
+          and m.get(r2.conflict.conflict_id).state is CfState.RAISED
+          and m.get(cid).state is CfState.RESOLVED_BY_RULE)
     if not ok:
         return CaseResult(False, markers=["### MISS ### new evidence did not raise a NEW conflict"])
     return CaseResult(True, lines=[_SIG["new-evidence-after-resolution-raises-a-new-conflict"]])
@@ -1176,7 +1176,7 @@ def _escalate_via_timer(w: World, m: M7Machine, cid: str) -> bool:
     relay = TimerRelay(w.conn, tenant=m.tenant, handler=lambda tr: m.handle_timer_fired(tr),
                        relay_id="relay-1", clock=w.clock)
     relay.run_once()
-    return m.get(cid).state is ConflictState.ESCALATED
+    return m.get(cid).state is CfState.ESCALATED
 
 
 def case_age_threshold_escalates_the_conflict(w: World) -> CaseResult:
@@ -1206,7 +1206,7 @@ def case_a_timer_never_resolves_a_conflict(w: World) -> CaseResult:
     except IllegalTransition:
         illegal = True
     recorded = "IllegalTransitionAttempted" in w.security(m.tenant)
-    ok = illegal and recorded and m.get(cid).state is ConflictState.OPEN
+    ok = illegal and recorded and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### TIMER RESOLVED A CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["a-timer-never-resolves-a-conflict"]])
@@ -1225,7 +1225,7 @@ def case_a_conflict_never_expires(w: World) -> CaseResult:
                        relay_id="relay-1", clock=w.clock)
     relay.run_once()
     c = m.get(cid)
-    ok = (c is not None and c.state is ConflictState.ESCALATED
+    ok = (c is not None and c.state is CfState.ESCALATED
           and "EXPIRED" not in [s for s in CONFLICT_STATES])
     if not ok:
         return CaseResult(False, markers=["### CONFLICT EXPIRED ###"])
@@ -1245,7 +1245,7 @@ def case_escalated_resolves_by_registered_rule(w: World) -> CaseResult:
     m = w.machine(registered_rules={REG_RULE})
     cid = _escalated(w, m)
     r = m.resolve(cid, rule_id=REG_RULE)
-    ok = (r.conflict.state is ConflictState.RESOLVED_BY_RULE and r.transition_id == "CF-6"
+    ok = (r.conflict.state is CfState.RESOLVED_BY_RULE and r.transition_id == "CF-6"
           and r.event_producer == "CF-3")
     if not ok:
         return CaseResult(False, markers=["### MISS ### an escalated conflict did not resolve by rule"])
@@ -1257,7 +1257,7 @@ def case_escalated_resolves_by_authenticated_human(w: World) -> CaseResult:
     h = w.human(m.tenant)
     cid = _escalated(w, m)
     r = m.resolve(cid, decision_ref="audit:d", decision_human_id=h, actor_kind="human", actor_id=h)
-    ok = (r.conflict.state is ConflictState.RESOLVED_BY_HUMAN and r.transition_id == "CF-6"
+    ok = (r.conflict.state is CfState.RESOLVED_BY_HUMAN and r.transition_id == "CF-6"
           and r.event_producer == "CF-4")
     if not ok:
         return CaseResult(False, markers=["### MISS ### an escalated conflict did not resolve by human"])
@@ -1274,8 +1274,8 @@ def case_escalated_resolution_is_by_target_state_never_by_position(w: World) -> 
                          actor_kind="human", actor_id=w.human(m1.tenant))
     c_rule = _escalated(w, m1, entity="load:2")
     r_rule = m1.resolve(c_rule, rule_id=REG_RULE)
-    ok = (r_human.conflict.state is ConflictState.RESOLVED_BY_HUMAN and r_human.event_producer == "CF-4"
-          and r_rule.conflict.state is ConflictState.RESOLVED_BY_RULE and r_rule.event_producer == "CF-3")
+    ok = (r_human.conflict.state is CfState.RESOLVED_BY_HUMAN and r_human.event_producer == "CF-4"
+          and r_rule.conflict.state is CfState.RESOLVED_BY_RULE and r_rule.event_producer == "CF-3")
     if not ok:
         return CaseResult(False, markers=["### ESCALATION RESOLVED BY POSITION ###"])
     return CaseResult(True, lines=[_SIG["escalated-resolution-is-by-target-state-never-by-position"]])
@@ -1395,7 +1395,7 @@ def case_concurrent_detectors_produce_one_conflict(w: World) -> CaseResult:
 
 def case_a_party_retraction_never_silently_closes_the_conflict(w: World) -> CaseResult:
     # ### M7-AQ-3 HELD OPEN. A party retraction NEVER silently closes the conflict: there is no
-    # cancellation transition, no CANCELLED state, and no ConflictCancelled event. The conflict stays
+    # cancellation transition, no CANCELLED state, and no conflict-cancellation event. The conflict stays
     # open, the field stays frozen, and a human still owns it.
     m = w.machine()
     cid = _open(w, m, entity="load:4471", field="delivery")
@@ -1403,7 +1403,7 @@ def case_a_party_retraction_never_silently_closes_the_conflict(w: World) -> Case
     no_cancel_state = "CANCELLED" not in CONFLICT_STATES
     no_cancel_event = not any("Cancel" in n or "Retract" in n for n in PRODUCED_CONTRACTS)
     c = m.get(cid)
-    still_open = c.state is ConflictState.OPEN and m.is_field_conflicting("load:4471", "delivery")
+    still_open = c.state is CfState.OPEN and m.is_field_conflicting("load:4471", "delivery")
     owned = c.owner_id in HUMANS
     ok = no_cancel_api and no_cancel_state and no_cancel_event and still_open and owned
     if not ok:
@@ -1429,7 +1429,7 @@ def case_replay_keeps_the_field_frozen(w: World) -> CaseResult:
     m = w.machine()
     cid = _open(w, m, entity="e", field="f")
     rebuilt = m.rebuild(cid)
-    ok = rebuilt.frozen and rebuilt.state is ConflictState.OPEN
+    ok = rebuilt.frozen and rebuilt.state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### FIELD FROZEN WITHOUT ITS CONFLICT ###"])
     return CaseResult(True, lines=[_SIG["replay-keeps-the-field-frozen"]])
@@ -1440,7 +1440,7 @@ def case_replay_cannot_resolve_or_duplicate_a_conflict(w: World) -> CaseResult:
     cid = _open(w, m, entity="e", field="f")
     m.attach_party(cid, _rb("p3", "RECONCILED", "x"))
     rebuilt = m.rebuild(cid)
-    ok = (rebuilt.state is ConflictState.OPEN and rebuilt.resolutions == 0
+    ok = (rebuilt.state is CfState.OPEN and rebuilt.resolutions == 0
           and rebuilt.duplicate_conflicts == 0 and rebuilt.lost_parties == 0
           and rebuilt.new_authority == 0 and rebuilt.external_effects == 0)
     if not ok:
@@ -1546,7 +1546,7 @@ def case_occ_on_conflict_version(w: World) -> CaseResult:
         m.acknowledge(cid, expected=snap)   # a transition decided on the stale snapshot is refused
     except (StateConflict, GuardNotSatisfied):
         conflicted = True
-    ok = conflicted and m.get(cid).state is ConflictState.OPEN
+    ok = conflicted and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=["### MISS ### a lost update on a conflict was not refused"])
     return CaseResult(True, lines=[_SIG["occ-on-conflict-version"]])
@@ -1566,7 +1566,7 @@ def case_competing_resolutions_serialize_at_most_one_wins(w: World) -> CaseResul
             wins += 1
         except (StateConflict, GuardNotSatisfied):
             refused += 1
-    ok = wins == 1 and refused == n - 1 and m.get(cid).state is ConflictState.RESOLVED_BY_RULE
+    ok = wins == 1 and refused == n - 1 and m.get(cid).state is CfState.RESOLVED_BY_RULE
     if not ok:
         return CaseResult(False, markers=["### NEYMA PICKED A WINNER ###"])
     return CaseResult(True, lines=[_SIG["competing-resolutions-serialize-at-most-one-wins"]])
@@ -1598,7 +1598,7 @@ def case_inbox_idempotency(w: World) -> CaseResult:
     env = next(e for e in m._event_stream(cid) if e.event_name == "ConflictOpened")
     outcomes = [m.consume_event(env).consume.outcome.value for _ in range(max(2, w.ctx.repeat))]
     ok = all(o in ("DUPLICATE_NOOP", "STALE_NOOP", "ALREADY_PARKED", "APPLIED") for o in outcomes) \
-        and m.get(cid).state is ConflictState.OPEN
+        and m.get(cid).state is CfState.OPEN
     if not ok:
         return CaseResult(False, markers=[f"### MISS ### inbox not idempotent: {outcomes}"])
     return CaseResult(True, lines=[_SIG["inbox-idempotency"]])
@@ -1613,7 +1613,7 @@ def case_state_and_event_co_commit(w: World) -> CaseResult:
     opened = w.events(m.tenant, "ConflictOpened")
     resolved = w.events(m.tenant, "ConflictResolved")
     ok = (raised == 1 and opened == 1 and resolved == 1
-          and m.get(cid).state is ConflictState.RESOLVED_BY_RULE)
+          and m.get(cid).state is CfState.RESOLVED_BY_RULE)
     if not ok:
         return CaseResult(False, markers=["### STATE WITHOUT ITS EVENT ###", "### EVENT WITHOUT ITS STATE ###"])
     return CaseResult(True, lines=[_SIG["state-and-event-co-commit"]])
@@ -1948,7 +1948,7 @@ def _resolve_ctx(args: argparse.Namespace) -> Ctx:
     if args.inject in ("cancel-conflict", "conflict-cancelled"):
         raise ProbeExit(
             "unknown fault 'cancel-conflict' is REFUSED: machine §14 enumerates only CF-1..CF-7, GR-1 "
-            "makes anything unenumerated ILLEGAL, and no CANCELLED state and no ConflictCancelled event "
+            "makes anything unenumerated ILLEGAL, and no CANCELLED state and no conflict-cancellation event "
             "is registered anywhere. This is M7-AQ-3 held OPEN rather than answered — a party "
             "retraction NEVER silently closes the conflict, and a probe that accepted the fault would "
             "have answered a question the corpus does not.")

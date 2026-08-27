@@ -51,7 +51,7 @@ CASES = [
      "on nothing (ADR-007 §5.3, machine §15)",
      [(M7,
        "        if not has_rule and not has_decision:\n            self._refuse_illegal(conflict.conflict_id, Trigger.AUTO_RESOLVE, actor_id=actor_id)",
-       "        if not has_rule and not has_decision:\n            return self._advance(conflict, \"CF-3\", ConflictState.RESOLVED_BY_RULE, event_name=\"ConflictResolved\", payload={\"rule_id\": \"auto:silent\"}, event_producer=\"CF-3\", actor_type=\"system\", actor_id=actor_id, writes=\"rule_id = ?\", write_args=(\"auto:silent\",), correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id, event_id=event_id)  # MUTANT AutoResolve\n            self._refuse_illegal(conflict.conflict_id, Trigger.AUTO_RESOLVE, actor_id=actor_id)")],
+       "        if not has_rule and not has_decision:\n            return self._advance(conflict, \"CF-3\", CfState.RESOLVED_BY_RULE, event_name=\"ConflictResolved\", payload={\"rule_id\": \"auto:silent\"}, event_producer=\"CF-3\", actor_type=\"system\", actor_id=actor_id, writes=\"rule_id = ?\", write_args=(\"auto:silent\",), correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id, event_id=event_id)  # MUTANT AutoResolve\n            self._refuse_illegal(conflict.conflict_id, Trigger.AUTO_RESOLVE, actor_id=actor_id)")],
      f"{T}::test_auto_resolve_is_illegal"),
 
     ("a TimerFired transition to a resolved state is allowed — CF-5 is widened so a timer can close a "
