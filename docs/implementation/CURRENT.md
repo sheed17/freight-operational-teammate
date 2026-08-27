@@ -209,6 +209,7 @@ missing from the written account.
 | **P6 tenant — M4** (2) | `approvals`, `approval_signatures` |
 | **P6 tenant — M5** (1) | `observations` |
 | **P6 tenant — M6** (1) | `identity_binding_claims` |
+| **P6 tenant — M7** (2) | `conflicts`, `conflict_parties` |
 
 P5, P6/M1, P6/M2 and P6/M4 declare **no** tenant-exempt table, and the guard asserts that emptiness
 rather than omitting it: an event nobody owns is an event that will eventually be read by the wrong

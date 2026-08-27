@@ -260,6 +260,21 @@ expected_noncanonical_schema:
     #   correction/supersession lineage) carries the tenant in the reference itself, so a cross-tenant
     #   binding, owner or human decision cannot be spelled.
     - identity_binding_claims
+    # Phase 6 (the Conflict, P6/M7) — born tenant-first, and NOT exempt. REG-1 adjudication, stated
+    # rather than assumed:
+    #   `conflicts` holds one disagreement about one field, WITHIN one brokerage; `conflict_parties`
+    #   holds the mutually exclusive claims/observations that disagree. "Whose disagreement is this"
+    #   has no honest answer other than a tenant — the same entity_ref and field in two tenants are two
+    #   isolated conflicts (entity §9/§17), and a conflict scoped to no brokerage is one whose FROZEN
+    #   field would eventually block or unblock the wrong brokerage's money. Tenant is the first
+    #   primary-key column of both tables, the `UNIQUE (tenant, entity_ref, field) WHERE state IN
+    #   (RAISED,OPEN,ESCALATED)` partial index (which is also the durable field condition) is
+    #   tenant-first, the readiness oracle refuses the tables otherwise, and every foreign key
+    #   (tenant_humans for the owner and the decision-human; conflicts/identity_binding_claims/
+    #   observations for a party) carries the tenant in the reference itself, so a cross-tenant owner,
+    #   resolution or party cannot be spelled.
+    - conflicts
+    - conflict_parties
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

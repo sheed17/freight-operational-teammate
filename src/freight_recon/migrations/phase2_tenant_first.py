@@ -1116,6 +1116,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6ibc:{step}")
         conn.commit()
 
+        # M7's Conflict — TWO NEW tables. `conflicts` holds FKs into tenant_humans (M1, the named owner
+        # and the decision-human); `conflict_parties` holds a self-FK into conflicts, an FK into
+        # identity_binding_claims (M6) and one into observations (M5). Created after M6, M5 and M1. A
+        # fresh database is built with them directly; this brings a P2-shaped database to the same
+        # shape. Idempotent.
+        from .phase6_conflicts import create_phase6_conflicts_schema
+
+        for step in create_phase6_conflicts_schema(conn, now=_now()):
+            _mark(conn, f"phase6cf:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1133,6 +1144,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             from .phase5_event_transport import stamp_phase5_version
             from .phase6_approvals import stamp_phase6_approvals_version
             from .phase6_external_effects import stamp_phase6_external_effects_version
+            from .phase6_conflicts import stamp_phase6_conflicts_version
             from .phase6_identity_binding_claims import (
                 stamp_phase6_identity_binding_claims_version)
             from .phase6_observations import stamp_phase6_observations_version
@@ -1147,6 +1159,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase6_approvals_version(conn, now=_now())
             stamp_phase6_observations_version(conn, now=_now())
             stamp_phase6_identity_binding_claims_version(conn, now=_now())
+            stamp_phase6_conflicts_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

@@ -230,6 +230,24 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-table:identity_binding_claims" for step in p6ibc_performed), (
         p6ibc_performed)
     assert phase6_identity_binding_claims_readiness_problems(conn) == []
+    # ### AND A NINTH TIME, FOR M7 — THE CONFLICT. Canonical moved once more: a database without
+    # `conflicts` and `conflict_parties` cannot make a disagreement a decision a human owns rather than
+    # a winner a machine picked — no durable field condition, no at-most-one-open-conflict-per-field
+    # partial unique index, no place to record the parties a rebuild folds. So a P2..M6 database is
+    # still refused, and the migration that closes the gap creates both tenant-first tables. The
+    # property is the one this node has always asserted: a migrated database and a fresh one agree
+    # about what canonical means.
+    from freight_recon.migrations.phase6_conflicts import (  # noqa: E402
+        create_phase6_conflicts_schema,
+        phase6_conflicts_readiness_problems,
+    )
+
+    assert any("phase6_conflicts" in p or "conflicts" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6cf_performed = create_phase6_conflicts_schema(conn, now=utc_now())
+    assert any(step == "create-table:conflicts" for step in p6cf_performed), p6cf_performed
+    assert any(step == "create-table:conflict_parties" for step in p6cf_performed), p6cf_performed
+    assert phase6_conflicts_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

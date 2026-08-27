@@ -72,6 +72,16 @@ from .migrations.phase6_approvals import (
     phase6_approvals_readiness_problems,
     stamp_phase6_approvals_version,
 )
+from .migrations.phase6_conflicts import (
+    P6CF_EXEMPT_TABLES,
+    P6CF_INDEXES,
+    P6CF_REPLACED_INDEXES,
+    P6CF_TARGET_SCHEMA,
+    P6CF_TENANT_TABLES,
+    create_phase6_conflicts_schema,
+    phase6_conflicts_readiness_problems,
+    stamp_phase6_conflicts_version,
+)
 from .migrations.phase6_external_effects import (
     P6EF_EXEMPT_TABLES,
     P6EF_INDEXES,
@@ -160,6 +170,11 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # FKs into tenant_humans (M1, the decision-human and the AMBIGUOUS/CONFLICTING owner) and self-FKs
     # for the correction/supersession lineage. Merged after M5 and M1.
     **P6IBC_TARGET_SCHEMA,
+    # M7's Conflict: two new tables. `conflicts` holds FKs into tenant_humans (M1, the named owner and
+    # the decision-human) and IS the durable field condition; `conflict_parties` holds a self-FK into
+    # conflicts, an FK into identity_binding_claims (M6, a claim party) and one into observations (M5, an
+    # observation party). Merged after M6, M5 and M1.
+    **P6CF_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -170,7 +185,7 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
 ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
     *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES, *P6OB_TENANT_TABLES,
-    *P6IBC_TENANT_TABLES,
+    *P6IBC_TENANT_TABLES, *P6CF_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -195,6 +210,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6OB_EXEMPT_TABLES,
     *P6IBC_TENANT_TABLES,
     *P6IBC_EXEMPT_TABLES,
+    *P6CF_TENANT_TABLES,
+    *P6CF_EXEMPT_TABLES,
 )
 
 
@@ -246,11 +263,12 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     existing_indexes = _index_names(conn)
     merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES,
                                         **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES,
-                                        **P6OB_INDEXES, **P6IBC_INDEXES}.items()
+                                        **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
-                      and n not in P6OB_REPLACED_INDEXES and n not in P6IBC_REPLACED_INDEXES}
+                      and n not in P6OB_REPLACED_INDEXES and n not in P6IBC_REPLACED_INDEXES
+                      and n not in P6CF_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -319,6 +337,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_identity_binding_claims_schema(conn, now=_now())
     if not phase6_identity_binding_claims_readiness_problems(conn):
         stamp_phase6_identity_binding_claims_version(conn, now=_now())
+    # P6's M7, the Conflict. Built LAST of the P6 units because `conflict_parties` holds FKs into
+    # identity_binding_claims (M6) and observations (M5), and `conflicts` holds FKs into tenant_humans
+    # (M1). On a fresh database the merged DDL already built the shape; on a migrated one this creates
+    # the two tables. Marker-last, like every other phase.
+    create_phase6_conflicts_schema(conn, now=_now())
+    if not phase6_conflicts_readiness_problems(conn):
+        stamp_phase6_conflicts_version(conn, now=_now())
     conn.commit()
 
 
@@ -397,6 +422,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_approvals_readiness_problems(conn))
     problems.extend(phase6_observations_readiness_problems(conn))
     problems.extend(phase6_identity_binding_claims_readiness_problems(conn))
+    problems.extend(phase6_conflicts_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

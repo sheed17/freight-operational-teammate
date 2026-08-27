@@ -702,9 +702,22 @@ def test_a_legacy_database_migrates_to_the_canonical_claim_shape():
 
 
 def test_m6_builds_no_m7_conflict_machine():
-    conn = _conn()
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "conflicts" not in tables and "conflict_parties" not in tables
+    """M6 does not itself build the M7 Conflict machine: neither its migration nor its module creates
+    the `conflicts` / `conflict_parties` tables, and it mints none of the CF-owned Conflict* events.
+
+    ### UPDATED AT THE M7 LANDING. The canonical schema now DOES carry `conflicts` and
+    `conflict_parties` — M7 (a separate unit) built them, and `identity_binding_claim.py` is BYTE-
+    UNCHANGED (task §3.6). The property this node protects is unchanged: M6 owns none of that shape.
+    Asserting the tables were absent from the whole database was the M6-era spelling of that property;
+    the durable spelling is that M6's OWN migration and module create nothing of M7's."""
+    from freight_recon.migrations.phase6_identity_binding_claims import P6IBC_TENANT_TABLES
+    assert "conflicts" not in P6IBC_TENANT_TABLES and "conflict_parties" not in P6IBC_TENANT_TABLES
+    m6_src = (ROOT / "src" / "freight_recon" / "identity_binding_claim.py").read_text(encoding="utf-8")
+    m6_mig = (ROOT / "src" / "freight_recon" / "migrations"
+              / "phase6_identity_binding_claims.py").read_text(encoding="utf-8")
+    for text in (m6_src, m6_mig):
+        assert "CREATE TABLE conflicts" not in text
+        assert "CREATE TABLE conflict_parties" not in text
     minted = _emitted_event_names()
     for forbidden in ("ConflictOpened", "ConflictEscalated", "ConflictResolved",
                       "ConflictPartyAttached"):

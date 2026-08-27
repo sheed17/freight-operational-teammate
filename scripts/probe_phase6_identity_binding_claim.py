@@ -1090,8 +1090,14 @@ def case_conflicting_preserves_the_human_binding(w: World) -> CaseResult:
 
 
 def case_m7_conflict_machine_is_not_built(w: World) -> CaseResult:
-    tables = {r[0] for r in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    # ### UPDATED AT THE M7 LANDING. The canonical schema now carries `conflicts` and
+    # `conflict_parties` — M7 (a separate unit) built them, and `identity_binding_claim.py` is BYTE-
+    # UNCHANGED (task §3.6). The property M6 protects is unchanged: M6 builds none of the M7 machine.
+    # Asserting the tables were absent from the whole database was the M6-era spelling; the durable
+    # spelling is that M6's OWN module and migration create nothing of M7's.
     src = (ROOT / "src" / "freight_recon" / "identity_binding_claim.py").read_text(encoding="utf-8")
+    mig = (ROOT / "src" / "freight_recon" / "migrations"
+           / "phase6_identity_binding_claims.py").read_text(encoding="utf-8")
     import ast
     minted = set()
     for node in ast.walk(ast.parse(src)):
@@ -1100,8 +1106,11 @@ def case_m7_conflict_machine_is_not_built(w: World) -> CaseResult:
                 if kw.arg == "event_name" and isinstance(kw.value, ast.Constant):
                     minted.add(str(kw.value.value))
     forbidden_m7 = {"ConflictOpened", "ConflictEscalated", "ConflictResolved", "ConflictPartyAttached"}
-    ok = ("conflicts" not in tables and "conflict_parties" not in tables
-          and not (minted & forbidden_m7) and "ConflictRaised" in minted)
+    m6_builds_no_conflict_table = all(
+        "CREATE TABLE conflicts" not in t and "CREATE TABLE conflict_parties" not in t
+        for t in (src, mig))
+    ok = (m6_builds_no_conflict_table and not (minted & forbidden_m7)
+          and "ConflictRaised" in minted)
     if not ok:
         return CaseResult(False, markers=["### CONFLICT AUTO-RESOLVED ###"])
     return CaseResult(True, lines=[_SIG["m7-conflict-machine-is-not-built"]])
