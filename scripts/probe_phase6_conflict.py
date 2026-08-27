@@ -1461,8 +1461,23 @@ def case_replay_creates_no_new_authority_and_no_effect(w: World) -> CaseResult:
 
 def case_restart_preserves_the_open_conflict(w: World) -> CaseResult:
     m = w.machine()
-    cid = _open(w, m, entity="load:4471", field="delivery")
-    m.escalate(cid) if w.ctx.inject == "restart-after-escalate" else None
+    # ### A CRASH MID-WORKFLOW RECOVERS TO THE CANONICAL STATE, NEVER A TORN ONE. Every transition
+    # co-commits its state row and its event in ONE `BEGIN IMMEDIATE` (GR-2), so a crash between two
+    # transitions leaves the LAST committed state — which is canonical by construction — and the field
+    # stays frozen while that state is open. `restart-before-open` crashes BEFORE the CF-2
+    # acknowledge, so the conflict is RAISED and recovers to RAISED (a RAISED conflict already
+    # blocks); `restart-after-escalate` crashes after CF-5 and recovers to ESCALATED; the default
+    # restarts from OPEN. Each arm asserts the recovered state is exactly the one it crashed at.
+    if w.ctx.inject == "restart-before-open":
+        cid = m.raise_conflict(kind="SYSTEM_VS_SYSTEM", entity_ref="load:4471", field="delivery",
+                               parties=_two(), owner_id=w.human(m.tenant)).conflict.conflict_id
+        expected = CfState.RAISED
+    else:
+        cid = _open(w, m, entity="load:4471", field="delivery")
+        expected = CfState.OPEN
+        if w.ctx.inject == "restart-after-escalate":
+            m.escalate(cid)
+            expected = CfState.ESCALATED
     # Close the connection and reopen the SAME database file — a restart. The open conflict survives
     # and the field stays frozen after reconstruction.
     w.conn.close()
@@ -1471,7 +1486,8 @@ def case_restart_preserves_the_open_conflict(w: World) -> CaseResult:
     enable_and_verify_foreign_keys(conn2)
     m2 = M7Machine(conn2, tenant=m.tenant, clock=w.clock)
     c = m2.get(cid)
-    ok = c is not None and c.is_open and m2.is_field_conflicting("load:4471", "delivery")
+    ok = (c is not None and c.state is expected and c.is_open
+          and m2.is_field_conflicting("load:4471", "delivery"))
     conn2.close()
     if not ok:
         return CaseResult(False, markers=["### CONFLICT WITHOUT ITS FROZEN FIELD ###"])

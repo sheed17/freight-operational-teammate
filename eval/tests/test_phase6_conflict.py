@@ -615,6 +615,39 @@ def test_restart_preserves_the_open_conflict():
     assert c is not None and c.is_open and m2.is_field_conflicting("load:4471", "delivery")
 
 
+@pytest.mark.parametrize(
+    "crash_point, expected",
+    [("before-acknowledge", CfState.RAISED), ("after-escalate", CfState.ESCALATED)],
+)
+def test_a_crash_mid_workflow_recovers_to_the_canonical_state(crash_point, expected):
+    """### A CRASH BETWEEN TRANSITIONS RECOVERS TO THE CANONICAL STATE, NEVER A TORN ONE (machine
+    §36, GR-2). Every transition co-commits its state row and its event in one BEGIN IMMEDIATE, so a
+    process death between two transitions leaves the LAST committed state — which is canonical by
+    construction — and the field stays frozen while that state is open. A crash BEFORE the CF-2
+    acknowledge recovers to RAISED (a RAISED conflict already blocks); a crash AFTER CF-5 recovers to
+    ESCALATED. Neither is `unknown`, and neither silently advances or resolves."""
+    conn = _conn()
+    m = _machine(conn)
+    if crash_point == "before-acknowledge":
+        cid = _raise(m, entity="load:4471", field="delivery").conflict.conflict_id
+    else:
+        cid = _open(m, entity="load:4471", field="delivery")
+        m.escalate(cid)
+    assert m.get(cid).state is expected           # the durable state at the crash point
+    path = conn.execute("PRAGMA database_list").fetchone()["file"]
+    conn.close()                                  # process death — no acknowledge/resolve in flight
+
+    conn2 = sqlite3.connect(path)
+    conn2.row_factory = sqlite3.Row
+    enable_and_verify_foreign_keys(conn2)
+    m2 = M7Machine(conn2, tenant=TENANT)
+    c = m2.get(cid)
+    assert c is not None and c.state is expected  # recovered to the canonical state, not advanced
+    assert c.is_open and m2.is_field_conflicting("load:4471", "delivery")   # still frozen
+    rebuilt = m2.rebuild(cid)                      # full-history fold agrees, resolves nothing
+    assert rebuilt.state is expected and rebuilt.frozen and rebuilt.resolutions == 0
+
+
 # ============================ retention, reopening, expiry ======================================
 
 def test_a_resolved_conflict_is_retained_and_a_delete_is_refused():
