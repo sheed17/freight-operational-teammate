@@ -1298,7 +1298,9 @@ def case_second_detection_attaches_a_party_not_a_new_conflict(w: World) -> CaseR
 
 def case_at_most_one_open_conflict_per_field(w: World) -> CaseResult:
     m = w.machine()
-    n = max(2, w.ctx.parties)
+    # The re-detection pressure is "how many sources hit one field" — raised by --parties OR by
+    # --concurrency. Honour whichever, so the boundary is genuinely 8 whichever flag expresses it.
+    n = max(2, w.ctx.parties, w.ctx.concurrency)
     first = m.raise_conflict(kind="SYSTEM_VS_SYSTEM", entity_ref="load:4471", field="delivery",
                              parties=_two(), owner_id=w.human(m.tenant))
     # A direct second INSERT into an open field is refused by the partial unique index.
@@ -1371,7 +1373,11 @@ def case_party_provenance_is_never_strengthened(w: World) -> CaseResult:
 
 def case_concurrent_detectors_produce_one_conflict(w: World) -> CaseResult:
     m = w.machine()
-    n = max(2, w.ctx.concurrency)
+    # ### EIGHT DISAGREEING SOURCES FAN IN TO ONE OPEN CONFLICT, LOSING NO PARTY. "How many sources"
+    # is expressed by --concurrency (racing detectors) OR by --parties (disagreeing parties on the
+    # field) — the boundary is the same fan-in either way, so honour whichever the caller raised. A
+    # case that read only one flag would silently fan in 2 when the other named 8 (a false green).
+    n = max(2, w.ctx.concurrency, w.ctx.parties)
     anchor = _rb("anchor-tms", "SYSTEM_IMPORTED", "delivered")
     order = list(range(n))
     w.ctx.rng.shuffle(order)
