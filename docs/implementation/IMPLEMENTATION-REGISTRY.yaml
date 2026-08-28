@@ -2719,6 +2719,22 @@ units:
     # prior figure). M6 ships dark, `criteria_scored` is empty on ALL SIX checkpoints, no P6 weighted
     # criterion is scored, P6 has NOT reached phase acceptance and P7 is NOT unlocked.
     # ### M7 IS THE NEXT CHECKPOINT.
+    # ### THE FIGURES AND THE NEXT-CHECKPOINT LINE IMMEDIATELY ABOVE WERE TRUE AT THE `P6-CP-6`
+    # LANDING AND ARE FALSE NOW. They are KEPT, not deleted, so the old phrasing stays recognisable if
+    # it returns (CLAUDE.md sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE
+    # INSTRUCTION, so it is CORRECTED HERE rather than left to send a fresh session to rebuild
+    # something landed.
+    # ### AS OF THE `P6-CP-7` LANDING: M7 LANDED as `P6-CP-7`. The phase still owes M8-M13 and 45 of
+    # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 = 89 written, re-derived mechanically at this
+    # landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS - the parse DISCOVERED
+    # 13 files and counted 134 rows, matching this unit's own `expected_production_outputs`, and no
+    # prior figure was carried). M7 ships dark, `criteria_scored` is empty on ALL SEVEN checkpoints, no
+    # P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is NOT unlocked.
+    # ### M8 - THE EXPECTATION - IS THE NEXT CHECKPOINT.
+    # ### THE `P6-CP-7` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
+    # the already-verified tree e97e89d: three documents change and NOTHING under `src/`, `eval/`,
+    # `scripts/` or `.github/` is touched. `conflict.py`, `phase6_conflicts.py`, `checkpoint.py`,
+    # `external_effect.py` and `identity_binding_claim.py` are byte-identical to the build commits.
     # ### THE `P6-CP-6` LANDING ALSO CARRIES A CORRECTION THAT IS NOT M6'S: after `460d5c7` was pushed,
     # CI run 32925093992 exposed a REAL P3/P4 exactly-once concurrency defect (one sqlite3.Connection
     # shared across threads, so a transaction belonged to the connection and not the caller and the
@@ -4072,6 +4088,285 @@ units:
           - and reproduced by the reviewer). CI - ### NOT DISCHARGED: the workflow concluded `cancelled`,
           which is recorded as `P6-D42` and is NOT upgraded to green anywhere in this record. The founder
           chose to land on the evidence that does exist; that choice is recorded as a choice.
+          ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
+          this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
+          scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
+      - id: P6-CP-7
+        name: The Conflict - disagreement as a decision a human owns, not a winner a machine picked
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: e97e89d12b31b77d0b964c456df44cc069256cae
+        candidate_tree: a73dd12a1e4e31716f9d7bac3d72c98acb323b8e
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M7 of the thirteen - `conflicts` plus `conflict_parties`, FIVE canonical states, one
+          machine, SEVEN transitions (`CF-1`, `CF-2`, `CF-3`, `CF-4`, `CF-5`, `CF-6`, `CF-7` - an exact
+          set match with sec 14 of the machine specification), and the partial index
+          `UNIQUE (tenant, entity_ref, field) WHERE state IN ('RAISED','OPEN','ESCALATED')` that makes
+          ONE OPEN DISPUTE PER FIELD something the database enforces rather than something the
+          application remembers to check.
+          ### TWO SYSTEMS DISAGREEING ABOUT ONE FIELD IS A DECISION A HUMAN OWNS, NOT A WINNER A
+          MACHINE PICKED. The TMS says load 4471 is delivered and the carrier portal says it is still
+          in transit: the disputed field FREEZES (`conflicting`), a NAMED ACTIVE HUMAN owns it FROM
+          CREATION through a FOREIGN KEY into `tenant_humans`, and NO CONSEQUENTIAL ACTION PROCEEDS ON
+          THAT FIELD while the conflict stands - no invoice, no payment, no carrier assignment. The
+          raise and the freeze are ONE COMMIT, not two. `owner_id` is NOT NULL AND FK-backed, so an
+          ownerless Conflict is STRUCTURALLY IMPOSSIBLE rather than merely discouraged.
+          ### A CONFLICT CLOSES EXACTLY TWO WAYS AND NO THIRD: a REGISTERED, VERSIONED, DETERMINISTIC
+          rule carrying a `rule_id` (CF-3), or an AUTHENTICATED HUMAN carrying a `decision_ref` (CF-4),
+          each enforced by its own database CHECK, and a resolved row carrying NEITHER basis is
+          rejected. NEVER recency. NEVER confidence. NEVER a model (GR-7). NEVER a counterparty. NEVER
+          a clock: CF-5's durable timer ESCALATES and can never resolve, `AutoResolve` and any
+          `TimerFired`-to-resolved are ILLEGAL, and CF-6 resolves BY TARGET STATE, never positionally.
+          ### A CONFLICT NEVER EXPIRES. There is no sixth state - no `CANCELLED` (M7-AQ-3 is HELD OPEN,
+          not answered), no `EXPIRED` (entity sec 26), no bare `RESOLVED` (that is M9's) - and no
+          expiry column exists on the table. A party retraction NEVER silently closes a conflict.
+          ### A SECOND DETECTION ATTACHES A PARTY, IT DOES NOT RAISE A SECOND CONFLICT (CF-7), and the
+          partial unique index is what makes concurrent detectors COALESCE rather than race. Each party
+          carries its OWN `provenance_class`, CARRIED AND NEVER STRENGTHENED (ER-14): an
+          `INFERRER_VS_OWNER` conflict records that one party is `OWNER_ASSERTED`, which is the
+          evidence of WHY the inferrer did not overwrite it. `ConflictPartyAttached` is LOAD-BEARING
+          FOR REPLAY - without it a full-history rebuild reproduces a STALE PARTY SET - and replay
+          rebuilds the complete party set while minting NO authority and NO effect.
+          The six canonical kinds (`SYSTEM_VS_SYSTEM`, `CLAIM_VS_CLAIM`, `CLAIM_VS_OBSERVATION`,
+          `INFERRER_VS_OWNER`, `READBACK_VS_APPROVED`, `RULE_VS_RULE`) are an inline CHECK vocabulary;
+          two standing rules that disagree FAIL CLOSED rather than one winning. Five F7 contracts are
+          registered and ONLY those - `ConflictRaised`, `ConflictOpened`, `ConflictEscalated`,
+          `ConflictPartyAttached`, `ConflictResolved` - with NO synonym registered and NO unregistered
+          name minted by the machine; `ConflictRaised`'s registered producers are `CF-1`, `IB-6` and
+          `EF-4c`, read straight off the canonical contract.
+          ### M7 IS AN INPUT TO THE CHECKPOINT, NEVER A SECOND GATE. It projects a native
+          `conflicting` state that P3 step 4 already refuses on; `checkpoint.py` remains the SOLE
+          minter of a gate decision (CLAUDE.md rule 17) and M3 remains the SOLE effect authority. M7
+          writes no `effect_grants` row and no `identity_binding_claims` row.
+        what_is_in_the_tree: >-
+          `src/freight_recon/conflict.py` and `src/freight_recon/migrations/phase6_conflicts.py`, wired
+          into `schema.py` and into the P2 migration path and built LAST; the migration adds the
+          tenant-first `conflicts` and `conflict_parties` tables, the inline CHECK vocabularies for the
+          FIVE states and the SIX kinds, `owner_id TEXT NOT NULL` with
+          `FOREIGN KEY (tenant, owner_id) REFERENCES tenant_humans (tenant, human_id)`, the
+          resolution-basis CHECKs (RESOLVED_BY_RULE requires `rule_id`, RESOLVED_BY_HUMAN requires
+          `decision_ref`), the OCC version-advance trigger, immutability and no-delete triggers, the
+          `ix_conflicts_one_open_per_field` PARTIAL unique index over the three open states, the
+          `ix_conflict_parties_dedup` index, FOREIGN KEYS ONLY INTO TABLES THAT EXIST (`conflicts`,
+          `identity_binding_claims`, `observations`, `tenant_humans`, self), and a readiness oracle.
+          Acceptance and hostile nodes in `eval/tests/test_phase6_conflict.py` (49 collected cases,
+          including all eight entity sec 44 and all seven machine sec 14 named tests); the
+          deterministic probe `scripts/probe_phase6_conflict.py` (70 cases, 58 required literals, 49
+          forbidden `the-thing-M7-prevents-just-happened` banners asserted ABSENT, and a CLOSED fault
+          vocabulary that refuses an unknown fault AND `expire-conflict` AND `cancel-conflict` with
+          exit 2 and a corpus-grounded reason); the mutation battery `scripts/mutate_phase6_conflict.py`
+          (which mutates TEXT and shells out rather than importing the module).
+          ### THE M6 AND M3 SEAMS ARE PRESERVED AND INERT, AND THAT IS DELIBERATE. M7 does not rewrite
+          `identity_binding_claim.py` or `external_effect.py` - BOTH ARE BYTE-UNCHANGED across the
+          entire M7 commit range `8bb3207~1..e97e89d`, verified by `git diff --stat` returning empty -
+          does not mint a second `ConflictRaised` for a disagreement `IB-6` already announced, and does
+          not route around M3's `UNKNOWN_OUTCOME`. The seam is named in an M7-owned record
+          (`M7_AQ1_SEAM`) read straight off the canonical contract so it cannot drift from the
+          registry, and REPORTED as `M7-AQ-1` / `M7-AQ-2`. The F14 tripwire that IS M7's -
+          `IllegalTransitionAttempted` (GR-1) on every illegal `(state, trigger)`, to audit AND
+          security - is emitted; `ProvenanceStrengtheningAttempted` stays P7's emission half while the
+          party-provenance REFUSAL is present and mandatory now.
+          ### THAT IS THE INCREMENT, NOT THE PHASE: M8-M13 are unbuilt and 45 of the 134 transitions
+          are unwritten. M7 SHIPS DARK - re-measured at this landing over discovered populations with
+          the denominator printed: 115 production modules scanned, `production importers of conflict:
+          []`; 72 scripts scanned, only `probe_phase6_conflict.py` reaches it; 164 eval modules
+          scanned, only `test_phase6_conflict.py`; nothing joins it to an inbound or outbound channel;
+          `modules that MINT a gate decision: ['checkpoint.py']`.
+        implementer_evidence: >-
+          ### THE EVIDENCE IS EXECUTABLE, AND IT WAS EXECUTED - BY PRODUCT DRIVER AND BY THE
+          INDEPENDENT REVIEWER (CLAUDE.md sec 0 - committed suite receipts are forbidden and none is
+          written here). There is deliberately NO hand-maintained implementation-record document for
+          M7, and one must not be manufactured to match the M1/M2 rows above, which predate the
+          2026-08 simplification. In-tree and nominally inside `pytest eval`:
+          `eval/tests/test_phase6_conflict.py` (49 tests). ### BUT SEE `P6-D48`: CI RAN NONE OF THEM ON
+          THIS COMMIT. Both full-suite jobs were cancelled at roughly 58% while
+          `test_phase6_conflict.py` occupies positions 2058-2106 of the 2970 tests `pytest eval`
+          collects on this tree (69.3%-70.9% of the run), measured at this landing rather than assumed.
+          ### CI ALSO DOES NOT RUN M7'S PROBE OR MUTATION BATTERY - there is an `effect-grant` job for
+          M3 and no equivalent for M4, M5, M6 or M7, verified mechanically at this landing by the
+          absence of ANY `phase6_conflict` occurrence in `.github/workflows/ci.yml` (count 0), and
+          recorded below as `P6-D49` rather than quietly fixed by a status landing. Those two artifacts
+          were executed by Product Driver run 20260828-031404 and RE-EXECUTED by the independent
+          reviewer in its own session: probe `behaviours as specified, 0 wrong` (exit 0, 70 cases), the
+          49-test suite, `16/16 mutants caught`, and three negative controls each exit 2. Regressions
+          ran WITH M7's tables present - P3 216, P4 99, P5 561, M1-M6 542 - and the M4, M5 and M6
+          probes each still reported `behaviours as specified, 0 wrong`.
+        independent_review_report: docs/implementation/p6-cp7-independent-review-report-e97e89d.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE REVIEW EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. One
+          FOCUSED INDEPENDENT REVIEW, by a session that did not build M7 (the review record states
+          `inherited_builder_context: false`; the run's review ledger states `independent: true` with
+          `invalidations: []` and `superseded_by: ""`; reviewer session 9e41328a, builder session
+          b6b2a9fa), against commit e97e89d / tree a73dd12a, whose `reviewed_fingerprint` records
+          `tracked_dirty: 0` and `untracked: 0`. Verdict SUPPORTED at confidence 0.90, with ZERO
+          findings and NO adjudications, all NINE assessed criteria PASS with no CANNOT_DETERMINE, and
+          `blocked_on.kind: NONE` - "All verification needed for the P6/M7 scope was runnable within
+          the read-only + declared-command boundary and was executed in this session."
+          The nine criteria are the safety invariant (an open conflict blocks every consequential
+          action and M7 never becomes a second gate), authorization (exactly two resolution paths),
+          conflicting evidence (all six kinds raise; Neyma never picks a winner), unexpected state
+          transition (five states only; timer escalates, never resolves; no expiry), missing data (an
+          absent basis fails closed; ownerless is structurally impossible), concurrency (the partial
+          unique index; detectors coalesce; competing resolutions serialize), cross-tenant isolation,
+          malformed input / idempotency (forged and inactive humans fail closed; a redelivered
+          detection is a no-op), and the ship-dark posture.
+          ### WHAT THE REVIEWER RAN WITH ITS OWN HANDS: the deterministic probe (exit 0, 70 cases,
+          `behaviours as specified, 0 wrong`, including the literals `WHILE A CONFLICT IS OPEN THE
+          FIELD IS conflicting AND BLOCKS EVERY CONSEQUENTIAL ACTION` and `M7 MINTS NO GATE DECISION`);
+          the mutation battery (`16/16 mutants caught`); the 49-test targeted suite; the three negative
+          controls (`not-a-real-fault`, `expire-conflict`, `cancel-conflict`, each exit 2 with
+          corpus-grounded refusal prose keeping M7-AQ-3 held open); the ship-dark, script-reach and
+          channel-join AST scans; the F7 registry introspection; the expiry/cancellation surface and
+          column scan; the gate-mint scan returning exactly `['checkpoint.py']`; and
+          `git diff --stat 8bb3207~1 e97e89d` over the three protected machines, returning EMPTY.
+          ### PRODUCT DRIVER EXERCISED 5/5 SCENARIOS, 380 ASSERTIONS, 0 FAILED, 0 BLOCKED, 0 SKIPPED:
+          the permanent `p6_m7_conflict` (338 assertions) plus four generated ones -
+          `cf-concurrent-cross-tenant-race` (concurrency), `cf-duplicate-and-concurrent-detection-idempotent`
+          (idempotency), `cf-replay-heavy-redelivery` (retry_safety) and `cf-ships-dark`
+          (safety_invariant). The run's `scoped_completion` reads `task_result: VERIFIED`,
+          `task_outstanding: []`, `parent_phase_accepted: false`, and its `does_not_imply` list names
+          exactly what this landing also refuses to claim: P6 is not COMPLETE, no P6 acceptance
+          criterion is scored, the units P6 still owes are not built, the next phase is not unblocked,
+          phase acceptance has not occurred, and nothing is enabled in production or on live traffic.
+        nonblocking_residuals: >-
+          ### THE INDEPENDENT REVIEW RETURNED ZERO FINDINGS. The six residuals below are NOT reviewer
+          findings and must not be cited as such: they were identified at this landing from the run's
+          own structured evidence, the M7 source, the specification corpus and the CI record. Each is
+          RECORDED, NOT ACTIONED (CLAUDE.md sec 13 - the debt row is the complete deliverable). None
+          can produce a wrong customer outcome, violate an invariant, or make a later phase unsafe, and
+          the machine ships dark.
+          (P6-D47, MINOR, SPECIFICATION SEAM) The THREE M7 authority questions are REPORTED, NOT
+          RESOLVED, and the code implements ONLY what every reading agrees on, INVENTS NO
+          RECONCILIATION, and says so in its own module docstring and at the migration site.
+          `M7-AQ-1` - the IB-6 / M6 seam: `IB-6` already emits a registered `ConflictRaised` for its
+          `INFERRER_VS_OWNER` disagreement, minting its own conflict id and writing NO M7 row, because
+          there was no `conflicts` table when M6 shipped. M7 does not rewrite M6, does not mint a
+          second `ConflictRaised` for a disagreement already announced, and does not silently swallow
+          the seam; it names it in `M7_AQ1_SEAM` and REPORTS it. `M7-AQ-2` - the EF-4c /
+          `UNKNOWN_OUTCOME` seam: `EF-4c` is a REGISTERED producer of `ConflictRaised`, but the shipped
+          M3 emits `VerificationConflict` alone and moves ATTEMPTED -> UNKNOWN_OUTCOME. M7 does not edit
+          `external_effect.py`, does not rewrite, shorten or route around `UNKNOWN_OUTCOME`, and never
+          launders a readback contradiction into a normal failure; a `READBACK_VS_APPROVED` conflict
+          blocks ADDITIVELY. `M7-AQ-3` - the cancellation vocabulary / lifecycle question: there is NO
+          cancellation transition, NO `CANCELLED` state and NO `ConflictCancelled` event anywhere, and
+          a party retraction never silently closes a conflict; the probe REFUSES `--inject
+          cancel-conflict` with exit 2 rather than inventing a state, which is the only way to hold the
+          question open without answering it. Both protected machines are BYTE-UNCHANGED across
+          `8bb3207~1..e97e89d`. These are specification questions owed to a founder/architect decision,
+          not M7 defects, and they close when that decision is made - NOT by a session choosing a
+          reading (CLAUDE.md sec 5).
+          (P6-D48, MINOR, CI) This commit has NO GREEN CI CONCLUSION, and it is the WEAKEST CI POSITION
+          OF ANY P6 LANDING. Pushed run 33142496300 on head e97e89d concluded `cancelled`.
+          `P6/M3 effect-grant probe + mutation` SUCCESS - and that job executes no M7 code.
+          `Full test suite (py3.11)` CANCELLED at its declared 60-minute ceiling having reached
+          approximately 58%, with NO pytest failure observed before cancellation. `Full test suite
+          (py3.12)` CANCELLED at the same ceiling, also at approximately 58%, also with no pytest
+          failure observed. `Safety invariants (fast)` CANCELLED at its declared 30-minute ceiling
+          having reached approximately 23%, with no pytest failure observed. `Risk radar` SKIPPED
+          (pull-request-only). ### AT P6-CP-4, P6-CP-5 AND P6-CP-6 AT LEAST ONE FULL SUITE COMPLETED;
+          HERE NONE DID, AND NEITHER DID THE SAFETY JOB. ### AND THE HONEST STATEMENT IS NOT "NO
+          VERDICT" BUT "NO EXECUTION", MEASURED RATHER THAN ASSUMED: `pytest eval -q -p no:cacheprovider
+          --collect-only` on this exact tree collects 2970 tests and `eval/tests/test_phase6_conflict.py`
+          occupies positions 2058-2106 - 69.3% to 70.9% of the run - so jobs cancelled at roughly 58%
+          stopped BEFORE M7's 49 tests on BOTH interpreters. The repository therefore has NO CI
+          execution of M7's tests on this commit at all. (Denominator and caveat both stated: the
+          collection was taken locally with the repository's own command, while CI's percentage is
+          pytest's own progress display over its own collection under its own interpreter, so this is
+          strong evidence of ordering rather than a byte-exact reproduction of CI's run.)
+          `test_phase6_conflict.py` is NOT among the 26 files the `Safety invariants (fast)` job names,
+          so that job's cancellation is irrelevant to M7 either way. ### THE JOB CONCLUSIONS ABOVE WERE
+          SUPPLIED BY THE FOUNDER AND WERE NOT RE-READ BY THE LANDING SESSION - `gh run view
+          33142496300` was attempted from that sandbox and failed with `tls: failed to verify
+          certificate: x509: OSStatus -26276`, the identical failure recorded at the `P6-CP-6` landing,
+          so a later session with network access should read the run itself rather than trust this
+          transcription. The founder has explicitly chosen to proceed with the M7 landing on the
+          evidence that exists - a reviewer that reproduced the probe, the mutation battery, the
+          targeted suite and the negative controls against this exact tree, plus five passing Product
+          Driver scenarios - treating the cancellations as a NON-PRODUCT CI RUNTIME LIMITATION rather
+          than as evidence of an M7 defect; that is recorded as a founder DECISION, not as a
+          verification. It closes only by a CI run on this branch that concludes SUCCESS.
+          (P6-D49, MINOR, CI COVERAGE) CI does not execute M7's probe or mutation battery. The
+          `effect-grant` job runs M3's probe and battery on every push precisely because `pytest eval`
+          does not invoke them; there is no equivalent job for M4 (`P6-D33`), M5 (`P6-D37`), M6
+          (`P6-D43`) or M7, verified mechanically by the absence of ANY `phase6_conflict` occurrence in
+          `.github/workflows/ci.yml`. Closing this is a change to CI wiring, which a status/evidence
+          landing deliberately does not make. Note that on THIS commit the usual mitigating sentence -
+          "the targeted tests are inside `pytest eval` and that job passed" - IS NOT AVAILABLE: see
+          `P6-D48`.
+          (P6-D50, MINOR, EVIDENTIARY) The run's gate and topology snapshots are STALE and read as
+          blockers. `accepted/protocol-resolution.json` was written at 03:35:09Z and the review
+          completed at 03:42:58Z, so its `gates.independent_review` reads `NOT_RUN` - "no independent
+          review recorded for this state" - which the run's OWN review ledger contradicts (one review,
+          verdict SUPPORTED, `independent: true`). Its `topology.state` reads `ILLEGAL` because it
+          evaluates HEAD against a recorded status commit d59b7400a472 under the RETIRED two-commit
+          content+metadata convention, which was removed in the 2026-08 simplification and MUST NOT be
+          revived. The same snapshot's own `status` is `CONSISTENT` with `violations: []`,
+          `deadlocks: []`, `environment_blockers: []` and `next_safe_action: "proceed: topology and
+          authority are consistent"`. This is the identical condition recorded as `P6-D38` (M5) and
+          `P6-D44` (M6).
+          (P6-D51, MINOR, EVIDENTIARY) Reviewer-harness status vocabulary, and one instrument
+          substitution. (a) The THREE correct exit-2 negative controls are recorded in
+          `executed_commands` with `execution_failed: true` and `exit_code: null` while their captured
+          stderr IS the correct refusal - the harness has no status for "the command was supposed to
+          fail, and it failed correctly", the same defect recorded as `P6-D39` and `P6-D45`. (b) FOUR
+          of 25 command attempts were refused by the harness's own layers rather than by the product:
+          one at the `composition` layer (a `;`-joined git triple, re-issued as three separate commands
+          which all ran) and three at the `vocabulary` layer. TWO of those three were re-issued in
+          approved form and ran; the THIRD - a `create_canonical_schema` introspection against a fresh
+          temporary database - was NOT re-issued, so the reviewer verified the migration invariants by
+          GREP-READING `src/freight_recon/migrations/phase6_conflicts.py`, and its own criteria basis
+          says so ("Migration DDL (read)"). ### THAT IS A WEAKER INSTRUMENT THAN THE LIVE-DDL
+          INTROSPECTION THE M4, M5 AND M6 REVIEWERS USED, and it is recorded rather than described as
+          equivalent. The fresh-and-migrated `schema_readiness_problems == []` result exists in the
+          run's scenario evidence, not in the reviewer's own commands.
+          (P6-D52, MINOR, COVERAGE DISCLOSURE) Five of nine generated scenarios were REJECTED AT
+          ASSEMBLY. `scenario-generation/wave-01.json` records 9 proposed, 4 accepted - all four
+          PASSED - and 5 rejected: `cf-competing-resolutions-serialize`,
+          `cf-escalated-resolves-by-target-state`, `cf-confidence-negative-control-zero`,
+          `cf-retraction-never-closes` and `cf-crossfamily-producers-recorded`. Every rejection reason
+          is the same and is about the HARNESS, not about M7: an unapproved command vocabulary (a
+          `create_canonical_schema` or `event_contracts_data.json` introspection outside the approved
+          set). This is materially better than `P6-D46`, where the M6 run accepted ZERO generated
+          scenarios, but it is still a reduction in generated adversarial pressure and is disclosed
+          rather than glossed. ### WHAT IT COSTS, STATED EXACTLY: verified mechanically at this landing
+          against `probe_phase6_conflict.py --list-cases`, all five rejected themes have a NAMED
+          PERMANENT-PROBE CASE that passed - `competing-resolutions-serialize-at-most-one-wins`,
+          `escalated-resolution-is-by-target-state-never-by-position`,
+          `confidence-cannot-resolve-a-conflict`,
+          `a-party-retraction-never-silently-closes-the-conflict` and
+          `the-cross-family-conflict-raised-producers-are-recorded`. What was lost is the generated
+          scenarios' COMPOSED DIMENSION PRESSURE (varied `--concurrency`, `--parties`, `--seed`,
+          `--delay-ms`), not the behaviours themselves. The run's own `scenario_requests` ask for
+          exactly that next: CF-7 party attach at `--concurrency 6-8` with `--parties 6-8`, and a
+          `READBACK_VS_APPROVED` conflict composed alongside a live M3 `UNKNOWN_OUTCOME` to confirm the
+          block is additive and the effect grant state is never touched by M7.
+          ### `P6-D40` IS CARRIED FORWARD UNCHANGED AND WAS NOT RE-VERIFIED AT THIS LANDING. No
+          mutation battery was run against the status guards here and none is claimed. `P6-D24`-`P6-D27`,
+          the G2 residuals and every earlier P6 residual are carried unchanged.
+        what_it_owed: >-
+          ### DISCHARGED IN PART, AND THE UNDISCHARGED PART IS NAMED RATHER THAN ASSUMED AWAY. M7 is
+          tier-1 (CLAUDE.md sec 7): it lands a migration, it is load-bearing for tenant isolation, and
+          it is the mechanism that BLOCKS every consequential action on a disputed field. Of what that
+          requires: ONE FOCUSED INDEPENDENT REVIEW BY A SESSION THAT DID NOT BUILD IT - DISCHARGED
+          (SUPPORTED, 0.90, zero findings, nine criteria PASS, bound to e97e89d / a73dd12a on a clean
+          tree, and the reviewer executed the product rather than only reading it). MUTATION PROOF THAT
+          THE GUARD CAN FAIL - DISCHARGED (16/16 load-bearing guards proven to fail when mutated:
+          AutoResolve accepted, a TimerFired transition to a resolved state, a `confidence:` pseudo-rule,
+          a `recency:` pseudo-rule, an unregistered rule resolving, a resolved conflict with NO basis
+          insertable, an ownerless conflict insertable, the raise and the freeze split into two commits,
+          the one-open-conflict-per-field index losing UNIQUE, the partial index losing its WHERE clause,
+          a second detection not coalesced into an attach, `ConflictPartyAttached` never emitted so
+          replay rebuilds a stale party set, an attached party's provenance strengthened, the tenant
+          predicate dropped from the open-conflict lookup, a CF-6 human resolution attributed BY
+          POSITION, and an open conflict that stops blocking - each reproduced by the reviewer).
+          CI - ### NOT DISCHARGED, AND MORE COMPREHENSIVELY NOT DISCHARGED THAN AT ANY PRIOR P6
+          LANDING: the workflow concluded `cancelled` with no full suite completing and M7's own tests
+          never reached, which is recorded as `P6-D48` and is NOT upgraded to green anywhere in this
+          record. The founder chose to land on the evidence that does exist; that choice is recorded as
+          a choice.
           ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
           this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
           scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
