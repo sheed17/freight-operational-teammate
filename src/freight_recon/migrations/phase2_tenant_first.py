@@ -1127,6 +1127,15 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6cf:{step}")
         conn.commit()
 
+        # M8's Expectation and its observation_coverage table (FKs into tenant_humans, observations and
+        # its own coverage table). A fresh database is built with them directly; this brings a P2-shaped
+        # database to the same shape. Idempotent.
+        from .phase6_expectations import create_phase6_expectations_schema
+
+        for step in create_phase6_expectations_schema(conn, now=_now()):
+            _mark(conn, f"phase6ex:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1147,6 +1156,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             from .phase6_conflicts import stamp_phase6_conflicts_version
             from .phase6_identity_binding_claims import (
                 stamp_phase6_identity_binding_claims_version)
+            from .phase6_expectations import stamp_phase6_expectations_version
             from .phase6_observations import stamp_phase6_observations_version
             from .phase6_pipeline_instances import stamp_phase6_pipeline_version
             from .phase6_work_items import stamp_phase6_version
@@ -1160,6 +1170,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase6_observations_version(conn, now=_now())
             stamp_phase6_identity_binding_claims_version(conn, now=_now())
             stamp_phase6_conflicts_version(conn, now=_now())
+            stamp_phase6_expectations_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

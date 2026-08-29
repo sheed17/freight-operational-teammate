@@ -3378,6 +3378,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase6_conflicts import (
         P6CF_EXEMPT_TABLES, P6CF_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase6_expectations import (
+        P6EX_EXEMPT_TABLES, P6EX_TENANT_TABLES,
+    )
     from freight_recon.migrations.phase6_identity_binding_claims import (
         P6IBC_EXEMPT_TABLES, P6IBC_TENANT_TABLES,
     )
@@ -3422,6 +3425,11 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"disagreement WITHIN one brokerage, and the same entity_ref and field in two tenants are two "
         f"isolated conflicts. Defend it here first."
     )
+    assert set(P6EX_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt expectation table {sorted(P6EX_EXEMPT_TABLES)}: an obligation "
+        f"owed WITHIN one brokerage and a coverage window about one brokerage's channel — the same key "
+        f"or channel in two tenants are two isolated rows. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3435,6 +3443,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_observations_tenant": set(P6OB_TENANT_TABLES),
         "p6_identity_binding_claims_tenant": set(P6IBC_TENANT_TABLES),
         "p6_conflicts_tenant": set(P6CF_TENANT_TABLES),
+        "p6_expectations_tenant": set(P6EX_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3454,7 +3463,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p6_approvals_tenant": 2,
                      "p6_observations_tenant": 1,
                      "p6_identity_binding_claims_tenant": 1,
-                     "p6_conflicts_tenant": 2}, (
+                     "p6_conflicts_tenant": 2,
+                     "p6_expectations_tenant": 2}, (
         f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")

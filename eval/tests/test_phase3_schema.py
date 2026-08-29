@@ -248,6 +248,23 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-table:conflicts" for step in p6cf_performed), p6cf_performed
     assert any(step == "create-table:conflict_parties" for step in p6cf_performed), p6cf_performed
     assert phase6_conflicts_readiness_problems(conn) == []
+    # ### AND A TENTH TIME, FOR M8 — THE EXPECTATION. Canonical moved once more: a database without
+    # `expectations` and `observation_coverage` cannot tell "the thing never came" apart from "we were
+    # not watching" — no OVERDUE-requires-healthy-coverage CHECK, no one-live-per-key partial unique
+    # index, no persisted coverage a replay folds. So a P2..M7 database is still refused, and the
+    # migration that closes the gap creates both tenant-first tables. The property is the one this node
+    # has always asserted: a migrated database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_expectations import (  # noqa: E402
+        create_phase6_expectations_schema,
+        phase6_expectations_readiness_problems,
+    )
+
+    assert any("phase6_expectations" in p or "expectations" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ex_performed = create_phase6_expectations_schema(conn, now=utc_now())
+    assert any(step == "create-table:expectations" for step in p6ex_performed), p6ex_performed
+    assert any(step == "create-table:observation_coverage" for step in p6ex_performed), p6ex_performed
+    assert phase6_expectations_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

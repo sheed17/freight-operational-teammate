@@ -1729,10 +1729,13 @@ def case_the_cross_family_conflict_raised_producers_are_recorded(w: World) -> Ca
 
 
 def case_m8_m9_m10_and_m12_are_not_built(w: World) -> CaseResult:
-    # M8 Expectation, M9 Exception, M10 Compensation and M12 Rule are NOT built here — the canonical
-    # schema carries none of their tables, and M7 fabricated no Compensation.
+    # M9 Exception, M10 Compensation and M12 Rule are NOT built here — the canonical schema carries
+    # none of their tables, and M7 fabricated no Compensation. (M8 the Expectation LANDED as the build
+    # checkpoint after M7, so `expectations`/`observation_coverage` are now canonical and are no longer
+    # in the forbidden set — a prior unit's forward-looking "M8 not built" is corrected the moment M8
+    # lands, exactly as M7 was removed from M6's forbidden set at the M7 landing.)
     tables = {r[0] for r in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    forbidden = {"expectations", "exceptions", "compensations", "rules"}
+    forbidden = {"exceptions", "compensations", "policies", "rules"}
     ok = not (tables & forbidden)
     if not ok:
         return CaseResult(False, markers=[f"### COMPENSATION FABRICATED ### {tables & forbidden}"])

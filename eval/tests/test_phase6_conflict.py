@@ -754,10 +754,15 @@ def test_m7_does_not_import_m6_or_m3():
     assert "GateDecision(" not in src and "GateRegistry(" not in src
 
 
-def test_no_m8_m9_m10_m12_tables_are_built():
+def test_no_m9_m10_m11_m12_tables_are_built():
+    # M8 (the Expectation) LANDED as the build checkpoint after M7, so `expectations` and
+    # `observation_coverage` are now canonical (rule 20 — this forward-looking assertion was true at
+    # the M7 landing and is corrected here rather than left to assert a table that now exists). The
+    # still-unbuilt neighbours stay asserted-absent: M9 (exceptions), M10 (compensations), M11
+    # (policies) and M12 (rules).
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert not (tables & {"expectations", "exceptions", "compensations", "rules"})
+    assert not (tables & {"exceptions", "compensations", "policies", "rules"})
 
 
 # ============================ schema / migration ================================================
