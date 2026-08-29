@@ -2731,6 +2731,19 @@ units:
     # prior figure was carried). M7 ships dark, `criteria_scored` is empty on ALL SEVEN checkpoints, no
     # P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is NOT unlocked.
     # ### M8 - THE EXPECTATION - IS THE NEXT CHECKPOINT.
+    # ### AS OF THIS CORRECTION (2026-08-29): the M8 content candidate is now ON THE TREE at 96b7cb3
+    # (expectation.py, phase6_expectations.py, the expectations + observation_coverage tables, the
+    # 72-test suite, the 82-case probe `behaviours as specified, 0 wrong`, and the 21/21 mutation
+    # battery), re-verified green by the reporting session with regressions P3 216 / P4 99 / P5 561 /
+    # M1-M7 591 and the M5/M6/M7 probes still 0 wrong. ### IT IS A CANDIDATE, NOT A LANDING: no
+    # P6-CP-8 is recorded, NO independent review report exists on disk, the session that built it may
+    # not write one (CLAUDE.md sec 7/11), that criterion is PENDING, `criteria_scored` stays empty on
+    # ALL SEVEN landed checkpoints, and P6 stays READY / IN_PROGRESS with no criterion scored and P7
+    # NOT unlocked. The "M8 - THE EXPECTATION - IS THE NEXT CHECKPOINT" line immediately above was true
+    # at the P6-CP-7 landing and is now stale (M8 is already built) - KEPT for recognisability
+    # (CLAUDE.md sec 5 rule 20), corrected here so a fresh session is not sent to rebuild a candidate
+    # that exists. This correction adds NO landed_checkpoints entry and moves NO status field: M8's
+    # implementation is present, its independent review is owed, and nothing here enables production.
     # ### THE `P6-CP-7` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
     # the already-verified tree e97e89d: three documents change and NOTHING under `src/`, `eval/`,
     # `scripts/` or `.github/` is touched. `conflict.py`, `phase6_conflicts.py`, `checkpoint.py`,

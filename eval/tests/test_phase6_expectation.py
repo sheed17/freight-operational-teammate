@@ -667,6 +667,7 @@ def test_terminal_age_timer_expires_via_relay():
 
 def test_the_machine_defines_no_sweep_or_reaper_method():
     src = (ROOT / "src" / "freight_recon" / "expectation.py").read_text(encoding="utf-8").lower()
+    assert "class m8machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     assert "def sweep" not in src and "def _reap" not in src
     assert "deadline_utc <" not in src  # no age-predicate scan over the expectations table
 
@@ -887,6 +888,7 @@ def test_a_discharged_expectation_is_consistent():
 
 def test_m8_mints_no_gate_decision():
     src = (ROOT / "src" / "freight_recon" / "expectation.py").read_text(encoding="utf-8")
+    assert "class M8Machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     assert ("GateDecision(" not in src and "GateRegistry(" not in src
             and "from .checkpoint" not in src and "import checkpoint" not in src)
 
