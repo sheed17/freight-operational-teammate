@@ -275,6 +275,31 @@ expected_noncanonical_schema:
     #   resolution or party cannot be spelled.
     - conflicts
     - conflict_parties
+    # Phase 6 (the Expectation, P6/M8 — an IMPLEMENTED CANDIDATE, not yet landed as P6-CP-8) — born
+    # tenant-first, and NEITHER is exempt. REG-1 adjudication, stated rather than assumed:
+    #   `expectations` holds what ONE brokerage is owed and by when — a POD from a carrier hauling for
+    #   THAT broker, due at THAT broker's consignee appointment. "Whose owed observation is this" has
+    #   no honest answer other than a tenant, and the same load number in two brokerages is two
+    #   independent owed observations. The Layer-1 reservation it carries — UNIQUE (tenant,
+    #   expectation_key) WHERE state IN ('RAISED') — would be a CROSS-BROKERAGE lock without the tenant
+    #   in it: one brokerage already awaiting a POD on load 4471 would stop another brokerage raising
+    #   its own unrelated 4471 expectation, and the second broker's silence would go unwatched.
+    #   `observation_coverage` is the positive, persisted statement that a channel was HEALTHY over a
+    #   window — the ONLY thing that may turn a passed deadline into `OVERDUE` rather than
+    #   `INDETERMINATE` (entity §16/§37, M-32). Tenant is its first partition dimension, and that is
+    #   load-bearing rather than tidy: without the tenant, ONE brokerage's healthy mailbox would supply
+    #   the coverage proof for ANOTHER brokerage's blind window, and Neyma would accuse that broker's
+    #   carrier of never sending a POD while it was Neyma that was not watching. That is precisely the
+    #   honesty rule M8 exists to enforce, inverted by a missing key column.
+    # Tenant is the first primary-key column of both, every index on both is tenant-first (including
+    # the live-uniqueness partial index and the coverage-window lookup), the M8 readiness oracle
+    # refuses the tables otherwise, and every foreign key — tenant_humans for the OVERDUE/INDETERMINATE
+    # human owner, observations for the discharging and subject observations, and observation_coverage
+    # for the coverage basis, including the composite (tenant, coverage_ref, coverage_health) FK that
+    # ties a claimed health to the real coverage row — carries the tenant in the reference itself, so a
+    # cross-tenant owner, discharge, subject or coverage basis cannot be spelled.
+    - expectations
+    - observation_coverage
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
