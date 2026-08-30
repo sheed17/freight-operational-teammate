@@ -300,6 +300,24 @@ expected_noncanonical_schema:
     # cross-tenant owner, discharge, subject or coverage basis cannot be spelled.
     - expectations
     - observation_coverage
+    # M9 (P6) adds ONE canonical table, `exceptions`, which is tenant-first and NOT exempt. REG-1
+    # adjudication, stated rather than assumed:
+    #   `exceptions` holds one thing that needs a human WITHIN one brokerage — an unknown outcome on
+    #   THAT broker's payment, a POD nobody at THAT broker can find, an identity binding that could be
+    #   either of two of THAT broker's loads. "Whose obligation is this" has no honest answer other
+    #   than a tenant, and the same source_ref in two brokerages is two independent obligations. Tenant
+    #   is the first primary-key column and the first column of the owner queue index and of the
+    #   open-exception dedup index — UNIQUE (tenant, source_ref, type) WHERE state != 'RESOLVED' — which
+    #   would be a CROSS-BROKERAGE lock without the tenant in it: one brokerage's open exception on a
+    #   cause would stop another brokerage raising its own unrelated one, and the second broker's
+    #   obligation would go unowned. Every foreign key — tenant_humans for the named owner, the
+    #   acknowledging human and the decision-human, and the per-kind MIRROR FKs into observations,
+    #   identity_binding_claims, conflicts, expectations, work_items, pipeline_instances, effect_grants
+    #   and approvals for the source that raised it — carries the tenant in the reference itself, so a
+    #   cross-tenant owner, source or decision-human cannot be spelled. The M9 readiness oracle refuses
+    #   the table without owner_id NOT NULL + FK, the RESOLVED-requires-decision_ref CHECK, the five-
+    #   state and severity vocabularies, and the no-delete/immutability triggers.
+    - exceptions
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

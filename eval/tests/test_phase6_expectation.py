@@ -213,10 +213,12 @@ def test_expiry_raises_an_exception_never_silence():
     row = m.get(r.expectation.expectation_id)
     assert row is not None and row.owner_id == HUMAN  # retained, still owned
     assert "ExpectationExpired" in _events(conn)
-    # M8 mints no M9 contract and builds no exceptions table.
+    # M8 mints no M9 contract and its OWN migration builds no exceptions table. (The `exceptions`
+    # table became canonical when M9 landed; rule 20 — corrected from the pre-M9 whole-schema
+    # assertion.)
     assert "ExceptionRaised" not in _events(conn)
-    tables = {t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "exceptions" not in tables
+    from freight_recon.migrations.phase6_expectations import P6EX_TENANT_TABLES
+    assert "exceptions" not in P6EX_TENANT_TABLES
 
 
 def test_overdue_requires_healthy_coverage():
@@ -922,9 +924,12 @@ def test_no_foreign_contract_or_transition_names_in_the_source():
 
 
 def test_the_neighbouring_machines_are_not_built():
+    # M9 (the Exception) LANDED after M8, so `exceptions` is now canonical (rule 20 — corrected from
+    # the pre-M9 assertion). The still-unbuilt neighbours stay asserted-absent: M10 (compensations),
+    # M11 (policies), M12 (rules) and Evidence (P7).
     conn = _conn()
     tables = {t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for forbidden in ("exceptions", "compensations", "policies", "rules", "evidence"):
+    for forbidden in ("compensations", "policies", "rules", "evidence"):
         assert forbidden not in tables
 
 

@@ -1667,8 +1667,12 @@ def case_an_overdue_expectation_is_not_automatically_a_conflict(w: World) -> Cas
 
 
 def case_m9_m10_m11_and_m12_are_not_built(w: World) -> CaseResult:
+    # M9 (the Exception) LANDED after M8, so `exceptions` is now canonical and is no longer in the
+    # forbidden set — a prior unit's forward-looking "not built" is corrected the moment the unit
+    # lands (rule 20). The still-unbuilt neighbours stay asserted-absent, and M8's machine still mints
+    # no M9 event and carries no foreign transition ids.
     tables = {t[0] for t in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    forbidden = {"exceptions", "compensations", "policies", "rules", "evidence"}
+    forbidden = {"compensations", "policies", "rules", "evidence"}
     src = (ROOT / "src" / "freight_recon" / "expectation.py").read_text(encoding="utf-8")
     import re
     foreign_ids = re.findall(r"\b(?:EC|CM|PO|RU)-\d+[a-z]*\b", src)

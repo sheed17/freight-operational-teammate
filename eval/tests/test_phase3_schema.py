@@ -265,6 +265,20 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-table:expectations" for step in p6ex_performed), p6ex_performed
     assert any(step == "create-table:observation_coverage" for step in p6ex_performed), p6ex_performed
     assert phase6_expectations_readiness_problems(conn) == []
+    # ### AND ONCE MORE FOR M9, THE EXCEPTION. "Canonical" moved again: a store with no `exceptions`
+    # table cannot carry an obligation that needs a human, so a P2..M8 database is still refused. The
+    # migration that closes the gap creates the one tenant-first table. The property is the one this
+    # node has always asserted: a migrated database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_exceptions import (  # noqa: E402
+        create_phase6_exceptions_schema,
+        phase6_exceptions_readiness_problems,
+    )
+
+    assert any("phase6_exceptions" in p or "exceptions" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6xc_performed = create_phase6_exceptions_schema(conn, now=utc_now())
+    assert any(step == "create-table:exceptions" for step in p6xc_performed), p6xc_performed
+    assert phase6_exceptions_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

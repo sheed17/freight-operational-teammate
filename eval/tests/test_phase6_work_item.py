@@ -2556,10 +2556,12 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
     checked, and the permitted set is derived from the P6 modules on disk rather than typed out.
     """
     # FIXED-SPECIFICATION: the permitted importers of M1 are the P6 entity-layer machines by name —
-    # M2 (owner-from-roster, §5) and M3 (decision-ref resolution for EF-5, GR-14). This is a
-    # deliberate closed set, not a discovered population: a fourth importer is a rollout-posture
-    # change that must be decided here, which is exactly what this guard makes visible.
-    entity_layer = {"work_item.py", "pipeline_instance.py", "external_effect.py"}
+    # M2 (owner-from-roster, §5), M3 (decision-ref resolution for EF-5, GR-14) and M9 (decision-ref
+    # resolution for EC-3/EC-6, GR-14, plus FailureDisposition for EC-1's L-D classification). This is
+    # a deliberate closed set, not a discovered population: a further importer is a rollout-posture
+    # change that must be decided here, which is exactly what this guard makes visible. `exception.py`
+    # was added when M9 landed (rule 20: the set is the entity layer, and M9 is now in it).
+    entity_layer = {"work_item.py", "pipeline_instance.py", "external_effect.py", "exception.py"}
     assert entity_layer <= {p.name for p in (ROOT / "src" / "freight_recon").glob("*.py")}, (
         "the P6 entity layer no longer exists under these names — the permitted-importer set would "
         "be empty and this guard would confine nothing"

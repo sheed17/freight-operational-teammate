@@ -738,11 +738,12 @@ def _emitted_event_names() -> set[str]:
 
 def test_m5_mints_no_m9_exception_contract():
     """§3.8: M5 owns ObservationUnparseable/ObservationUnbound (M9 is their F5 consumer) but does NOT
-    mint ExceptionRaised, and builds no exceptions table."""
+    mint ExceptionRaised, and builds no exceptions table ITSELF. (The `exceptions` table became
+    canonical when M9 landed; M5's own migration still does not own it — rule 20, corrected from the
+    pre-M9 whole-schema assertion.)"""
     assert "ExceptionRaised" not in _emitted_event_names()
-    conn = _conn()
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "exceptions" not in tables
+    from freight_recon.migrations.phase6_observations import P6OB_TENANT_TABLES
+    assert "exceptions" not in P6OB_TENANT_TABLES
 
 
 def test_m5_does_not_mint_the_f14_provenance_event():
