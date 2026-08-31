@@ -345,39 +345,20 @@ migration exists — which is the same correction M6's forbidden set received wh
 not a rebuild of M7.
 
 Landing M8 scores no P6 criterion. **The build checkpoint that followed M8 is M9 — the Exception —
-and it is an IMPLEMENTED CANDIDATE, not a landing.**
+recorded as an IMPLEMENTED CANDIDATE, not a landing.**
 
-**`M9` — the Exception — IS AN IMPLEMENTED CANDIDATE WITH BUILDER EVIDENCE ONLY; ITS TIER-1 FOCUSED
-INDEPENDENT REVIEW IS PENDING, AND IT IS NOT `P6-CP-9`.** Its code is present at commit `b94f963` —
-`src/freight_recon/exception.py` (`M9Machine`), `src/freight_recon/migrations/phase6_exceptions.py`,
-wired into `schema.py` and the P2 migrate path — implementing five states (`OPEN`, `ACKNOWLEDGED`,
-`AGEING`, `ESCALATED`, `RESOLVED`), the seven `EC-1`…`EC-7` transitions of §14, and the six
-already-registered F9 contracts with no seventh minted. The builder evidence, re-run on this exact
-tree, is: the deterministic probe (`scripts/probe_phase6_exception.py`, **95 cases,
-`behaviours as specified, 0 wrong`**, the four negative controls `not-a-real-fault` /
-`reopen-exception` / `correct-exception` / `supersede-exception` each **refused with exit 2**), the
-**58-test** suite `eval/tests/test_phase6_exception.py`, the mutation battery
-`scripts/mutate_phase6_exception.py` (**21/21 mutants caught**), and the regressions (P3 216, P4 99,
-P5 561, M1–M8 663, with the M5/M7/M8 sibling probes each still `behaviours as specified, 0 wrong`).
-### **THAT IS BUILDER EVIDENCE, NOT A REVIEW — IT DOES NOT LAND M9.** M9 is **tier-1** under
-[`CLAUDE.md`](../../CLAUDE.md) §7 (it lands a migration and is load-bearing for tenant isolation), so
-it owes **one focused independent review by a session that did not build it** before it may be called
-`P6-CP-9`. ### **THAT REVIEW HAS NOT BEEN PERFORMED, AND NO M9 REVIEW REPORT EXISTS ON DISK.** Until it
-does: `criteria_scored` stays `[]`, ### **P6 STAYS `status: READY` / `execution_state: IN_PROGRESS`
-AND DOES NOT MOVE**, and ### **NOTHING IS ENABLED IN PRODUCTION** — M9 **ships dark** (zero production
-importers; only its own probe and mutation scripts reach it), mints no gate decision, engages no
-brake, takes no external action, and the production `GateRegistry` stays EMPTY. The `exceptions`
-table's presence in the tenant-first partition above and in the Phase-0 baseline manifest is a
-**mechanically-verified schema fact** (`schema_readiness_problems == []` on a freshly built canonical
-database with foreign keys enabled; fresh == migrated shape), guarded by
-`test_bootstrap_hermeticity.py` and `test_phase0_tenant_posture.py` — it is **not** a claim that M9 is
-reviewed, accepted, or scored. `M9-AQ-1…AQ-6` are **REPORTED, not resolved** (implemented only where
-every reading agrees); **`P6-D4` stays open** and closes at M12 (M1's `resolve_decision_ref` is
-imported, not weakened, and still refuses a `RULE` `decision_ref`); the optional open-exception dedup
-index is **built and that choice is recorded**; `V10` thresholds stay **caller-supplied** with no
-business default. **The "next build checkpoint is M9" sentence carried at the `P6-CP-8` landing is
-corrected here: M9's code now exists as a candidate, and what M9 still owes is its independent review,
-not its implementation.**
+**`M9` — the Exception — is an IMPLEMENTED CANDIDATE awaiting its tier-1 independent review; it is NOT
+landed and is NOT `P6-CP-9`.** Its code is present at commit `b94f963`
+(`src/freight_recon/exception.py`, `src/freight_recon/migrations/phase6_exceptions.py`, wired into
+`schema.py` and the P2 migrate path); the `exceptions` table's presence in the partition above and in
+the Phase-0 manifest is a schema fact the bootstrap and tenant-posture guards require, not a claim
+that M9 is accepted. A focused independent review by a session that did not build M9 is **PENDING and
+has not been performed** — no M9 review report exists on disk. Until it is: `criteria_scored` stays
+`[]`, **P6 stays `status: READY` / `execution_state: IN_PROGRESS` and does not move**, no P6 criterion
+is scored, and **nothing is enabled in production** — M9 ships dark, mints no gate decision, and
+engages no brake. `M9-AQ-1…AQ-6` are REPORTED, not resolved; `P6-D4` stays open at M12; `V10`
+thresholds stay caller-supplied. This corrects the stale "next build checkpoint is M9" sentence from
+the `P6-CP-8` landing: what M9 still owes is its independent review, not its implementation.
 
 ## Risks and standing constraints
 
