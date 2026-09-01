@@ -1845,7 +1845,29 @@ def test_nothing_in_production_calls_m2(tmp_path):
                     a.name.endswith("pipeline_instance") for a in node.names):
                 importers.append(path.name)
     assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
-    assert not importers, f"M2 has production importers and no longer ships dark: {importers}"
+    # ### M10 (compensation.py) LANDED and legitimately imports M2 (rule 20 — corrected from the
+    # pre-M10 "zero importers" assertion). CM-3 starts a NEW M2 Pipeline Instance through
+    # `PipelineMachine.propose()` — the canonical "reuse M2, do not build a second pipeline" seam
+    # (10-compensation.machine.md §4, M10-AQ-7). M2 still receives NO LIVE traffic: M10 itself SHIPS
+    # DARK, so the M10→M2 edge is dormant. The invariant is preserved by narrowing, not dropping — M2's
+    # only importer is compensation.py, and that importer has zero production importers of its own.
+    assert set(importers) <= {"compensation.py"}, (
+        f"M2 has an UNEXPECTED production importer and no longer ships dark: {importers}")
+    m10_importers: list[str] = []
+    for path in sorted(src.rglob("*.py")):
+        if path.name == "compensation.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("compensation") \
+                    and not (node.module or "").endswith("compensations"):
+                m10_importers.append(path.name)
+            elif isinstance(node, ast.Import) and any(
+                    a.name.endswith("compensation") and not a.name.endswith("compensations")
+                    for a in node.names):
+                m10_importers.append(path.name)
+    assert not m10_importers, (
+        f"M10 has a production importer, so the M10→M2 edge is no longer dormant: {m10_importers}")
 
 
 def test_no_witness_and_no_grant_exist_until_a_checkpoint_runs(tmp_path):

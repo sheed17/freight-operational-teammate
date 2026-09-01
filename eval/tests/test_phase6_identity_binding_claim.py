@@ -450,9 +450,11 @@ def test_correction_propagates_a_compensation(m6, conn):
     assert old.state is BindingState.CORRECTED and old.propagation_obligation is not None
     obligation = json.loads(old.propagation_obligation)
     assert "invoice#560010" in obligation["completed_effects_needing_compensation"]
-    # ### NO compensations table, and no fabricated completed compensation.
-    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "compensations" not in tables
+    # ### M6 FABRICATES NO COMPENSATION. `compensations` is now a canonical table (M10 LANDED after
+    # M9 — rule 20, corrected from the pre-M10 "table absent" assertion), but IB-7 writes NO row into
+    # it: the correction records a durable propagation_obligation NAMING the completed effects, and
+    # fabricates none as discharged.
+    assert conn.execute("SELECT COUNT(*) FROM compensations").fetchone()[0] == 0
 
 
 def test_correction_is_append_only_and_correction_of_correction_is_supported(m6, conn):
@@ -728,8 +730,10 @@ def test_m6_builds_no_m7_conflict_machine():
 
 def test_m6_builds_no_m10_compensation_machine_and_fabricates_no_compensation():
     conn = _conn()
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "compensations" not in tables
+    # M10 (the Compensation) LANDED after M9, so `compensations` is now canonical (rule 20). M6 still
+    # builds no compensation machine and fabricates no compensation: the table is EMPTY after M6's
+    # correction, and M6 mints none of M10's F10 events.
+    assert conn.execute("SELECT COUNT(*) FROM compensations").fetchone()[0] == 0
     minted = _emitted_event_names()
     for forbidden in ("CompensationRequired", "CompensationCompleted", "CompensationApproved",
                       "CorrectionInvalidatedAnEffect"):

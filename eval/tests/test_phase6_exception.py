@@ -855,7 +855,11 @@ def test_failure_classification_is_supplied_never_inferred():
 def test_the_neighbouring_machines_are_not_built():
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert not ({"compensations", "policies", "rules", "evidence"} & tables)
+    # M10 (the Compensation) LANDED after M9, so `compensations` is now canonical (rule 20 — the
+    # forward-looking assertion was true at the M9 landing and is corrected here rather than left to
+    # assert a table that now exists). The still-unbuilt neighbours stay asserted-absent: M11
+    # (policies), M12 (rules) and Evidence (P7).
+    assert not ({"policies", "rules", "evidence"} & tables)
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
     import re
     assert not re.findall(r"\b(?:CM|PO|RU)-\d+", src)     # no M10/M11/M12 transitions

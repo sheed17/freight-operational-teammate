@@ -72,6 +72,16 @@ from .migrations.phase6_approvals import (
     phase6_approvals_readiness_problems,
     stamp_phase6_approvals_version,
 )
+from .migrations.phase6_compensations import (
+    P6CM_EXEMPT_TABLES,
+    P6CM_INDEXES,
+    P6CM_REPLACED_INDEXES,
+    P6CM_TARGET_SCHEMA,
+    P6CM_TENANT_TABLES,
+    create_phase6_compensations_schema,
+    phase6_compensations_readiness_problems,
+    stamp_phase6_compensations_version,
+)
 from .migrations.phase6_conflicts import (
     P6CF_EXEMPT_TABLES,
     P6CF_INDEXES,
@@ -205,6 +215,11 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # the acknowledging human and the decision-human) and per-kind MIRROR FKs into every prior P6
     # machine's table (M1..M8, the polymorphic source that raised it). Merged after them all.
     **P6XC_TARGET_SCHEMA,
+    # M10's Compensation: one new table. `compensations` holds FKs into tenant_humans (M1, the named
+    # owner), effect_grants (M3, the VERIFIED original effect being undone AND the K-4 provenance of the
+    # exposure), pipeline_instances (M2, the executing attempt) and approvals (M4, the human
+    # authorisation). Merged after all four so every referent exists.
+    **P6CM_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -216,6 +231,7 @@ ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
     *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES, *P6OB_TENANT_TABLES,
     *P6IBC_TENANT_TABLES, *P6CF_TENANT_TABLES, *P6EX_TENANT_TABLES, *P6XC_TENANT_TABLES,
+    *P6CM_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -246,6 +262,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6EX_EXEMPT_TABLES,
     *P6XC_TENANT_TABLES,
     *P6XC_EXEMPT_TABLES,
+    *P6CM_TENANT_TABLES,
+    *P6CM_EXEMPT_TABLES,
 )
 
 
@@ -298,13 +316,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     merged_indexes = {n: d for n, d in {**INDEXES, **P3_INDEXES, **P5_INDEXES, **P6_INDEXES,
                                         **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES,
                                         **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES,
-                                        **P6EX_INDEXES, **P6XC_INDEXES}.items()
+                                        **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
                       and n not in P6OB_REPLACED_INDEXES and n not in P6IBC_REPLACED_INDEXES
                       and n not in P6CF_REPLACED_INDEXES and n not in P6EX_REPLACED_INDEXES
-                      and n not in P6XC_REPLACED_INDEXES}
+                      and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -396,6 +414,13 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_exceptions_schema(conn, now=_now())
     if not phase6_exceptions_readiness_problems(conn):
         stamp_phase6_exceptions_version(conn, now=_now())
+    # P6's M10, the Compensation. Built LAST of the P6 units because `compensations` holds FKs into
+    # tenant_humans (M1), effect_grants (M3, the VERIFIED original effect), pipeline_instances (M2, the
+    # executing attempt) and approvals (M4, the human authorisation). On a fresh database the merged DDL
+    # already built the shape; on a migrated one this creates the table. Marker-last, like every phase.
+    create_phase6_compensations_schema(conn, now=_now())
+    if not phase6_compensations_readiness_problems(conn):
+        stamp_phase6_compensations_version(conn, now=_now())
     conn.commit()
 
 
@@ -477,6 +502,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_conflicts_readiness_problems(conn))
     problems.extend(phase6_expectations_readiness_problems(conn))
     problems.extend(phase6_exceptions_readiness_problems(conn))
+    problems.extend(phase6_compensations_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

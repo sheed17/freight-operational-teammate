@@ -924,12 +924,12 @@ def test_no_foreign_contract_or_transition_names_in_the_source():
 
 
 def test_the_neighbouring_machines_are_not_built():
-    # M9 (the Exception) LANDED after M8, so `exceptions` is now canonical (rule 20 — corrected from
-    # the pre-M9 assertion). The still-unbuilt neighbours stay asserted-absent: M10 (compensations),
-    # M11 (policies), M12 (rules) and Evidence (P7).
+    # M9 (the Exception) and then M10 (the Compensation) LANDED after M8, so `exceptions` and
+    # `compensations` are now canonical (rule 20 — each corrected from the pre-landing assertion). The
+    # still-unbuilt neighbours stay asserted-absent: M11 (policies), M12 (rules) and Evidence (P7).
     conn = _conn()
     tables = {t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for forbidden in ("compensations", "policies", "rules", "evidence"):
+    for forbidden in ("policies", "rules", "evidence"):
         assert forbidden not in tables
 
 

@@ -2561,7 +2561,11 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
     # a deliberate closed set, not a discovered population: a further importer is a rollout-posture
     # change that must be decided here, which is exactly what this guard makes visible. `exception.py`
     # was added when M9 landed (rule 20: the set is the entity layer, and M9 is now in it).
-    entity_layer = {"work_item.py", "pipeline_instance.py", "external_effect.py", "exception.py"}
+    # FIXED-SPECIFICATION: `compensation.py` (M10) was added when M10 landed — it imports M1's
+    # `resolve_decision_ref` (CM-1's invalidating and CM-5's reality decision_ref) exactly as M2/M3/M9
+    # do, and itself ships dark.
+    entity_layer = {"work_item.py", "pipeline_instance.py", "external_effect.py", "exception.py",
+                    "compensation.py"}
     assert entity_layer <= {p.name for p in (ROOT / "src" / "freight_recon").glob("*.py")}, (
         "the P6 entity layer no longer exists under these names — the permitted-importer set would "
         "be empty and this guard would confine nothing"
@@ -2602,9 +2606,15 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
         or (isinstance(node, ast.Import)
             and any(a.name.split(".")[-1] == "pipeline_instance" for a in node.names))
     ]
-    assert not m2_importers, (
-        f"M2 has production callers: {sorted(set(m2_importers))}. M1 is permitted exactly one "
-        f"importer BECAUSE that importer is dark too; a caller of M2 makes M1 reachable."
+    # ### M10 (compensation.py) legitimately imports M2 — CM-3 starts a NEW M2 Pipeline Instance through
+    # `PipelineMachine.propose()` (rule 20, corrected from the pre-M10 "M2 has no callers" assertion).
+    # M2's caller must be a DARK entity-layer machine, or "dark" would be one hop deep; a caller from
+    # outside the entity layer makes M2 — and through it M1 — reachable by live traffic.
+    outside_m2 = sorted({name for name in m2_importers if name not in entity_layer})
+    assert not outside_m2, (
+        f"M2 has production callers outside the P6 entity layer: {outside_m2}. M10 (compensation.py) is "
+        f"permitted BECAUSE it too ships dark; a caller of M2 from outside the entity layer makes M1 "
+        f"reachable by live traffic."
     )
 
 
