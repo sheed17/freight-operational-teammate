@@ -864,7 +864,15 @@ def test_m10_arms_no_timer():
 
 
 def test_m1_through_m9_machines_are_unchanged():
-    """The landed machines stay byte-identical unless a canonical authority forced a seam change."""
+    """The landed machines stay byte-identical unless a canonical authority forced a seam change.
+
+    FIXED-SPECIFICATION: this set is NOT a discovered population — it is the exact list the M10 unit
+    brief names as must-stay-byte-identical (the nine landed P6 machines M1..M9 plus the P3 checkpoint
+    kernel). Discovering "machine modules" by glob would silently admit a NEW machine to the frozen set
+    or drop one that was renamed; the guard's value is precisely that adding or removing a name here is
+    a deliberate, reviewed edit. The checkpoint kernel and the claim CAS are named because CLAUDE.md §10
+    forbids weakening them.
+    """
     unchanged = (
         "src/freight_recon/work_item.py", "src/freight_recon/pipeline_instance.py",
         "src/freight_recon/external_effect.py", "src/freight_recon/approval.py",

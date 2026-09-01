@@ -43,6 +43,16 @@ def purge_pycache() -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
+def purge_shadow() -> None:
+    """### NEVER LEAVE THE RE-EXPORT SHADOW BEHIND. The shim mutation (33) writes a transient
+    `compensation_shadow.py`; a crashed or interrupted prior run could strand it, and a stranded copy of
+    the (dark) machine reads as a new M2 importer to a neighbour dark-surface guard. Removed at battery
+    start and in the shim's own finally, so a clean tree is guaranteed either way."""
+    shadow = ROOT / SHADOW
+    if shadow.exists():
+        shadow.unlink()
+
+
 def run_guard(nodeid: str) -> bool:
     r = subprocess.run([PY, "-m", "pytest", nodeid, "-q", "-p", "no:cacheprovider",
                         "-p", "no:randomly"], cwd=ROOT, capture_output=True, text=True)
@@ -333,8 +343,7 @@ def _run_shim() -> tuple[str, str]:
     m10_path = ROOT / M10
     shadow_path = ROOT / SHADOW
     original = m10_path.read_bytes()
-    if shadow_path.exists():
-        return "SETUP-FAIL", "compensation_shadow.py already exists"
+    purge_shadow()  # a stranded shadow from an interrupted prior run is cleared before we start
     purge_pycache()
     if not run_guard(SHIM_GUARD):
         return "SETUP-FAIL", "guard already RED before mutation"
@@ -343,10 +352,14 @@ def _run_shim() -> tuple[str, str]:
         m10_path.write_text(SHIM_TEXT, encoding="utf-8")  # compensation.py is now a shim
         purge_pycache()
         caught = not run_guard(SHIM_GUARD)
+    except BaseException:  # noqa: BLE001 — even a KeyboardInterrupt must not strand the shadow
+        m10_path.write_bytes(original)
+        purge_shadow()
+        purge_pycache()
+        raise
     finally:
         m10_path.write_bytes(original)
-        if shadow_path.exists():
-            shadow_path.unlink()
+        purge_shadow()
         purge_pycache()
     if m10_path.read_bytes() != original:
         return "RESTORE-RED", "byte-for-byte restore FAILED for compensation.py"
@@ -358,6 +371,7 @@ def _run_shim() -> tuple[str, str]:
 
 
 def main() -> int:
+    purge_shadow()  # start from a clean tree even if a prior run was interrupted
     results = [(label, *_run_edits(edits, guard)) for label, edits, guard in CASES]
     results.append(("the machine is relocated behind a re-export shim — every corpus-scanning negative "
                     "assertion must turn red, proving it was scanning real content (anti-vacuity control)",
@@ -367,9 +381,12 @@ def main() -> int:
         mark = {"CAUGHT": "PASS", "MISS": "### MISS ###"}.get(verdict, verdict)
         print(f"  [{mark:>12}] {label}" + (f"  ({note})" if note else ""))
     caught = sum(1 for _, v, _ in results if v == "CAUGHT")
-    print(f"\n  {caught}/{len(results)} mutants caught")
+    total = len(results)
+    escaped = total - caught
+    print(f"\n  {caught}/{total} mutants caught")
+    print(f"  {caught} mutations caught, {escaped} escaped")
     print("  NOTE: written by the session that implemented the unit - evidence, not adjudication.")
-    return 0 if caught == len(results) else 1
+    return 0 if caught == total else 1
 
 
 if __name__ == "__main__":

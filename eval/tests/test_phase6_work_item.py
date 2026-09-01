@@ -2587,7 +2587,11 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
                     if alias.name.split(".")[-1] == "work_item":
                         importers.append(path.name)
     assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
-    outside = sorted({name for name in importers if name not in entity_layer})
+    # `compensation_shadow.py` is the M10 mutation battery's transient re-export shadow (a byte-copy of
+    # the dark machine that imports M1's resolver exactly as compensation.py does, removed in its own
+    # finally) — tolerated alongside the entity layer, never a real caller.
+    tolerated = entity_layer | {"compensation_shadow.py"}
+    outside = sorted({name for name in importers if name not in tolerated})
     assert not outside, (
         f"M1 has acquired production callers outside the P6 entity layer: {outside}. P6 ships dark; "
         f"a caller means the rollout posture in the registry is no longer true."
@@ -2610,7 +2614,11 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
     # `PipelineMachine.propose()` (rule 20, corrected from the pre-M10 "M2 has no callers" assertion).
     # M2's caller must be a DARK entity-layer machine, or "dark" would be one hop deep; a caller from
     # outside the entity layer makes M2 — and through it M1 — reachable by live traffic.
-    outside_m2 = sorted({name for name in m2_importers if name not in entity_layer})
+    # `compensation_shadow.py` is the M10 mutation battery's transient re-export shadow (a byte-copy of
+    # the dark machine, removed in its own finally) — tolerated alongside the entity layer, never a real
+    # caller.
+    tolerated = entity_layer | {"compensation_shadow.py"}
+    outside_m2 = sorted({name for name in m2_importers if name not in tolerated})
     assert not outside_m2, (
         f"M2 has production callers outside the P6 entity layer: {outside_m2}. M10 (compensation.py) is "
         f"permitted BECAUSE it too ships dark; a caller of M2 from outside the entity layer makes M1 "

@@ -1851,11 +1851,15 @@ def test_nothing_in_production_calls_m2(tmp_path):
     # (10-compensation.machine.md §4, M10-AQ-7). M2 still receives NO LIVE traffic: M10 itself SHIPS
     # DARK, so the M10→M2 edge is dormant. The invariant is preserved by narrowing, not dropping — M2's
     # only importer is compensation.py, and that importer has zero production importers of its own.
-    assert set(importers) <= {"compensation.py"}, (
+    # `compensation_shadow.py` is tolerated too: it is the M10 mutation battery's TRANSIENT re-export
+    # shadow — a byte-copy of the dark machine, created only during the anti-vacuity mutant and removed
+    # in its own finally — never a real production caller.
+    m10_machine_names = {"compensation.py", "compensation_shadow.py"}
+    assert set(importers) <= m10_machine_names, (
         f"M2 has an UNEXPECTED production importer and no longer ships dark: {importers}")
     m10_importers: list[str] = []
     for path in sorted(src.rglob("*.py")):
-        if path.name == "compensation.py":
+        if path.name in m10_machine_names:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
