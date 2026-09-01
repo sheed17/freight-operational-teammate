@@ -709,6 +709,7 @@ def test_resolution_unblocks_the_frozen_entity():
 def test_m9_mints_no_gate_decision():
     """M9 is an INPUT to the checkpoint, never a gate. It imports no gate authority."""
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    assert "class M9Machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     assert "from .checkpoint" not in src and "import checkpoint" not in src
     assert "GateDecision" not in src and "GateRegistry" not in src
     assert "effect_grants" not in src.replace("effect_grant", "")  # no effect_grants writes
@@ -717,6 +718,7 @@ def test_m9_mints_no_gate_decision():
 def test_m9_engages_no_brake():
     """F9 cross-cutting — a Sev-0 exception CARRIES SEV0; the brake is the source detector's act."""
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    assert "class M9Machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     assert "from .brake" not in src and "import brake" not in src
     assert "brake.engage" not in src and ".engage(" not in src
 
@@ -834,6 +836,7 @@ def test_the_produced_contracts_are_exactly_the_six_registered_f9_names():
 
 def test_the_machine_defines_no_sweep_or_reaper_method():
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    assert "class M9Machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     for banned in ("def sweep", "def reap", "def scan_stale", "def sweep_overdue"):
         assert banned not in src
 
@@ -845,6 +848,7 @@ def test_failure_classification_is_supplied_never_inferred():
     with pytest.raises(MalformedException):
         _raise(m, source_ref="c-msg", failure_classification="401 auth error")
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    assert "class M9Machine" in src  # population proof: the machine source is really loaded (CLAUDE.md §6)
     assert "_classify" not in src        # there is no message-to-class classifier
 
 
