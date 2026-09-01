@@ -2756,6 +2756,30 @@ units:
     # checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is
     # NOT unlocked.
     # ### M9 - THE EXCEPTION - IS THE NEXT CHECKPOINT.
+    # ### THE FIGURES AND THE NEXT-CHECKPOINT LINE IMMEDIATELY ABOVE WERE TRUE AT THE `P6-CP-8`
+    # LANDING AND ARE FALSE NOW. They are KEPT, not deleted, so the old phrasing stays recognisable if
+    # it returns (CLAUDE.md sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE
+    # INSTRUCTION, so it is CORRECTED HERE rather than left to send a fresh session to rebuild
+    # something landed.
+    # ### AS OF THE `P6-CP-9` LANDING: M9 LANDED as `P6-CP-9`. The phase still owes M10-M13 and 30 of
+    # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 = 104 written, re-derived mechanically
+    # at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS - the parse
+    # DISCOVERED 13 files and counted 134 rows, matching this unit's own `expected_production_outputs`,
+    # and no prior figure was carried). M9 ships dark, `criteria_scored` is empty on ALL NINE
+    # checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is
+    # NOT unlocked.
+    # ### M10 - THE COMPENSATION - IS THE NEXT CHECKPOINT.
+    # ### THE M9 CANDIDATE NOTE THAT PRECEDED THIS IS SUPERSEDED. Between b94f963 and a6e9d3b the
+    # repository recorded M9 as an IMPLEMENTED CANDIDATE whose tier-1 independent review was PENDING
+    # and which was explicitly "NOT `P6-CP-9`". THAT WORDING WAS TRUE WHEN WRITTEN AND IS FALSE NOW:
+    # the review exists on disk (p6-cp9-independent-review-report-a6e9d3b.md), it was performed by a
+    # session that did not build M9, and it returned SUPPORTED. The candidate note is REPLACED in
+    # CURRENT.md rather than deleted, per CLAUDE.md sec 5 rule 20.
+    # ### THE `P6-CP-9` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
+    # the already-verified tree a6e9d3b: three documents change and NOTHING under `src/`, `eval/`,
+    # `scripts/` or `.github/` is touched. `exception.py`, `phase6_exceptions.py`, `checkpoint.py`,
+    # `external_effect.py`, `identity_binding_claim.py`, `conflict.py`, `observation.py`,
+    # `expectation.py` and `work_item.py` are byte-identical to the commits that landed them.
     # ### THE `P6-CP-8` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
     # the already-verified tree f2ff1ca: three documents change and NOTHING under `src/`, `eval/`,
     # `scripts/` or `.github/` is touched. `expectation.py`, `phase6_expectations.py`, `checkpoint.py`,
@@ -4701,6 +4725,359 @@ units:
           suite completed and executed all 72 of M8's tests on Python 3.11 while py3.12 has no result.
           Recorded as `P6-D53` and NOT upgraded to green anywhere in this record. The founder chose to
           land on the evidence that does exist; that choice is recorded as a choice.
+          ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
+          this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
+          scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
+      - id: P6-CP-9
+        name: The Exception - something that needs a human, never closed by silence
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        candidate_commit: a6e9d3b52a828b3e2094f281a04801222841a26f
+        candidate_tree: 7160f6e365a3eade4c44b33bc40ce159fbce24c7
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M9 of the thirteen - one `exceptions` row per thing Neyma could not resolve
+          deterministically, FIVE canonical states (OPEN, ACKNOWLEDGED, AGEING, ESCALATED, RESOLVED),
+          one machine, SEVEN transitions (`EC-1`...`EC-7` - an exact set match with sec 14 of the
+          machine specification), the SIX already-registered F9 contracts and no seventh, and the
+          `CHECK (state <> 'RESOLVED' OR decision_ref IS NOT NULL)` reinforced by M1's imported K-1
+          resolver that makes CLOSURE REQUIRES A DECISION something the database enforces rather than
+          something the application remembers to check.
+          ### AN EXCEPTION CLOSED WITHOUT A DECISION IS NOT CLOSED - IT IS FORGOTTEN, AND THAT
+          DIFFERENCE IS THE UNIT. A TMS write times out and the outcome is UNKNOWN. An Exception is
+          raised with a NAMED HUMAN OWNER FROM THE MOMENT IT EXISTS - `owner_id NOT NULL` plus a
+          composite FOREIGN KEY into `tenant_humans`, so an ownerless Exception is not merely
+          discouraged, it is not insertable - and a severity beside it. An authenticated human
+          ACKNOWLEDGES it, which proves they SAW it and proves nothing else, and it keeps ageing.
+          Nobody acts, so a DURABLE TIMER moves it OPEN to AGEING to ESCALATED: louder, still owned,
+          and NEVER RESOLVED BY THE CLOCK. Someone tries to close it with the string "done" and the
+          database refuses, because closure is an EVENT with a `decision_ref` that RESOLVES to an
+          authenticated human decision - and the resolver is M1's landed `resolve_decision_ref`,
+          IMPORTED rather than rewritten, which is the whole difference between "the column is not
+          null" and "a real human really decided". A model is refused at any confidence, on
+          acknowledge, on resolve, on severity change and on ownership alike.
+          ### NO MECHANISM OF FORGETTING EXISTS. Inactivity, `AutoClose`, expiry, a sweep, a reaper
+          and a timer are each INCAPABLE of closing an Exception: a BEFORE DELETE trigger refuses the
+          delete outright with the entity's own prose, ageing and escalation ride P5's durable timers
+          and never resolve, and there is no TTL, no scan and no background close. There is NO SIXTH
+          STATE - no CANCELLED, no EXPIRED, no TIMED_OUT, no STALE, no CLOSED - and the finer
+          operational terms (`triage`, `assigned`, `investigating`, `awaiting_external`,
+          `awaiting_human`, `resolution_proposed`) are a `sub_status` FIELD with a vocabulary DISJOINT
+          from the state set, never lifecycle states. Severity is the closed three-member CHECK
+          {SEV0, SEV1, SEV2} with NO DEFAULT, and a severity change is a FIELD mutation carrying the
+          value it moved FROM and the reason, so a rebuild months later folds `ExceptionSeverityChanged`
+          at the highest aggregate version and reproduces the LIVE severity rather than the one the
+          row was born with. The ageing and escalation thresholds are CALLER-SUPPLIED with no invented
+          business default (`V10`). The failure classification is SUPPLIED as an enumerated value and
+          NEVER inferred from a message or a status code: a PERMANENT auth or config failure raises
+          IMMEDIATELY with ZERO retries, because a permanent credential failure retried forever is a
+          system hiding a fixable problem from the only person who can fix it.
+          ### M9 IS AN INPUT TO THE GATE AND NEVER A GATE. A freezing Exception is projected into the
+          checkpoint's existing `NativeClaim(conflicting)` WITHOUT importing the checkpoint;
+          `checkpoint.py` remains the SOLE minter of a gate decision and M3 the SOLE effect authority.
+          M9 engages no brake - a Sev-0 Exception carries SEV0, and engaging the brake is the source
+          detector's act, not M9's. Ships dark: zero production importers.
+        what_is_in_the_tree: >-
+          `src/freight_recon/exception.py` and `src/freight_recon/migrations/phase6_exceptions.py`,
+          wired into `schema.py` and into the P2 migration path and built LAST; the migration adds the
+          tenant-first `exceptions` table with the inline CHECK vocabularies for the FIVE states and
+          the THREE severities (neither carrying a DEFAULT), `owner_id`/`source_ref`/`severity`/
+          `state`/`summary` NOT NULL, the RESOLVED-requires-`decision_ref` CHECK, the
+          RESOLVED-requires-`decision_human_id` CHECK, the two-member `decision_ref_kind` vocabulary
+          ('AUDIT_EVENT','RULE'), composite FOREIGN KEYS `(tenant, owner_id)`, `(tenant,
+          acknowledged_by)` and `(tenant, decision_human_id)` into `tenant_humans`, the closed
+          `source_kind` discriminator with per-kind MIRROR columns FK-backed ONLY for the kinds whose
+          table exists (M7's `conflict_parties` shape), the conditional freeze CHECK, the disjoint
+          `sub_status` CHECK, the OCC `version >= 1` CHECK and its version-advance trigger, the
+          identity-immutable trigger, the BEFORE DELETE no-delete trigger, `PRIMARY KEY (tenant,
+          exception_id)`, and THREE indexes each leading with `tenant` - including the OPTIONAL
+          open-exception dedup index `ix_exceptions_one_open_per_cause` UNIQUE ON (tenant, source_ref,
+          type) WHERE state != 'RESOLVED', which THIS BUILD builds and RECORDS AS A CHOICE rather than
+          smuggling in as a mandatory acceptance criterion. Acceptance and hostile nodes in
+          `eval/tests/test_phase6_exception.py` (58 collected cases); the deterministic probe
+          `scripts/probe_phase6_exception.py` (95 cases, a 66-member CLOSED fault vocabulary and 11
+          composable CLI dimensions, every
+          required capability literal asserted PRESENT, with a CLOSED fault vocabulary that refuses an
+          unknown fault AND `reopen-exception` AND `supersede-exception` AND `correct-exception` with
+          exit 2 and a corpus-grounded reason); the mutation battery
+          `scripts/mutate_phase6_exception.py` (21 mutants, which mutates TEXT and shells out rather
+          than importing the module).
+          ### `a6e9d3b` IS THE ANTI-VACUITY CORRECTION, AND IT IS PART OF WHAT LANDS HERE. CI run
+          33452247720 printed a REAL `F` at ~20% on BOTH py3.11 and py3.12 -
+          `test_false_green_defenses.py::test_every_corpus_scanning_negative_assertion_proves_its_population`.
+          A REAL failure, not flake and not an M9 runtime defect: `b94f963` added exactly FOUR
+          corpus-scanning negative assertions (`test_m9_mints_no_gate_decision`,
+          `test_m9_engages_no_brake`, `test_the_machine_defines_no_sweep_or_reaper_method`,
+          `test_failure_classification_is_supplied_never_inferred`) and NONE proved its population, so
+          each could pass while scanning nothing. THE GUARD DID EXACTLY ITS JOB, and the vacuity was
+          proven real by mutation in a scratch worktree - relocating the machine's 71,841 bytes behind
+          a 398-byte re-export shim left all four assertions GREEN while they policed no code, and
+          turned all four RED once the population anchor was added. `a6e9d3b` adds one positive
+          assertion to each. NO test was weakened and NO existing negative assertion was touched.
+          ### THE LANDED NEIGHBOURS ARE PRESERVED AND UNTOUCHED. `checkpoint.py`, `external_effect.py`,
+          `identity_binding_claim.py`, `conflict.py`, `observation.py`, `expectation.py` and
+          `work_item.py` are BYTE-UNCHANGED across the entire M9 commit range `b94f963~1..a6e9d3b`,
+          verified by `git diff --stat` returning empty, so NO authority question was answered by
+          editing a landed unit. `exception.py` and `phase6_exceptions.py` are themselves
+          byte-identical between `b94f963` and this landing - the three commits after the build touch
+          only `CURRENT.md` and the M9 test file.
+          ### THAT IS THE INCREMENT, NOT THE PHASE: M10-M13 are unbuilt and 30 of the 134 transitions
+          are unwritten. M9 SHIPS DARK - re-measured at this landing over discovered populations with
+          the denominator printed: 119 production modules scanned, `production importers of exception:
+          []`; 76 scripts scanned, only `probe_phase6_exception.py` reaches it; `modules that MINT a
+          gate decision: ['checkpoint.py']`; 8 channel-capable modules DISCOVERED by their import of a
+          transport library and NONE whose import closure reaches `exception`, with NO transport
+          reachable from `exception`'s own closure; `brake-engaging tokens in the machine's CODE: []`;
+          `M10/M11/M12 tables created by M9: []`. There is NO oversight queue, NO dashboard, NO
+          notifier and NO MTTR surface - M9 owes the row and the tenant-first index and builds none of
+          those.
+        implementer_evidence: >-
+          ### THE EVIDENCE IS EXECUTABLE, AND IT WAS EXECUTED - BY PRODUCT DRIVER AND BY THE
+          INDEPENDENT REVIEWER (CLAUDE.md sec 0 - committed suite receipts are forbidden and none is
+          written here). There is deliberately NO hand-maintained implementation-record document for
+          M9, and one must not be manufactured to match the M1/M2 rows above, which predate the
+          2026-08 simplification. In-tree and nominally inside `pytest eval`:
+          `eval/tests/test_phase6_exception.py` (58 tests). ### AND CI RAN THEM ON PYTHON 3.11. Run
+          33460644572 concluded `cancelled` - see P6-D59 - but its `Full test suite (py3.11)` JOB
+          concluded SUCCESS with 3099 passed and 1 skipped; `pytest eval --collect-only -q` on this
+          exact tree collects 3100 tests, MATCHING that 3099+1 exactly, and
+          `test_phase6_exception.py` occupies positions 2107-2164 (68.0%-69.8%), so all 58 of M9's
+          tests executed and passed on Python 3.11. See P6-D59 for what py3.12 does NOT establish.
+          ### CI DOES NOT RUN M9'S PROBE OR MUTATION BATTERY - there is an `effect-grant` job for M3
+          and no equivalent for M4, M5, M6, M7, M8 or M9, verified mechanically at this landing by the
+          absence of ANY `phase6_exception` occurrence in `.github/workflows/ci.yml` (count 0), and
+          recorded below as `P6-D60` rather than quietly fixed by a status landing. Those two artifacts
+          were executed by Product Driver run 20260901-040704 and RE-EXECUTED by the independent
+          reviewer in its own session: probe `behaviours as specified, 0 wrong` (exit 0, 95 cases), the
+          58-test suite, `21/21 mutants caught`, and the M1+M3 neighbour regressions at 239 passed. The
+          run's evaluator additionally ran the four out-of-vocabulary negative controls (each exit 2)
+          and drove live database inserts of its own, and the run's own regressions covered P3 216, P4
+          99, P5 561 and P6 M1-M8 663 with the M5/M7/M8 probes still `0 wrong`.
+        independent_review_report: docs/implementation/p6-cp9-independent-review-report-a6e9d3b.md
+        independent_review_note: >-
+          NOT SELF-CERTIFIED, AND THE REVIEW EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. One
+          FOCUSED INDEPENDENT REVIEW, by a session that did not build M9 (the review record states
+          `inherited_builder_context: false`; the run's review ledger states `independent: true` with
+          `superseded_by: ""`; reviewer session 46d5594c, builder session f5f7931b), against commit
+          a6e9d3b / tree 7160f6e3, whose `reviewed_fingerprint` records `tracked_dirty: 0` and
+          `untracked: 0`. Verdict SUPPORTED at confidence 0.88, with ZERO findings and NO
+          adjudications, all ELEVEN assessed criteria PASS with no CANNOT_DETERMINE, and
+          `blocked_on.kind: NONE`.
+          The eleven criteria are the safety invariant (never closed by silence - closure requires a
+          `decision_ref` that RESOLVES via M1's K-1 resolver, and inactivity/AutoClose/expiry/sweep/
+          reaper/timer are each incapable of closing one), authorization (only an authenticated human
+          may acknowledge or resolve; a model may never own, ack, resolve or re-severity at any
+          confidence; M9 mints no gate decision and engages no brake), missing data (ownerless,
+          severity-less and source-less Exceptions structurally impossible; a severity change without
+          its previous value or its reason refused), unexpected state transition (five states as a
+          CHECK with no sixth; `sub_status` a field and not a state), boundary (severity a closed
+          three-member CHECK never defaulted; thresholds caller-supplied), concurrency (OCC, a stale
+          version writing zero rows and raising, tenant-first indexes, the dedup index recorded
+          OPTIONAL), cross-tenant isolation (the same source in two tenants isolated; cross-tenant own,
+          resolve, source and read all fail closed), malformed input and permanence supplied rather
+          than inferred, regression (M1/M3/M5/M7/M8 unchanged; M9 ships dark), K-1 resolver reuse (M9
+          IMPORTS M1's rather than defining a second), and scope discipline (no phase completed, no
+          criterion scored, no status surface edited).
+          ### WHAT THE REVIEWER RAN WITH ITS OWN HANDS: the 58-test targeted suite; the deterministic
+          probe (exit 0, `behaviours as specified, 0 wrong`); the mutation battery (`21/21 mutants
+          caught`); the M1+M3 neighbour regressions (239 passed); the ship-dark AST scan (119
+          production modules scanned, `production importers of exception: []`); the script-reach scan
+          (`scripts reaching exception: ['probe_phase6_exception.py']`); the K-1 resolver oracle
+          (`M9 imports the K-1 resolver: True`, `a second resolver defined in the machine: []`,
+          `modules defining resolve_decision_ref outside M1: []`); direct reads of the migration DDL
+          and the machine source confirming the CHECKs, the FKs, the no-delete trigger and the
+          model-actor refusals; and `git rev-parse HEAD` / `HEAD^{tree}` (twice, opening and closing,
+          proving the tree was UNCHANGED BY THE REVIEW) / `git status --porcelain` confirming the
+          declared target on a clean tree. ### THE REVIEWER RAN NO NEGATIVE CONTROL OF ITS OWN - the
+          probe declares a 66-member closed fault vocabulary and four out-of-vocabulary refusals, and
+          all four were exercised by the run's EVALUATOR rather than by the reviewer. Stated rather
+          than rounded up.
+          ### THE INSTRUMENTS THE REVIEWER LACKED ARE SUPPLIED AT THIS LANDING RATHER THAN CARRIED
+          FORWARD AS DEBT, which is the P6-CP-8 precedent now applied a second time. It verified the
+          migration invariants by READING the DDL, and its harness REFUSED two oracles outright (the
+          seam-isolation oracle cited by token `@a81c8e00`, and the channel-join scan HARD-BLOCKED as
+          "deploy tooling" - a false positive on the module-name list it carried). All three were run
+          at this landing. (1) A FRESH CANONICAL DATABASE built the way production builds one was
+          introspected - 31 canonical tables discovered, `PRIMARY KEY (tenant, exception_id)`, THREE
+          declared indexes with ZERO failing to lead with tenant, 13 NOT NULL columns, 22 foreign keys
+          including the three composite `(tenant, ...)` pairs into `tenant_humans`, and NO DEFAULT on
+          `severity` or `state` - and every load-bearing guard was proven BY ATTEMPTING THE VIOLATION:
+          NINE illegal inserts, NINE refusals (ownerless; an owner not recorded in this tenant; an
+          owner from ANOTHER tenant; state 'CANCELLED'; state 'EXPIRED'; severity 'SEV3'; RESOLVED with
+          no decision_ref; RESOLVED with no named human; no source_ref), with TWO POSITIVE CONTROLS
+          ACCEPTED and exactly 2 rows surviving, WITHOUT WHICH the nine refusals would prove only that
+          the table rejects everything. The BEFORE DELETE trigger refused a delete of an open row with
+          the machine's own prose, and the dedup index refused a second open Exception for the same
+          cause. (2) THE CHANNEL-JOIN SCAN, over a DISCOVERED population rather than an enumerated one:
+          119 production modules scanned, 8 channel-capable modules DISCOVERED by their import of a
+          transport library, and `channel-capable modules whose import closure reaches exception: []`,
+          `transports reachable from exception's own import closure: []` - the population is non-empty,
+          so the negative is not vacuous. (3) THE SEAM-ISOLATION ORACLE, with docstrings STRUCTURALLY
+          REMOVED so prose about a forbidden name can neither pass nor fail it and with the allowed set
+          READ OUT OF `events/registry.md` rather than typed: the machine's code carries exactly the
+          SIX registered F9 names and no unregistered `Exception[A-Z]...` identifier, emit sites carry
+          those six plus the F14 `IllegalTransitionAttempted` the registry grants to ANY machine,
+          `foreign machine domain events minted by M9: []`, `brake-engaging tokens: []`, the migration
+          creates only `exceptions`, and `M10/M11/M12 tables created by M9: []`. ### THAT ORACLE FIRED
+          WRONGLY TWICE BEFORE IT WAS RIGHT, AND IT IS RECORDED RATHER THAN HIDDEN: a suffix regex
+          matched `Trigger.TIMER_RESOLVE = "TimerFiredToResolved"`, the name of an ILLEGAL TRIGGER M9
+          REFUSES; and an F9-only allowed set matched `IllegalTransitionAttempted`, an F14 contract
+          granted to any machine. Both were defects in the instrument, not in M9.
+          ### PRODUCT DRIVER EXERCISED 11/11 SCENARIOS, 615 ASSERTIONS, 0 FAILED, 0 BLOCKED, 0 SKIPPED:
+          the permanent `p6_m9_exception` (478 assertions) plus TEN generated. The acceptance gate reads
+          VERIFIED over the 10 REQUIRED scenarios; the eleventh, `S12-closed-fault-vocabulary`, is
+          `required: false` and also passed. ### THIS IS THE STRONGEST GENERATED-SCENARIO CONTRIBUTION
+          OF ANY P6 LANDING - `wave-01` proposed 12 and accepted TEN, against M8's one (P6-D57), M7's
+          four (P6-D52) and M6's zero. The run's `scoped_completion` reads `task_result: VERIFIED`,
+          `task_outstanding: []`, `parent_phase_accepted: false`, and its `does_not_imply` list names
+          exactly what this landing also refuses to claim: P6 is not COMPLETE, no P6 acceptance
+          criterion is scored, the units P6 still owes are not built, the next phase is not unblocked,
+          phase acceptance has not occurred, and nothing is enabled in production or on live traffic.
+        nonblocking_residuals: >-
+          ### THE INDEPENDENT REVIEW RETURNED ZERO FINDINGS. The six residuals below are NOT reviewer
+          findings and must not be cited as such: they were identified at this landing from the run's
+          own structured evidence, the M9 source, the specification corpus and the CI record. Each is
+          RECORDED, NOT ACTIONED (CLAUDE.md sec 13 - the debt row is the complete deliverable). None
+          can produce a wrong customer outcome, violate an invariant, or make a later phase unsafe, and
+          the machine ships dark.
+          (P6-D59, MINOR, CI) THE WORKFLOW CONCLUDED `cancelled`, SO THIS COMMIT HAS NO GREEN CI
+          CONCLUSION, AND NOTHING IN THIS RECORD SAYS OTHERWISE. Pushed run 33460644572 on head a6e9d3b
+          concluded `cancelled` because `Full test suite (py3.12)` was CANCELLED at the runtime ceiling
+          having reached approximately 55%, with NO test-failure marker observed before cancellation.
+          ### BOTH HALVES ARE TRUE AND BOTH ARE STATED: THREE jobs concluded SUCCESS - `Safety
+          invariants (fast)`, `P6/M3 effect-grant probe + mutation`, and `Full test suite (py3.11)`
+          with 3099 passed and 1 skipped - and `Risk radar` was SKIPPED (pull-request-only). ### AND
+          M9'S OWN TESTS DID EXECUTE, MEASURED RATHER THAN ASSUMED: `pytest eval --collect-only -q` on
+          this exact tree collects 3100 tests, MATCHING py3.11's 3099+1 EXACTLY, and
+          `eval/tests/test_phase6_exception.py` occupies positions 2107-2164 - 68.0% to 69.8% of the
+          run - so the py3.11 job ran all 58 of M9's tests and they passed. ### WHAT PY3.12 DOES NOT
+          ESTABLISH: cancelled at approximately 55%, it stopped BEFORE that range, so the honest
+          statement is not "no verdict" but "NO EXECUTION" - the repository has NO Python 3.12 run of
+          M9's 58 tests on this commit, neither failing nor passing. (Denominator and caveat both
+          stated: the collection was taken locally with the repository's own command, while CI's
+          percentage is pytest's own progress display over its own collection under its own
+          interpreter, so this is strong evidence of ordering rather than a byte-exact reproduction -
+          though the 3100/3100 agreement with py3.11 is unusually direct corroboration that the two
+          collections are the same.) ### THE PRIOR VACUITY FAILURE IS FIXED AND A COMPLETED JOB
+          ESTABLISHES IT: run 33452247720 printed a real `F` at ~20% on BOTH interpreters at
+          `test_false_green_defenses.py::test_every_corpus_scanning_negative_assertion_proves_its_population`;
+          that node sits at position 611 of 3100 (19.7%), MATCHING the observed failure point, and it
+          is inside the `Full test suite` job that concluded SUCCESS on py3.11. The cancelled py3.12
+          job passed THROUGH 19.7% without emitting a failure marker, which is corroboration rather
+          than the basis. ### THE JOB CONCLUSIONS ABOVE WERE SUPPLIED BY THE FOUNDER AND WERE NOT
+          RE-READ BY THE LANDING SESSION - `gh run view` has failed from this sandbox with a TLS
+          interception error at every landing since P6-CP-5, so a later session with network access
+          should read run 33460644572 itself rather than trust this transcription. The founder has
+          explicitly chosen to land M9 on the evidence that exists, treating the py3.12 cancellation as
+          a NON-PRODUCT CI RUNTIME LIMITATION rather than as evidence of an M9 defect; that is recorded
+          as a founder DECISION, not as a verification. It closes only by a CI run on this branch that
+          concludes SUCCESS.
+          (P6-D60, MINOR, CI COVERAGE) CI does not execute M9's probe or mutation battery. The
+          `effect-grant` job runs M3's probe and battery on every push precisely because `pytest eval`
+          does not invoke them; there is no equivalent job for M4 (`P6-D33`), M5 (`P6-D37`), M6
+          (`P6-D43`), M7 (`P6-D49`), M8 (`P6-D54`) or M9, verified mechanically by the absence of ANY
+          `phase6_exception` occurrence in `.github/workflows/ci.yml`. Closing this is a change to CI
+          wiring, which a status/evidence landing deliberately does not make. As at P6-D54, the
+          mitigating sentence IS available: M9's 58 tests are inside `pytest eval`, and that job
+          completed on Python 3.11.
+          (P6-D61, MINOR, EVIDENTIARY) Reviewer-harness status vocabulary, in a NEW SHAPE. The
+          reviewer's `git status --porcelain` is logged `EXPECTATION_FAILED` - "no output was captured,
+          so no substring assertion could hold" - because it declared `expect_absent: ['exception.py',
+          'phase6_exceptions.py']` and the harness cannot evaluate an ABSENCE assertion against
+          CORRECTLY EMPTY output. The working tree WAS clean; the harness has no status for "the
+          command was supposed to print nothing, and it printed nothing". Same family as `P6-D39` (M5),
+          `P6-D45` (M6), `P6-D51` (M7) and `P6-D56` (M8). ### AND THE HARNESS REFUSED FIVE OF THE 19
+          ATTEMPTS AT THREE DIFFERENT LAYERS: two at `composition` (both re-issued in approved form and
+          RAN), one at `vocabulary` for an oversized `python -c` (a narrower form RAN), one at
+          `vocabulary` for the `@a81c8e00` token citation (NOT re-run), and one at `guard`, which
+          HARD-BLOCKED the channel-join AST scan as "deploy tooling" - a FALSE POSITIVE on the
+          module-name list the command carried (NOT re-run). ### UNLIKE P6-D51 AND P6-D56, TWO ORACLES
+          WERE GENUINELY ABANDONED BY THE REVIEW - and BOTH are supplied at this landing (see
+          `independent_review_note`) rather than carried forward, alongside the live-database
+          introspection the reviewer also lacked.
+          (P6-D62, MINOR, COVERAGE DISCLOSURE) THE GENERATED HALF OF THE SCENARIO COVERAGE IS THE
+          STRONGEST OF ANY P6 LANDING, AND THE TWO LOSSES ARE STILL DISCLOSED.
+          `scenario-generation/wave-01.json` records 12 proposed, TEN accepted and TWO filtered, and
+          both rejection reasons are identical and are about the HARNESS's assembly rule rather than
+          about M9 - "asserts something about whether an effect durably happened, but inspects no
+          persisted state". The two lost themes are `S5-classification-supplied` (permanence supplied
+          rather than inferred, and a PERMANENT failure raising with zero retries) and
+          `S8-from-set-legality` (resolving from AGEING illegal, nothing moves a RESOLVED Exception,
+          severity change a field and not a state). ### WHAT IT COSTS, STATED EXACTLY: NOTHING that is
+          not covered elsewhere. Both themes have named permanent-probe cases that PASSED - the probe
+          printed `THE FAILURE CLASSIFICATION IS SUPPLIED, NEVER INFERRED FROM A MESSAGE` and
+          `A PERMANENT AUTH OR CONFIG FAILURE RAISES IMMEDIATELY WITH ZERO RETRIES`, and the from-set
+          legality is carried by `EC3_FROM`/`EC6_FROM`/`EC4_FROM`/`EC7_FROM` read literally with
+          `resolve-from-ageing` and `severity-change-ageing` among the probe's 66 fault dimensions -
+          and the mutation battery catches `PERMANENT retried` and `permanence inferred from message`.
+          What was lost is the generated scenarios' COMPOSED DIMENSION PRESSURE on those two themes,
+          not the behaviours themselves. Disclosed rather than glossed.
+          (P6-D63, MINOR, EVIDENTIARY) THE RUN TOOK THREE ITERATIONS AND NEITHER OF THE FIRST TWO FOUND
+          A PRODUCT DEFECT. `state.json` records `iteration: 3`. The tree was BYTE-IDENTICAL at a6e9d3b
+          with `dirty_file_count: 0` across all three. The two problems that drove the corrections were
+          `LIVE_ENABLEMENT` and `NEXT_PHASE_UNBLOCKED` flags raised by a claim-extractor reading the
+          BUILDER'S REPORT PROSE - every flagged claim is recorded `source: "builder report"` - and the
+          second was SEEDED BY THE BUILDER'S OWN DISCLAIMER ("this does not imply a later phase is
+          unblocked"), whose negation the extractor ignored. The evaluator's decisive argument is
+          recorded verbatim in `decision.json`: "if a status document were the source it would have
+          flagged in iteration 1". NO repository file was edited in any iteration and
+          `git-diff-stat.txt` is empty. Recorded because a claim-extractor that cannot read a negation
+          will do this again, NOT actioned because it is a defect in the evaluation harness and there
+          is no product discrepancy to fix.
+          (P6-D64, MINOR, PRE-EXISTING) `scripts/mutate_phase6_work_item.py` case W26 reports
+          SETUP-FAIL: its `schema.py` anchor appears 0 times where it needs 1. PRE-EXISTING AND NOT
+          M9'S - the anchor last matched at 2ed750e6 (M1) and has been absent since 1aaf9439 (M2),
+          seven milestones back; it is absent at 2be4d82 and at 798b770 alike, and CI runs no such
+          battery. W26 currently PROVES NOTHING and wants its own fix. ### M9 WAS DELIBERATELY NOT
+          MODIFIED TO APPEASE IT, which is the correct call: editing a landed unit's runtime to satisfy
+          a broken guard in another unit's battery is exactly the failure CLAUDE.md sec 6 exists to
+          catch.
+          ### `P6-D40` IS CARRIED FORWARD UNCHANGED. It was NOT re-verified against the committed
+          status guards at this landing; what ran instead is an in-memory landing-posture battery over
+          this commit's own status surfaces, which is a DIFFERENT INSTRUMENT and is not a claim that
+          P6-D40 moved. `P6-D24`-`P6-D27`, `P6-D53`-`P6-D58`, the G2 residuals, V2/V3/V4 and every
+          earlier P6 residual are carried unchanged. M7's three authority questions `M7-AQ-1`,
+          `M7-AQ-2` and `M7-AQ-3` remain REPORTED and unresolved, and M9 answers none of them. ### M9'S
+          OWN SIX AUTHORITY QUESTIONS `M9-AQ-1`...`M9-AQ-6` ARE REPORTED, NOT RESOLVED: the
+          human-vs-active-rule closure (the RULE branch REFUSES today and `P6-D4` stays open at M12),
+          cancellation having no state and no event, the polymorphic `source_ref` FOREIGN KEY, who
+          wires the five landed to-Exception seams, what the freeze IS, and `EC-4`'s from-set. M9
+          implements only where every canonical reading agrees. `V10` ageing and escalation thresholds
+          stay CALLER-SUPPLIED with no business default invented.
+          ### TWO CARRIED RESIDUALS NAME `closes_at: M9`, AND M9 CLOSES NEITHER. THIS IS STATED RATHER
+          THAN LET PASS. `P6-D1` (K-1 names six human-decision event types and `HumanResolved` is not
+          among the canonical contracts, while `ExceptionResolved` looks like the same fact; its
+          disposition says "M9 owns that determination") is NOT determined here: the same question is
+          `M9-AQ-1`, which is REPORTED, and M9 builds the HUMAN branch, imports M1's resolver
+          unchanged, and leaves the RULE branch REFUSING - the safe direction the disposition already
+          named. `P6-D3` (an operator editing a row around `offboard_human` could retire an owner; "the
+          Sev-0 raise ... [is] M9") is NOT closed either: M9 supplies the machine that can carry a
+          SEV0 Exception, but NOTHING WIRES M1's ownerless detector to it - that wiring is `M9-AQ-4`,
+          also REPORTED, and wiring a seam is exactly what shipping dark forbids. Both rows stay OPEN
+          with their `closes_at` markers unchanged; a landing that quietly moved them would be the
+          claim-outliving-its-warrant failure this repository keeps catching.
+        what_it_owed: >-
+          ### DISCHARGED IN PART, AND THE UNDISCHARGED PART IS NAMED RATHER THAN ASSUMED AWAY. M9 is
+          tier-1 (CLAUDE.md sec 7): it lands a migration and it is load-bearing for tenant isolation.
+          Of what that requires: ONE FOCUSED INDEPENDENT REVIEW BY A SESSION THAT DID NOT BUILD IT -
+          DISCHARGED (SUPPORTED, 0.88, zero findings, eleven criteria PASS, bound to a6e9d3b / 7160f6e3
+          on a clean tree, and the reviewer executed the product rather than only reading it). MUTATION
+          PROOF THAT THE GUARD CAN FAIL - DISCHARGED (21/21 load-bearing guards proven to fail when
+          mutated: the owner NOT NULL dropped from creation, an owner from another tenant admitted, the
+          tenant dropped from the dedup boundary, RESOLVED accepted with no decision_ref, the resolver
+          weakened to a non-null test, a model permitted to resolve, AutoClose introduced, the
+          no-delete trigger disabled, a timer made able to resolve, a sixth state added, sub_status
+          promoted to a lifecycle state, previous_severity dropped from the severity change, the OCC
+          predicate weakened, replay reading severity from the live row, M9 made a gate-decision
+          minter, M9 made a brake engager, a PERMANENT failure retried before raising, permanence
+          inferred from an error message, and the ship-dark posture weakened - each reproduced by the
+          reviewer). CI - ### NOT DISCHARGED, BECAUSE THE WORKFLOW CONCLUDED `cancelled` AND `cancelled`
+          IS NOT `success`; but a full suite completed and executed all 58 of M9's tests on Python 3.11
+          while py3.12 has NO EXECUTION of them. Recorded as `P6-D59` and NOT upgraded to green
+          anywhere in this record. The founder chose to land on the evidence that does exist; that
+          choice is recorded as a choice.
           ### ITS ACCOMPANYING PROHIBITION REMAINS IN FORCE - no P6 acceptance criterion is scored by
           this checkpoint and none may be: `criteria_scored` is empty below, no P6 weighted criterion is
           scored, P6 is NOT COMPLETE and P7 is NOT unlocked.
