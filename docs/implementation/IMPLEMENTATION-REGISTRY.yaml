@@ -2769,6 +2769,33 @@ units:
     # checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is
     # NOT unlocked.
     # ### M10 - THE COMPENSATION - IS THE NEXT CHECKPOINT.
+    # ### THE NEXT-CHECKPOINT LINE IMMEDIATELY ABOVE WAS TRUE AT THE `P6-CP-9` LANDING AND IS FALSE
+    # NOW. It is KEPT, not deleted, so the old phrasing stays recognisable if it returns (CLAUDE.md
+    # sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE INSTRUCTION, so it is
+    # CORRECTED HERE rather than left to send a fresh session to rebuild something landed.
+    # ### AS OF THE `P6-CP-10` LANDING: M10 LANDED as `P6-CP-10`. The phase still owes M11-M13 and 21 of
+    # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 = 113 written, re-derived
+    # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
+    # the parse DISCOVERED 13 files and counted 134 rows, matching this unit's own
+    # `expected_production_outputs`, and no prior figure was carried; the 21 remaining are exactly
+    # M11's 7, M12's 9 and M13's 5). M10 ships dark, `criteria_scored` is empty on ALL TEN checkpoints,
+    # no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is NOT unlocked.
+    # ### M11 - THE POLICY - IS THE NEXT CHECKPOINT.
+    # ### THE `P6-CP-10` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
+    # the already-verified tree a833074: three documents change and NOTHING under `src/`, `eval/`,
+    # `scripts/` or `.github/` is touched. Measured rather than asserted: the WHOLE `src/` TREE is
+    # byte-identical (bef554e379492b2c2dba494c65db3545ce45b750) at the M10 build commit 715ddc0, at the
+    # reviewed tree a43feae AND at a833074, and `.github/` is byte-identical
+    # (41f76934b715f253da6e7f6a261c351186a7447b) across the entire range 715ddc0~1..a833074.
+    # ### THE `P6-CP-10` REVIEW IS BOUND TO a43feae, NOT TO THE LANDING CANDIDATE a833074, AND THAT IS
+    # STATED RATHER THAN GLOSSED. A post-push CI correction (a833074) followed the review. It changed no
+    # `src/` file, no migration runtime, no checkpoint semantics and no M1-M9 machine semantics; what it
+    # changed is canonical bookkeeping (the `compensations` REG-1 classification, the canonical partition
+    # and the migration walk), one new shared ADR-010 boundary scanner (eval/phase0/gate_scan.py), five
+    # guard test files and the M10 mutation battery. Two claims are kept apart and neither is inflated
+    # into the other: AN INDEPENDENT REVIEW OF THE M10 IMPLEMENTATION TREE (a43feae, SUPPORTED 0.90) and
+    # A POST-REVIEW CANDIDATE CORRECTION VERIFIED BY TARGETED TESTS AND A COMPLETED CI SUITE (a833074).
+    # Recorded as `P6-D68`.
     # ### THE M9 CANDIDATE NOTE THAT PRECEDED THIS IS SUPERSEDED. Between b94f963 and a6e9d3b the
     # repository recorded M9 as an IMPLEMENTED CANDIDATE whose tier-1 independent review was PENDING
     # and which was explicitly "NOT `P6-CP-9`". THAT WORDING WAS TRUE WHEN WRITTEN AND IS FALSE NOW:
@@ -5084,6 +5111,260 @@ units:
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
           PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
+      - id: P6-CP-10
+        name: The Compensation - undoing an external effect that should not have happened, gated like any other write
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        build_commit: 715ddc0fa9991aa8521e8d34422f4337cdf3babc
+        reviewed_commit: a43feae7496a7a9dddc363b98eed0345482f0890
+        reviewed_tree: 3b85cea8997e3e2e0cbea460fe77ee3239ed4611
+        candidate_commit: a83307410746520ab084d028c98e1e23288755fb
+        candidate_tree: 59f1ef6809c90e544b706b72b53471ede04ffd1e
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M10 of the thirteen - one `compensations` row per external effect that a later
+          correction established should not have happened, SIX canonical states (REQUIRED, APPROVED,
+          EXECUTING, COMPLETED, COMPENSATION_FAILED, NOT_POSSIBLE), one machine, NINE transitions
+          (`CM-1`, `CM-1r`, `CM-2`, `CM-2n`, `CM-3`, `CM-4`, `CM-4f`, `CM-5`, `CM-5x` - an exact set
+          match with sec 14 of the machine specification), the SEVEN already-registered F10 contracts
+          and no eighth, and the partial index UNIQUE (tenant, original_effect_id) WHERE state !=
+          'NOT_POSSIBLE' that makes ONE ACTIVE COMPENSATION PER INVALIDATED EFFECT something the
+          database enforces rather than something the application remembers to check.
+          ### AN "UNDO" THAT BYPASSES THE GATES IS AN UNGATED WRITE WITH A GOOD EXCUSE, AND THAT IS
+          THE WHOLE UNIT. A carrier's POD was bound to the wrong load and an invoice for GBP 2,850
+          went out on the strength of it. A human corrects the binding; the money left the building
+          and something has to credit it back. The tempting implementation is a rollback - find the
+          effect, call the adapter's void endpoint, mark the row undone - and that is A SECOND,
+          UNGATED WRITE ROUTE INTO A CUSTOMER'S ACCOUNTING SYSTEM, reached precisely when the system
+          is already known to be wrong about something. So M10 does the opposite: the credit note is
+          a NEW EXTERNAL EFFECT with its own M2 Pipeline Instance, its own policy evaluation, its own
+          brake check, its own M4 human approval, its own P3 checkpoint witness, its own single-use M3
+          Effect Grant, its own commit key and its own VERIFIED READBACK - completion requires reading
+          the world back, never the write merely being accepted. The `compensations` row is only the
+          OBLIGATION to do that, carrying a named human owner from the moment it exists (`owner_id NOT
+          NULL` plus a composite FOREIGN KEY into `tenant_humans`, so an ownerless compensation is not
+          insertable) and the amount at stake beside it.
+          ### AND YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID. When the original effect's outcome is
+          UNKNOWN_OUTCOME, M10 REFUSES TO COMPENSATE AT ALL (M-33) - "cancel invoice #560010" against
+          a system where no such invoice exists can CREATE a credit note out of nothing. Eligibility
+          is read from the PERSISTED GRANT LEDGER, never from a caller flag; a human resolves the
+          unknown to VERIFIED or FAILED through M3's EF-5 first. This is the single most important
+          rule in the unit and it is the one the probe and two caught mutants exercise first.
+          ### COMPENSATION_FAILED AND NOT_POSSIBLE ARE THE MOST DANGEROUS STATES THE SYSTEM CAN BE IN,
+          because reality and the projection are KNOWN to diverge. No timer moves them, no retry loop
+          moves them, no sweep, no reaper and no model at any confidence (GR-8); there is no automatic
+          best-effort retry. They stay loud, keep their named human owner and CARRY THE EXPOSURE until
+          a human establishes reality through CM-5. A `BEFORE DELETE` trigger refuses the delete
+          outright with the entity's own prose. There is NO SEVENTH STATE - no CANCELLED, no EXPIRED,
+          no TIMED_OUT, no STALE, no ROLLED_BACK - and NO EXPIRY COLUMN AT ALL.
+          ### M10 FEEDS THE ONE GATE AUTHORITY AND NEVER BECOMES ONE. Money-affecting compensation is
+          ALWAYS human-approved - structurally, and WITHOUT REGISTERING ANYTHING, because the
+          production `GateRegistry` stays EMPTY and the compensating action class ("adjust_invoice")
+          therefore falls to the kernel's HUMAN_APPROVAL_REQUIRED default. `checkpoint.py` remains the
+          SOLE minter of a gate decision and M3 the SOLE effect authority; M10 imports neither the
+          checkpoint nor the brake nor any timer service. Closure imports M1's landed
+          `resolve_decision_ref` rather than writing a second K-1 executor (rule 17), and CM-5 emits
+          the ALREADY-REGISTERED shared F3 `RealityEstablished` (producers EF-5 and CM-5, discriminated
+          by subject="compensation") - M10 MINTED NO DUPLICATE COORDINATION CONTRACT. Ships dark: zero
+          production importers over 121 modules, and the F10->M9 escalation seam is NAMED AND LEFT
+          UNWIRED (`M10-AQ-12`), on the precedent M9's own landing set for `M9-AQ-4`.
+        what_is_in_the_tree: >-
+          `src/freight_recon/compensation.py` and
+          `src/freight_recon/migrations/phase6_compensations.py`, wired into `schema.py` and into the
+          P2 migration path and built LAST of the P6 units because `compensations` holds FOREIGN KEYS
+          into `tenant_humans` (M1), `pipeline_instances` (M2), `effect_grants` (M3) and `approvals`
+          (M4); `eval/tests/test_phase6_compensation.py` (63 tests) and
+          `eval/tests/phase6_compensation_kit.py`, which DELIBERATELY DOES NOT IMPORT `compensation`
+          so it does not appear on M10's ship-dark reach list; `scripts/probe_phase6_compensation.py`
+          (109 cases across 11 composable CLI dimensions, whose fault vocabulary is closed at 31 members
+          - measured at this landing: 11 axis flags + 31 faults = 42 declared lines); and `scripts/mutate_phase6_compensation.py`
+          (36 mutants at this landing, including the anti-vacuity re-export control and the three
+          gate-boundary mutants added by the post-push correction).
+          ### THE LOAD-BEARING DDL WAS INTROSPECTED LIVE AT THIS LANDING, NOT READ. A fresh canonical
+          database built the way production builds one returned: PRIMARY KEY ['tenant',
+          'compensation_id'] (tenant-first), 15 columns, FOUR indexes of which FOUR lead with `tenant`,
+          the AC-RACE-013 predicate verbatim as CREATE UNIQUE INDEX ix_compensations_one_active_per_
+          effect ON compensations (tenant, original_effect_id) WHERE state != 'NOT_POSSIBLE', FOUR
+          composite FOREIGN KEYS each leading with `tenant`, exactly SIX state literals with no seventh,
+          NO expiry or TTL column, and three triggers (`trg_compensations_no_delete`,
+          `trg_compensations_identity_immutable`, `trg_compensations_version_advances_on_state_change`).
+          ### AND THE INVARIANTS WERE PROVEN BY ATTEMPTING THE VIOLATION, WITH THE POPULATION PROVED
+          FIRST. TWO POSITIVE CONTROLS RAN BEFORE ANY NEGATIVE ONE and both were ACCEPTED - a legal
+          REQUIRED compensation in one tenant, and the same original effect compensated in a second
+          tenant - so the nine refusals below are not the vacuous-negative false green CLAUDE.md sec 6
+          exists to catch. NINE illegal inserts, NINE refusals: a seventh state 'ROLLED_BACK' and a
+          seventh state 'CANCELLED' (the six-member state CHECK), an ownerless compensation (`owner_id`
+          NOT NULL), an owner from another tenant and an owner who is not a recorded human (the
+          composite FK), a SECOND ACTIVE compensation for the same original effect (the partial UNIQUE),
+          a compensation with no exposure amount and one with no reason (NOT NULL), and version 0 (the
+          OCC floor CHECK version >= 1). The DELETE was refused outright by the trigger. `M10-AQ-9`'s
+          consequence was MEASURED rather than asserted: once the first compensation is NOT_POSSIBLE a
+          second for the same effect IS insertable, which is what the canonical predicate requires and
+          is REPORTED, not silently corrected.
+          ### THE EVENT CONTRACTS, MEASURED: 118 registered contracts, the F10 family with EXACTLY
+          SEVEN members and no eighth (`CompensationRequired` CM-1, `CompensationRefused` CM-1r,
+          `CompensationApproved` CM-2, `CompensationImpossible` CM-2n, `CompensationStarted` CM-3,
+          `CompensationCompleted` CM-4, `CompensationFailed` CM-4f), and `RealityEstablished` confirmed
+          as ONE F3 contract with producers ['EF-5','CM-5'] and coordination true.
+          `CorrectionInvalidatedAnEffect` and `NoCompensatingActionExists` are confirmed NOT REGISTERED,
+          and M10 mints neither.
+        implementer_evidence: >-
+          Re-executed at this landing on the committed tree, not carried from the build report:
+          `pytest eval/tests/test_phase6_compensation.py` 63 PASSED;
+          `scripts/probe_phase6_compensation.py --all` exit 0, "behaviours as specified, 0 wrong";
+          `scripts/mutate_phase6_compensation.py` 36/36 MUTANTS CAUGHT, "36 mutations caught, 0
+          escaped", tree restored byte-identical with no `compensation_shadow.py` stranded and
+          `git status --porcelain` empty afterwards.
+          ### THE SIX REAL CI FAILURES WERE REPRODUCED AND RE-VERIFIED, NOT ASSUMED. CI run
+          33575760180 on the pushed pre-correction head a43feae reported 6 failed, 3156 passed, 1
+          skipped on py3.12. At this landing a throwaway worktree of a43feae was created and the
+          candidate guard files were run against it: EXACTLY SIX FAILED AND ONLY SIX -
+          test_bootstrap_hermeticity.py::test_the_canonical_table_partition_is_exact_and_disjoint,
+          test_phase0_baseline_manifest.py::test_r07_containment_record_holds_only_while_its_mechanical_conditions_hold,
+          test_phase0_errata_guards.py::test_typed_policy_runtime_exists_only_with_its_canonical_authority,
+          test_phase0_null_gate.py::test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoint_kernel,
+          test_phase0_tenant_posture.py::test_no_new_tenantless_table_appeared and
+          test_phase3_schema.py::test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs
+          (6 failed, 100 passed). All six PASS on the landing candidate a833074. The worktree was
+          removed with `git worktree remove`; NO `git checkout`, `git restore`, `git stash` or
+          `git clean` was used at any point (CLAUDE.md sec 6).
+          ### NONE OF THE SIX WAS AN M10 RUNTIME DEFECT. Three were canonical bookkeeping -
+          `compensations` is a real canonical table that the partition guard, the REG-1 manifest and
+          the migration walk could not see. Three were STALE GUARD SUBJECTS: P0 guards defending the
+          ADR-010 boundary by reading RAW FILE TEXT, which cannot tell `if gate is FORBIDDEN:` apart
+          from a docstring saying "this machine mints NO gate decision" - and M10's docstring says
+          exactly that. AST proof recorded in the correction: `compensation.py` and
+          `phase6_compensations.py` hold six gate-token occurrences and ZERO are executable. What
+          narrowed is what the guards READ; who is permitted is untouched, the kernel allowlist is
+          unchanged, `compensation.py` is NOT in it, and production `GateRegistry` registration remains
+          EMPTY. The narrowed guards were proven not to be decorations by three NEW mutants that make
+          `compensation.py` commit the real forbidden acts, each turning its guard RED.
+          ### SHIP-DARK, RE-MEASURED OVER DISCOVERED POPULATIONS AT THIS LANDING (never an enumerated
+          file list): 121 production modules scanned; `production importers of compensation: []`;
+          production modules whose IMPORT CLOSURE reaches compensation: []; 20 channel-capable modules
+          DISCOVERED and NONE whose closure reaches compensation; `modules that MINT a gate decision:
+          ['checkpoint.py']`; ZERO `GateRegistry` constructions anywhere in the package, so the
+          registered-action-class population is structurally EMPTY and the sole `GateEntry`
+          construction is the kernel's own `GateRegistry._DEFAULT` fallback at checkpoint.py:242;
+          `compensation.py` imports no `checkpoint`, no `brake` and no timer service; the only files
+          outside the package that reach it are its own suite, kit, probe and mutation battery;
+          `policy`, `rule` and `brake_lifecycle` modules DO NOT EXIST and no M11/M12/M13 migration is
+          present. Transition arithmetic re-derived by parsing sec 14 of all 13 machine files and
+          COUNTING ROWS: 13 files discovered, 134 rows counted, 113 written and landed, 21 remaining
+          (M11's 7 + M12's 9 + M13's 5).
+        independent_review_report: docs/implementation/p6-cp10-independent-review-report-a43feae.md
+        independent_review_note: >-
+          ### THE REVIEW IS BOUND TO a43feae, AND NO INDEPENDENT REVIEWER SAW THE LANDING CANDIDATE
+          a833074. That is stated first because it is the one place this record could mislead. The
+          focused independent review required by CLAUDE.md sec 7 for a TIER-1 change - M10 lands a
+          migration, it is load-bearing for tenant isolation, and it is MONEY-AFFECTING - was performed
+          by a session that did not build M10 (`inherited_builder_context: false`; reviewer session
+          28c38089-a152-42c2-b440-52eba32987b9, builder session a4661cfd-8251-41f1-b94c-20f8472578be)
+          against commit a43feae / tree 3b85cea on a clean tree it confirmed itself
+          (`tracked_dirty: 0`, `untracked: 0`), and returned SUPPORTED, confidence 0.90, findings [],
+          adjudications [], 11/11 criteria PASS, `blocked_on.kind: NONE`.
+          ### THAT REVIEWER EXECUTED THE PRODUCT rather than only reading it. `evidence_reproduced:
+          true` and `claimed_evidence_reproduced: true`. Of 21 command attempts 18 RAN: the 63-test M10
+          suite; `probe --all` ("behaviours as specified, 0 wrong"); the mutation battery (33/33 caught,
+          0 escaped on the reviewed tree, anti-vacuity re-export control included); the M1-M4 neighbour
+          matrix (432 passed); M9 (58 passed); the false-green suite (8 passed); AST scans returning
+          `production importers of compensation: []` and `modules that MINT a gate decision:
+          ['checkpoint.py']`; the F10 registry scan; and - the reason a tier-1 review existed for the
+          a43feae correction at all - a direct verification that the tolerated `compensation_shadow.py`
+          is a TRANSIENT BYTE-COPY of the already-dark M10 machine, not git-tracked, absent from the
+          working tree, and purged at battery start and in `finally`/`BaseException`, with the guards
+          still rejecting any other production importer and still inspecting more than 20 modules.
+          ### WHAT THE POST-REVIEW CORRECTION CHANGED, MEASURED RATHER THAN ASSERTED. The whole `src/`
+          tree is BYTE-IDENTICAL - bef554e379492b2c2dba494c65db3545ce45b750 - at the build commit
+          715ddc0, at the reviewed tree a43feae AND at a833074. No migration runtime differs; no
+          checkpoint semantics differ; `work_item.py`, `pipeline_instance.py`, `external_effect.py`,
+          `approval.py`, `observation.py`, `identity_binding_claim.py`, `conflict.py`, `expectation.py`,
+          `exception.py`, `brake.py` and `checkpoint.py` are byte-identical across the entire range
+          715ddc0~1..a833074, and `.github/` is byte-identical across it too. What a833074 touched:
+          CURRENT.md (one partition row), phase-0-baseline-manifest.yaml (the REG-1 classification), a
+          NEW eval/phase0/gate_scan.py stating the ADR-010 boundary once so three guards stop restating
+          it, five guard test files, and the M10 mutation battery. ### SO THE HONEST SPLIT IS: an
+          INDEPENDENT REVIEW OF THE M10 IMPLEMENTATION TREE, and a POST-REVIEW CANDIDATE CORRECTION
+          VERIFIED BY TARGETED TESTS AND A COMPLETED py3.12 CI SUITE. Neither is inflated into the
+          other, and `P6-D68` carries the gap.
+          ### PRODUCT DRIVER EXERCISED 13/13 SCENARIOS - the permanent `p6_m10_compensation` plus TWELVE
+          generated - 667 ASSERTIONS, 0 FAILED, 0 blocked, 0 skipped, across happy_path, boundary,
+          timeout_before_effect, timeout_after_effect, concurrency (x2), partial_failure,
+          safety_invariant (x3), retry_safety and crash_mid_workflow, with `uncovered_risks: []`. That
+          is the LARGEST GENERATED CONTRIBUTION OF ANY P6 LANDING - against M9's ten, M7's four, M8's
+          one and M6's zero. `coverage_summary` records 16 proposed, 12 accepted, 4 filtered, 0 invalid
+          (`P6-D70`). The run's `scoped_completion` reads `task_result: VERIFIED`, `task_outstanding:
+          []`, `parent_phase_accepted: false`, and its `does_not_imply` list names exactly what this
+          landing also refuses to claim.
+        nonblocking_residuals: >-
+          Six items are RECORDED, NOT ACTIONED (CLAUDE.md sec 13), carried in this unit's
+          `residual_risks_carried_forward` as `P6-D65` through `P6-D70`. ### NONE IS A REVIEWER FINDING
+          AND NONE MAY BE CITED AS ONE - the review returned `findings: []`. Each was identified AT THIS
+          LANDING from the run's own structured evidence, the M10 source, the specification corpus and
+          the CI record. None can produce a wrong customer outcome, violate an invariant, or make a
+          later phase unsafe, and the machine ships dark.
+          `P6-D65` - the THIRTEEN M10 authority questions `M10-AQ-1`...`M10-AQ-13`, REPORTED and
+          unresolved, implemented only where every canonical reading agrees.
+          `P6-D66` - no green CI conclusion: run 33594219060 concluded `cancelled`, and py3.11 and
+          `Safety invariants (fast)` have NO RESULT for this commit.
+          `P6-D67` - CI runs no M10 probe or mutation job.
+          `P6-D68` - the independent review is bound to a43feae, not to the landing candidate a833074.
+          `P6-D69` - the reviewer harness refused three of its own commands.
+          `P6-D70` - four of sixteen proposed generated scenarios were filtered at assembly.
+          ### ONE CARRIED RESIDUAL NAMES `closes_at: M10`, AND M10 DOES NOT CLOSE IT - STATED RATHER
+          THAN LET PASS. `P6-D2` (`CorrectionInvalidatedAnEffect` is listed in M1 sec 33 "Events
+          consumed" but has no sec 14 row; sec 27 routes it out of band to M10) is NOT DETERMINED HERE.
+          That is `M10-AQ-1`: M10 owns a callable `raise_from_correction(...)` seam over the
+          ALREADY-REGISTERED correction facts and MINTS NO UNREGISTERED EVENT NAME - the safe direction
+          the disposition already named - but that is not the determination the row is waiting for. The
+          row stays open with its `closes_at` marker UNCHANGED. A landing that quietly moved it would be
+          the claim-outliving-its-warrant failure this repository keeps catching.
+          ### ALSO UNTOUCHED AND EXPLICITLY NOT CLOSED: `V1` (machine sec 43, "reopening may raise a
+          compensation") stays OPEN VALIDATION, fail-closed and human-approved; `M9-AQ-1`...`M9-AQ-6`,
+          `M7-AQ-1`...`M7-AQ-3`, `M6-AQ-*`, `M5-AQ-*`, `P6-D1`, `P6-D3`, `P6-D4` and `V10` are
+          unchanged; and `P6-D40` is CARRIED FORWARD UNCHANGED and was NOT re-verified at this landing -
+          no mutation battery was run against the status guards here and none is claimed.
+        what_it_owed: >-
+          ### CI - THE HONEST RECORD. Run 33594219060 on the landing candidate a833074 concluded
+          `cancelled`, AND `cancelled` IS NOT `success`. Anyone citing this landing as "CI green" is
+          citing it wrongly. Job conclusions: `Full test suite (py3.12)` SUCCESS - 3165 passed, 1
+          skipped, THE ENTIRE SUITE COMPLETED; `P6/M3 effect-grant probe + mutation` SUCCESS;
+          `Full test suite (py3.11)` CANCELLED at the workflow/runtime ceiling around 54% with NO pytest
+          `F` emitted before cancellation; `Safety invariants (fast)` CANCELLED at its runtime ceiling,
+          also with no `F`; `Risk radar` SKIPPED (pull-request-only).
+          ### THIS IS THE STRONGEST CI POSITION OF ANY P6 LANDING, AND IT IS STILL NOT GREEN. BOTH
+          HALVES ARE TRUE AND BOTH ARE STATED. For the first time since P6-CP-6 a complete interpreter
+          suite ran the whole way through, and FOR THE FIRST TIME AT ANY P6 LANDING that completed suite
+          EXECUTED THE LANDING MACHINE'S OWN TESTS. Measured, not assumed: `pytest eval --collect-only`
+          collects 3166 tests on this tree, matching py3.12's 3165 + 1 EXACTLY, and
+          `eval/tests/test_phase6_compensation.py` occupies positions 2061-2123, i.e. 65.1%-67.1% of the
+          run. So py3.12 ran ALL 63 OF M10'S TESTS AND THEY PASSED.
+          ### WHAT PYTHON 3.11 DOES NOT ESTABLISH. Cancelled at ~54%, it stopped BEFORE 65.1%. The honest
+          statement is not "no verdict" but NO EXECUTION: the repository has NO Python 3.11 run of M10's
+          63 tests on this commit, neither failing nor passing. `Safety invariants (fast)` likewise has
+          NO RESULT - and its 26 named files do NOT include test_phase6_compensation.py, so what its
+          cancellation costs is a second execution of guards the completed py3.12 suite already ran, not
+          coverage of M10 itself.
+          ### THE SIX REAL FAILURES FROM THE PRIOR RUN ARE ABSENT FROM THE COMPLETED py3.12 SUITE, and
+          all six sit inside it. Five of the six sit at 5.7%, 45.1%, 46.1%, 47.3% and 48.1% - BELOW the
+          ~54% py3.11 reached - so the cancelled py3.11 job passed THROUGH their positions without
+          emitting a failure marker; that is corroboration, and the basis is the completed py3.12 run.
+          ### THE JOB CONCLUSIONS WERE FOUNDER-SUPPLIED AND COULD NOT BE RE-READ HERE. `gh run view` has
+          failed from this sandbox with a TLS interception error at every landing since P6-CP-5, so a
+          later session with network access should read run 33594219060 itself rather than trust this
+          transcription. The founder chose to land M10 on the evidence that exists, treating the py3.11
+          and Safety cancellations as NON-PRODUCT CI RUNTIME LIMITATIONS rather than as evidence of an
+          M10 defect; that is recorded as a DECISION, NOT A VERIFICATION (`P6-D66`). It closes only by a
+          CI run on this branch that concludes `SUCCESS`.
+          ### LANDED IS NOT ACCEPTED, AND THIS RECORD SCORES NOTHING. `criteria_scored` is empty below
+          and empty on ALL TEN checkpoints; no P6 weighted acceptance criterion is scored; P6 stays
+          `status: READY` / `execution_state: IN_PROGRESS` and does not move; P7 stays `BLOCKED` /
+          `NOT_STARTED`; the phase still owes M11-M13 and 21 of the 134 transitions; and NOTHING IS
+          ENABLED IN PRODUCTION. M10 ships dark, mints no gate decision, engages no brake, joins no
+          channel, imports no timer service, and has no oversight queue, dashboard, notifier or MTTR
+          surface.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -5274,6 +5555,146 @@ units:
           which is about PRODUCER-side declaration; this is the CONSUMER side.
         severity: LOW - nonblocking
         closes_at: M3, with its first strict-order consumer
+      - id: P6-D65
+        finding: >-
+          ### THE THIRTEEN M10 AUTHORITY QUESTIONS ARE REPORTED AND UNRESOLVED. The corpus numbers them
+          `M10-AQ-1`...`M10-AQ-13` - thirteen headings, counted at this landing; the Product Driver run's
+          own prose calls them "twelve", and the count here is what was MEASURED rather than what the run
+          summarised. Each names a place where a build session, acting reasonably, would settle a
+          specification question by accident: (1)/(2) `CorrectionInvalidatedAnEffect`, `HumanApproved`,
+          `NoCompensatingActionExists`, `PipelineFailed` and `HumanEstablishedReality` are NOT registered
+          contracts; (3) there is no `invalidating_decision_ref` column, so the fact rides the immutable
+          `CompensationRequired` event only; (4)/(5) CM-5's "co-commit M2 {VERIFIED,FAILED}" has no
+          pipeline to co-commit with on the NOT_POSSIBLE branch, and `RealityEstablished`'s
+          `aggregate_type` is `effect_grant` while CM-5's aggregate is a compensation; (6) which M4
+          approval, created by whom, consumed when; (7) whether landed M2 can express a compensating
+          action without a Work Item; (8) M10's prose assumes M11/M12/M13, which are unbuilt; (9)
+          NOT_POSSIBLE is excluded from the uniqueness predicate; (10) the corpus names no disposition
+          for six of M3's eight states; (11) no canonical mechanism proves "the world offers no undo",
+          and CM-2n's trigger type `S` sits against the human-authority requirement; (12) the F10->M9
+          escalation seam; (13) K-4's provenance rule versus the entity's attribute list.
+        disposition: >-
+          ### REPORTED, NOT RESOLVED, AND BUILT FAIL-CLOSED IN EVERY CASE. M10 mints no unregistered event
+          name and owns a callable `raise_from_correction(...)` seam over already-registered correction
+          facts (AQ-1/2); CM-4f's trigger is its executing pipeline REACHING `FAILED` or
+          `NEEDS_VERIFICATION`, read from the M2 row, not the delivery of an event that does not exist
+          (AQ-2); the invalidating `decision_ref` is resolved at CM-1 through M1's resolver and emitted on
+          the event, with the persistence asymmetry reported (AQ-3); the COMPENSATION_FAILED branch
+          coordinates with M2's landed PL-15 while the NOT_POSSIBLE branch records `reality_decision_ref`
+          with NO FABRICATED PIPELINE (AQ-4); `RealityEstablished` keeps `aggregate_type: effect_grant`
+          and is discriminated by `subject="compensation"`, with the enum NOT widened and
+          `outcome="COMPLETED"` never emitted (AQ-5); M10 reads M4 and consumes no approval at CM-2, and
+          `Compensation.APPROVED` is not collapsed with `Approval.GRANTED`/`CONSUMED` (AQ-6); M2's
+          `propose` is REUSED and the caller supplies the Work Item, with no second pipeline and no edit
+          to M2's machine (AQ-7); M10 uses the checkpoint/brake substrate and builds NO part of M11, M12
+          or M13 (AQ-8); the uniqueness predicate is built VERBATIM and its consequence MEASURED at this
+          landing rather than the canonical predicate being silently changed (AQ-9); the six other M3
+          states create nothing and mint no refusal-cause variant (AQ-10); impossibility rests on a
+          deterministic-evidence token with NO capability registry built and the S-trigger tension
+          reported (AQ-11); the F10->M9 seam is NAMED AND LEFT UNWIRED, on the precedent M9's own landing
+          set for `M9-AQ-4` - wiring a seam is precisely what shipping dark forbids (AQ-12); and
+          `original_effect_id` is the K-4 provenance reference for the required, money-affecting exposure,
+          which is persisted as `exposure_amount_minor` + `exposure_currency`, so no money value is
+          persisted without provenance and no unsupported reference was invented (AQ-13). ### RESOLVING
+          ANY OF THEM IS A FOUNDER DECISION OR A LATER MACHINE'S, NOT A BUILD SESSION'S.
+        severity: LOW
+        closes_at: M11/M12/M13, or a founder determination, per question
+      - id: P6-D66
+        finding: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THE LANDING CANDIDATE. Run 33594219060 on a833074
+          concluded `cancelled`. `Full test suite (py3.11)` was cancelled at the workflow/runtime ceiling
+          around 54% with no pytest `F` emitted before cancellation, and `Safety invariants (fast)` was
+          cancelled at its runtime ceiling, also with no `F`. The repository therefore has NO Python 3.11
+          result and NO safety-job result for this commit - not a failing one and not a passing one.
+        disposition: >-
+          ### RECORDED AS A DECISION, NOT A VERIFICATION, AND BOTH HALVES ARE STATED. `cancelled` is not
+          `success` and no document in this repository says it is. What DID conclude SUCCESS is the
+          strongest CI position of any P6 landing: `Full test suite (py3.12)` ran the ENTIRE suite to
+          completion - 3165 passed, 1 skipped - and the M3 effect-grant job passed; `Risk radar` is
+          pull-request-only and skipped. Measured, not assumed: `pytest eval --collect-only` collects
+          3166 tests on this tree, matching py3.12's 3165 + 1 exactly, and
+          `eval/tests/test_phase6_compensation.py` occupies positions 2061-2123 (65.1%-67.1%), so py3.12
+          executed ALL 63 of M10's tests and they passed - the first P6 landing whose completed CI suite
+          ran the landing machine's own tests. py3.11 stopped before them, so the honest statement about
+          the second interpreter is NO EXECUTION rather than "no verdict". The Safety job's 26 named files
+          do not include test_phase6_compensation.py, so its cancellation costs a second execution of
+          guards the completed py3.12 suite already ran, not coverage of M10. The job conclusions were
+          founder-supplied and could not be re-read here - `gh run view` fails from this sandbox with a
+          TLS interception error, as at every landing since P6-CP-5. The founder chose to land on the
+          evidence that exists, treating the cancellations as non-product CI runtime limitations.
+        severity: LOW - nonblocking
+        closes_at: a CI run on this branch that concludes SUCCESS
+      - id: P6-D67
+        finding: >-
+          CI runs NO M10 probe or mutation job. Verified mechanically at this landing: the count of
+          `phase6_compensation` occurrences in `.github/workflows/ci.yml` is ZERO. M3 is the only P6
+          machine with a dedicated probe/mutation job.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND UNLIKE `P6-D49` THE MITIGATING SENTENCE IS AVAILABLE HERE: M10's
+          63 tests are inside `pytest eval`, and that job COMPLETED on py3.12 and passed. So the probe and
+          the 36-mutant battery are the two instruments CI does not run, and both were re-executed on the
+          committed tree at this landing (0 wrong; 36/36 caught, 0 escaped). Adding a per-machine CI job
+          for each of the thirteen machines is a CI-shape decision, not an M10 defect, and the runtime
+          ceiling `P6-D66` records is an argument against adding more jobs rather than for it.
+        severity: LOW - nonblocking
+        closes_at: a CI-shape decision, not a machine
+      - id: P6-D68
+        finding: >-
+          ### THE `P6-CP-10` INDEPENDENT REVIEW IS BOUND TO a43feae, NOT TO THE LANDING CANDIDATE a833074.
+          The reviewer confirmed a clean tree at a43feae / 3b85cea and returned SUPPORTED 0.90. The
+          post-push CI correction a833074 was made AFTER that review and NO INDEPENDENT REVIEWER HAS SEEN
+          IT. Two of the five files it changed are guard test files that NARROWED what a safety guard
+          reads, which is exactly the surface CLAUDE.md sec 7 tier-1 exists to review.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND THE GAP IS MEASURED RATHER THAN ARGUED AWAY. The whole `src/`
+          tree is BYTE-IDENTICAL - bef554e379492b2c2dba494c65db3545ce45b750 - at 715ddc0, a43feae and
+          a833074, so no reviewed runtime moved; no migration runtime, no checkpoint semantics and no
+          M1-M9 machine semantics differ; and `.github/` is byte-identical across the entire M10 range.
+          The correction is canonical bookkeeping plus guards, and what narrowed is what the guards READ,
+          not who is permitted: the kernel allowlist is unchanged, `compensation.py` is not in it, and
+          production `GateRegistry` registration remains EMPTY. It carries its own mutation proof - three
+          new mutants make `compensation.py` commit the real forbidden acts and each turns its guard RED,
+          plus a registration planted inside the probe file, and scanner-level controls asserting BOTH
+          directions over a proven non-empty population. It was verified by targeted tests (the six
+          formerly-failing tests, the 63-test suite, the probe, the 36/36 battery) and by a COMPLETED
+          py3.12 CI suite. ### WHAT IS NOT CLAIMED: that any of that is an independent review. The two
+          claims are kept apart everywhere they appear - "an independent review of the M10 implementation
+          tree" and "a post-review candidate correction verified by targeted tests and CI" - and this row
+          exists so a later session does not collapse them.
+        severity: LOW - nonblocking
+        closes_at: a focused independent review of a833074, if one is ever judged owed
+      - id: P6-D69
+        finding: >-
+          The reviewer harness refused THREE of the reviewer's own 21 command attempts, at two layers:
+          two `composition` refusals (a `&&`-joined git triple, and an `ls -la` carrying `2>&1`) and one
+          `reviewer-floor` refusal of `sed -n '855,930p' <test file>` as "a stream editor that can write
+          through its own syntax", though that invocation only read. A declared F10-registry one-liner was
+          separately rejected by "an over-broad 'at' token heuristic" in the reviewer boundary.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. `blocked_on.kind` is NONE and no evidence was lost: both composition
+          refusals were re-issued and ran, and the reviewer's own note records that every fact the refused
+          F10 one-liner asserts "was fully reproduced by scripts/probe_phase6_compensation.py --all". This
+          landing went further and re-ran the F10 registry oracle directly - 118 registered contracts, F10
+          count 7, the shared F3 `RealityEstablished` with producers ['EF-5','CM-5'] - rather than carrying
+          it as debt. This is the harness status/vocabulary defect already recorded as `P6-D39` (M5),
+          `P6-D45` (M6), `P6-D51` (M7), `P6-D56` (M8) and `P6-D61` (M9), in a new shape. It is a Product
+          Driver harness property and is not fixed from this repository.
+        severity: LOW - nonblocking
+        closes_at: a Product Driver harness change, not a Neyma change
+      - id: P6-D70
+        finding: >-
+          Of SIXTEEN proposed generated scenarios, TWELVE were accepted and FOUR were filtered at
+          assembly (`coverage_summary`: proposed 16, accepted 12, filtered 4, invalid 0). What a filtered
+          scenario costs is composed adversarial pressure, not a named check.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND THIS IS THE BEST GENERATED CONTRIBUTION OF ANY P6 LANDING -
+          twelve accepted, against M9's ten (`P6-D62`), M7's four (`P6-D52`), M8's one (`P6-D57`) and M6's
+          zero (`P6-D46`). `uncovered_risks` is `[]`: every declared risk category was still established by
+          an accepted scenario, and the twelve span happy_path, boundary, timeout_before_effect,
+          timeout_after_effect, concurrency (x2), partial_failure, safety_invariant (x3), retry_safety and
+          crash_mid_workflow, for 667 assertions and 0 failed alongside the permanent scenario's 540.
+        severity: LOW - nonblocking
+        closes_at: not a defect - a generation-yield observation
     next_units_unlocked: [P7]
 
   - unit_id: P7
