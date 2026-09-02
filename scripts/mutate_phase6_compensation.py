@@ -278,6 +278,45 @@ CASES = [
      [(M10, '                event_name="CompensationRequired", transition_id="CM-1", compensation=created,',
        '                event_name="CorrectionInvalidatedAnEffect", transition_id="CM-1", compensation=created,  # MUTANT')],
      f"{T}::test_ac_mach_1001_cm_required_from_verified_effect"),
+
+    # ### THE GATE-CONFINEMENT CONTROL (P6/M10 post-push CI correction). The two P0 gate guards now
+    # read EXECUTABLE source instead of raw text, because on a43feae they fired on M10's prose — six
+    # occurrences of the gate vocabulary in comments, docstrings and one SQL comment, and ZERO in
+    # code. Narrowing what a guard reads is only defensible if the thing it guards still turns it
+    # red, so this mutant makes M10 do the actual forbidden act: decide, in code, that a
+    # money-affecting compensation may skip the human. `checkpoint.py` is the sole gate minter
+    # (ADR-010); a Compensation that names a gate decision in executable code IS the leak.
+    ("M10 mints its own gate decision — `compensation.py` decides in CODE that a small compensation "
+     "is AUTONOMOUS_WITHIN_CAPS and only a large one is HUMAN_APPROVAL_REQUIRED, becoming a second "
+     "gate evaluator outside the checkpoint kernel",
+     [(M10, 'COMPENSATING_ACTION_CLASS = "adjust_invoice"',
+       'COMPENSATING_ACTION_CLASS = "adjust_invoice"\n\n\n'
+       'def _gate_for(comp):  # MUTANT: M10 evaluating policy it has no authority to evaluate\n'
+       '    if comp.exposure_minor < 10_000:\n'
+       '        return "AUTONOMOUS_WITHIN_CAPS"\n'
+       '    return "HUMAN_APPROVAL_REQUIRED"')],
+     "eval/tests/test_phase0_null_gate.py::"
+     "test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoint_kernel"),
+
+    # ...and the same act seen by the OTHER coupled guard: policy runtime without ADR-010 authority.
+    ("M10 carries a hard-coded gate decision with no canonical authority — `compensation.py` gains a "
+     "module-level DEFAULT_GATE literal and cites no ADR-010, a magic string wearing a policy's clothes",
+     [(M10, 'COMPENSATING_TARGET_OPERATION = "reverse"',
+       'DEFAULT_GATE = "HUMAN_APPROVAL_REQUIRED"  # MUTANT: policy runtime, uncited\n'
+       'COMPENSATING_TARGET_OPERATION = "reverse"')],
+     "eval/tests/test_phase0_errata_guards.py::"
+     "test_typed_policy_runtime_exists_only_with_its_canonical_authority"),
+
+    # ### THE PRODUCTION-REGISTRATION CONTROL. R-07 condition (3) now discounts a registry built over
+    # an EMPTY literal mapping, because M10's probe uses one to PROVE nothing is registered. A real
+    # registration must still invalidate the containment record — from anywhere, this file included.
+    ("M10 registers a production gate before P8 — the money action class `adjust_invoice` acquires a "
+     "typed gate in `compensation.py`, which is exactly what R-07's containment record forbids",
+     [(M10, 'DECISION_KIND_AUDIT = "AUDIT_EVENT"',
+       '_GATES = GateRegistry({"adjust_invoice": GateEntry(gate=1)}, policy_version="pv1")  # MUTANT\n'
+       'DECISION_KIND_AUDIT = "AUDIT_EVENT"')],
+     "eval/tests/test_phase0_baseline_manifest.py::"
+     "test_r07_containment_record_holds_only_while_its_mechanical_conditions_hold"),
 ]
 
 # ### THE ANTI-VACUITY CONTROL (mutation 33). The machine is relocated behind a re-export shim: its real

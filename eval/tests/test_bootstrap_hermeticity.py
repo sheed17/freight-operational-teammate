@@ -3375,6 +3375,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase6_approvals import (
         P6AP_EXEMPT_TABLES, P6AP_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase6_compensations import (
+        P6CM_EXEMPT_TABLES, P6CM_TENANT_TABLES,
+    )
     from freight_recon.migrations.phase6_conflicts import (
         P6CF_EXEMPT_TABLES, P6CF_TENANT_TABLES,
     )
@@ -3438,6 +3441,12 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"needs a human is owed WITHIN one brokerage, and the same source_ref in two tenants are two "
         f"isolated obligations. Defend it here first."
     )
+    assert set(P6CM_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt compensation table {sorted(P6CM_EXEMPT_TABLES)}: an undo of "
+        f"one brokerage's own money movement, owed by a named human at THAT brokerage. A "
+        f"compensation scoped to no tenant is a credit note that could be raised against the wrong "
+        f"broker's invoice. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3453,6 +3462,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_conflicts_tenant": set(P6CF_TENANT_TABLES),
         "p6_expectations_tenant": set(P6EX_TENANT_TABLES),
         "p6_exceptions_tenant": set(P6XC_TENANT_TABLES),
+        "p6_compensations_tenant": set(P6CM_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3474,7 +3484,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p6_identity_binding_claims_tenant": 1,
                      "p6_conflicts_tenant": 2,
                      "p6_expectations_tenant": 2,
-                     "p6_exceptions_tenant": 1}, (
+                     "p6_exceptions_tenant": 1,
+                     "p6_compensations_tenant": 1}, (
         f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")

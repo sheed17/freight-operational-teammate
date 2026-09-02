@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from phase0 import import_probe, manifest
+from phase0 import gate_scan, import_probe, manifest
 
 FORBIDDEN_JUSTIFICATIONS = ("legacy", "historical", "for now", "tbd", "temporary")
 
@@ -61,24 +61,88 @@ def test_no_wildcard_allowance():
 
 
 def _production_gate_registry_population() -> list[str]:
-    """AST sweep over ALL of src/ and scripts/: every `GateRegistry(...)` construction and every
-    `register_gate(...)` call. Textual matching would fire on the class definition, on two kernel
-    type assertions and on the deferral comments, so it is AST or nothing."""
+    """AST sweep over ALL of src/ and scripts/ for every site that REGISTERS a typed gate.
+
+    Textual matching would fire on the class definition, on two kernel type assertions and on the
+    deferral comments, so it is AST or nothing.
+
+    ### THE SUBJECT IS REGISTRATION, NOT CONSTRUCTION (P6/M10 correction). Condition (3) of the
+    R-07 record, and the `production_gate_registry: EMPTY` evidence line it rests on, are about
+    whether any action class HAS a gate before P8. `GateRegistry({}, policy_version=...)` is a
+    registry over an empty literal mapping: it registers nothing, and every action class through it
+    resolves to `GateRegistry._DEFAULT`, which is `HUMAN_APPROVAL_REQUIRED`. Counting it reported
+    the *absence* of registration as its presence.
+
+    That is not hypothetical. `scripts/probe_phase6_compensation.py` proves the money action class
+    `adjust_invoice` falls to human approval precisely BECAUSE nothing is registered — it builds an
+    empty registry and asserts the default comes back. On a43feae this guard read that proof as the
+    very population the proof disproves, and failed the R-07 record over it.
+
+    ### NOTHING IS SUPPRESSED BY LOCATION. There is no probe exemption, no `scripts/` carve-out and
+    no filename list: the sweep still walks every module under src/ and scripts/, that same probe
+    file included, and a registration inside it would still be reported. What changed is that the
+    guard now discounts only what it can SEE to be empty — a non-empty literal, a variable, a call
+    or a comprehension all count, because the guard may not assume a mapping it cannot read is
+    empty. `test_the_gate_registration_scan_still_catches_a_real_registration` proves both halves.
+    """
     sites: list[str] = []
     swept = 0
     for root in ("src", "scripts"):
         for path in sorted((ROOT / root).rglob("*.py")):
             swept += 1
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                fn = node.func
-                name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
-                if name in {"GateRegistry", "register_gate"}:
-                    sites.append(f"{path.relative_to(ROOT)}:{node.lineno}: {name}")
+            sites += gate_scan.gate_registration_sites(
+                path.read_text(encoding="utf-8"), label=str(path.relative_to(ROOT)))
     assert swept > 100, f"the production sweep walked only {swept} modules - it saw a corner"
     return sites
+
+
+def test_the_gate_registration_scan_still_catches_a_real_registration():
+    """### THE POSITIVE CONTROL R-07 CONDITION (3) OWES (CLAUDE.md §6).
+
+    The condition is asserted as an EMPTY result, and an empty result is exactly what a scanner
+    that has stopped working also produces. `_production_gate_registry_population()` returning `[]`
+    is only evidence if the scanner can be SEEN to find a registration, so it is shown one.
+
+    Each fixture below is a real way a production gate could arrive before P8, and each must be
+    caught. The empty-registry construction — the one form that registers nothing, and the one this
+    correction discounts — must NOT be, or the discount would be indistinguishable from blindness.
+    """
+    REGISTRATIONS = {
+        "a literal registration of the money action class":
+            'r = GateRegistry({"adjust_invoice": GateEntry(gate=AUTONOMOUS_WITHIN_CAPS)}, '
+            'policy_version="pv1")\n',
+        "a registration hidden behind a name the scanner cannot read":
+            "r = GateRegistry(LOADED_FROM_POLICY_FILE, policy_version=v)\n",
+        "a registration built by a comprehension":
+            "r = GateRegistry({c: e for c, e in rules}, policy_version=v)\n",
+        "a registration spread from another mapping":
+            "r = GateRegistry(**cfg)\n",
+        "the registration helper the deferral names":
+            'register_gate("wire_out", GateEntry(gate=AUTONOMOUS_WITHIN_CAPS))\n',
+        "a registration reached through a module attribute":
+            'checkpoint.GateRegistry({"raise_invoice": e}, policy_version="pv1")\n',
+    }
+    for label, source in REGISTRATIONS.items():
+        assert gate_scan.gate_registration_sites(source, label="fixture"), (
+            f"the production gate-registration scan does NOT catch {label}. R-07 condition (3) "
+            "and the AC-CKPT-6-missing deferral both rest on this scan returning an empty list - "
+            "an empty list from a blind scanner is not evidence of an empty registry."
+        )
+
+    assert not gate_scan.gate_registration_sites(
+        'GateRegistry({}, policy_version="pv1").gate_for("adjust_invoice")\n', label="fixture"), (
+        "an EMPTY registry is being counted as a registration again. It registers no action class "
+        "and every class through it resolves to the fail-closed HUMAN_APPROVAL_REQUIRED default - "
+        "counting it reports the absence of registration as its presence."
+    )
+
+    # ...and the discount is narrow: it is the empty LITERAL that is discounted, nothing else.
+    # If this ever passes, `_registers_nothing` has become a general amnesty.
+    assert gate_scan.gate_registration_sites(
+        'GateRegistry(EMPTY, policy_version="pv1")\n', label="fixture"), (
+        "a registry over a NAME is being discounted as empty - the scanner cannot read that "
+        "mapping and must not assume it is empty"
+    )
 
 
 def test_r07_containment_record_holds_only_while_its_mechanical_conditions_hold():

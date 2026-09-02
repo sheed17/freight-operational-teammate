@@ -43,7 +43,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from phase0 import manifest
+from phase0 import gate_scan, manifest
 from phase0.evaluation import EmptyPopulationError, Evaluation
 
 
@@ -79,17 +79,31 @@ def test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoi
     # `FORBIDDEN_TENANTS` (U2.6A's sentinel list) contains "FORBIDDEN" and is not a policy gate;
     # a substring scan counted it and reported that typed policy had arrived. Same class of bug as
     # the report guard that tripped over the word "DELETED" inside a docstring.
-    import re as _re
-
-    gate_tokens = ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
-                   "PERMANENT_HUMAN_ASSERTION_REQUIRED", "FORBIDDEN")
+    #
+    # ### AND MATCH THEM IN EXECUTABLE SOURCE ONLY (P6/M10). Whole-token matching removed one half
+    # of that defect and left the other: raw text still cannot tell `if gate is FORBIDDEN:` apart
+    # from a docstring that says "this machine mints NO gate decision". M10's `compensation.py`
+    # says exactly that, in five comments and docstrings, and `phase6_compensations.py` explains a
+    # column in one SQL `--` comment — six occurrences, ZERO executable — and this guard scored all
+    # six as policy escaping the kernel. It was reading the module's account of the boundary and
+    # calling it a breach of the boundary.
+    #
+    # `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision` below had already reached this
+    # conclusion and gone AST-based for it: prose is not runtime. `gate_scan.executable_source`
+    # applies the same correction here — Python comments, docstrings and whole-line SQL comments
+    # are blanked (geometry preserved, so line numbers stay true) and everything the interpreter
+    # and SQLite actually execute is retained, DDL `CHECK` literals and error messages included.
+    #
+    # ### THIS NARROWS WHAT IS READ; IT WIDENS NOTHING. The KERNEL set below is untouched,
+    # `compensation.py` is NOT in it, and a module that starts genuinely naming a gate in code
+    # still leaks. `test_the_executable_source_scan_still_catches_a_gate_that_escapes_in_code`
+    # proves that on a synthesised offender rather than asserting it.
     for path in sorted(src.rglob("*.py")):
         ev.sources_inspected.append(str(path))
         text = path.read_text(encoding="utf-8")
-        for token in gate_tokens:
-            if _re.search(rf"(?<![A-Za-z0-9_]){token}(?![A-Za-z0-9_])", text):
-                ev.candidates.append(f"{path.name}:{token}")
-                ev.accepted.append(f"{path.name}:{token}")
+        for _line, token in gate_scan.gate_token_sites(text):
+            ev.candidates.append(f"{path.name}:{token}")
+            ev.accepted.append(f"{path.name}:{token}")
 
     assert ev.sources_inspected, "the probe inspected nothing - it cannot conclude anything"
 
@@ -117,12 +131,12 @@ def test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoi
     # the right to route on the decision the kernel returns. Discovering it would mean asking the
     # code which modules currently touch gates, which is the question, not the answer. Each member
     # is verified to EXIST below, so a rename cannot empty the set and make the confinement vacuous.
-    KERNEL = {"checkpoint.py", "phase3_checkpoint.py", "pipeline_instance.py"}
-    for name in sorted(KERNEL):
-        assert any(p.name == name for p in src.rglob("*.py")), (
-            f"the gate-kernel allowlist names {name!r}, which no longer exists - the allowlist "
-            "drifted and this guard would have confined nothing"
-        )
+    # Stated in ONE place — `phase0.gate_scan.GATE_RUNTIME_MODULES`, with the reasoning above
+    # recorded beside it — because the ADR-010 authority guard needs the same boundary and a
+    # boundary written down twice is a boundary that will eventually be written down differently.
+    # `require_gate_runtime_modules` verifies every member still exists, so a rename cannot empty
+    # the allowlist and make the confinement assertion below pass over nothing.
+    KERNEL = gate_scan.require_gate_runtime_modules(src)
 
     try:
         ev.require_population()  # raises when nothing was inspected or nothing evaluated
@@ -138,6 +152,79 @@ def test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoi
     assert not leaked, (
         "a typed gate decision escaped the checkpoint kernel: policy must be evaluated at the "
         f"boundary that owns it, never carried by a workflow, adapter or callback: {leaked}"
+    )
+
+
+def test_the_executable_source_scan_still_catches_a_gate_that_escapes_in_code():
+    """### THE NARROWING ABOVE, PAID FOR. A guard never seen to fail is a decoration (CLAUDE.md §6).
+
+    `test_..._confined_to_the_checkpoint_kernel` now reads executable source instead of raw text.
+    That is only defensible if the four ways a downstream machine could really take policy into its
+    own hands STILL turn it red. Each mutant below is the actual defect in one line of code, run
+    through the exact scanner the guard uses, and each must be FOUND. The prose forms — the ones
+    that made M10 fail on a43feae — must be found by NEITHER.
+
+    This is a scanner-level control and it runs in milliseconds. The whole-file version — which
+    edits `compensation.py` on disk, re-runs this guard against the mutated tree and restores the
+    original from memory — is the "M10 mints its own gate decision" case of
+    `scripts/mutate_phase6_compensation.py`.
+    """
+    ESCAPES = {
+        "decides HUMAN_APPROVAL_REQUIRED itself":
+            'def gate(self):\n    return "HUMAN_APPROVAL_REQUIRED"\n',
+        "decides FORBIDDEN itself":
+            'def gate(self, comp):\n    if comp.amount_minor > 100:\n        return FORBIDDEN\n',
+        "routes on a gate it named rather than one the kernel returned":
+            'def go(self, d):\n    if d == "AUTONOMOUS_WITHIN_CAPS":\n        return self._skip()\n',
+        "persists its own gate vocabulary as a CHECK":
+            'DDL = """CREATE TABLE c (g TEXT CHECK (g IN (\'FORBIDDEN\')))"""\n',
+    }
+    for label, source in ESCAPES.items():
+        assert gate_scan.gate_token_sites(source), (
+            f"the executable-source scan did NOT catch a module that {label}. The confinement "
+            "guard has been narrowed into a decoration - it would pass over a real escape."
+        )
+
+    PROSE = {
+        "a docstring disclaiming the boundary":
+            '"""This machine mints NO gate decision: FORBIDDEN is checkpoint.py\'s to decide."""\n',
+        "a comment explaining the default":
+            '# Its gate is unregistered, so the checkpoint resolves it to HUMAN_APPROVAL_REQUIRED.\n',
+        "an SQL comment annotating a column":
+            'DDL = """CREATE TABLE c (\n    -- ALWAYS HUMAN_APPROVAL_REQUIRED, bound to the commit key\n'
+            '    approval_id TEXT\n)"""\n',
+        "a function docstring naming the rule it obeys":
+            'def refuse(self):\n    """COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME (M-33)."""\n'
+            '    return None\n',
+    }
+    for label, source in PROSE.items():
+        assert not gate_scan.gate_token_sites(source), (
+            f"the scan still fires on {label} - it is reading the module's ACCOUNT of the "
+            f"boundary and calling it a breach: {gate_scan.gate_token_sites(source)}"
+        )
+
+    # ...and the discrimination is not an artefact of these snippets: M10's two real modules carry
+    # the vocabulary in prose and NOWHERE in code, which is the population this control stands over.
+    import freight_recon
+
+    src = Path(freight_recon.__file__).parent
+    m10 = [src / "compensation.py", src / "migrations" / "phase6_compensations.py"]
+    prose_hits = 0
+    for path in m10:
+        assert path.exists(), f"{path.name} is gone - this control now proves nothing"
+        raw = path.read_text(encoding="utf-8")
+        prose_hits += sum(
+            len(re.findall(rf"(?<![A-Za-z0-9_]){tok}(?![A-Za-z0-9_])", raw))
+            for tok in gate_scan.GATE_TOKENS
+        )
+        assert not gate_scan.gate_token_sites(raw), (
+            f"{path.name} names a gate decision in EXECUTABLE code. M10 carries, persists and "
+            "routes nothing about gates - if that changed, this is a real product-boundary defect "
+            f"and not a guard problem: {gate_scan.gate_token_sites(raw)}"
+        )
+    assert prose_hits >= 6, (
+        f"M10's prose population collapsed to {prose_hits} occurrences - this control would pass "
+        "vacuously, proving only that a scan found nothing in a file containing nothing"
     )
 
 

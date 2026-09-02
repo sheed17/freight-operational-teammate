@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from phase0 import manifest, schema_probe, spec_corpus
+from phase0 import gate_scan, manifest, schema_probe, spec_corpus
 from phase0.sources import ACCEPTANCE, IMPLEMENTATION, SPECIFICATIONS
 
 # Documents that are HISTORICAL EVIDENCE: they may keep the old totals, but only under a
@@ -262,12 +262,30 @@ def test_typed_policy_runtime_exists_only_with_its_canonical_authority():
     src = Path(freight_recon.__file__).parent
     # Whole-token matching. The original used `token in text`, which is the substring-guard defect
     # CLAUDE.md names: `FORBIDDEN_TENANTS` is not a policy gate, and a substring scan says it is.
+    #
+    # ### AND EXECUTABLE-SOURCE MATCHING (P6/M10). The subject of this guard is POLICY RUNTIME —
+    # "a module that names a gate decision without citing ADR-010 is a placeholder by definition".
+    # A docstring is not runtime. M10's `compensation.py` says, in prose, that it mints no gate
+    # decision and that the money class falls to the kernel's unregistered default; this guard read
+    # that sentence and reported an unauthorised policy carrier. It was catching a module for
+    # DESCRIBING the authority it defers to.
+    #
+    # So the TOKEN scan reads executable source only (`gate_scan.executable_source`), while the
+    # ADR-010 CITATION scan deliberately still reads the WHOLE file — an authority citation lives in
+    # a comment or docstring by nature, and demanding it in code would be nonsense. Measure runtime
+    # by runtime, and authority by citation.
+    #
+    # This narrows what counts as a carrier; it authorises nobody. The three real carriers
+    # (`checkpoint.py`, `phase3_checkpoint.py`, `pipeline_instance.py`) still name gates in code and
+    # still have to cite ADR-010, and
+    # `test_a_module_that_names_a_gate_in_code_without_adr_010_is_still_caught` proves a module that
+    # acquires policy runtime without the citation is still reported.
     tokens = ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
               "PERMANENT_HUMAN_ASSERTION_REQUIRED")
     carriers, unauthorised = [], []
     for path in sorted(src.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
-        if not any(re.search(rf"(?<![A-Za-z0-9_]){t}(?![A-Za-z0-9_])", text) for t in tokens):
+        if not gate_scan.gate_token_sites(text, tokens):
             continue
         carriers.append(path.name)
         if not re.search(r"ADR-010", text):
@@ -280,4 +298,53 @@ def test_typed_policy_runtime_exists_only_with_its_canonical_authority():
     assert not unauthorised, (
         "typed policy runtime without its canonical authority (ADR-010 uncited) - a placeholder "
         f"policy is exactly what this guard exists to catch: {unauthorised}"
+    )
+
+    # ### THE POPULATION IS NAMED, NOT JUST COUNTED. `assert carriers` above survives any single
+    # non-empty result, so it would still pass if the narrowing had silently dropped two of the
+    # three real carriers. The gate ladder is carried in code by exactly the checkpoint kernel and
+    # the one machine canonically entitled to route on its answer; if that set shrinks, the scan
+    # stopped seeing policy runtime and its silence about everyone else means nothing.
+    # The expected set is NOT retyped here: it is read from `gate_scan.GATE_RUNTIME_MODULES`, the
+    # one place the ADR-010 boundary is stated, and every member is verified to exist. So this is a
+    # cross-check between two different claims — who the architecture PERMITS to carry gate runtime,
+    # and who actually DOES — rather than a second enumeration that could drift from the first.
+    assert set(carriers) == gate_scan.require_gate_runtime_modules(src), (
+        f"the policy-runtime carrier set drifted to {sorted(carriers)}, against the canonical "
+        f"boundary {sorted(gate_scan.GATE_RUNTIME_MODULES)}. Either a module acquired gate runtime, "
+        "or the scan stopped finding it in one that has it - both make this guard's verdict unsafe "
+        "to believe."
+    )
+
+
+def test_a_module_that_names_a_gate_in_code_without_adr_010_is_still_caught():
+    """The control the narrowing above owes (CLAUDE.md §6).
+
+    Reading executable source instead of raw text is only defensible if a module that really
+    acquires policy runtime without the canonical citation is still reported. Both halves are
+    proven on synthesised modules: code WITH the vocabulary is a carrier (and therefore has to cite
+    ADR-010), prose with the vocabulary is not, and the discrimination is what the guard rests on.
+    """
+    tokens = ("HUMAN_APPROVAL_REQUIRED", "AUTONOMOUS_WITHIN_CAPS",
+              "PERMANENT_HUMAN_ASSERTION_REQUIRED")
+    placeholder = (
+        'DEFAULT_GATE = "HUMAN_APPROVAL_REQUIRED"\n'
+        'def gate_for(action_class):\n'
+        '    return DEFAULT_GATE\n'
+    )
+    assert gate_scan.gate_token_sites(placeholder, tokens), (
+        "a module that hard-codes a gate decision in executable code is NOT seen as a policy "
+        "carrier - this guard could no longer catch a magic string wearing a policy's clothes"
+    )
+    assert not re.search(r"ADR-010", placeholder), "the fixture must be uncited to be a control"
+
+    disclaimer = (
+        '"""This machine mints NO gate decision.\n\n'
+        'The money class is unregistered, so the checkpoint resolves it to the workflow default,\n'
+        'HUMAN_APPROVAL_REQUIRED. AUTONOMOUS_WITHIN_CAPS is never reachable from here.\n"""\n'
+        'COMPENSATING_ACTION_CLASS = "adjust_invoice"\n'
+    )
+    assert not gate_scan.gate_token_sites(disclaimer, tokens), (
+        "a module that only DESCRIBES the gate boundary is still scored as policy runtime - that "
+        f"is the a43feae defect: {gate_scan.gate_token_sites(disclaimer, tokens)}"
     )

@@ -318,6 +318,35 @@ expected_noncanonical_schema:
     #   the table without owner_id NOT NULL + FK, the RESOLVED-requires-decision_ref CHECK, the five-
     #   state and severity vocabularies, and the no-delete/immutability triggers.
     - exceptions
+    # M10 (P6) adds ONE canonical table, `compensations`, which is tenant-first and NOT exempt.
+    # REG-1 adjudication, stated rather than assumed, and MEASURED against the live schema rather
+    # than inherited from what the unit says about itself:
+    #   `compensations` holds one undo owed for one external effect that should not have happened —
+    #   a credit note against THAT broker's carrier invoice, owed by a named human at THAT broker.
+    #   "Whose undo is this" has no honest answer other than a tenant: a compensation scoped to no
+    #   brokerage is a credit note that could be raised against the wrong broker's invoice, which is
+    #   the money-moving inverse of the failure REG-1 exists to prevent. Tenant is the first
+    #   primary-key column — PRIMARY KEY (tenant, compensation_id) — and the first column of all
+    #   three indexes: the owner queue (tenant, owner_id, state), the commit-key lookup
+    #   (tenant, commit_key, state), and the at-most-one-live-compensation-per-effect partial unique
+    #   index UNIQUE (tenant, original_effect_id) WHERE state != 'NOT_POSSIBLE'. That last one is
+    #   load-bearing rather than tidy: without the tenant in it, one brokerage already compensating
+    #   an effect would BLOCK another brokerage from raising its own unrelated compensation, and the
+    #   second broker's wrong invoice would stay uncorrected with nobody owing the correction.
+    #   Every foreign key — tenant_humans for the named owner, effect_grants for the original
+    #   effect, pipeline_instances for the executing compensating attempt, and approvals for the
+    #   human approval bound to this compensation's own commit key — carries the tenant in the
+    #   reference itself, so a cross-tenant owner, original effect, executing pipeline or approval
+    #   cannot be spelled. The M10 readiness oracle refuses the table otherwise, and its three
+    #   triggers (version-advances-on-state-change, identity-immutable, no-delete) make the row
+    #   uneraseable.
+    #   MECHANICAL PROOF, not assertion: a fresh canonical database was built through WorkflowStore
+    #   and introspected — PRAGMA table_info gave PK order ['tenant', 'compensation_id'], PRAGMA
+    #   index_info gave tenant as column 0 of all three indexes, and PRAGMA foreign_key_list gave
+    #   `tenant` in the FROM columns of all four foreign keys. The same fresh database is what
+    #   test_phase0_tenant_posture's live leg reads, so this classification is checked against the
+    #   schema a tenant's rows would really live in, not against the DDL string.
+    - compensations
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
