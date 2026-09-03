@@ -641,6 +641,8 @@ Engineering Principles → Product Vision (Operating Model) → ARCHITECTURE (AD
 **Policy states:** `DRAFT` · `PROPOSED` · `APPROVED` · **`ACTIVE`** · **`SUPERSEDED` (T)** · **`REVOKED` (T)** · **`EXPIRED` (T)**
 **Rule states:** `PROPOSED` · `COMPILED` · `CONFIRMED` · **`ACTIVE`** · **`REJECTED` (T)** · **`SUPERSEDED` (T)** · **`REVOKED` (T)** · **`EXPIRED` (T)**
 
+### **THE TRANSITION TABLE BELOW IS §12.12 RULE'S — EVERY ROW EMITS A `Rule*` EVENT.** *(Label added as a narrow reference correction; no row, guard, state or event is changed.)* ### **§12.11 POLICY HAS NO TRANSITION TABLE IN THIS SECTION.** What §12.11 states for Policy is its **state set** (above) and the **lifecycle rules** below the table — a policy change is itself a gated action class, effective dates, and a narrowing policy's expiry requiring a human — all of which bind. **Policy's complete transition table is machine `M11` §14 (`PO-1`…`PO-7`)**, which derives from this section and invents nothing; `entities/14-policy.md` point 20 previously cited "§12.11 (complete)", which was false against this section alone and is corrected there.
+
 | From | Trigger | Guard | → | Emits |
 |---|---|---|---|---|
 | — | `RuleProposed` | ### **a model MAY propose the TEXT** | `PROPOSED` | `RuleProposed` |

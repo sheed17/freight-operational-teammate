@@ -5378,7 +5378,46 @@ units:
     # It GRANTS NO SCOPE and REMOVES NONE: it records a prohibition P7's own unit block already
     # implies. P5's IR-R9 - AC-EVT-011 and the ProvenanceStrengtheningAttempted (F14) emission half
     # of AC-EVT-013 - therefore lands at P7, not at P6.
-    prohibited_scope: [freight domain projections (P9), policy (P8), provenance (P7)]
+    #
+    # ### `policy (P8)` NARROWED TO NAME THE BOUNDARY (P6/M11 AUTHORITY RECONCILIATION).
+    # The bare token `policy (P8)` CONTRADICTED THIS UNIT'S OWN `objective` and
+    # `expected_production_outputs` - "the 13 machines, 134 transitions" - because M11 Policy, M12
+    # Rule and M13 Brake ARE three of those thirteen and their 21 transitions ARE part of the 134.
+    # Read literally it prohibited the checkpoint this registry itself names next ("### M11 - THE
+    # POLICY - IS THE NEXT CHECKPOINT"), which is an ACTIVE FALSE INSTRUCTION to a fresh session.
+    #
+    # THE BOUNDARY IS NOT NEW AND NOTHING HERE DECIDES IT. It is already stated by three current
+    # authorities and demonstrated by four landings:
+    #   * `pr-sequence.md` line "**P6:**" gives P6 `U6.3 the 13 machines / 134 transitions`, and
+    #     line "**P8:**" gives P8 `U8.1 typed policy + Action Class gate registration`,
+    #     `U8.2 compile-or-refuse Rules`, `U8.3 the real brake` and - decisively -
+    #     `U8.4 Conflict/Expectation/Exception/Compensation => M7-M10`. P8's units are ALREADY
+    #     mapped ONTO machines P6 builds. The same relation holds for U8.1 over M11.
+    #   * P3's adjudicated finding F-2 (ACCEPTED, `p3-findings-remediation-review.md` sec F-G) fixes
+    #     what P8 owns, and its one MECHANICALLY GUARDED clause is that the PRODUCTION
+    #     `GateRegistry` POPULATION STAYS EMPTY until U8.1/P8.
+    #   * M7 Conflict, M8 Expectation, M9 Exception and M10 Compensation are all named in P8's
+    #     `name` and `allowed_scope`, and all four LANDED IN P6 (`P6-CP-7`..`P6-CP-10`) ship-dark
+    #     without any authority treating it as a prohibited-scope breach.
+    #
+    # WHAT P6/M11 MAY IMPLEMENT: the canonical Policy ENTITY (`entities/14-policy.md`), its
+    # tenant-first `policies` table, machine M11's SEVEN transitions PO-1..PO-7, and the EIGHT
+    # already-registered F11 contracts - SHIPS DARK, on the M1-M10 precedent: no production
+    # importer, no channel join, no `GateRegistry` construction and no `register_gate` call
+    # anywhere in production, no gate minting outside `checkpoint.py`, and no activation of a real
+    # tenant policy on live traffic.
+    # WHAT REMAINS P8-ONLY: production Action Class gate REGISTRATION (populating the
+    # `GateRegistry`, closing `AC-CKPT-6-*`/U0.3), the typed policy EVALUATION runtime at
+    # checkpoint step 6 beyond P3's landed minimal structural contract, rule compile-or-refuse
+    # runtime, the precedence/conflict-resolution engine, richer action-class descriptors (K-5),
+    # the autonomy/graduation runtime, and ENABLEMENT of any of it on live traffic.
+    # This GRANTS NO SCOPE and REMOVES NONE. `V11` and `V12` stay OPEN and fail-closed: nothing
+    # graduates; one Policy Owner, one authority level.
+    prohibited_scope:
+      - freight domain projections (P9)
+      - production policy REGISTRATION, EVALUATION RUNTIME and ENABLEMENT (P8/U8.1) - NOT machines
+        M11/M12/M13 themselves, which are three of this unit's own thirteen
+      - provenance (P7)
     expected_production_outputs: ["17 platform primitives", "13 machines", "134 transitions"]
     expected_capability: "System: every unit of work has an accountable owner, structurally."
     boundaries_affected: [new entity layer]
@@ -5695,6 +5734,141 @@ units:
           crash_mid_workflow, for 667 assertions and 0 failed alongside the permanent scenario's 540.
         severity: LOW - nonblocking
         closes_at: not a defect - a generation-yield observation
+      # ### THE FIVE ROWS BELOW ARE THE OUTPUT OF THE P6/M11 AUTHORITY RECONCILIATION (pre-M11).
+      # A Product Driver M11 bootstrap mechanically compared the canonical corpus and reported eight
+      # authority questions. Five were CORRECTED IN THE CANON by this pass and carry no debt: the
+      # P6-vs-"policy (P8)" scope token (P6's `prohibited_scope` and PHASE-OUTPUTS.md's P6 row now
+      # name the boundary); `entities/14-policy.md` point 31's SIX emitted events corrected to the
+      # registered EIGHT; point 20's false "sec 12.11 (complete)" corrected and the shared
+      # 12.11/12.12 table labelled as RULE's in the target specification; point 16's product-ceiling
+      # CHECK annotated with its real enforcement layer WITHOUT weakening the invariant; and point
+      # 9's version namespace stated as the TENANT. NO RUNTIME CHANGED, NO POLICY WAS IMPLEMENTED,
+      # NO EVENT WAS MINTED, NO CRITERION WAS SCORED, AND V11/V12 STAY OPEN AND FAIL-CLOSED.
+      # The three that could NOT be closed by a narrow correction are recorded here.
+      - id: P6-D71
+        finding: >-
+          ### `PolicyOverridden` IS NAMED BY THREE CURRENT AUTHORITIES AND IS NOT A REGISTERED EVENT
+          CONTRACT. Target spec sec 20.7 M-54 and ADR-010 sec 8.1 both require a single-instance
+          override of a STANDING RULE to be "recorded explicitly -
+          `PolicyOverridden{rule_id, actor, reason, decision_ref, commit_key}` - as an audit event AND
+          a security event", and `entities/17-audit-event.md` point 41 lists it alongside
+          `PolicyActivated` and `BrakeEngaged`. It appears NOWHERE in `events/registry.md` sec 3,
+          whose own binding sentence is "this registry is the sole canonical list of event names and
+          versions" and whose F14 population of 13 was mechanically re-verified correct by the
+          canonical-corpus errata pass. It is therefore NOT a stale synonym (no registered contract
+          carries that fact), NOT merely conceptual (the ADR states an explicit payload and a named
+          test, `test_override_is_single_use_and_leaves_the_rule_unchanged`), and NOT historical
+          (M11 sec 38, M12 sec 38 and `entities/15-rule.md` point 42 all require override RATE to be
+          monitored, which presupposes the fact is recorded). What it is, is a canonical event that
+          was intended and never minted.
+        disposition: >-
+          ### BLOCKED_AUTHORITY - REPORTED, NOT RESOLVED, AND DELIBERATELY NOT EDITED. Minting an
+          event is a FOUNDER/ARCHITECT act in this repository: the only precedent is the 2026-08-12
+          P5 U5.2 amendment, which minted seven contracts under named founder/architect authority to
+          discharge recorded GR-2 obligations. The two alternatives available to a housekeeping pass
+          are both defects - rewording ADR-010 to call the term conceptual would DELETE a real
+          obligation by prose, and adding the name to sec 3 would mint a contract without authority.
+          ### IT DOES NOT BLOCK M11. The payload is keyed on `rule_id` and the act is an override of
+          a STANDING RULE at precedence layer 6 (spec sec 20.7 / ADR-010 sec 8.1), not a Policy
+          lifecycle transition; it is absent from all seven of M11's PO-* rows and from F11's eight
+          contracts. M11 can be built, and its acceptance scored, without it. The obligation lands
+          with M12/Rule and F12/F14.
+        severity: MEDIUM - nonblocking for M11, blocking for the M-54 override capability
+        closes_at: a founder/architect event-minting decision, not a build session's
+      - id: P6-D72
+        finding: >-
+          ### "EXACTLY ONE NAMED POLICY OWNER PER TENANT" IS AUTHORITY WITH NO MECHANICAL ENFORCEMENT
+          TODAY. `entities/14-policy.md` point 7 requires it (I1), point 14 states Policy N : 1 Policy
+          Owner, point 18 requires `activated_by` to BE the Policy Owner or an authorised delegate,
+          and M11 sec 5 names "the tenant's single named Policy Owner" as the machine's owner. M1's
+          landed `tenant_humans` carries `authority_role IN ('POLICY_OWNER','AUTHORIZED_HUMAN')` with
+          `PRIMARY KEY (tenant, human_id)` and NO constraint limiting a tenant to one ACTIVE
+          `POLICY_OWNER` row - measured, not assumed, in
+          `src/freight_recon/migrations/phase6_work_items.py`. Two ACTIVE Policy Owners are
+          insertable in a tenant today.
+        disposition: >-
+          ### THIS IS AN IMPLEMENTATION REQUIREMENT, NOT A CORPUS CONTRADICTION, AND IT IS RECORDED
+          AS M11 LOAD-BEARING ACCEPTANCE WORK. No authority says M1 owed this: M1's subject was the
+          Work Item, and the cardinality is a Policy-entity invariant that first has a referent when
+          `policies` exists. NOTHING IS DECIDED HERE. The M11 builder owns WHICH mechanism carries
+          it and must not invent a second user or authority system - `tenant_humans` is the one
+          record of human authority (ADR-017's control-plane user administration is P11, and is a
+          different thing). It is load-bearing because point 18's `activated_by` FK and PO-6's
+          "broadening requires the Policy Owner" both resolve through it: an ambiguous Policy Owner
+          makes "the Policy Owner activated this" unprovable, which is the strongest authority claim
+          in the system. Note for the builder: a constraint added to an M1-landed table is a
+          MIGRATION on a tenant-isolation-bearing table - CLAUDE.md sec 7 tier 1.
+        severity: MEDIUM - M11 acceptance work, not an authority conflict
+        closes_at: M11
+      - id: P6-D73
+        finding: >-
+          ### M9's `exceptions.source_kind` ALREADY ACCEPTS `policy` WITH NO FOREIGN KEY, BECAUSE
+          `policies` DID NOT EXIST. `SOURCE_KINDS_WITHOUT_TABLE` in
+          `src/freight_recon/migrations/phase6_exceptions.py` carries `compensation`, `evidence`,
+          `rule`, `policy` and `pending_reference` as a constrained, NOT-NULL `source_ref` behind the
+          closed discriminator with NO mirror column and NO FK, and M9 RECORDED that missing half
+          itself (`M9-AQ-3`). M11 creates the referent, so the question "should M11 now wire the FK"
+          arrives with M11.
+        disposition: >-
+          ### ANSWERED BY A LANDED PRECEDENT, NOT BY A NEW DECISION: M11 DOES NOT RETRO-WIRE IT, AND
+          M9 IS NOT TOUCHED. M10 created `compensations` and did NOT add the `compensation` mirror
+          column or FK to `exceptions` - measured at this pass: `compensation` is still in
+          `SOURCE_KINDS_WITHOUT_TABLE` on the landed tree - and M10 recorded the parallel F10->M9
+          escalation seam as NAMED AND LEFT UNWIRED (`M10-AQ-12`), on the ground M9's own landing set
+          for `M9-AQ-4`: "wiring a seam is precisely what shipping dark forbids". The `policy` source
+          kind is therefore NOT an intentionally opaque reference and NOT indefinitely deferred - it
+          is a typed reference whose FK half is recorded-missing, exactly like `compensation`'s. M11
+          names the seam and leaves it unwired; adding the FK is a change to a table M11 does not
+          own, and belongs to a later session that owns `exceptions`.
+        severity: LOW - nonblocking
+        closes_at: a later session that owns `exceptions`, not M11
+      - id: P6-D74
+        finding: >-
+          ### THE GATE-RUNTIME ALLOWLIST IS A FIXED THREE AND M11 MAY COLLIDE WITH IT.
+          `eval/phase0/gate_scan.py` states the ADR-010 boundary exactly once as
+          `GATE_RUNTIME_MODULES = {checkpoint.py, phase3_checkpoint.py, pipeline_instance.py}`,
+          explicitly "a policy boundary the architecture states, not a population to be discovered",
+          and TWO P0 guards read it - in `test_phase0_errata_guards.py`,
+          `test_typed_policy_runtime_exists_only_with_its_canonical_authority`
+          asserts the OBSERVED carrier set EQUALS it, and in `test_phase0_null_gate.py`,
+          `test_the_typed_gate_population_is_now_non_empty_and_confined_to_the_checkpoint_kernel`
+          uses it as the ALLOWLIST. A `policy.py` that names a gate decision in EXECUTABLE code
+          turns both red; a `policy.py` that names them only in prose does not (M10 proved that
+          distinction and paid for it).
+        disposition: >-
+          ### AN OPEN IMPLEMENTATION QUESTION FOR THE M11 BUILDER, RECORDED SO IT IS NOT SETTLED BY
+          ACCIDENT AT 6PM. NOTHING IS DECIDED AND NO ALLOWLIST IS WIDENED HERE - this pass changed no
+          file under `src/`, `eval/`, `scripts/` or `.github/`. The two honest routes are (a) M11
+          persists the `gate_decision` vocabulary as DDL CHECK literals and/or names gates in
+          executable code, which requires the boundary to be RESTATED in `gate_scan.py` - and
+          WEAKENING OR WIDENING A SAFETY GUARD IS TIER 1 (CLAUDE.md sec 7): builder plus one focused
+          independent review, plus mutation proof that the widened guard can still fail; or (b) M11
+          carries the vocabulary without naming the tokens in executable source, as M10 did. Either
+          way the invariant that must survive is unchanged: `checkpoint.py` stays THE SOLE MINTER of
+          a gate decision, and the production `GateRegistry` population stays EMPTY until U8.1/P8.
+        severity: MEDIUM - a tier-1 decision point, recorded before it is reached
+        closes_at: M11
+      - id: P6-D75
+        finding: >-
+          ### AN ENTITY SPEC'S "EVENTS EMITTED" LIST IS NOT MECHANICALLY CROSS-CHECKED AGAINST THE
+          EVENT REGISTRY, AND THAT IS HOW `14-policy.md` POINT 31 STAYED AT SIX FROM THE 2026-08-12
+          AMENDMENT THAT TOOK THE REGISTRY TO EIGHT UNTIL THIS PASS. `eval/phase0/spec_corpus.py` parses `events/registry.md` sec 3
+          and the 13 machine transition tables, and `test_phase0_acceptance_bijection.py` asserts
+          EXACT SET EQUALITY between them - but no probe reads point 31 of any of the seventeen
+          entity files. Measured at this pass: grepping `eval/` and `scripts/` for "Events emitted"
+          returns zero guard hits. The 2026-08-12 amendment updated F11, the state-machine registry
+          sec 5 and machine M11 sec 14, and the entity list was the one surface nothing was watching.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. Point 31 is CORRECTED for `14-policy.md` at this pass, but the
+          CLASS is open and the other sixteen entity files were NOT audited here - claiming otherwise
+          would be exactly the un-run check CLAUDE.md sec 6 exists to catch. Building the probe is
+          real work with a real denominator (seventeen files, and point 31 is prose with parenthetical
+          producers and payload sketches, not a table), and it is not this pass's scope; a pass whose
+          job is authority reconciliation should not also ship a new guard un-reviewed. The fix, when
+          taken, is the shape the corpus already uses: parse point 31 per entity, intersect with
+          `spec_corpus.emitted_events()` by NAME, and fail on either direction of drift.
+        severity: LOW - nonblocking
+        closes_at: a session that owns the phase-0 spec-corpus probes
     next_units_unlocked: [P7]
 
   - unit_id: P7

@@ -163,7 +163,7 @@ rather than hand-maintained.
 | **System capability after** | ### **Every unit of work has an accountable owner — structurally, not by convention** |
 | **User-visible capability** | None yet |
 | **Safety guarantees after** | A Work Item with no owner is a Sev-0 condition; the Pipeline Instance becomes the reservation |
-| **Still prohibited** | Freight projections (P9); policy (P8) |
+| **Still prohibited** | Freight projections (P9); provenance (P7); ### **production policy REGISTRATION, EVALUATION RUNTIME and ENABLEMENT (P8/U8.1)** — the production `GateRegistry` population stays EMPTY until U8.1/P8. ### **NOT machines M11 Policy, M12 Rule and M13 Brake, which are three of this phase's OWN thirteen** and are owed by the row above; `pr-sequence.md` gives P6 `U6.3 the 13 machines / 134 transitions` and gives P8 `U8.1 typed policy + Action Class gate registration` … `U8.4 Conflict/Expectation/Exception/Compensation ⇒ M7–M10` — P8's units sit OVER machines P6 builds, which is exactly how M7–M10 landed here ship-dark |
 | **Legacy contained** | ### **The second orchestration system starts being retired** — `action_callback.py` and the routing layer |
 | **Acceptance gates** | **G1**; `AC-SAFE-028` |
 | **Next unlocked** | P7 |
