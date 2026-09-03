@@ -347,6 +347,26 @@ expected_noncanonical_schema:
     #   test_phase0_tenant_posture's live leg reads, so this classification is checked against the
     #   schema a tenant's rows would really live in, not against the DDL string.
     - compensations
+    # M11 (P6) adds ONE canonical table, `policies`, which is tenant-first and NOT exempt. REG-1
+    # adjudication, stated rather than assumed, and MEASURED against the live schema:
+    #   `policies` holds the posture of ONE brokerage — what Neyma may do alone, for whom, up to what
+    #   caps, at THAT broker. "Whose posture is this" has no honest answer other than a tenant: a policy
+    #   scoped to no brokerage would let one brokerage's posture decide another's gate, which is a
+    #   cross-brokerage authority leak. Tenant is the first primary-key column — PRIMARY KEY (tenant,
+    #   policy_id) — and the first column of every index: the one-active-per-scope partial unique index
+    #   UNIQUE (tenant, scope) WHERE state = 'ACTIVE', the tenant-monotonic version index UNIQUE (tenant,
+    #   policy_version), the scope history (tenant, scope, policy_version) and the owner one-screen view
+    #   (tenant, state, scope). The two unique indexes are load-bearing rather than tidy: without the
+    #   tenant in them, the SAME scope could not be ACTIVE in two brokerages and two tenants could not
+    #   both hold version 1 — one broker's posture would couple another's. Every foreign key —
+    #   tenant_humans for the human who authored and the authenticated human who activated, approvals for
+    #   the governed-change approval, and the self-FK for supersession — carries the tenant in the
+    #   reference itself, so a cross-tenant author, activator, approval or supersession cannot be spelled.
+    #   M11 ALSO adds the Policy Owner singularity constraint to the M1-landed `tenant_humans` (P6-D72):
+    #   a tenant-first partial UNIQUE INDEX (tenant) WHERE authority_role = 'POLICY_OWNER' AND state =
+    #   'ACTIVE'. It adds NO table and invents no second authority system; `tenant_humans` stays the one
+    #   record of human authority and stays tenant-first, so this classification is unchanged.
+    - policies
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

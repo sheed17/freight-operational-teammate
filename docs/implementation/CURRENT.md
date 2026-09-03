@@ -484,6 +484,7 @@ missing from the written account.
 | **P6 tenant — M8** (2) | `expectations`, `observation_coverage` |
 | **P6 tenant — M9** (1) | `exceptions` |
 | **P6 tenant — M10** (1) | `compensations` |
+| **P6 tenant — M11** (1) | `policies` |
 
 P5, P6/M1, P6/M2 and P6/M4 declare **no** tenant-exempt table, and the guard asserts that emptiness
 rather than omitting it: an event nobody owns is an event that will eventually be read by the wrong

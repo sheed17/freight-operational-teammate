@@ -847,11 +847,16 @@ def test_m10_ships_dark_no_production_importer():
     assert offenders == [], f"production importer(s) of the compensation machine: {offenders}"
 
 
-def test_the_neighbouring_machines_m11_m12_m13_are_not_built():
+def test_the_neighbouring_machines_m12_m13_are_not_built():
+    """### NARROWED WHEN M11 LANDED, NOT A REBUILD OF M10 (CLAUDE.md §5 rule 20; the M6/M7/M8 precedent).
+    This M10 test artifact carried a forward-looking assertion that the `policies` table is not built —
+    TRUE at the `P6-CP-10` landing and FALSE the moment M11's migration exists. It is corrected to assert
+    only what is still true: M12's `rules` and M13's brake lifecycle are not built. M10's machine source
+    (`compensation.py`) is byte-unchanged and still names no policy/rule/brake transition id."""
     conn = _fresh_conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert not ({"policies", "rules"} & tables)
-    # no M11/M12/M13 transition ids in the machine source, and no F13 BrakeNarrowed emission.
+    assert "rules" not in tables, "M12's rules table must not be built by M10/M11"
+    # no M11/M12/M13 transition ids in the M10 machine source, and no F13 BrakeNarrowed emission.
     import re
     assert not re.findall(r"\b(?:PO|RU|BR)-\d+", M10_SRC)
     assert "BrakeNarrowed" not in M10_SRC

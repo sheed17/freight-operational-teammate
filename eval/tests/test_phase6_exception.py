@@ -859,7 +859,11 @@ def test_the_neighbouring_machines_are_not_built():
     # forward-looking assertion was true at the M9 landing and is corrected here rather than left to
     # assert a table that now exists). The still-unbuilt neighbours stay asserted-absent: M11
     # (policies), M12 (rules) and Evidence (P7).
-    assert not ({"policies", "rules", "evidence"} & tables)
+    # M11 (the Policy) also LANDED after M9, so `policies` is now canonical too (rule 20). The
+    # still-unbuilt neighbours stay asserted-absent: M12 (rules) and Evidence (P7). M9's machine
+    # (exception.py) is byte-unchanged and M11 does not import it (PO-7 names its M9 escalation seam
+    # and leaves it unwired, so M9 keeps ZERO importers).
+    assert not ({"rules", "evidence"} & tables)
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
     import re
     assert not re.findall(r"\b(?:CM|PO|RU)-\d+", src)     # no M10/M11/M12 transitions

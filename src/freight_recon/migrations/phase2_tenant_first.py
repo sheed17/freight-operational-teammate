@@ -1156,6 +1156,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6cm:{step}")
         conn.commit()
 
+        # M11's Policy: `policies` holds FKs into tenant_humans (M1, author + activator), approvals (M4,
+        # the governed-change approval) and a self-FK for supersession, and its Policy Owner singularity
+        # index is created ON tenant_humans (M1). Created after them all. A fresh database is built with
+        # it directly; this brings a P2-shaped database to the same shape. Idempotent.
+        from .phase6_policies import create_phase6_policies_schema
+
+        for step in create_phase6_policies_schema(conn, now=_now()):
+            _mark(conn, f"phase6po:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1181,6 +1191,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             from .phase6_expectations import stamp_phase6_expectations_version
             from .phase6_observations import stamp_phase6_observations_version
             from .phase6_pipeline_instances import stamp_phase6_pipeline_version
+            from .phase6_policies import stamp_phase6_policies_version
             from .phase6_work_items import stamp_phase6_version
 
             stamp_phase3_version(conn, now=_now())
@@ -1195,6 +1206,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase6_expectations_version(conn, now=_now())
             stamp_phase6_exceptions_version(conn, now=_now())
             stamp_phase6_compensations_version(conn, now=_now())
+            stamp_phase6_policies_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

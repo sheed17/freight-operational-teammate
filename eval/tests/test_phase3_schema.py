@@ -301,6 +301,26 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_compensations_no_delete"
                for step in p6cm_performed), p6cm_performed
     assert phase6_compensations_readiness_problems(conn) == []
+
+    # ...and M11's `policies` table cannot yet hold the tenant posture evaluated at checkpoint step 6 —
+    # so a P2..M10 database is still refused, and refused by name. The migration that closes the gap
+    # creates the one tenant-first table, its four tenant-first indexes (including the one-active-per-scope
+    # and the tenant-monotonic-version partial/full unique indexes) plus the Policy Owner singularity index
+    # on tenant_humans, and its identity/no-delete triggers.
+    from freight_recon.migrations.phase6_policies import (  # noqa: E402
+        create_phase6_policies_schema,
+        phase6_policies_readiness_problems,
+    )
+
+    assert any("phase6_policies" in p or "policies" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6po_performed = create_phase6_policies_schema(conn, now=utc_now())
+    assert any(step == "create-table:policies" for step in p6po_performed), p6po_performed
+    assert any(step == "create-index:ix_policies_one_active_per_scope"
+               for step in p6po_performed), p6po_performed
+    assert any(step == "create-trigger:trg_policies_no_delete"
+               for step in p6po_performed), p6po_performed
+    assert phase6_policies_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

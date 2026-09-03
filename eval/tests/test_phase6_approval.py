@@ -516,8 +516,19 @@ def test_it_ships_dark():
                     if alias.name.split(".")[-1] == "approval":
                         importers.append(path.name)
     assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
-    assert set(importers) <= {"probe_phase6_approval.py"}, (
-        f"M4 has importers outside the permitted probe: {sorted(set(importers))}. M4 ships dark.")
+    # ### `probe_phase6_policy.py` JOINED THE PERMITTED DRIVERS AT P6-CP-11, AND M4'S MACHINE IS BYTE-
+    # UNCHANGED. M11's PO-4/PO-6 emit `PolicyVersionChanged`, whose M4 consumer half is `void_on_policy`
+    # (AP-4p); the M11 probe DRIVES that landed seam to prove "a policy change voids an in-flight approval"
+    # rather than building a second invalidation mechanism (the P6/M11 task's "DRIVE THEM"). A PROBE is a
+    # driver, not production — the load-bearing clause ("nothing under src/freight_recon/ imports approval")
+    # is unweakened: every importer here is still a scripts/ probe, never a production module. This is the
+    # same rule-20 correction M4's neighbours received when a later unit legitimately reached its seam.
+    src_importers = [n for n in importers if n.endswith(".py") and (
+        ROOT / "src" / "freight_recon" / n).exists() and n != "approval.py"]
+    assert src_importers == [], (
+        f"a PRODUCTION module imports approval — M4 must ship dark: {sorted(set(src_importers))}")
+    assert set(importers) <= {"probe_phase6_approval.py", "probe_phase6_policy.py"}, (
+        f"M4 has importers outside the permitted probes: {sorted(set(importers))}. M4 ships dark.")
 
 
 def test_m4_mints_no_second_authority():

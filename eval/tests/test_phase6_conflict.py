@@ -755,14 +755,14 @@ def test_m7_does_not_import_m6_or_m3():
 
 
 def test_no_m9_m10_m11_m12_tables_are_built():
-    # M8 (Expectation), M9 (Exception) and then M10 (Compensation) LANDED as the build checkpoints
-    # after M7, so `expectations`, `observation_coverage`, `exceptions` and `compensations` are now
-    # canonical (rule 20 — each forward-looking assertion was true at the M7 landing and is corrected
-    # here rather than left to assert a table that now exists). The still-unbuilt neighbours stay
-    # asserted-absent: M11 (policies) and M12 (rules).
+    # M8 (Expectation), M9 (Exception), M10 (Compensation) and now M11 (Policy) LANDED as the build
+    # checkpoints after M7, so `expectations`, `observation_coverage`, `exceptions`, `compensations` and
+    # `policies` are now canonical (rule 20 — each forward-looking assertion was true at the M7 landing and
+    # is corrected here rather than left to assert a table that now exists). The still-unbuilt neighbour
+    # stays asserted-absent: M12 (rules).
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert not (tables & {"policies", "rules"})
+    assert not (tables & {"rules"})
 
 
 # ============================ schema / migration ================================================

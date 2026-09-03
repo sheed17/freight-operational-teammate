@@ -78,6 +78,19 @@ _REGISTERING_CALLS = frozenset({"register_gate"})
 #   `pipeline_instance.py` CARRIES and ROUTES one already minted — §14 PL-2 writes `gate_decision`
 #                          and refuses NULL, PL-3 rejects on FORBIDDEN, PL-6 routes to a human,
 #                          PL-7a admits autonomously only on AUTONOMOUS_WITHIN_CAPS.
+#   `policy.py`            IS checkpoint step 6's posture (M11, ADR-010): a policy's whole content is
+#                          a `gate_decision`, so the machine NAMES the four members to hold, compare
+#                          (the narrowing total order) and evaluate them. A machine that could not
+#                          NAME a gate decision could not hold one.
+#   `phase6_policies.py`   PERSISTS the policy vocabulary as the `policies.gate_decision` DDL CHECK.
+#
+# ### `policy.py` AND `phase6_policies.py` JOINED THIS SET AT P6-CP-11, AND IT IS A WIDENING WITH A
+# NARROWING ATTACHED, exactly as `pipeline_instance.py` was at P6-CP-2. The narrowing is NOT
+# negotiable and is asserted separately: `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`
+# proves by AST that NEITHER new module constructs a `GateEntry` or a `GateRegistry` — CARRYING a
+# decision and MINTING one are different acts, and only `checkpoint.py` mints. A second gate
+# authority is the same defect as no gate authority; M11 supplies the posture step 6 reads, and the
+# kernel still mints. The production `GateRegistry` population stays EMPTY (AC-CKPT-6-missing, U8.1).
 #
 # It lives here, in one place, because two guards need it and a boundary stated twice is a boundary
 # that will eventually be stated differently. `test_..._confined_to_the_checkpoint_kernel` uses it
@@ -87,6 +100,7 @@ _REGISTERING_CALLS = frozenset({"register_gate"})
 # observed set equals the permitted set is a real cross-check rather than a restatement.
 GATE_RUNTIME_MODULES: frozenset[str] = frozenset({
     "checkpoint.py", "phase3_checkpoint.py", "pipeline_instance.py",
+    "policy.py", "phase6_policies.py",
 })
 
 
