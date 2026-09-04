@@ -2773,6 +2773,41 @@ units:
     # NOW. It is KEPT, not deleted, so the old phrasing stays recognisable if it returns (CLAUDE.md
     # sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE INSTRUCTION, so it is
     # CORRECTED HERE rather than left to send a fresh session to rebuild something landed.
+    # ### AS OF THE `P6-CP-11` LANDING: M11 LANDED as `P6-CP-11`. The phase still owes M12-M13 and 14 of
+    # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 + 7 = 120 written, re-derived
+    # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
+    # the parse DISCOVERED 13 files and counted 134 rows, and no prior figure was carried; the 14
+    # remaining are exactly M12's 9 and M13's 5). M11 ships dark, `criteria_scored` is empty on ALL
+    # ELEVEN checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and
+    # P7 is NOT unlocked. ### M12 - THE RULE - IS THE NEXT CHECKPOINT, and M12 and M13 are NOT BUILT:
+    # `rule.py`, `phase6_rules.py`, `brake_lifecycle.py` and `phase6_brakes.py` are ABSENT from the
+    # tree, verified at this landing (`brake.py` is P3's landed kernel brake, not M13).
+    # ### THE SENTENCE "M11 - THE POLICY - IS THE NEXT CHECKPOINT" BELOW WAS TRUE AT THE `P6-CP-10`
+    # LANDING AND IS FALSE NOW. It is left in place inside that landing's own note, which records what
+    # was true then, and is corrected here rather than deleted (CLAUDE.md sec 5 rule 20).
+    # ### THE `P6-CP-11` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing over
+    # the already-verified, already-reviewed tree a861f2b: three documents change and NOTHING under
+    # `src/`, `eval/`, `scripts/` or `.github/` is touched. Measured rather than asserted: all six M11
+    # deliverables are byte-identical from the build commit 20cec74 to a861f2b (an empty
+    # `git diff --stat` over exactly those paths, reproduced by the reviewer), every M1-M10 machine
+    # file and `brake.py` and `checkpoint.py` are byte-identical across 20cec74~1..a861f2b, and
+    # `.github/` is unchanged.
+    # ### AND UNLIKE `P6-CP-10`, THE REVIEW IS BOUND TO THE LANDING CANDIDATE ITSELF. The reviewed
+    # fingerprint is a861f2b / 76bb8d1d - the exact commit this record names - so `P6-D68`'s
+    # reviewed-tree-vs-candidate gap does NOT recur and no post-review correction is kept apart.
+    # ### THE M11 CANDIDATE NOTE THAT PRECEDED THIS IS SUPERSEDED. Between 20cec74 and a861f2b the
+    # repository recorded M11 as IMPLEMENTATION COMMITTED whose tier-1 independent review was OWED and
+    # which was explicitly "NOT a landed checkpoint" with "no `P6-CP-11` recorded". THAT WORDING WAS
+    # TRUE WHEN WRITTEN AND IS FALSE NOW: the review exists on disk
+    # (p6-cp11-independent-review-report-a861f2b.md), it was performed by a session that did not build
+    # M11, and it returned SUPPORTED 0.90 with zero findings. The candidate note is REPLACED in
+    # CURRENT.md rather than deleted, per CLAUDE.md sec 5 rule 20.
+    # ### TWO CARRIED RESIDUALS NAMING `closes_at: M11` ARE CLOSED BY THIS CHECKPOINT, EACH WITH ITS
+    # EVIDENCE ON THE ROW: `P6-D72` (exactly one ACTIVE POLICY_OWNER per tenant, now a tenant-scoped
+    # partial unique index on M1's `tenant_humans`, proven by attempting the violation with a
+    # no-coupling control and defended by two mutants) and `P6-D74` (the gate-runtime allowlist, widened
+    # to carry `policy.py` and `phase6_policies.py` with the mint-boundary narrowing asserted separately
+    # and mutation-proved). `P6-D71`, `P6-D73` and `P6-D75` are NOT closed and stay open unchanged.
     # ### AS OF THE `P6-CP-10` LANDING: M10 LANDED as `P6-CP-10`. The phase still owes M11-M13 and 21 of
     # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 = 113 written, re-derived
     # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
@@ -5365,6 +5400,286 @@ units:
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
           PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
+      - id: P6-CP-11
+        name: The Policy - the tenant posture that answers "what may Neyma do alone, for whom, up to what caps", as a versioned row a named human owns
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        build_commit: 20cec741bb256aaea3e7cfce4568172a3974b849
+        reviewed_commit: a861f2b469f8cf0572e9a02cef73ac20dec1476f
+        reviewed_tree: 76bb8d1dd747c2bca5641cfba7e92bc8fa123570
+        candidate_commit: a861f2b469f8cf0572e9a02cef73ac20dec1476f
+        candidate_tree: 76bb8d1dd747c2bca5641cfba7e92bc8fa123570
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M11 of the thirteen - one `policies` row per tenant posture, SEVEN canonical states
+          (DRAFT, PROPOSED, APPROVED, ACTIVE, SUPERSEDED, REVOKED, EXPIRED), one machine, SEVEN
+          transitions (`PO-1`...`PO-7` - an exact set match with sec 14 of the machine specification),
+          the EIGHT already-registered F11 contracts and no ninth, and the `NOT NULL` plus four-member
+          `CHECK` on `gate_decision` that makes THE NEVER-NULL GATE (F-20) something the database
+          enforces rather than something the application remembers.
+          ### A POSTURE IS A VALUE, NOT A PROMPT, AND THAT IS THE WHOLE UNIT. CLAUDE.md sec 3 already
+          said it - "Policy: typed, compiled rules governing admission. A prompt string is not a
+          policy." A brokerage decides Neyma may book a carrier alone up to $2,500 but may never pay
+          one. If that lives in a prompt, nobody can say what was in force when a decision was made,
+          nobody can prove who agreed to it, and a re-worded sentence silently changes what the system
+          is allowed to do. M11 makes it a ROW: a monotonic `policy_version`, an `activated_by` FOREIGN
+          KEY into a recorded ACTIVE human, permanent retention (a `BEFORE DELETE` trigger refuses the
+          delete outright), OCC on every state change, and tenant-first keys throughout - so "what was
+          Neyma allowed to do on 14 August, and who said so" is a query.
+          ### AND A POSTURE THAT COULD LOOSEN ITSELF WOULD BE WORSE THAN NO POSTURE. A tenant policy may
+          only NARROW the product ceiling, enforced over a DECLARED TOTAL ORDER across the four gate
+          members and NEVER a string compare - `AUTONOMOUS_WITHIN_CAPS` sorts alphabetically BEFORE
+          `HUMAN_APPROVAL_REQUIRED`, so a naive `<` reads the most dangerous broadening in the system as
+          a narrowing. Two mutants exercise exactly that pair and both are caught.
+          ### NOTHING BROADENS BY ITSELF, INCLUDING TIME. A narrowing policy's expiry BROADENS authority
+          when it fires, so PO-7 does not quietly restore the wider posture: it names an M9
+          human-confirmation seam and LEAVES IT UNWIRED, and a DDL `CHECK` allows an expiry only on a
+          narrowing policy. A clock may take authority away; a clock may never give it.
+          ### A MODEL MAY PROPOSE TEXT AND MAY NEVER ACTIVATE. Activation requires an authenticated
+          human through the `tenant_humans` FK; a model, automation, retry or timer attempt is refused
+          AND RECORDED as the already-registered F14 `UnauthorizedPolicyActivationAttempted`. A
+          predicate branching on a `MODEL_INFERRED` value FAILS TO COMPILE, and `confidence` is
+          structurally absent from the evaluator's input type - there is no allow-on-error default and
+          evaluation is byte-identical for the same inputs and `policy_version` (M-50). There is NO
+          ADMIN PATH: a governed state without both an `approval_id` and a `diff_fingerprint` is refused
+          by the database.
+          ### M11 IS CHECKPOINT STEP 6 AND NEVER A SECOND GATE. It imports `checkpoint.GateDecision` and
+          constructs NO `GateEntry` and NO `GateRegistry`; `checkpoint.py` remains the SOLE minter and
+          the production `GateRegistry` population stays EMPTY until U8.1/P8. A policy change voids
+          in-flight M4 approvals and makes an unclaimed grant unclaimable through P3's EXISTING claim
+          CAS, which already revalidates `policy_version` and already names `POLICY_CHANGED` - those
+          seams were DRIVEN, not rebuilt (rule 17). The version namespace is the TENANT, so a change in
+          any scope voids in-flight authority in EVERY scope. `UNIQUE (tenant, scope) WHERE state =
+          'ACTIVE'` and `UNIQUE (tenant, policy_version)`. Ships dark: zero production importers, no
+          channel join, no editor, console or policy-authoring surface, no timer service and no
+          exception machine imported.
+        what_is_in_the_tree: >-
+          `src/freight_recon/policy.py` and `src/freight_recon/migrations/phase6_policies.py`, wired
+          into `schema.py` and into the P2 migration walk `phase2_tenant_first.py`;
+          `eval/tests/test_phase6_policy.py` (57 tests); `scripts/probe_phase6_policy.py`;
+          `scripts/mutate_phase6_policy.py` (34 mutants plus the anti-vacuity control); and the
+          carrier-boundary edit in `eval/phase0/gate_scan.py`. ALL SIX ARE BYTE-IDENTICAL from the build
+          commit 20cec74 to the landing candidate a861f2b - the reviewer verified it with an empty
+          `git diff --stat 20cec74 a861f2b` over exactly those paths, and the three intervening commits
+          touch ONLY docs/implementation/CURRENT.md.
+          ### THE LOAD-BEARING DDL WAS INTROSPECTED LIVE AT THIS LANDING, NOT READ. A fresh canonical
+          database built the way production builds one returned: PRIMARY KEY ['tenant', 'policy_id']
+          (tenant-first), 22 columns, FOUR indexes of which FOUR lead with `tenant`, exactly SEVEN state
+          literals and no eighth, exactly FOUR `gate_decision` members, `gate_decision NOT NULL`, and
+          `CREATE UNIQUE INDEX ix_tenant_humans_one_active_policy_owner ON tenant_humans (tenant) WHERE
+          authority_role = 'POLICY_OWNER' AND state = 'ACTIVE'`.
+          ### THE INVARIANTS WERE PROVEN BY ATTEMPTING THE VIOLATION, WITH THE POPULATION PROVED FIRST -
+          AND THE FIRST ATTEMPT AT THAT BATTERY WAS ITSELF A FALSE GREEN, WHICH IS RECORDED RATHER THAN
+          QUIETLY FIXED. A first run reported "8/8 refused" while BOTH POSITIVE CONTROLS FAILED: every
+          refusal came from an unrelated `scope_kind` CHECK the fixture had not satisfied, so the battery
+          policed nothing and said so in the shape of a pass - exactly the vacuous negative CLAUDE.md
+          sec 6 exists to catch. Corrected: TWO POSITIVE CONTROLS ACCEPTED FIRST (a well-formed DRAFT
+          policy in one tenant, the same scope in a second), then EIGHT ILLEGAL INSERTS AND EIGHT
+          REFUSALS, each by the NAMED constraint under test - a null gate decision (NOT NULL), an
+          invented gate member (the four-member CHECK), a NARROWED and a SUSPENDED eighth state (the
+          seven-member CHECK), an author who is not a recorded human and an author from ANOTHER TENANT
+          (the FK), an ACTIVE policy with no activator (the ACTIVE-requires-activator CHECK), and a
+          reused `policy_version` inside one tenant (the tenant-version UNIQUE). A SECOND ACTIVE
+          POLICY_OWNER in one tenant is refused, with a NO-COUPLING CONTROL showing two tenants each
+          holding their own. The Product Driver run's battery on the same tree added refusals this
+          landing did not re-attempt: a cross-tenant activator, an ACTIVE policy naming another tenant's
+          approval, THE UNGOVERNED RAW INSERT (the no-admin-path CHECK), a second ACTIVE policy for one
+          (tenant, scope), the OCC version-advance trigger, and a DELETE.
+          ### THE EVENT CONTRACTS, MEASURED: 118 REGISTERED CONTRACTS - THE IDENTICAL TOTAL RECORDED AT
+          THE P6-CP-10 LANDING. ### M11 MINTED NO EVENT CONTRACT AT ALL, which is the strongest form of
+          rule-17 compliance available: the eight F11 contracts it emits were already registered by the
+          2026-08-12 P5 U5.2 founder/architect amendment, and `policy.py`'s `Policy*` event-name
+          literals are EXACTLY those eight and nothing else. `PolicyEvaluated` IS registered and is
+          F2/M2's (aggregate `pipeline_instance`), not F11's - a mutant that makes M11 emit it as though
+          it were M11's is caught. `PolicyOverridden` is confirmed NOT REGISTERED (P6-D71).
+          ### THE TRANSITION ARITHMETIC, RE-DERIVED RATHER THAN CARRIED, by parsing sec 14 of EVERY
+          machine file and counting rows: 13 files discovered, 134 rows counted, 120 written and landed
+          through M11, 14 remaining - and those 14 are exactly M12's 9 and M13's 5.
+        implementer_evidence: >-
+          Re-executed at this landing on the committed tree, not carried from the build report:
+          `scripts/probe_phase6_policy.py --all` exit 0, "behaviours as specified, 0 wrong";
+          `scripts/mutate_phase6_policy.py` 34/34 MUTANTS CAUGHT, "34 mutations caught, 0 escaped",
+          anti-vacuity control GREEN, tree restored with `git status --porcelain` EMPTY afterwards and no
+          `policy_shadow.py` stranded; `pytest -q eval/tests/test_phase6_policy.py
+          eval/tests/test_phase0_null_gate.py eval/tests/test_phase0_errata_guards.py
+          eval/tests/test_false_green_defenses.py eval/tests/test_phase0_tenant_posture.py` 98 PASSED.
+          ### THE SHIP-DARK SCAN WAS REBUILT AT THIS LANDING BECAUSE THE FIRST VERSION LIED, AND THAT IS
+          RECORDED. A last-path-segment import matcher reported THREE production importers of `policy` -
+          `imap_mailbox`, `inbox_discovery`, `packet_page`. ALL THREE IMPORT PYTHON'S STANDARD-LIBRARY
+          `email.policy`. The scanner was narrowed to resolve INTRA-PACKAGE edges only (relative imports,
+          or absolute `freight_recon.*`), which is the whole-token discipline CLAUDE.md sec 6 requires.
+          Re-measured over a DISCOVERED population: 123 production modules scanned; `production importers
+          of policy: []`; production modules whose IMPORT CLOSURE reaches policy: []; ANTI-VACUITY
+          CONTROL - the same scanner finds 8 importers of `checkpoint`, so the empty result is a fact
+          about `policy` and not a broken scanner. `policy.py`'s own intra-package imports are
+          `checkpoint`, `event_contracts`, `event_envelope`, `event_inbox`, `event_outbox`,
+          `phase6_policies` and `tenant` - NO brake, NO exception machine, NO timer service, NO channel.
+          ### THE GATE-MINT BOUNDARY WAS MEASURED AT THE CONSTRUCTION SITE, NOT AT THE MODULE. Across all
+          123 modules there is EXACTLY ONE `GateEntry`/`GateRegistry` construction anywhere in the
+          package - `checkpoint.py:242`, the kernel's own `GateRegistry._DEFAULT` fallback. ZERO
+          `GateRegistry` constructions exist, so the production registered-action-class population is
+          structurally EMPTY, unchanged since P6-CP-3 and unchanged by M11.
+          ### NO M12 AND NO M13: `rule.py`, `phase6_rules.py`, `brake_lifecycle.py` and
+          `phase6_brakes.py` are ABSENT from the tree, verified at this landing. (`brake.py` is P3's
+          landed kernel brake, not M13.)
+          ### AND NO M1-M10 RUNTIME MOVED, MEASURED BY GIT OBJECT HASH ACROSS 20cec74~1..a861f2b RATHER
+          THAN BY READING: `checkpoint.py`, `work_item.py`, `pipeline_instance.py`, `external_effect.py`,
+          `approval.py`, `observation.py`, `identity_binding_claim.py`, `conflict.py`, `expectation.py`,
+          `exception.py`, `compensation.py` and `brake.py` are ALL BYTE-IDENTICAL; the only migrations
+          touched are M11's own `phase6_policies.py` and the P2 walk; `phase6_exceptions.py` and
+          `phase6_work_items.py` are byte-unchanged; and `.github/` is unchanged.
+        independent_review_report: docs/implementation/p6-cp11-independent-review-report-a861f2b.md
+        independent_review_note: >-
+          The focused independent review required by CLAUDE.md sec 7 for a TIER-1 change - M11 lands a
+          migration, it is load-bearing for tenant isolation, and ### IT WIDENS A SAFETY GUARD - was
+          performed by a session that did not build M11 (`inherited_builder_context: false`; reviewer
+          session c53eefbf-b2e0-474c-8240-31d0aa3b41b9, builder session
+          40ba7a0d-e4b3-4c4c-904d-151317e16696) against commit a861f2b / tree 76bb8d1d on a clean tree
+          it confirmed itself (`tracked_dirty: 0`, `untracked: 0`, identity a861f2b469f8/76bb8d1dd747/-),
+          and returned SUPPORTED, confidence 0.90, findings [], adjudications [], 11/11 criteria PASS,
+          `blocked_on.kind: NONE`.
+          ### THE REVIEW IS BOUND TO THE LANDING CANDIDATE ITSELF, AND P6-D68's GAP DOES NOT RECUR. At
+          P6-CP-10 the review was bound to a43feae while the candidate was a833074, and that gap had to
+          be measured and carried as debt. Here the reviewed fingerprint IS the landing commit, so there
+          is no post-review correction to keep apart and none is claimed.
+          ### THAT REVIEWER EXECUTED THE PRODUCT rather than only reading it. `evidence_reproduced: true`
+          and `claimed_evidence_reproduced: true`. SIX declared commands, ALL SIX RAN - no harness
+          refusal at any layer, which is the FIRST P6 LANDING SINCE P6-CP-4 where that is true: the
+          probe ("behaviours as specified, 0 wrong", `problems: []`, `modules that MINT a gate decision:
+          ['checkpoint.py']`, `production importers of policy: []`); the mutation battery (34/34 caught,
+          0 escaped, anti-vacuity control GREEN); 88 targeted pytest plus 10 tenant-posture; an
+          independent AST scan of all 123 production modules; and the byte-identity diff between the
+          build commit and the reviewed head. It also verified the load-bearing safety structures FROM
+          SOURCE rather than trusting the builder's probe - the never-null four-member gate CHECK, the
+          seven-state CHECK, the `activated_by` FK with the ACTIVE-requires-activator CHECK, the
+          narrowing-only-expiry CHECK, the no-admin-path CHECK, the no-delete/identity/OCC triggers, and
+          the one-active-per-scope / tenant-version / Policy-Owner-singularity unique indexes.
+          ### THE WIDENING CARRIES ITS NARROWING, AND THE NARROWING IS NOT A DECORATION. `policy.py` and
+          `phase6_policies.py` join `GATE_RUNTIME_MODULES` because a policy's whole content IS a
+          `gate_decision` and a machine that could not NAME the four members could not hold one. What may
+          never happen is that M11 becomes a second gate authority, and that is asserted SEPARATELY by
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`, which proves BY AST that neither
+          new module constructs a `GateEntry` or a `GateRegistry` - CARRYING a decision and MINTING one
+          are different acts. A mutant that makes `policy.py` construct a `GateRegistry` turns that guard
+          RED. The second reader,
+          `test_typed_policy_runtime_exists_only_with_its_canonical_authority`, asserts the OBSERVED
+          carrier set EQUALS the permitted set, so the two entries could not have been added without the
+          modules actually being carriers. That is what closes P6-D74.
+          ### PRODUCT DRIVER EXERCISED 5/5 REQUIRED SCENARIOS - the permanent `p6_m11_policy` (789
+          assertions) plus FOUR generated - 845 ASSERTIONS, 0 FAILED, 0 blocked, 0 skipped,
+          `assembly_problems: []`, `evidence_verified: true` on every one, across `safety_invariant`
+          ("Two ACTIVE POLICY_OWNER rows remain insertable"), `stale_state` ("A scope-local void leaves
+          stale in-flight authority"), `idempotency` ("Re-running the migration duplicates/omits") and
+          `authorization` ("M11 introduces an admin role, superuser path"), with `uncovered_risks: []`.
+          `coverage_summary` records 6 proposed, 4 accepted, 2 filtered, 0 invalid (P6-D80). The run's
+          `scoped_completion` reads `task_result: VERIFIED`, `task_outstanding: []`,
+          `parent_phase_accepted: false`, and `decision.json` reads ACCEPT with `problems: []`.
+        nonblocking_residuals: >-
+          Six items are RECORDED, NOT ACTIONED (CLAUDE.md sec 13), carried in this unit's
+          `residual_risks_carried_forward` as `P6-D76` through `P6-D81`. ### NONE IS A REVIEWER FINDING
+          AND NONE MAY BE CITED AS ONE - the review returned `findings: []`. Each was identified AT THIS
+          LANDING from the run's own structured evidence, the M11 source, the specification corpus and
+          the CI record. None can produce a wrong customer outcome, violate an invariant, or make a later
+          phase unsafe, and the machine ships dark.
+          `P6-D76` - no green CI conclusion, and NO CI EXECUTION of M11's 57 tests on either interpreter.
+          `P6-D77` - CI runs no M11 probe or mutation job, and the mitigating sentence available at
+          P6-CP-8/-9/-10 is NOT available here because no full suite completed.
+          `P6-D78` - only ONE of the two guards reading the widened `GATE_RUNTIME_MODULES` sits inside a
+          CI job that concluded SUCCESS.
+          `P6-D79` - two stale harness snapshots in the accepted run.
+          `P6-D80` - two of six proposed generated scenarios were filtered at assembly.
+          `P6-D81` - four neighbour-guard comments asserted "M11 LANDED" before the landing existed.
+          ### TWO CARRIED RESIDUALS NAME `closes_at: M11`, AND M11 CLOSES BOTH - WITH THE EVIDENCE, NOT
+          QUIETLY. `P6-D72` (exactly one named Policy Owner per tenant was authority with no mechanical
+          enforcement; two ACTIVE POLICY_OWNER rows were insertable) is CLOSED by the tenant-scoped
+          partial unique index M11's own migration adds to M1's landed `tenant_humans` - the tier-1
+          migration the row itself predicted - proven here by ATTEMPTING THE VIOLATION with a no-coupling
+          control, and defended by TWO mutants (one dropping UNIQUE, one dropping `tenant` so a single
+          Policy Owner would be globally unique and a second brokerage could not name its own). NO SECOND
+          USER OR AUTHORITY SYSTEM WAS INVENTED: `AUTHORITY_ROLES` in `phase6_work_items.py` is
+          byte-unchanged. `P6-D74` (the gate-runtime allowlist was a fixed three and M11 might collide
+          with it) is CLOSED: M11 took the row's own route (a), and the price CLAUDE.md sec 7 attaches to
+          widening a safety guard - one focused independent review, plus mutation proof the widened guard
+          can still fail - was paid in full, recorded in `independent_review_note` above.
+          ### THREE CARRIED RESIDUALS THAT M11 DOES NOT CLOSE - STATED RATHER THAN LET PASS. `P6-D71`
+          (`PolicyOverridden`) stays OPEN / BLOCKED_AUTHORITY, verified absent from the 118 registered
+          contracts; M11 builds no override mechanism at all - not an event, not a field, not a code path
+          - and minting one is a founder/architect act that lands with M12/Rule. `P6-D73` (M9's
+          `exceptions.source_kind = 'policy'` with no FK) stays OPEN: M11 creates the referent and
+          DELIBERATELY does not retro-wire the FK, on M10's landed precedent for `compensation`; verified
+          at this landing that `policy` is still in `SOURCE_KINDS_WITHOUT_TABLE` and that
+          `phase6_exceptions.py` is BYTE-UNCHANGED across the entire M11 range, with PO-7's M9 escalation
+          seam NAMED AND LEFT UNWIRED. `P6-D75` stays OPEN and closes at a session that owns the phase-0
+          spec-corpus probes, not at M11.
+          ### FIVE M11 AUTHORITY QUESTIONS WERE SETTLED IN THE CANON BEFORE THE BUILD, NOT BY IT.
+          `M11-AQ-1`, `-2`, `-3`, `-5` and `-6` were corrected by the authority-reconciliation pass at
+          5d2d8e1, which changed no file under `src/`, `eval/`, `scripts/` or `.github/`; they carry no
+          debt and are not re-litigated. `M11-AQ-7` is `P6-D72` (closed), `M11-AQ-8` is `P6-D73`
+          (answered by precedent), `M11-AQ-4` is `P6-D71` (open).
+          ### ALSO UNTOUCHED AND EXPLICITLY NOT CLOSED: `V11` and `V12` stay OPEN validation at their
+          fail-closed defaults - enforcing Policy Owner singularity IS `V12`'s default and does NOT
+          resolve it, and this record does not claim it does. `M10-AQ-1`...`M10-AQ-13`,
+          `M9-AQ-1`...`M9-AQ-6`, `M7-AQ-1`...`M7-AQ-3`, `M6-AQ-*`, `M5-AQ-*`, `P6-D1`, `P6-D2`, `P6-D3`,
+          `P6-D4`, `V1` and `V10` are unchanged; and `P6-D40` is CARRIED FORWARD UNCHANGED and was NOT
+          re-verified at this landing - no mutation battery was run against the status guards here and
+          none is claimed.
+        what_it_owed: >-
+          ### CI - THE HONEST RECORD. Run 33856703548 on the landing candidate a861f2b concluded
+          `cancelled`, AND `cancelled` IS NOT `success`. Anyone citing this landing as "CI green" is
+          citing it wrongly. Job conclusions: `Safety invariants (fast)` SUCCESS; `P6/M3 effect-grant
+          probe + mutation` SUCCESS; `Full test suite (py3.11)` CANCELLED at the ~60-minute
+          workflow/runtime ceiling having reached ~53% with NO pytest failure marker emitted;
+          `Full test suite (py3.12)` CANCELLED at the same ceiling, also ~53%, also with no failure
+          marker; `Risk radar` SKIPPED (pull-request-only). The package IMPORTED SUCCESSFULLY on both
+          interpreters before pytest began.
+          ### BOTH HALVES ARE TRUE AND BOTH ARE STATED. No product failure was demonstrated by CI -
+          neither cancelled suite emitted a failure marker, so nothing in this run is evidence of an M11
+          defect. And neither suite completed, so neither is evidence of a green one. THIS IS THE
+          SECOND-WEAKEST CI POSITION OF ANY P6 LANDING: weaker than every landing since P6-CP-7 in that
+          NO FULL SUITE COMPLETED ON EITHER INTERPRETER, and stronger than P6-CP-7 only in that
+          `Safety invariants (fast)` concluded SUCCESS rather than expiring at its own ceiling.
+          ### AND CI NEVER REACHED M11'S TESTS - MEASURED, NOT ASSUMED. `pytest eval --collect-only`
+          collects 3223 tests on this tree, and `eval/tests/test_phase6_policy.py` occupies positions
+          2620-2676, i.e. 81.3%-83.0% of the run, 57 tests. A job cancelled at ~53% stopped long before
+          them. The honest statement is not "no verdict" but NO EXECUTION: the repository has NO CI run
+          of M11's 57 tests on this commit, on either interpreter.
+          ### THE ONE LOAD-BEARING EXCEPTION, STATED IN THE SAME BREATH: THE SAFETY SURFACE M11 WIDENED
+          DID EXECUTE IN CI AND PASSED. The `Safety invariants (fast)` job that concluded SUCCESS names
+          26 files, and two of them matter here - `eval/tests/test_phase0_null_gate.py`, which carries
+          BOTH the guard using `GATE_RUNTIME_MODULES` as its allowlist AND
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`, the AST narrowing that keeps the
+          widening honest; and `eval/tests/test_phase0_tenant_posture.py`, where a new canonical table
+          that failed to declare itself would turn red. ### ITS LIMIT IS RECORDED TOO:
+          `eval/tests/test_phase0_errata_guards.py`, the OTHER reader of that boundary, is NOT among the
+          Safety job's 26 files, and both full suites stopped before it could run inside `pytest eval` -
+          it passed locally at this landing inside the 98, and that is a local result, not a CI one
+          (P6-D78).
+          ### CI RUNS NO M11 PROBE OR MUTATION JOB - verified mechanically: the count of `phase6_policy`
+          occurrences in `.github/workflows/ci.yml` is ZERO. M3 remains the only P6 machine with a
+          dedicated probe/mutation job (P6-D77).
+          ### THE JOB CONCLUSIONS WERE FOUNDER-SUPPLIED AND COULD NOT BE RE-READ HERE. `gh run view
+          33856703548` fails from this sandbox with `tls: failed to verify certificate: x509: OSStatus
+          -26276`, the identical failure recorded at every landing since P6-CP-5, so a later session with
+          network access should read run 33856703548 itself rather than trust this transcription. The
+          founder chose to land M11 on the evidence that exists, treating both suite cancellations as
+          NON-PRODUCT CI RUNTIME LIMITATIONS rather than as evidence of an M11 defect; that is recorded
+          as a DECISION, NOT A VERIFICATION (P6-D76). It closes only by a CI run on this branch that
+          concludes `SUCCESS`.
+          ### FIVE THINGS ARE KEPT APART BY THIS RECORD AND MUST NOT BE COLLAPSED: (1) the BUILDER
+          IMPLEMENTATION at 20cec74; (2) PRODUCT DRIVER SCENARIO VERIFICATION, 5/5 required, 845
+          assertions, 0 failed; (3) the FOCUSED INDEPENDENT REVIEW by a non-builder session, SUPPORTED
+          0.90; (4) GITHUB CI, which concluded `cancelled`; and (5) the FOUNDER LANDING DECISION that
+          this checkpoint lands despite (4). (5) IS A DECISION, NOT A VERIFICATION, and nothing here
+          presents it as one.
+          ### LANDED IS NOT ACCEPTED, AND THIS RECORD SCORES NOTHING. `criteria_scored` is empty below
+          and empty on ALL ELEVEN checkpoints; no P6 weighted acceptance criterion is scored; P6 stays
+          `status: READY` / `execution_state: IN_PROGRESS` and does not move; P7 stays `BLOCKED` /
+          `NOT_STARTED`; the phase still owes M12-M13 and 14 of the 134 transitions; and NOTHING IS
+          ENABLED IN PRODUCTION. M11 ships dark, mints no gate decision, engages no brake, joins no
+          channel, imports no timer service and no exception machine, and builds no editor, console or
+          policy-authoring surface.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -5800,6 +6115,32 @@ units:
           MIGRATION on a tenant-isolation-bearing table - CLAUDE.md sec 7 tier 1.
         severity: MEDIUM - M11 acceptance work, not an authority conflict
         closes_at: M11
+        status: CLOSED at P6-CP-11
+        closure: >-
+          ### CLOSED AT THE `P6-CP-11` LANDING, WITH THE EVIDENCE AND NOT QUIETLY. The finding above
+          is preserved verbatim because it states what was true before M11. M11's OWN migration
+          (`src/freight_recon/migrations/phase6_policies.py`) adds the constraint to the EXISTING M1
+          authority record: `CREATE UNIQUE INDEX ix_tenant_humans_one_active_policy_owner ON
+          tenant_humans (tenant) WHERE authority_role = 'POLICY_OWNER' AND state = 'ACTIVE'`.
+          ### IT WAS TREATED AS THE TIER-1 MIGRATION THIS ROW PREDICTED. The disposition warned that
+          "a constraint added to an M1-landed table is a MIGRATION on a tenant-isolation-bearing table
+          - CLAUDE.md sec 7 tier 1", and it sits inside the focused independent review recorded at
+          `P6-CP-11` (SUPPORTED 0.90, findings []).
+          ### PROVEN BY ATTEMPTING THE VIOLATION, WITH ITS NO-COUPLING CONTROL. On a fresh canonical
+          database a second ACTIVE POLICY_OWNER inserted into one tenant is REFUSED - `UNIQUE
+          constraint failed: tenant_humans.tenant` - while the control shows TWO TENANTS EACH HOLDING
+          THEIR OWN, which is the difference between "one Policy Owner per brokerage" and "one Policy
+          Owner in the world".
+          ### AND THE GUARD WAS SEEN TO FAIL. Two mutants in `scripts/mutate_phase6_policy.py` are
+          caught: one drops UNIQUE so two ACTIVE POLICY_OWNER rows become insertable, and one drops
+          `tenant` so a single POLICY_OWNER would be unique GLOBALLY and a second brokerage could not
+          name its own. Product Driver's generated `safety_invariant` scenario S1 targets this exact
+          risk and PASSED.
+          ### NO SECOND USER OR AUTHORITY SYSTEM WAS INVENTED, which is what the disposition required:
+          `tenant_humans` remains the one record of human authority, and `AUTHORITY_ROLES` in
+          `phase6_work_items.py` is BYTE-UNCHANGED at ('POLICY_OWNER', 'AUTHORIZED_HUMAN').
+          ### WHAT THIS CLOSURE DOES NOT DO: it does not resolve `V12`. Enforcing singularity IS
+          `V12`'s fail-closed default, and `V12` stays OPEN validation.
       - id: P6-D73
         finding: >-
           ### M9's `exceptions.source_kind` ALREADY ACCEPTS `policy` WITH NO FOREIGN KEY, BECAUSE
@@ -5848,6 +6189,37 @@ units:
           a gate decision, and the production `GateRegistry` population stays EMPTY until U8.1/P8.
         severity: MEDIUM - a tier-1 decision point, recorded before it is reached
         closes_at: M11
+        status: CLOSED at P6-CP-11
+        closure: >-
+          ### CLOSED AT THE `P6-CP-11` LANDING. THE DECISION POINT THIS ROW RECORDED BEFORE IT WAS
+          REACHED WAS REACHED, AND ROUTE (a) WAS TAKEN. `eval/phase0/gate_scan.py`'s
+          `GATE_RUNTIME_MODULES` gains `policy.py` and `phase6_policies.py`, because a policy's whole
+          content IS a `gate_decision`: the machine must NAME the four members to hold, compare (the
+          narrowing total order) and evaluate them, and the migration PERSISTS the vocabulary as the
+          `policies.gate_decision` DDL CHECK. A machine that could not NAME a gate decision could not
+          hold one.
+          ### THE PRICE THE ROW ATTACHED TO ROUTE (a) WAS PAID IN FULL. It required "the boundary to be
+          RESTATED in `gate_scan.py` - and WEAKENING OR WIDENING A SAFETY GUARD IS TIER 1 (CLAUDE.md
+          sec 7): builder plus one focused independent review, plus mutation proof that the widened
+          guard can still fail." M11 received that review from a session that did not build it
+          (SUPPORTED 0.90, findings [], criteria 11/11 PASS), and the mutation proof exists: a mutant
+          that makes `policy.py` construct a `GateRegistry` turns
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision` RED.
+          ### IT IS A WIDENING WITH A NARROWING ATTACHED, AND THE NARROWING IS ASSERTED SEPARATELY.
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision` proves BY AST that NEITHER new
+          module constructs a `GateEntry` or a `GateRegistry` - CARRYING a decision and MINTING one are
+          different acts. The second reader,
+          `test_typed_policy_runtime_exists_only_with_its_canonical_authority`, asserts the OBSERVED
+          carrier set EQUALS the permitted set, so the two entries could not have been added without
+          the modules actually being carriers; it is a cross-check, not a restatement.
+          ### AND THE INVARIANT THE ROW SAID MUST SURVIVE, SURVIVES - MEASURED, NOT ASSERTED. Across
+          123 production modules there is EXACTLY ONE `GateEntry`/`GateRegistry` construction anywhere
+          in the package: `checkpoint.py:242`, the kernel's own `GateRegistry._DEFAULT` fallback. ZERO
+          `GateRegistry` constructions exist, so the production registered-action-class population is
+          structurally EMPTY - unchanged until U8.1/P8 - and `checkpoint.py` remains THE SOLE MINTER.
+          ### THE ONE RESIDUAL CONSEQUENCE IS CARRIED, NOT HIDDEN: of the two guards reading the
+          widened boundary only `test_phase0_null_gate.py` sits in a CI job that concluded SUCCESS
+          (`P6-D78`).
       - id: P6-D75
         finding: >-
           ### AN ENTITY SPEC'S "EVENTS EMITTED" LIST IS NOT MECHANICALLY CROSS-CHECKED AGAINST THE
@@ -5869,6 +6241,156 @@ units:
           `spec_corpus.emitted_events()` by NAME, and fail on either direction of drift.
         severity: LOW - nonblocking
         closes_at: a session that owns the phase-0 spec-corpus probes
+      # ### THE SIX ROWS BELOW ARE THE P6/M11 LANDING RESIDUALS (`P6-CP-11`). None is a reviewer
+      # finding - the focused independent review returned `findings: []` and `adjudications: []`.
+      # Each was identified AT THE LANDING from the run's own structured evidence, the M11 source,
+      # the specification corpus and the CI record. NOTE THAT `P6-D72` AND `P6-D74` ARE CLOSED BY
+      # THIS CHECKPOINT - their rows above carry the closure and the evidence for it, and neither
+      # was moved quietly.
+      - id: P6-D76
+        finding: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THE LANDING CANDIDATE, AND NEITHER FULL SUITE
+          COMPLETED. Run 33856703548 on a861f2b concluded `cancelled`. `Full test suite (py3.11)` and
+          `Full test suite (py3.12)` were EACH cancelled at the ~60-minute workflow/runtime ceiling
+          having reached ~53%, with NO pytest failure marker emitted on either. The repository
+          therefore has NO Python 3.11 result and NO Python 3.12 result for this commit - not a
+          failing one and not a passing one. ### AND CI NEVER REACHED M11'S TESTS - MEASURED, NOT
+          ASSUMED: `pytest eval --collect-only` collects 3223 tests on this tree and
+          `eval/tests/test_phase6_policy.py` occupies positions 2620-2676 (81.3%-83.0%), 57 tests, so
+          a job stopping at ~53% stopped long before them. The honest statement is NOT "no verdict"
+          but NO EXECUTION.
+        disposition: >-
+          ### RECORDED AS A DECISION, NOT A VERIFICATION, AND BOTH HALVES ARE STATED. `cancelled` is
+          not `success` and no document in this repository says it is. What DID conclude SUCCESS:
+          `Safety invariants (fast)` and the M3 effect-grant job; `Risk radar` is pull-request-only
+          and skipped. No product failure was demonstrated - the package imported successfully on both
+          interpreters and neither suite emitted a failure marker - and equally, neither suite may be
+          called PASS. This is the SECOND-WEAKEST CI POSITION OF ANY P6 LANDING: weaker than every
+          landing since P6-CP-7 in that no full suite completed, stronger than P6-CP-7 only in that
+          the safety job concluded SUCCESS rather than expiring at its own ceiling. ### THE ONE
+          LOAD-BEARING MITIGATION IS SPECIFIC AND ITS LIMIT IS IN `P6-D78`: the Safety job that
+          concluded SUCCESS names `eval/tests/test_phase0_null_gate.py`, which carries BOTH the guard
+          that uses the widened `GATE_RUNTIME_MODULES` as its allowlist AND
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision` - so the tier-1 safety surface
+          M11 widened RAN TO COMPLETION IN CI AND PASSED - and `test_phase0_tenant_posture.py`, where
+          a new canonical table failing to declare itself would turn red. The job conclusions were
+          founder-supplied and could not be re-read at the landing - `gh run view 33856703548` fails
+          from this sandbox with `tls: failed to verify certificate: x509: OSStatus -26276`, as at
+          every landing since P6-CP-5. The founder chose to land on the evidence that exists, treating
+          both cancellations as non-product CI runtime limitations.
+        severity: LOW - nonblocking
+        closes_at: a CI run on this branch that concludes SUCCESS
+      - id: P6-D77
+        finding: >-
+          CI runs NO M11 probe or mutation job. Verified mechanically at this landing: the count of
+          `phase6_policy` occurrences in `.github/workflows/ci.yml` is ZERO. M3 is the only P6 machine
+          with a dedicated probe/mutation job.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED - AND UNLIKE `P6-D54`, `P6-D60` AND `P6-D67`, THE MITIGATING
+          SENTENCE IS NOT AVAILABLE HERE. At P6-CP-8, P6-CP-9 and P6-CP-10 the mitigation was that the
+          machine's tests are inside `pytest eval` and that job COMPLETED on at least one interpreter.
+          At this landing NO full suite completed on either interpreter, so the probe, the 34-mutant
+          battery AND the 57-test suite are all uncovered by CI on this commit. All three were
+          re-executed on the committed tree at this landing (0 wrong; 34/34 caught, 0 escaped; 98
+          passed across the five targeted suites), and that is a local result, not a CI one. Adding a
+          per-machine CI job for each of the thirteen machines is a CI-shape decision, not an M11
+          defect, and the runtime ceiling `P6-D76` records is an argument against adding more jobs
+          rather than for it. This row is the shape of `P6-D49` (M7), which had the same missing
+          mitigation.
+        severity: LOW - nonblocking
+        closes_at: a CI-shape decision, not a machine
+      - id: P6-D78
+        finding: >-
+          ### ONLY ONE OF THE TWO GUARDS THAT READ THE WIDENED `GATE_RUNTIME_MODULES` SITS INSIDE A CI
+          JOB THAT CONCLUDED SUCCESS. `eval/phase0/gate_scan.py` states the ADR-010 carrier boundary
+          once, and two guards read it: `test_phase0_null_gate.py` (which also carries
+          `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`, the AST narrowing) and
+          `test_phase0_errata_guards.py::test_typed_policy_runtime_exists_only_with_its_canonical_authority`,
+          which asserts the OBSERVED carrier set EQUALS the permitted set. Measured at this landing
+          against the workflow: `test_phase0_null_gate.py` IS one of the `Safety invariants (fast)`
+          job's 26 named files and that job concluded SUCCESS; `test_phase0_errata_guards.py` is NOT
+          among them, and both full suites stopped before it could run inside `pytest eval`. So the
+          equality half of the widened boundary has NO CI RESULT on this commit.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND STATED BECAUSE M11 IS TIER-1 PRECISELY FOR WIDENING THIS
+          GUARD. The half that DID run in CI is the half that fails closed: the allowlist guard and
+          the AST mint-boundary narrowing both live in `test_phase0_null_gate.py`, so a `policy.py`
+          that MINTED a gate decision would have turned a completed CI job red. What has no CI result
+          is the guard asserting the observed set is not merely a SUBSET of the permitted set - i.e.
+          the check that would catch a stale allowlist entry for a module that stopped being a
+          carrier, which is a bookkeeping drift and not an authority widening. It passed locally at
+          this landing inside the 98 targeted tests, and the mutation battery covers the authority
+          direction: a mutant that makes `policy.py` construct a `GateRegistry` is caught. It closes
+          with `P6-D76`, or by adding that file to the Safety job's list, which is a CI-shape decision.
+        severity: LOW - nonblocking
+        closes_at: a CI run on this branch that concludes SUCCESS, or a CI-shape decision
+      - id: P6-D79
+        finding: >-
+          TWO STALE HARNESS SNAPSHOTS IN THE ACCEPTED PRODUCT DRIVER RUN. (1) `protocol-resolution.json`
+          reads `gates.independent_review: NOT_RUN` with detail "no independent review recorded for
+          this state", while the SAME accepted run's `independent-review.json` records verdict
+          SUPPORTED, confidence 0.90, `inherited_builder_context: false`, reviewer session c53eefbf
+          against builder session 40ba7a0d. (2) `completion-audit.json` reads
+          `observed_state.implementation_present: false` with detail "no source changes observed in the
+          working tree or at HEAD", against a tree that carries M11's 6,317 committed lines - an
+          artifact of the final iteration's change being docs-only. The same file's `receipts` block
+          reports the canonical-suite, clean-clone and finalizer receipts ABSENT, which is correct by
+          design and not a defect: those conventions were RETIRED in the 2026-08 engineering-process
+          simplification (CLAUDE.md sec 0).
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. `protocol_resolution.status` is CONSISTENT with `violations: []`
+          and `next_safe_action: "proceed"`, and `completion-audit.decision` is VERIFIED with
+          `missing_evidence: []` and `contradictions: []`, so neither snapshot changed any outcome.
+          This is the harness status/vocabulary defect already recorded as `P6-D38` (M5), `P6-D44`
+          (M6), `P6-D50` (M7), `P6-D55` (M8), `P6-D63` (M9) and `P6-D69` (M10), in a new shape. It is
+          a Product Driver harness property and is not fixed from this repository. ### WHAT IS NOTABLY
+          ABSENT AT THIS LANDING AND IS RECORDED AS AN IMPROVEMENT RATHER THAN A GAP: the reviewer
+          harness refused NONE of the reviewer's commands. All 62 logged command invocations in the
+          accepted iteration exited 0, and all six of the reviewer's declared commands ran - the first
+          P6 landing since P6-CP-4 with no `COMMAND_ERRORED` / `execution_failed` / composition /
+          reviewer-floor refusal at any layer.
+        severity: LOW - nonblocking
+        closes_at: a Product Driver harness change, not a Neyma change
+      - id: P6-D80
+        finding: >-
+          Of SIX proposed generated scenarios, FOUR were accepted and TWO were filtered at assembly
+          (`coverage_summary`: proposed 6, accepted 4, filtered 2, invalid 0). What a filtered scenario
+          costs is composed adversarial pressure, not a named check.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. `uncovered_risks` is `[]`: every declared risk category was still
+          established by an accepted scenario. The four span `safety_invariant` ("Two ACTIVE
+          POLICY_OWNER rows remain insertable" - the P6-D72 surface), `stale_state` ("A scope-local
+          void leaves stale in-flight authority" - the M11-AQ-6 surface), `idempotency` ("Re-running
+          the migration duplicates/omits") and `authorization` ("M11 introduces an admin role,
+          superuser path"), for 56 assertions alongside the permanent scenario's 789 - 845 total, 0
+          failed, 0 blocked, 0 skipped, `assembly_problems: []`. Four accepted is mid-range against
+          M10's twelve (`P6-D70`), M9's ten (`P6-D62`), M7's four (`P6-D52`), M8's one (`P6-D57`) and
+          M6's zero (`P6-D46`), and the two that were filtered targeted no risk category left
+          uncovered.
+        severity: LOW - nonblocking
+        closes_at: not a defect - a generation-yield observation
+      - id: P6-D81
+        finding: >-
+          ### THE BUILD COMMIT 20cec74 WROTE "M11 ... LANDED" INTO FOUR NEIGHBOUR-GUARD COMMENTS BEFORE
+          THE LANDING EXISTED. Measured at this landing: `test_phase6_conflict.py:758`,
+          `test_phase6_compensation.py:851`, `test_phase6_exception.py:862` and
+          `test_phase6_expectation.py:927` each assert in prose that M11 LANDED, and the docstring of
+          `test_phase6_policy.py`, the header of `scripts/probe_phase6_policy.py`, a comment in
+          `test_phase6_approval.py` and the boundary note in `eval/phase0/gate_scan.py` each name
+          `P6-CP-11`. All were FALSE WHEN WRITTEN - no landing existed at 20cec74 - and all become
+          TRUE as of this landing commit.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. This is exactly the `P6-D58` class, where M8's build commit wrote
+          "M8 ... LANDED as the build checkpoint after M7" into two M7 comments before the landing
+          existed. The statements are comments and docstrings in test/guard/probe files; none is an
+          assertion, none changes what any guard reads or permits, and none appears in a status
+          authority - `CURRENT.md` at 20cec74 correctly recorded M11 as implementation-committed and
+          NOT landed, and the three commits after it TIGHTENED that wording further. They are not
+          edited here, because editing them would be a change to already-reviewed files for cosmetic
+          reasons; the row exists so a later session does not read a build-time comment as evidence
+          that a landing happened.
+        severity: LOW - nonblocking
+        closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
     next_units_unlocked: [P7]
 
   - unit_id: P7
