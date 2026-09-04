@@ -2143,17 +2143,19 @@ def _c(args):
 
 @case("m12-rule-is-not-built")
 def _c(args):
+    # ### CORRECTED WHEN M12 LANDED (rule 20). M12 (the Rule) LANDED as P6-CP-12, so rule.py and the
+    # `rules` table are now canonical — the forward-looking assertion was true at the M11 landing and is
+    # corrected here. What is still M11's to guarantee is its ship-dark posture: policy.py does NOT import
+    # rule.py (M12 declares its precedence layer and defers the ceiling comparison rather than importing
+    # M11), so M11 keeps ZERO importers. M13 (Brake) is still not built.
+    psrc = (ROOT / "src" / "freight_recon" / "policy.py").read_text()
+    if re.search(r"from\s+\.rule\s+import|import\s+freight_recon\.rule", psrc):
+        return FAIL(f"{MISS} policy.py imports the rule machine", "### M11 IMPORTS M12 ###")
     import freight_recon
     files = {p.name for p in Path(freight_recon.__file__).parent.rglob("*.py")}
-    if "rule.py" in files:
-        return FAIL(f"{MISS} M12 rule.py exists", "### M12 RULE MACHINE BUILT ###")
-    kit = Kit()
-    try:
-        if "rules" in {r[0] for r in kit.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
-            return FAIL(f"{MISS} a rules table exists", "### RULES TABLE CREATED ###")
-    finally:
-        kit.close()
-    return OK("m12-rule-is-not-built: no rule module, no rules table")
+    if any("brake" in f and "lifecycle" in f for f in files):
+        return FAIL(f"{MISS} an M13 brake lifecycle module exists", "### M13 BRAKE MACHINE BUILT ###")
+    return OK("m12-rule-is-not-built: M12 landed; M11 does not import it and M13 is not built")
 
 
 @case("m13-brake-lifecycle-is-not-built")
@@ -2394,7 +2396,7 @@ def _measurements():
     out.append(f"production importers of policy: {sorted(set(importers))}")
     out.append("channel-capable modules that import policy: []")
     files = {p.name for p in src.rglob("*.py")}
-    out.append("an M12 rules table exists: False")
+    out.append("an M12 rules table exists: True")   # M12 landed (P6-CP-12); rule 20 correction
     out.append("an M12 rule module exists: " + str("rule.py" in files))
     out.append("an M13 brake lifecycle module exists: " + str(any('brake' in f and 'lifecycle' in f for f in files)))
     grad = any(isinstance(n, ast.ClassDef) and "graduat" in n.name.lower() for n in ast.walk(ast.parse(psrc)))
@@ -2464,7 +2466,7 @@ NARRATIVE_HEADLINES = [
     "A POLICY NEVER OVERRIDES A BRAKE DENIAL",
     "REPLAY CREATES NO AUTHORITY",
     "M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS",
-    "THE M12 RULE MACHINE IS NOT BUILT",
+    "THE M13 BRAKE MACHINE IS NOT BUILT",
     "THE M13 BRAKE MACHINE IS NOT BUILT",
     "NOTHING GRADUATES",
     "THE M1 WORK ITEM MACHINE IS UNCHANGED",

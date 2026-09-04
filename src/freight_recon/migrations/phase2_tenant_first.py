@@ -1166,6 +1166,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6po:{step}")
         conn.commit()
 
+        # M12's Rule: `rules` holds FKs into tenant_humans (M1, author + activator), a self-FK for
+        # supersession and one into conflicts (M7, the RULE_VS_RULE conflict a COMPILED rule is blocked
+        # on). Created after them all. A fresh database is built with it directly; this brings a P2-shaped
+        # database to the same shape. Idempotent.
+        from .phase6_rules import create_phase6_rules_schema
+
+        for step in create_phase6_rules_schema(conn, now=_now()):
+            _mark(conn, f"phase6ru:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.

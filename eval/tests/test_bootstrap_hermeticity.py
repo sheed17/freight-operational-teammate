@@ -3399,6 +3399,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase6_policies import (
         P6PO_EXEMPT_TABLES, P6PO_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase6_rules import (
+        P6RU_EXEMPT_TABLES, P6RU_TENANT_TABLES,
+    )
     from freight_recon.migrations.phase6_work_items import (
         P6_EXEMPT_TABLES, P6_TENANT_TABLES,
     )
@@ -3456,6 +3459,12 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"policy scoped to no tenant would let one brokerage's posture decide another's gate. Defend "
         f"it here first."
     )
+    assert set(P6RU_EXEMPT_TABLES) == set(), (
+        f"P6 declared a tenant-exempt rule table {sorted(P6RU_EXEMPT_TABLES)}: a standing rule is the "
+        f"decision procedure of ONE brokerage, and the same scope and kind in two tenants are two "
+        f"isolated rules. A rule scoped to no tenant would let one brokerage's rule decide another's "
+        f"gate. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3473,6 +3482,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_exceptions_tenant": set(P6XC_TENANT_TABLES),
         "p6_compensations_tenant": set(P6CM_TENANT_TABLES),
         "p6_policies_tenant": set(P6PO_TENANT_TABLES),
+        "p6_rules_tenant": set(P6RU_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3496,7 +3506,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p6_expectations_tenant": 2,
                      "p6_exceptions_tenant": 1,
                      "p6_compensations_tenant": 1,
-                     "p6_policies_tenant": 1}, (
+                     "p6_policies_tenant": 1,
+                     "p6_rules_tenant": 1}, (
         f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")

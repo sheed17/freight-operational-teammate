@@ -755,14 +755,18 @@ def test_m7_does_not_import_m6_or_m3():
 
 
 def test_no_m9_m10_m11_m12_tables_are_built():
-    # M8 (Expectation), M9 (Exception), M10 (Compensation) and now M11 (Policy) LANDED as the build
-    # checkpoints after M7, so `expectations`, `observation_coverage`, `exceptions`, `compensations` and
-    # `policies` are now canonical (rule 20 — each forward-looking assertion was true at the M7 landing and
-    # is corrected here rather than left to assert a table that now exists). The still-unbuilt neighbour
-    # stays asserted-absent: M12 (rules).
+    # M8 (Expectation), M9 (Exception), M10 (Compensation), M11 (Policy) and now M12 (Rule) LANDED as the
+    # build checkpoints after M7, so `expectations`, `observation_coverage`, `exceptions`, `compensations`,
+    # `policies` and `rules` are now canonical (rule 20 — each forward-looking assertion was true at the M7
+    # landing and is corrected here rather than left to assert a table that now exists). M7's own machine
+    # (conflict.py) is byte-unchanged and M12 does not import it — RU-3 names its M7 RULE_VS_RULE seam and
+    # leaves it unwired, so M7 keeps ZERO importers. The remaining unbuilt neighbour is M13 (Brake).
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert not (tables & {"rules"})
+    assert "rules" in tables                      # M12 landed
+    src = (ROOT / "src" / "freight_recon" / "conflict.py").read_text(encoding="utf-8")
+    import re
+    assert not re.findall(r"\bRU-\d+", src)       # conflict.py carries no M12 transitions (byte-unchanged)
 
 
 # ============================ schema / migration ================================================

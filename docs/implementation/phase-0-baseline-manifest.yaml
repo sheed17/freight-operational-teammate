@@ -367,6 +367,24 @@ expected_noncanonical_schema:
     #   'ACTIVE'. It adds NO table and invents no second authority system; `tenant_humans` stays the one
     #   record of human authority and stays tenant-first, so this classification is unchanged.
     - policies
+    # M12 (P6) adds ONE canonical table, `rules`, which is tenant-first and NOT exempt. REG-1
+    # adjudication, stated rather than assumed, and MEASURED against the live schema:
+    #   `rules` holds the standing decision procedures of ONE brokerage — the compiled rules its owner
+    #   authored. "Whose rule is this" has no honest answer other than a tenant: a rule scoped to no
+    #   brokerage would let one brokerage's standing rule decide another's gate, a cross-brokerage
+    #   authority leak. Tenant is the first primary-key column — PRIMARY KEY (tenant, rule_id) — and the
+    #   first column of every index: the one-active-per-single-admitting-scope partial unique index
+    #   UNIQUE (tenant, scope, kind) WHERE state = 'ACTIVE' AND scope_form IN (...), the tenant-monotonic
+    #   version index UNIQUE (tenant, rule_version), the scope history (tenant, scope, kind, rule_version)
+    #   and the ACTIVE-rule read (tenant, state, scope). The two unique indexes are load-bearing rather
+    #   than tidy: without the tenant in them, the SAME scope and kind could not be ACTIVE in two
+    #   brokerages and two tenants could not both hold version 1 — one broker's rules would couple
+    #   another's. Every foreign key — tenant_humans for the author and the authenticated human who
+    #   activated, the self-FK for supersession, and conflicts for the M7 RULE_VS_RULE conflict a COMPILED
+    #   rule is blocked on — carries the tenant in the reference itself, so a cross-tenant author,
+    #   activator, supersession or conflict cannot be spelled. M12 adds NO table to any M1..M11 machine
+    #   and invents no second authority system.
+    - rules
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

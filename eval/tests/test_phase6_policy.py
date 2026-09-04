@@ -887,18 +887,25 @@ def test_m11_ships_dark_no_production_importer():
 
 
 def test_the_m12_rule_and_m13_brake_machines_are_not_built():
+    # M12 (the Rule) LANDED after M11, so `rule.py` and the `rules` table are now canonical (rule 20 — the
+    # forward-looking assertion was true at the M11 landing and is corrected here rather than left to
+    # assert a module/table that now exists). M11's machine (policy.py) is byte-unchanged and M12 does not
+    # import it — M12 declares its precedence layer and defers the ceiling comparison rather than importing
+    # policy.py, so M11 keeps ZERO importers. The still-unbuilt neighbour is M13 (Brake): no brake
+    # lifecycle module and no brake lifecycle table.
     import freight_recon
     src = Path(freight_recon.__file__).parent
     files = {p.name for p in src.rglob("*.py")}
     # prove the population first: a `not in` over an empty rglob is vacuously green (CLAUDE.md §9)
     assert len(files) > 10, f"the src scan collapsed to {len(files)} files - it proves nothing"
     assert "policy.py" in files, "the M11 machine itself must be present, or the scan read the wrong tree"
-    assert "rule.py" not in files, "M12 (Rule) must not be built"
+    assert "rule.py" in files, "the M12 machine landed"
+    assert not any("brake" in f and "lifecycle" in f for f in files), "M13 brake lifecycle must not be built"
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert len(tables) > 10, f"the schema scan collapsed to {len(tables)} tables - it proves nothing"
     assert "policies" in tables, "the M11 table itself must be present, or the scan read the wrong schema"
-    assert "rules" not in tables, "M12's rules table must not exist"
+    assert "rules" in tables, "the M12 rules table landed"
 
 
 def test_nothing_graduates_no_autonomy_graduation_engine_in_m11():

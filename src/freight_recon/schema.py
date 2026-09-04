@@ -162,6 +162,16 @@ from .migrations.phase6_policies import (
     phase6_policies_readiness_problems,
     stamp_phase6_policies_version,
 )
+from .migrations.phase6_rules import (
+    P6RU_EXEMPT_TABLES,
+    P6RU_INDEXES,
+    P6RU_REPLACED_INDEXES,
+    P6RU_TARGET_SCHEMA,
+    P6RU_TENANT_TABLES,
+    create_phase6_rules_schema,
+    phase6_rules_readiness_problems,
+    stamp_phase6_rules_version,
+)
 from .migrations.phase6_work_items import (
     P6_EXEMPT_TABLES,
     P6_INDEXES,
@@ -235,6 +245,12 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # self-FK for supersession. Merged after M1 and M4 so every referent exists. Its Policy Owner
     # singularity index is created ON tenant_humans (### M11-AQ-7 / P6-D72).
     **P6PO_TARGET_SCHEMA,
+    # M12's Rule: one new table. `rules` holds FKs into tenant_humans (M1, the human who authored and the
+    # authenticated human who activated), a self-FK for supersession, and one into conflicts (M7, the
+    # RULE_VS_RULE conflict a COMPILED rule is blocked on). Merged after M1 and M7 so every referent
+    # exists. It carries NO gate vocabulary (a GATE_PRECONDITION rule's gate lives inside its compiled
+    # predicate), so it is not a gate-runtime carrier and mints nothing.
+    **P6RU_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -246,7 +262,7 @@ ALL_TENANT_TABLES: tuple[str, ...] = (
     *CANONICAL_TENANT_TABLES, *P3_TENANT_TABLES, *P5_TENANT_TABLES, *P6_TENANT_TABLES,
     *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES, *P6OB_TENANT_TABLES,
     *P6IBC_TENANT_TABLES, *P6CF_TENANT_TABLES, *P6EX_TENANT_TABLES, *P6XC_TENANT_TABLES,
-    *P6CM_TENANT_TABLES, *P6PO_TENANT_TABLES,
+    *P6CM_TENANT_TABLES, *P6PO_TENANT_TABLES, *P6RU_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -281,6 +297,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6CM_EXEMPT_TABLES,
     *P6PO_TENANT_TABLES,
     *P6PO_EXEMPT_TABLES,
+    *P6RU_TENANT_TABLES,
+    *P6RU_EXEMPT_TABLES,
 )
 
 
@@ -334,14 +352,14 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                                         **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES,
                                         **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES,
                                         **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES,
-                                        **P6PO_INDEXES}.items()
+                                        **P6PO_INDEXES, **P6RU_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
                       and n not in P6OB_REPLACED_INDEXES and n not in P6IBC_REPLACED_INDEXES
                       and n not in P6CF_REPLACED_INDEXES and n not in P6EX_REPLACED_INDEXES
                       and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES
-                      and n not in P6PO_REPLACED_INDEXES}
+                      and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -449,6 +467,14 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_policies_schema(conn, now=_now())
     if not phase6_policies_readiness_problems(conn):
         stamp_phase6_policies_version(conn, now=_now())
+    # P6's M12, the Rule. Built LAST of the P6 units because `rules` holds FKs into tenant_humans (M1,
+    # the human who authored and the authenticated human who activated), conflicts (M7, the RULE_VS_RULE
+    # conflict a COMPILED rule is blocked on) and a self-FK for supersession. On a fresh database the
+    # merged DDL already built the shape; on a migrated one this creates the table. Marker-last, like
+    # every phase.
+    create_phase6_rules_schema(conn, now=_now())
+    if not phase6_rules_readiness_problems(conn):
+        stamp_phase6_rules_version(conn, now=_now())
     conn.commit()
 
 
@@ -532,6 +558,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_exceptions_readiness_problems(conn))
     problems.extend(phase6_compensations_readiness_problems(conn))
     problems.extend(phase6_policies_readiness_problems(conn))
+    problems.extend(phase6_rules_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))
