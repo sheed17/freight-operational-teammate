@@ -470,7 +470,10 @@ REVOKED/EXPIRED`, transitions `PO-1`…`PO-7`, the eight already-registered F11 
 and the carrier-boundary edit in `eval/phase0/gate_scan.py`. The `policies` row is recorded in the
 tenant-first table partition above (`P6 tenant — M11 (1) — policies`).
 
-**What the committed tree is observed to do** (re-run 2026-09-04 against `20cec74`, a clean tree):
+**What a builder observes when running the committed tree** — builder-observed at `20cec74` on
+2026-09-04; **this status note does not prove these results and does not try to** (a status document
+cannot prove itself); the independent reviewer reproduces them, and until then they are builder
+evidence, not verified landing evidence:
 `.venv/bin/python -m pytest -q eval/tests/test_phase6_policy.py eval/tests/test_phase0_null_gate.py
 eval/tests/test_phase0_errata_guards.py` → **80 passed**; `scripts/probe_phase6_policy.py --all` →
 `behaviours as specified, 0 wrong` with zero alarm markers; `scripts/mutate_phase6_policy.py` →
