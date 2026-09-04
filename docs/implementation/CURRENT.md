@@ -10,7 +10,9 @@
 > simplification. The pre-simplification version of this document, with its full narrative history,
 > is in git history at `cff82d5`.
 
-**Last updated:** 2026-09-02, at the `P6-CP-10` (M10) landing.
+**Last updated:** 2026-09-04, correcting M11's live status to the evidence-supported state —
+**M11's implementation is committed but NOT a landed checkpoint.** The last *landed* checkpoint
+remains `P6-CP-10` (M10), 2026-09-02.
 
 ---
 
@@ -436,7 +438,10 @@ stays `[]` on all ten checkpoints, **P6 stays `status: READY` / `execution_state
 not move**, no P6 criterion is scored, **P7 stays `BLOCKED` / `NOT_STARTED`**, and **nothing is enabled
 in production** — M10 ships dark, mints no gate decision, engages no brake, joins no channel, imports no
 timer service, and has no oversight queue, dashboard, notifier or MTTR surface. `M10-AQ-1…AQ-13` are
-REPORTED, not resolved; `V1` stays open validation; M11, M12 and M13 are unbuilt.
+REPORTED, not resolved; `V1` stays open validation; M12 and M13 are unbuilt. **(This sentence read
+"M11, M12 and M13 are unbuilt" at the `P6-CP-10` landing and was true then; it is FALSE now — M11's
+implementation has since been committed. M11 is still NOT a landed checkpoint; see the M11 status note
+below.)**
 
 **One carried residual names `closes_at: M10`, and M10 does not close it — stated rather than let
 pass.** `P6-D2` — `CorrectionInvalidatedAnEffect` is listed in M1 §33 "Events consumed" but has no §14
@@ -448,7 +453,44 @@ determination the row is waiting for. The row stays open with its `closes_at` ma
 **`P6-D40` is carried forward unchanged and was NOT re-verified at this landing.** No mutation battery
 was run against the status guards here and none is claimed.
 
-Landing M10 scores no P6 criterion. **The next build checkpoint is M11 — the Policy.**
+Landing M10 scores no P6 criterion. **The next build checkpoint was M11 — the Policy** (its
+implementation has since been committed; see the M11 status note directly below).
+
+## M11 — the Policy: implementation COMMITTED, NOT a landed checkpoint (status corrected 2026-09-04)
+
+> This note exists because the `P6-CP-10` landing narrative above called M11 "unbuilt," which is no
+> longer true, while no landing has occurred either. It states **only** what the evidence supports.
+
+**Implementation is present and committed at `20cec74`.** The six deliverables exist on disk:
+`src/freight_recon/policy.py` (the machine — seven states `DRAFT/PROPOSED/APPROVED/ACTIVE/SUPERSEDED/
+REVOKED/EXPIRED`, transitions `PO-1`…`PO-7`, the eight already-registered F11 contracts and no ninth);
+`src/freight_recon/migrations/phase6_policies.py` (the tenant-first `policies` table, wired into
+`src/freight_recon/schema.py` and the P2 migration walk `src/freight_recon/migrations/phase2_tenant_first.py`);
+`eval/tests/test_phase6_policy.py`; `scripts/probe_phase6_policy.py`; `scripts/mutate_phase6_policy.py`;
+and the carrier-boundary edit in `eval/phase0/gate_scan.py`. The `policies` row is recorded in the
+tenant-first table partition above (`P6 tenant — M11 (1) — policies`).
+
+**What the committed tree is observed to do** (re-run 2026-09-04 against `20cec74`, a clean tree):
+`.venv/bin/python -m pytest -q eval/tests/test_phase6_policy.py eval/tests/test_phase0_null_gate.py
+eval/tests/test_phase0_errata_guards.py` → **80 passed**; `scripts/probe_phase6_policy.py --all` →
+`behaviours as specified, 0 wrong` with zero alarm markers; `scripts/mutate_phase6_policy.py` →
+**34/34 caught, 0 escaped**, anti-vacuity control green, tree restored byte-identical; the M1–M10 and
+P3-kernel neighbour suites → 707 passed; the event-contract, replay, false-green, tenant-posture and
+hermeticity suites → 448 passed. `checkpoint.py` remains the sole gate minter (`policy.py` constructs
+no `GateEntry`/`GateRegistry`); the production `GateRegistry` population stays **EMPTY**; no production
+module imports the machine (`policy.py`).
+
+### **THIS IS NOT A LANDING, AND NOTHING HERE CLAIMS IT IS.**
+- There is **no `P6-CP-11` recorded** in this status authority. M11's tier-1 **independent review** (a
+  session that did not build it) is **OWED** and has not run; a build session may not review its own
+  work. Until that review, M11 is *implementation committed*, not *landed*.
+- `criteria_scored` stays `[]`; **no P6 criterion is scored**; **P6 stays `status: READY` /
+  `execution_state: IN_PROGRESS`**; **P7 stays `BLOCKED` / `NOT_STARTED`**; nothing is enabled in
+  production.
+- CI green on `20cec74` is **not** independently confirmed here; only the scenario's named suites were
+  re-run locally. CI on a fresh checkout remains the source of truth.
+- The "P6-CP-11" label carried in the M11 code docstrings/comments names the *implementation increment*;
+  it does not assert a landing, and no landing is recorded here.
 
 ## Risks and standing constraints
 
