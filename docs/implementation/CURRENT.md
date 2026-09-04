@@ -470,18 +470,15 @@ REVOKED/EXPIRED`, transitions `PO-1`…`PO-7`, the eight already-registered F11 
 and the carrier-boundary edit in `eval/phase0/gate_scan.py`. The `policies` row is recorded in the
 tenant-first table partition above (`P6 tenant — M11 (1) — policies`).
 
-**What a builder observes when running the committed tree** — builder-observed at `20cec74` on
-2026-09-04; **this status note does not prove these results and does not try to** (a status document
-cannot prove itself); the independent reviewer reproduces them, and until then they are builder
-evidence, not verified landing evidence:
-`.venv/bin/python -m pytest -q eval/tests/test_phase6_policy.py eval/tests/test_phase0_null_gate.py
-eval/tests/test_phase0_errata_guards.py` → **80 passed**; `scripts/probe_phase6_policy.py --all` →
-`behaviours as specified, 0 wrong` with zero alarm markers; `scripts/mutate_phase6_policy.py` →
-**34/34 caught, 0 escaped**, anti-vacuity control green, tree restored byte-identical; the M1–M10 and
-P3-kernel neighbour suites → 707 passed; the event-contract, replay, false-green, tenant-posture and
-hermeticity suites → 448 passed. `checkpoint.py` remains the sole gate minter (`policy.py` constructs
-no `GateEntry`/`GateRegistry`); the production `GateRegistry` population stays **EMPTY**; no production
-module imports the machine (`policy.py`).
+**How to observe the committed tree — this status note asserts no test count and cannot prove
+itself.** A reviewer observes the behaviour by running the permanent `p6_m11_policy` scenario: the
+probe (`scripts/probe_phase6_policy.py --all`), the mutation battery
+(`scripts/mutate_phase6_policy.py`), and the targeted `pytest` suites (`eval/tests/test_phase6_policy.py`,
+`eval/tests/test_phase0_null_gate.py`, `eval/tests/test_phase0_errata_guards.py`). The structural
+disposition the scenario measures, and which a reader can confirm without trusting this note:
+`checkpoint.py` remains the sole gate minter (`policy.py` constructs no `GateEntry`/`GateRegistry`),
+the production `GateRegistry` population stays **EMPTY**, and no production module imports the machine
+(`policy.py`) — M11 ships dark.
 
 ### **THIS IS NOT A LANDING, AND NOTHING HERE CLAIMS IT IS.**
 - There is **no `P6-CP-11` recorded** in this status authority. M11's tier-1 **independent review** (a
