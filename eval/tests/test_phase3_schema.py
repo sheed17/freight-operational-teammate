@@ -321,6 +321,30 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_policies_no_delete"
                for step in p6po_performed), p6po_performed
     assert phase6_policies_readiness_problems(conn) == []
+    # ### AND A TWELFTH TIME, FOR M12 — THE RULE. Canonical moved once more: a database without
+    # `rules` cannot hold a compiled, owner-authored rule at all, so a P2..M11 database is still
+    # refused, and refused by name. The migration that closes the gap creates the one tenant-first
+    # table, its indexes (including `ix_rules_one_active_per_scope`, the Layer-1 reservation that
+    # makes "at most one ACTIVE rule per scope" a database fact rather than a convention a
+    # half-migrated store would silently drop) and its immutability triggers. The property under
+    # test is the one this node has always asserted: a migrated database and a fresh one agree
+    # about what canonical means.
+    from freight_recon.migrations.phase6_rules import (  # noqa: E402
+        create_phase6_rules_schema,
+        phase6_rules_readiness_problems,
+    )
+
+    assert any("phase6_rules" in p or "rules" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6ru_performed = create_phase6_rules_schema(conn, now=utc_now())
+    assert any(step == "create-table:rules" for step in p6ru_performed), p6ru_performed
+    assert any(step == "create-index:ix_rules_one_active_per_scope"
+               for step in p6ru_performed), p6ru_performed
+    assert any(step == "create-trigger:trg_rules_compiled_predicate_frozen_after_proposed"
+               for step in p6ru_performed), p6ru_performed
+    assert any(step == "create-trigger:trg_rules_no_delete"
+               for step in p6ru_performed), p6ru_performed
+    assert phase6_rules_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

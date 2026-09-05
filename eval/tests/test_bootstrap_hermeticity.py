@@ -52,6 +52,57 @@ def test_python_below_the_floor_fails_immediately_and_compliant_proceeds():
     assert env_check(None) == 0, "the ACTIVE interpreter fails its own floor - the venv is wrong"
 
 
+def test_every_python_file_this_repository_ships_parses_at_the_declared_floor():
+    """Every .py under src/, scripts/ and eval/ is valid syntax at pyproject's `requires-python`.
+
+    A real defect this repository shipped: `scripts/probe_phase6_rule.py` wrote two regexes inline
+    inside f-string expression parts, which PEP 701 legalised only in 3.12. On the declared floor
+    the file was a SyntaxError, so NINE discovery-based phase-0 guards - the adapter-import probe,
+    the R-07 containment record, the entry-point probe - failed closed because a file in the
+    population they scan would not parse. They were right to fail; the file was wrong.
+
+    Enforced by the strongest mechanism each interpreter offers, never by a weaker rule on one of
+    them: on the floor interpreter the compiler itself refuses the construct, and on a newer one -
+    which would happily accept syntax the floor rejects - the f-string expression parts are scanned
+    for exactly what 3.12 relaxed. So a developer on 3.13 finds this defect at the same moment CI's
+    3.11 leg would, instead of pushing it and reading the failure from a cancelled job log.
+
+    Discovered by walking the tree, never from an enumerated file list.
+    """
+    floor = required_floor((ROOT / "pyproject.toml").read_text())
+    files = require_population(
+        sorted(f for d in ("src", "scripts", "eval") for f in (ROOT / d).rglob("*.py")),
+        "python files to parse at the floor")
+    offenders: list[str] = []
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:            # the running interpreter IS at/below the floor
+            offenders.append(f"{path.relative_to(ROOT)}:{exc.lineno}: unparseable - {exc.msg}")
+            continue
+        if sys.version_info[:2] <= floor:     # ...and it already refused everything the floor does
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.JoinedStr):
+                continue
+            for value in node.values:
+                if not isinstance(value, ast.FormattedValue):
+                    continue
+                segment = ast.get_source_segment(text, value) or ""
+                relaxed = [why for char, why in (("\\", "a backslash"), ("\n", "a newline"))
+                           if char in segment]
+                if relaxed:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{value.lineno}: f-string expression part contains "
+                        f"{' and '.join(relaxed)}, which Python {floor[0]}.{floor[1]} refuses "
+                        f"(PEP 701 relaxed it only in 3.12): {segment}")
+    assert not offenders, (
+        f"{len(offenders)} of {len(files)} shipped python files use syntax the declared floor "
+        f"{floor[0]}.{floor[1]} cannot parse - CI's floor leg will fail on every one of them:\n  "
+        + "\n  ".join(offenders))
+
+
 def test_the_bootstrap_docs_run_the_env_check_before_installing():
     for f in (ROOT / "README.md", ROOT / "CLAUDE.md"):
         text = read(f)

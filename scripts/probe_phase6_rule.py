@@ -2830,9 +2830,15 @@ def _measurements():
     except Exception:
         out.append("positive control, the same claiming reply WITH an active rule id: refused")
 
-    # spec-named test coverage
-    out.append(f"entity point 44 tests missing: {_tests_missing('docs/specifications/entities/15-rule.md', r'44\..*?(?:\n45\.|\Z)')}")
-    out.append(f"machine section 14 tests missing: {_tests_missing('docs/specifications/state-machines/12-rule.machine.md', r'## 14\..*?(?:\n## 15|\Z)', name_re=r'\btest_ru_[a-z0-9_]+')}")
+    # spec-named test coverage. The three regexes are BOUND TO NAMES rather than written inline in
+    # the f-string expressions below: a backslash inside an f-string expression part is a SyntaxError
+    # before Python 3.12 (PEP 701 relaxed it), and pyproject declares the floor at 3.11 - written
+    # inline, this whole probe was unparseable on the floor interpreter. The patterns are unchanged.
+    entity_44_re = r'44\..*?(?:\n45\.|\Z)'
+    machine_14_re = r'## 14\..*?(?:\n## 15|\Z)'
+    machine_14_name_re = r'\btest_ru_[a-z0-9_]+'
+    out.append(f"entity point 44 tests missing: {_tests_missing('docs/specifications/entities/15-rule.md', entity_44_re)}")
+    out.append(f"machine section 14 tests missing: {_tests_missing('docs/specifications/state-machines/12-rule.machine.md', machine_14_re, name_re=machine_14_name_re)}")
     out.append("tenantless tables outside the recorded exemptions: []")
 
     total, m12 = _count_transitions()
