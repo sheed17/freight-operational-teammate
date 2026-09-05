@@ -40,10 +40,30 @@ SCHEMA = "src/freight_recon/schema.py"
 T = "eval/tests/test_phase6_rule.py"
 
 
+_MUTATION_SENTINEL = "MUTANT"  # every mutation's replacement text carries this; a pristine tree has none
+
+
 def purge_pycache() -> None:
     for d in ROOT.rglob("__pycache__"):
         if ".venv" not in d.parts:
             shutil.rmtree(d, ignore_errors=True)
+
+
+def assert_pristine() -> None:
+    """### A KILLED RUN MUST NOT SILENTLY MISCOUNT (§6: visible success is not correctness). The restore
+    lives in a `finally`, but SIGKILL (a foreground timeout, a Ctrl-C storm) bypasses `finally`, stranding
+    one mutation in a target file. Every downstream guard then measures a tree that is ALREADY broken, and
+    the battery reports escapes that are really pre-existing corruption — a false measurement. Refuse to
+    run, and name the poisoned files, rather than count against a tree that is not clean. Detection is by
+    the mutation sentinel the battery itself writes; it NEVER uses git to detect or to undo (§6)."""
+    targets = sorted({rel for _, edits, _ in CASES for rel, _old, _new in edits})
+    poisoned = [rel for rel in targets if _MUTATION_SENTINEL in (ROOT / rel).read_text(encoding="utf-8")]
+    if poisoned:
+        print(f"### REFUSING TO MEASURE: mutation residue ({_MUTATION_SENTINEL!r}) found in {poisoned} — a "
+              f"prior battery run was interrupted mid-mutation and its in-memory restore did not complete. "
+              f"Those files are stranded in a mutated state; restore them before measuring, or every count "
+              f"below is a false green.", file=sys.stderr)
+        raise SystemExit(2)
 
 
 def run_guard(nodeid: str) -> bool:
@@ -154,11 +174,15 @@ CASES = [
        "        if False and narrower:  # MUTANT invert precedence\n            # ### THE NARROWER SCOPE WINS, AND THAT IS NOT A CONFLICT")],
      f"{T}::test_two_conflicting_rules_fail_closed"),
 
-    ("M12 builds a second conflict system — rule.py imports the conflict machine, breaking M7's ship-dark "
-     "and duplicating its authority (rule 17)",
-     [(M12, "from .tenant import require_tenant",
-       "from .conflict import M7Machine  # MUTANT\nfrom .tenant import require_tenant")],
-     f"{T}::test_m12_builds_no_second_conflict_system_and_no_rules_conflict_table"),
+    # ### M12 now CALLS M7 (imports M7Machine) by design, so the old "imports the conflict machine" defect
+    # is correct behaviour. The real remaining defect the guard protects is a SECOND conflict MACHINE
+    # defined in rule.py beside M7 — a duplicate authority. Reintroduce THAT and prove it is caught.
+    ("M12 builds a second conflict system — rule.py defines its own conflict MACHINE beside M7, "
+     "duplicating the authority M7 already owns (rule 17, ### M12-AQ-2)",
+     [(M12, 'RULE_EFFECTS: tuple[str, ...] = ("DENY", "REQUIRE_HUMAN_APPROVAL", "PERMIT", "BIND", "RESOLVE")',
+       "class RuleConflictMachine:  # MUTANT a second conflict machine\n    pass\n\n\n"
+       'RULE_EFFECTS: tuple[str, ...] = ("DENY", "REQUIRE_HUMAN_APPROVAL", "PERMIT", "BIND", "RESOLVE")')],
+     f"{T}::test_m12_calls_m7_but_builds_no_second_conflict_system"),
 
     ("M12 mints its own ConflictRaised — the RU-3 row emits ConflictRaised, duplicating F7's contract "
      "(### M12-AQ-2, rule 17)",
@@ -196,9 +220,9 @@ CASES = [
 
     ("history is edited in place — the identity-immutable trigger loses source_instruction, so a rule's "
      "sentence can be rewritten under it (entity §15/§24)",
-     [(MIG, "        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, scope_form, kind, source_instruction,\n"
+     [(MIG, "        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, kind, source_instruction,\n"
        "                         authored_by, change_direction, created_at",
-       "        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, scope_form, kind,\n"
+       "        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, kind,\n"
        "                         authored_by, change_direction, created_at  -- MUTANT dropped source_instruction")],
      f"{T}::test_retention_is_permanent_and_immutable_and_undeletable"),
 
@@ -212,7 +236,7 @@ CASES = [
 
     ("a narrowing rule auto-expires into broader authority — RU-8 drops the human-confirmation escalation, "
      "so the clock broadens with no human (ADR-010 §4.1)",
-     [(M12, "            event_producer=result.event_producer, escalation=escalation)",
+     [(M12, "            event_producer=result.event_producer, escalation=raised)",
        "            event_producer=result.event_producer, escalation=None)  # MUTANT")],
      f"{T}::test_ru_narrowing_expiry_needs_human"),
 
@@ -227,8 +251,8 @@ CASES = [
 
     ("a rule overrides a higher precedence layer — assert_within_precedence stops refusing, so a rule can "
      "claim a layer above STANDING_RULE (ADR-010 §8)",
-     [(M12, "    if target_layer < PRECEDENCE_LAYER:",
-       "    if False and target_layer < PRECEDENCE_LAYER:  # MUTANT")],
+     [(M12, "    if idx < PRECEDENCE_LAYER:",
+       "    if False and idx < PRECEDENCE_LAYER:  # MUTANT")],
      f"{T}::test_a_rule_never_overrides_a_higher_layer"),
 
     ("M12 mints its own gate decision — rule.py constructs a GateRegistry, becoming a second gate "
@@ -344,6 +368,7 @@ def _baseline_control() -> tuple[str, str]:
 
 
 def main() -> int:
+    assert_pristine()  # measure only a clean tree; a stranded mutation makes every count below a lie
     results = [(label, *_run_edits(edits, guard)) for label, edits, guard in CASES]
     control_verdict, _ = _baseline_control()
 

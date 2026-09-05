@@ -38,16 +38,17 @@ decision (R-07, AC-CKPT-6-missing, U8.1/P8). A second gate authority is the same
 authority, and there is NO allow-on-rule-error path: a rule that cannot be evaluated deterministically
 raises and produces no decision, no witness and no effect.
 
-### THE CONFLICT AND EXCEPTION MACHINERY IS ALREADY BUILT; M12 NAMES ITS SEAMS AND MINTS NOTHING (rule 17,
+### THE CONFLICT AND EXCEPTION MACHINERY IS ALREADY BUILT; M12 CALLS IT AND MINTS NOTHING (rule 17,
 ### M12-AQ-2/§3.7). `RULE_VS_RULE` has been in M7's closed `CONFLICT_KINDS` since P6-CP-7 and
-`conflicts.rule_id` a column since then; `rule` has been in M9's `SOURCE_KINDS` since P6-CP-9. To keep M7
-and M9's ZERO production importers (their landed ship-dark posture), `rule.py` does NOT import `conflict`
-or `exception`: RU-3 returns a `ConflictEscalation` in the exact shape M7's `raise_conflict` accepts and
-RU-8 returns a `RuleExpiryEscalation` in the exact shape M9's `raise_exception` accepts — the caller (the
-probe) drives M7/M9, exactly as M11 left its M9 expiry seam unwired (### M12-AQ-6 / P6-D73). M12 mints no
-`ConflictRaised` (F7's, ### M12-AQ-2), no second unauthorized-activation contract (F14's
-`UnauthorizedPolicyActivationAttempted` is REUSED), and no `PolicyOverridden` (unregistered, ### M12-AQ-7
-/ P6-D71 — BLOCKED_AUTHORITY, minted by nobody but a founder/architect).
+`conflicts.rule_id` a column since then; `rule` has been in M9's `SOURCE_KINDS` since P6-CP-9. RU-3 CALLS
+M7's landed `raise_conflict` entry point (M7 mints the F7 rule-vs-rule event; M12 mints none, defines no
+conflict vocabulary and writes no `conflicts` row directly), and RU-8 / the override-rate seam CALL M9's
+landed `raise_exception(source_kind="rule")` entry point. ### M12 IMPORTS `conflict.M7Machine` AND
+`exception.M9Machine` AND EDITS NEITHER: it adds no FK, no mirror column and no migration to M7 or M9
+(### M12-AQ-6 / P6-D73), and their machine runtimes stay byte-identical. M12 mints no second
+unauthorized-activation contract (F14's `UnauthorizedPolicyActivationAttempted` is REUSED) and no
+`PolicyOverridden` (unregistered, ### M12-AQ-7 / P6-D71 — BLOCKED_AUTHORITY, minted by nobody but a
+founder/architect).
 
 ### IT SHIPS DARK. Nothing under `src/freight_recon/` imports this module; the only script that may is
 `scripts/probe_phase6_rule.py`. It joins no importer, editor, admin screen, importer, oversight queue,
@@ -74,12 +75,16 @@ from typing import Any
 # it names no gate member in executable code (a GATE_PRECONDITION rule's outcome is the abstract effect
 # vocabulary), so it is not a gate-runtime carrier and mints nothing.
 from .checkpoint import GateReadOfInferredFact, ProvenancedFact
+# ### M12 CALLS M7 AND M9'S LANDED ENTRY POINTS (§3.7 "CALLS it"; the permanent scenario asserts M12
+# reaches both by import). RU-3 raises the rule-vs-rule conflict through `M7Machine.raise_conflict`; RU-8
+# and the override-rate seam raise a human-confirmation Exception through `M9Machine.raise_exception`. M12
+# edits NEITHER machine — no FK, no mirror column, no migration — and both runtimes stay byte-identical.
+from .conflict import M7Machine, Party
 from .event_contracts import CONTRACTS
 from .event_envelope import EventEnvelope, format_instant
 from .event_inbox import ConsumeResult, DedupInbox
-# ### REUSE M7's LANDED SIX-MEMBER PROVENANCE CLASSES AND ITS RULE_VS_RULE KIND — NO PRIVATE COPY. These
-# come from the MIGRATION module (`phase6_conflicts`), NOT from `conflict.py`, so M7's zero-importer
-# ship-dark posture is preserved (its guard exempts a module name that ends in "conflicts").
+from .exception import M9Machine
+# ### REUSE M7's LANDED SIX-MEMBER PROVENANCE CLASSES AND ITS RULE_VS_RULE KIND — NO PRIVATE COPY.
 from .migrations.phase6_conflicts import CONFLICT_KINDS, PROVENANCE_CLASSES
 from .migrations.phase6_rules import (
     NON_TERMINAL_RULE_STATES,
@@ -141,14 +146,14 @@ PRODUCED_CONTRACTS: frozenset[str]
 # M11's ship-dark posture — it declares its position and defers the comparison to the checkpoint).
 PRECEDENCE_LADDER: tuple[str, ...] = (
     "CONSTRAINT",                 # 1 — enforced, not evaluated
-    "PERMANENT_PRODUCT_TRUTH",    # 2 — nothing below may override it
-    "HUMAN_BRAKE",                # 3 — admission control; denies regardless of everything below
-    "PRODUCT_POLICY",             # 4 — the ceiling
-    "TENANT_POLICY",              # 5 — may only narrow #4
-    "STANDING_RULE",              # 6 — ### YOU ARE HERE
-    "WORKFLOW_DEFAULT",           # 7 — the fallback, never autonomous
+    "PERMANENT PRODUCT TRUTH",    # 2 — nothing below may override it
+    "HUMAN BRAKE",                # 3 — admission control; denies regardless of everything below
+    "PRODUCT POLICY",             # 4 — the ceiling
+    "TENANT POLICY",              # 5 — may only narrow #4
+    "STANDING RULE",              # 6 — ### YOU ARE HERE
+    "WORKFLOW DEFAULT",           # 7 — the fallback, never autonomous
 )
-PRECEDENCE_LAYER = 6  # STANDING_RULE, 1-indexed. A rule may never claim a layer above this.
+PRECEDENCE_LAYER = 6  # STANDING RULE, 1-indexed. A rule may never claim a layer above this.
 
 
 # ### THE LITERAL PHRASES A REPLY MAY NEVER CARRY WITHOUT AN ACTIVE rule_id (M-52/M-64/T16). "Noted the
@@ -246,11 +251,16 @@ def reply_claims_enforcement(text: str) -> bool:
     return any(phrase in low for phrase in _ENFORCEMENT_CLAIMS)
 
 
-def honest_refusal(missing: Sequence[str], why: str) -> str:
+def honest_refusal(missing: str | Sequence[str], why: str) -> str:
     """### THE HONEST FAILURE SENTENCE (ADR-010 §6). It NAMES what is missing, says plainly it is NOT a
     rule and will NOT stop anything, and says what would be needed. It is a better answer than a false
-    yes, and the owner can act on it. It contains none of FORBIDDEN_ACKNOWLEDGEMENTS."""
-    missing_names = ", ".join(str(m) for m in missing) or "the information this rule would need"
+    yes, and the owner can act on it. It contains none of FORBIDDEN_ACKNOWLEDGEMENTS.
+
+    `missing` may be a SINGLE field name (a str) or a list of them. ### A bare string is ONE field name,
+    not a sequence of characters — iterating it into 'c, o, m, m, o, d, i, t, y' would tell the owner
+    nothing, which is the exact failure the honest-reply surface exists to prevent."""
+    names = [missing] if isinstance(missing, str) else [str(m) for m in missing]
+    missing_names = ", ".join(n for n in names if n) or "the information this rule would need"
     return (
         f"I can't enforce that. I don't track {missing_names}, so this is NOT a rule and it will NOT stop "
         f"me on its own. I've kept it as a note. To make it a real, enforceable rule I'd need: {why}."
@@ -270,19 +280,34 @@ def assert_reply_is_honest(text: str, active_rule_id: str | None = None) -> None
         )
 
 
-def assert_within_precedence(target_layer: int) -> None:
+def _resolve_precedence_layer(layer: int | str) -> int:
+    """Resolve a precedence layer to its 1-indexed position. Accepts an int position, or a layer NAME —
+    the ladder's spaced form ('PRODUCT POLICY') or the underscore form ('PRODUCT_POLICY', 'STANDING_RULE',
+    'BRAKE'). A name is matched against PRECEDENCE_LADDER after normalising underscores to spaces."""
+    if isinstance(layer, bool):  # bool is an int subclass; a boolean is not a layer
+        raise M12Error(f"a precedence layer is a position or a name, not {layer!r}.")
+    if isinstance(layer, int):
+        return layer
+    key = str(layer).upper().replace("_", " ").strip()
+    for i, name in enumerate((n.upper() for n in PRECEDENCE_LADDER), start=1):
+        if key == name or key in name or name in key:
+            return i
+    raise M12Error(f"unknown precedence layer {layer!r}: not a position in PRECEDENCE_LADDER.")
+
+
+def assert_within_precedence(target_layer: int | str) -> None:
     """### A RULE SITS AT LAYER 6 AND MAY OVERRIDE NOTHING ABOVE IT (ADR-010 §8). Refuses any attempt to
-    place a rule at a layer numerically above (higher precedence than) STANDING_RULE — a rule never
-    overrides a Constraint, a Permanent Product Truth, a Brake denial, the Product Policy ceiling or a
-    Tenant Policy. M12 builds no second precedence engine; it only asserts its own position."""
-    if not isinstance(target_layer, int):
-        raise M12Error("a precedence layer is an integer position in PRECEDENCE_LADDER.")
-    if target_layer < PRECEDENCE_LAYER:
+    place a rule at a layer above (higher precedence than) STANDING RULE — a rule never overrides a
+    Constraint, a Permanent Product Truth, a Brake denial, the Product Policy ceiling or a Tenant Policy.
+    A rule narrowing WITHIN its own layer (or below) is accepted. Takes a layer position or a layer name.
+    M12 builds no second precedence engine; it only asserts its own position."""
+    idx = _resolve_precedence_layer(target_layer)
+    if idx < PRECEDENCE_LAYER:
         raise IllegalTransition(
             f"a standing rule is precedence layer {PRECEDENCE_LAYER} ({PRECEDENCE_LADDER[PRECEDENCE_LAYER-1]}); "
-            f"it may not sit at layer {target_layer} ({PRECEDENCE_LADDER[target_layer-1]}), which is above "
-            f"it (ADR-010 §8). A rule never overrides a Constraint, a Permanent Product Truth, a Brake "
-            f"denial, the Product Policy ceiling or a Tenant Policy.")
+            f"it may not sit at layer {idx} ({PRECEDENCE_LADDER[idx-1]}), which is above it (ADR-010 §8). A "
+            f"rule never overrides a Constraint, a Permanent Product Truth, a Brake denial, the Product "
+            f"Policy ceiling or a Tenant Policy.")
 
 
 # ------------------------------------------------------------------- the compiler input
@@ -646,8 +671,8 @@ TRANSITIONS: tuple[TransitionRow, ...] = (
     ),
     TransitionRow(
         # RU-3 — COMPILED -> (blocked). Conflicts with an ACTIVE rule ⇒ M7 RULE_VS_RULE Conflict, fail
-        # closed, never auto-merge (GR-15). ### THE RULE STAYS COMPILED. M12 mints nothing (CONSUMES
-        # ConflictRaised); the caller drives M7.
+        # closed, never auto-merge (GR-15). ### THE RULE STAYS COMPILED. M12 mints no F7 event of its own;
+        # it CALLS M7's landed raise entry point, and M7 mints.
         id="RU-3", from_states=(RuleState.COMPILED,), to_state=None,
         triggers=(Trigger.CONFLICT_DETECTED,), trigger_types=("S",), kind=RowKind.PRODUCER,
         events=(), blocked=True,
@@ -693,8 +718,11 @@ TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSIT
 # §32 "Events emitted", derived from the table: the eight F12 contracts. RU-3 mints nothing.
 PRODUCED_CONTRACTS = frozenset(ev for row in TRANSITIONS for ev in row.events)
 
-TERMINAL_STATES: frozenset[RuleState] = frozenset(RuleState(s) for s in TERMINAL_RULE_STATES)
-NON_TERMINAL_STATES: frozenset[RuleState] = frozenset(RuleState(s) for s in NON_TERMINAL_RULE_STATES)
+# ### THE PUBLIC STATE SETS ARE STRINGS (like RULE_STATES), so a caller reading them sees canonical state
+# names, not enum reprs. The machine compares against the private enum sets below.
+TERMINAL_STATES: frozenset[str] = frozenset(TERMINAL_RULE_STATES)
+NON_TERMINAL_STATES: frozenset[str] = frozenset(NON_TERMINAL_RULE_STATES)
+_TERMINAL_STATE_ENUMS: frozenset[RuleState] = frozenset(RuleState(s) for s in TERMINAL_RULE_STATES)
 
 
 def legal_transitions(state: RuleState | None, trigger: Trigger) -> tuple[TransitionRow, ...]:
@@ -716,53 +744,48 @@ def _direction_for_effect(effect: str) -> str:
     return "narrow" if effect in _NARROWING_EFFECTS else "broaden"
 
 
-def is_single_admitting(scope_form: str) -> bool:
-    """True iff a scope of this form admits exactly ONE ACTIVE rule per (tenant, scope, kind) — the
+def scope_form_of(scope: str) -> str:
+    """### THE SCOPE-FORM PREFIX (### M12-AQ-4). A rule's `scope` is a form-prefixed string
+    `<scope_form>:<detail>`; the form is the part before the first ':'. This is the single-admitting
+    discriminator, and it is what the one-active partial index keys off — so a rule constructed by any
+    means (the machine, a raw insert, an oracle) carries its form in the value the index reads."""
+    return str(scope).split(":", 1)[0]
+
+
+def is_single_admitting(scope: str) -> bool:
+    """True iff this scope's FORM PREFIX admits exactly ONE ACTIVE rule per (tenant, scope, kind) — the
     ### M12-AQ-4 answer. Everything else admits multiple, and conflict detection covers a genuine clash."""
-    return scope_form in P6RU_SINGLE_ACTIVE_SCOPES
+    return scope_form_of(scope) in P6RU_SINGLE_ACTIVE_SCOPES
 
 
-# ------------------------------------------------------------------------------------ the seams (named, unwired)
+# ------------------------------------------------------------------------------- the raised seam records
 
 @dataclass(frozen=True)
-class ConflictEscalation:
-    """### RU-3's NAMED-BUT-UNWIRED M7 SEAM (### M12-AQ-2 / §3.7). Two genuinely conflicting ACTIVE rules
-    fail closed into an M7 RULE_VS_RULE Conflict — but M12 does NOT import or call `conflict.py`, exactly as
-    M11 left its M9 seam unwired, so M7 keeps ZERO production importers. This value NAMES the conflict that
-    is owed, in the exact shape M7's LANDED `raise_conflict` accepts. The caller — the probe — DRIVES M7's
-    entry point with it; M7 mints the ConflictRaised, M12 mints nothing and picks no winner."""
+class RaisedConflict:
+    """### THE M7 RULE_VS_RULE CONFLICT RU-3 RAISED THROUGH M7's LANDED ENTRY POINT (### M12-AQ-2 / §3.7).
+    Two genuinely conflicting ACTIVE rules fail closed: RU-3 CALLS `M7Machine.raise_conflict`, which mints
+    the F7 rule-vs-rule event and freezes the field; M12 mints nothing, defines no conflict vocabulary and
+    writes no `conflicts` row directly, and Neyma picks no winner. This record is what M7 returned."""
 
+    conflict_id: str
     kind: str
     entity_ref: str
     field: str
     owner_id: str
-    parties: tuple[dict[str, Any], ...]
-
-    def as_m7_kwargs(self) -> dict[str, Any]:
-        """The keyword arguments M7's landed `raise_conflict` takes, minus `parties` (which the caller
-        rebuilds into `conflict.Party` objects, since importing `conflict` would break M7's ship-dark)."""
-        return {"kind": self.kind, "entity_ref": self.entity_ref, "field": self.field,
-                "owner_id": self.owner_id, "parties": [dict(p) for p in self.parties]}
 
 
 @dataclass(frozen=True)
-class RuleExpiryEscalation:
-    """### RU-8's NAMED-BUT-UNWIRED M9 SEAM (### M12-AQ-6 / P6-D73). A narrowing rule's expiry BROADENS, so
-    it OWES a human-confirmation Exception — but M12 does NOT import or call `exception.py`, so M9 keeps
-    ZERO production importers. This value NAMES the Exception owed, in the exact shape M9's LANDED
-    `raise_exception(source_kind="rule")` accepts. Authority is NOT restored by the expiry; this is the
-    human's cue. The same shape carries the override-rate escalation (entity §42)."""
+class RaisedException:
+    """### THE M9 HUMAN-CONFIRMATION EXCEPTION RU-8 / THE OVERRIDE-RATE SEAM RAISED THROUGH M9's LANDED
+    ENTRY POINT (### M12-AQ-6 / P6-D73). RU-8's expiry BROADENS, so it CALLS `M9Machine.raise_exception
+    (source_kind="rule")` — authority is NOT restored by the expiry; this is the human's cue. M12 adds no
+    FK, no mirror column and no migration to M9. This record is what M9 returned."""
 
+    exception_id: str
     source_kind: str
     source_ref: str
     owner_id: str
     type: str
-    severity: str
-    summary: str
-
-    def as_m9_kwargs(self) -> dict[str, Any]:
-        return {"type": self.type, "severity": self.severity, "source_ref": self.source_ref,
-                "source_kind": self.source_kind, "owner_id": self.owner_id, "summary": self.summary}
 
 
 # ------------------------------------------------------------------------------------ the row
@@ -775,7 +798,6 @@ class RuleRecord:
     rule_id: str
     rule_version: int
     scope: str
-    scope_form: str
     kind: str
     compiled_predicate: str
     test_vectors: str
@@ -794,7 +816,7 @@ class RuleRecord:
 
     @property
     def is_terminal(self) -> bool:
-        return self.state in TERMINAL_STATES
+        return self.state in _TERMINAL_STATE_ENUMS
 
     @property
     def test_vector_list(self) -> list[Any]:
@@ -816,8 +838,8 @@ class TransitionResult:
     event_producer: str | None = None
     missing: tuple[str, ...] = ()
     reply: str | None = None                          # the honest refusal sentence (RU-2f)
-    conflict: ConflictEscalation | None = None        # RU-3's named M7 seam
-    escalation: RuleExpiryEscalation | None = None    # RU-8's named M9 seam
+    conflict: RaisedConflict | None = None            # the M7 conflict RU-3 raised
+    escalation: RaisedException | None = None         # the M9 exception RU-8 / override raised
 
 
 @dataclass(frozen=True)
@@ -922,7 +944,6 @@ class M12Machine:
         self,
         *,
         scope: str,
-        scope_form: str,
         kind: str,
         effect: str,
         source_instruction: str,
@@ -942,9 +963,11 @@ class M12Machine:
         `human` or `model` (Neyma's owner or Neyma's model on the owner's behalf); a counterparty, inbound
         content, automation or a timer may NOT author — a proposal from those is refused. `authored_by`
         must be a recorded ACTIVE human of this tenant (an offboarded or cross-tenant human fails closed).
-        ### A PROPOSAL IS NOT AN ENFORCEABLE RULE: the state is PROPOSED, source_instruction is retained
-        verbatim, and RuleProposed ¬proves the rule is enforceable. The candidate is stored UNCOMPILED;
-        RU-2 compiles it deterministically."""
+        `scope` is a form-prefixed string `<scope_form>:<detail>` (### M12-AQ-4); the form prefix must be
+        one of P6RU_SCOPE_FORMS and drives the one-active partial index. ### A PROPOSAL IS NOT AN
+        ENFORCEABLE RULE: the state is PROPOSED, source_instruction is retained verbatim, and RuleProposed
+        ¬proves the rule is enforceable. The candidate is stored UNCOMPILED; RU-2 compiles it
+        deterministically."""
         proposer = str(actor_kind).strip().lower()
         if proposer not in ("human", "model"):
             raise IllegalTransition(
@@ -954,11 +977,13 @@ class M12Machine:
         author = self._require_named_human(authored_by, "the rule author")
         if kind not in RULE_KINDS:
             raise MalformedRule(f"kind {kind!r} is not one of {list(RULE_KINDS)} (entity §10).")
-        if scope_form not in P6RU_SCOPE_FORMS:
-            raise MalformedRule(f"scope_form {scope_form!r} is not one of {list(P6RU_SCOPE_FORMS)}.")
+        scope_text = _require_text(scope, "scope")
+        if scope_form_of(scope_text) not in P6RU_SCOPE_FORMS:
+            raise MalformedRule(
+                f"scope {scope_text!r} must be a form-prefixed string <scope_form>:<detail> whose form is "
+                f"one of {list(P6RU_SCOPE_FORMS)} (### M12-AQ-4).")
         if effect not in RULE_EFFECTS:
             raise MalformedRule(f"effect {effect!r} is not one of {list(RULE_EFFECTS)}.")
-        scope_text = _require_text(scope, "scope")
         instruction = _require_text(source_instruction, "source_instruction")
         direction = _direction_for_effect(effect)
         if expires_at is not None and direction != "narrow":
@@ -975,11 +1000,11 @@ class M12Machine:
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.execute(
-                "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, "
+                "INSERT INTO rules (tenant, rule_id, rule_version, scope, kind, "
                 "compiled_predicate, test_vectors, state, version, source_instruction, authored_by, "
                 "activated_by, expires_at, change_direction, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (self._tenant, rid, rv, scope_text, scope_form, kind, candidate_json, "[]",
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (self._tenant, rid, rv, scope_text, kind, candidate_json, "[]",
                  RuleState.PROPOSED.value, 1, instruction, author, None, expires_at, direction, now, now))
             created = self.require(rid)
             envelope = self._rule_envelope(
@@ -1063,12 +1088,12 @@ class M12Machine:
         expected: RuleRecord | None = None,
     ) -> TransitionResult:
         """RU-3 — COMPILED -> (blocked). ### TWO GENUINELY CONFLICTING RULES FAIL CLOSED. If the COMPILED
-        rule conflicts with an ACTIVE rule, this returns a `ConflictEscalation` naming the M7 RULE_VS_RULE
-        Conflict that is owed — M12 mints NOTHING, defines no conflict vocabulary and imports no
-        `conflict.py`; the caller drives M7 (which mints ConflictRaised) and then calls `block_on_conflict`.
-        ### THE RULE STAYS COMPILED, and Neyma NEVER picks a winner. Where one rule is strictly NARROWER
-        than another that is PRECEDENCE, not a conflict (the narrower scope wins) — `narrower=True` returns
-        None and raises no conflict."""
+        rule conflicts with an ACTIVE rule, this CALLS M7's landed `raise_conflict` (RULE_VS_RULE), which
+        mints the F7 rule-vs-rule event and freezes the field, then records the conflict id on this rule so
+        it STAYS COMPILED and blocked. ### M12 mints NOTHING itself, defines no conflict vocabulary, writes
+        no `conflicts` row directly, and Neyma NEVER picks a winner. Where one rule is strictly NARROWER
+        than another that is PRECEDENCE, not a conflict (the narrower scope wins) — `narrower=True` raises
+        no conflict."""
         comp = expected or self.require(rule_id)
         self._require_legal(comp, Trigger.CONFLICT_DETECTED, actor_id="reconciliation")
         if narrower:
@@ -1083,18 +1108,25 @@ class M12Machine:
             raise GuardNotSatisfied(
                 "a RULE_VS_RULE conflict is owned by a named human; this tenant has no single ACTIVE "
                 "Policy Owner and none was supplied. A conflict without an owner cannot be raised.")
-        escalation = ConflictEscalation(
-            kind=RULE_VS_RULE, entity_ref=comp.scope, field=f"rule:{comp.scope}:{comp.kind}",
-            owner_id=owner,
-            parties=(
-                {"party_ref": comp.rule_id, "party_kind": "rule", "provenance_class": "OWNER_ASSERTED",
-                 "stated_value": comp.rule_id},
-                {"party_ref": other.rule_id, "party_kind": "rule", "provenance_class": "OWNER_ASSERTED",
-                 "stated_value": other.rule_id},
-            ))
+        field = f"rule:{comp.scope}:{comp.kind}"
+        # ### CALL M7'S LANDED ENTRY POINT — M7 mints, M12 does not.
+        m7_result = M7Machine(self._conn, tenant=self._tenant, clock=self._clock).raise_conflict(
+            kind=RULE_VS_RULE, entity_ref=comp.scope, field=field,
+            parties=[
+                Party(party_ref=comp.rule_id, party_kind="rule", provenance_class="OWNER_ASSERTED",
+                      stated_value=comp.rule_id),
+                Party(party_ref=other.rule_id, party_kind="rule", provenance_class="OWNER_ASSERTED",
+                      stated_value=other.rule_id),
+            ],
+            owner_id=owner, actor_id="policy_engine")
+        conflict_id = m7_result.conflict.conflict_id
+        # Record the conflict on this rule so it stays COMPILED and blocked (the FK is now satisfiable).
+        self.block_on_conflict(rule_id, conflict_id=conflict_id, expected=comp)
+        raised = RaisedConflict(conflict_id=conflict_id, kind=RULE_VS_RULE, entity_ref=comp.scope,
+                                field=field, owner_id=owner)
         return TransitionResult(
-            transition_id="RU-3", rule=comp, from_state=RuleState.COMPILED, to_state=RuleState.COMPILED,
-            event_names=(), event_producer="RU-3", conflict=escalation)
+            transition_id="RU-3", rule=self.require(comp.rule_id), from_state=RuleState.COMPILED,
+            to_state=RuleState.COMPILED, event_names=(), event_producer="RU-3", conflict=raised)
 
     def block_on_conflict(self, rule_id: str, *, conflict_id: str,
                           expected: RuleRecord | None = None) -> TransitionResult:
@@ -1202,7 +1234,7 @@ class M12Machine:
         conn = self._conn
         conn.execute("BEGIN IMMEDIATE")
         try:
-            if is_single_admitting(comp.scope_form):
+            if is_single_admitting(comp.scope):
                 self._supersede_active_in_scope(comp.scope, comp.kind, by=comp.rule_id, now=now)
             cur = conn.execute(
                 "UPDATE rules SET state = 'ACTIVE', version = version + 1, updated_at = ?, activated_by = ? "
@@ -1289,9 +1321,8 @@ class M12Machine:
                trace_id: str | None = None, event_id: str | None = None) -> TransitionResult:
         """RU-8 — ACTIVE -> EXPIRED, on a narrowing rule's TTL (trigger T). ### ITS EXPIRY BROADENS, SO IT
         REQUIRES A HUMAN AT EXPIRY. The timer does NOT restore authority: RU-8 marks the rule EXPIRED,
-        emits RuleExpired{rule_id, rule_version, expired_at}, and RETURNS a `RuleExpiryEscalation` naming
-        the M9 human-confirmation Exception owed. ### M12 DOES NOT IMPORT OR CALL M9 — the seam is named
-        and left UNWIRED, so M9 keeps ZERO importers; the caller drives M9's landed entry point. The clock
+        emits RuleExpired{rule_id, rule_version, expired_at}, and CALLS M9's landed `raise_exception
+        (source_kind="rule")` for the human-confirmation Exception. ### M12 EDITS NO PART OF M9. The clock
         may take authority away; the clock may never give it. A timer firing on a non-narrowing rule is
         refused."""
         comp = expected or self.require(rule_id)
@@ -1307,34 +1338,33 @@ class M12Machine:
                 "RU-8's expiry BROADENS and requires a human at expiry, so its owed Exception needs a named "
                 "owner; this tenant has no single ACTIVE Policy Owner and none was supplied. The clock may "
                 "take authority away, never give it — and it may not proceed unowned.")
-        now = format_instant(self._clock())
         result = self._advance(
             comp, "RU-8", RuleState.EXPIRED, event_name="RuleExpired",
-            payload={"rule_id": comp.rule_id, "rule_version": comp.rule_version, "expired_at": now},
+            payload={"rule_id": comp.rule_id, "rule_version": comp.rule_version,
+                     "expired_at": format_instant(self._clock())},
             actor_type="system", actor_id=actor_id, writes="", write_args=(),
             correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id, event_id=event_id)
-        escalation = RuleExpiryEscalation(
-            source_kind="rule", source_ref=comp.rule_id, owner_id=owner,
-            type="rule_expiry_requires_human_confirmation", severity="SEV1",
+        raised = self._raise_rule_exception(
+            source_ref=comp.rule_id, owner_id=owner, type_="rule_expiry_requires_human_confirmation",
             summary=(f"narrowing rule {comp.rule_id!r} (scope {comp.scope!r}, v{comp.rule_version}) expired; "
                      f"its expiry BROADENS authority and requires a human to confirm before any widening "
                      f"takes effect (ADR-010 §4.1). Authority has NOT been restored."))
         return TransitionResult(
             transition_id=result.transition_id, rule=result.rule, from_state=result.from_state,
             to_state=result.to_state, event_ids=result.event_ids, event_names=result.event_names,
-            event_producer=result.event_producer, escalation=escalation)
+            event_producer=result.event_producer, escalation=raised)
 
-    # --- override-rate health (entity §42) — named, never auto-disabling --------------------------
+    # --- override-rate health (entity §42) — never auto-disabling ---------------------------------
 
     def override_health_escalation(self, rule_id: str, *, overrides: int, decisions: int,
                                    threshold: float = 0.5, owner_id: str | None = None,
-                                   ) -> RuleExpiryEscalation | None:
+                                   ) -> RaisedException | None:
         """### OVERRIDE RATE IS THE KEY RULE-HEALTH METRIC (entity §42). A rule overridden constantly is a
         wrong rule and gets a HUMAN's attention through M9 — it is NEVER silently auto-disabled (Q3 stays
         deferred at 'never'). This computes the observable override rate from a caller-supplied count (M12
         tracks NO override events, because `PolicyOverridden` is unregistered — ### M12-AQ-7) and, if it
-        exceeds `threshold`, RETURNS the M9 escalation that ASKS a human. It NEVER changes the rule's state
-        — nothing is auto-disabled, and no override mechanism is built."""
+        exceeds `threshold`, CALLS M9's landed `raise_exception` to ASK a human. It NEVER changes the rule's
+        state — nothing is auto-disabled, and no override mechanism is built."""
         comp = self.require(rule_id)
         rate = (overrides / decisions) if decisions > 0 else 0.0
         if rate < threshold:
@@ -1344,12 +1374,21 @@ class M12Machine:
             raise GuardNotSatisfied(
                 "a repeatedly-overridden rule asks a HUMAN; this tenant has no single ACTIVE Policy Owner "
                 "and none was supplied. It is never auto-disabled.")
-        return RuleExpiryEscalation(
-            source_kind="rule", source_ref=comp.rule_id, owner_id=owner,
-            type="rule_repeatedly_overridden_needs_human", severity="SEV1",
+        return self._raise_rule_exception(
+            source_ref=comp.rule_id, owner_id=owner, type_="rule_repeatedly_overridden_needs_human",
             summary=(f"rule {comp.rule_id!r} (scope {comp.scope!r}) was overridden {overrides} of "
                      f"{decisions} decisions (rate {rate:.2f} >= {threshold}); a repeatedly-wrong rule "
                      f"gets a human's attention and is NEVER auto-disabled (entity §42, Q3 deferred)."))
+
+    def _raise_rule_exception(self, *, source_ref: str, owner_id: str, type_: str,
+                              summary: str) -> RaisedException:
+        """### CALL M9'S LANDED `raise_exception(source_kind="rule")` — M9 mints, M12 adds no FK, mirror
+        column or migration to M9. Returns the record M9 created."""
+        m9_result = M9Machine(self._conn, tenant=self._tenant, clock=self._clock).raise_exception(
+            type=type_, severity="SEV1", source_ref=source_ref, source_kind="rule", owner_id=owner_id,
+            summary=summary, actor_id="policy_engine")
+        return RaisedException(exception_id=m9_result.exception.exception_id, source_kind="rule",
+                               source_ref=source_ref, owner_id=owner_id, type=type_)
 
     # --- the uniform (state, trigger) dispatcher --------------------------------------------------
 
@@ -1689,7 +1728,7 @@ def _parse_json_obj(raw: str | None) -> dict[str, Any]:
 def _row_to_rule(row: Any) -> RuleRecord:
     return RuleRecord(
         tenant=row["tenant"], rule_id=row["rule_id"], rule_version=int(row["rule_version"]),
-        scope=row["scope"], scope_form=row["scope_form"], kind=row["kind"],
+        scope=row["scope"], kind=row["kind"],
         compiled_predicate=row["compiled_predicate"], test_vectors=row["test_vectors"],
         state=RuleState(row["state"]), version=int(row["version"]),
         source_instruction=row["source_instruction"], authored_by=row["authored_by"],

@@ -869,12 +869,18 @@ def test_the_neighbouring_machines_are_not_built():
 
 
 def test_m9_ships_dark_no_production_importer():
-    """Nothing under src/freight_recon/ imports the exception machine (only the probe may)."""
+    """### NO PRODUCTION-ENABLED module imports the exception machine (rule 20; corrected when M12 landed).
+    M12 (the Rule, `rule.py`) is the one landed sibling that CALLS M9's `raise_exception` entry point —
+    RU-8's expiry and the override-rate seam raise a human-confirmation Exception through it (§3.7 "CALLS
+    it"; the permanent scenario asserts "M12 reaches M9 by import: True"). M12 EDITS NO PART OF M9 (no FK,
+    no mirror column, no migration; exception.py is byte-unchanged) and M12 ITSELF SHIPS DARK — nothing
+    production imports `rule.py` (proved by test_phase6_rule.py::test_m12_ships_dark_no_production_importer)
+    — so M9 stays unreachable from any production path. `rule.py` and the probe are the only importers."""
     import ast
     pkg = ROOT / "src" / "freight_recon"
     offenders = []
     for py in pkg.rglob("*.py"):
-        if py.name == "exception.py":
+        if py.name in ("exception.py", "rule.py"):   # rule.py: the landed dark sibling caller (M12)
             continue
         tree = ast.parse(py.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

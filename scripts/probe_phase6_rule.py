@@ -47,7 +47,7 @@ from freight_recon.checkpoint import (  # noqa: E402
     ProvenanceClass,
     ProvenancedFact,
 )
-from freight_recon.conflict import M7Machine, Party  # noqa: E402
+from freight_recon.conflict import M7Machine  # noqa: E402
 from freight_recon.event_contracts import CONTRACTS  # noqa: E402
 from freight_recon.migrations.phase6_rules import (  # noqa: E402
     P6RU_SCOPE_FORMS,
@@ -152,11 +152,16 @@ def _amount_clauses(op=">", lit=50):
     return [{"field": "amount", "attr": "value", "op": op, "literal": lit, **_MODELLED}]
 
 
+def _fq(scope_form, scope):
+    """Compose the canonical FORM-PREFIXED scope the machine stores: `<scope_form>:<detail>` (M12-AQ-4)."""
+    return f"{scope_form}:{scope}"
+
+
 def activate_rule(kit, rid, *, scope="raise_invoice", scope_form="action_class",
                   kind="GATE_PRECONDITION", effect="DENY", clauses=None, owner="po", tenant=None,
                   conn=None):
     m = kit.m12(conn=conn, tenant=tenant)
-    m.propose(scope=scope, scope_form=scope_form, kind=kind, effect=effect,
+    m.propose(scope=_fq(scope_form, scope), kind=kind, effect=effect,
               source_instruction=f"instruction {rid}", authored_by=owner,
               clauses=clauses if clauses is not None else _pod_clauses(), rule_id=rid)
     m.compile(rid)
@@ -168,10 +173,22 @@ def activate_rule(kit, rid, *, scope="raise_invoice", scope_form="action_class",
 def to_compiled(kit, rid, *, effect="DENY", clauses=None, scope="raise_invoice",
                 scope_form="action_class", kind="GATE_PRECONDITION"):
     m = kit.m12()
-    m.propose(scope=scope, scope_form=scope_form, kind=kind, effect=effect, source_instruction="x",
+    m.propose(scope=_fq(scope_form, scope), kind=kind, effect=effect, source_instruction="x",
               authored_by="po", clauses=clauses if clauses is not None else _pod_clauses(), rule_id=rid)
     m.compile(rid)
     return m
+
+
+def _ins(conn, **over):
+    """Raw-insert a `rules` row from a canonical base (form-prefixed scope by default), overridden by
+    `over`. Lets any IntegrityError propagate so a `refuses(...)` wrapper can observe a refusal."""
+    base = dict(tenant="T_A", rule_id="x", rule_version=90, scope="action_class:x", kind="CONSTRAINT",
+                compiled_predicate="{}", test_vectors="[]", state="PROPOSED", version=1,
+                source_instruction="i", authored_by="po", change_direction="narrow", created_at="t",
+                updated_at="t")
+    base.update(over)
+    conn.execute(f"INSERT INTO rules ({','.join(base)}) VALUES ({','.join('?' * len(base))})",
+                 tuple(base.values()))
 
 
 def to_confirmed(kit, rid, **kw):
@@ -271,7 +288,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="raise_invoice", scope_form="action_class", kind="GATE_PRECONDITION",
+        m.propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION",
                   effect="DENY", source_instruction="never bill without a POD", authored_by="po",
                   clauses=_pod_clauses(), rule_id="r1", actor_kind="model")
         if m.require("r1").state is not RuleState.PROPOSED:
@@ -285,19 +302,45 @@ def _c(args):
 
 @case("a-proposal-is-not-an-enforceable-rule")
 def _c(args):
+    outcome = args.outcome or "all"
+    if outcome not in ("all", "A", "B"):
+        return FAIL(f"{MISS} unknown outcome {outcome!r}; the closed axis is A, B, all")
     kit = Kit()
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
         row = m.require("r1")
         if row.state is not RuleState.PROPOSED or row.activated_by is not None:
             return FAIL(f"{MISS} a proposal was treated as enforceable",
                         "### RuleProposed TREATED AS ENFORCEMENT ###")
-        # OUTCOME axis: there are exactly two outcomes and neither is "enforced on proposal".
-        return OK("a-proposal-is-not-an-enforceable-rule: PROPOSED, not ACTIVE, no activator",
-                  "A HUMAN INSTRUCTION EITHER COMPILES INTO AN ENFORCEABLE RULE OR IS HONESTLY REFUSED")
+        # OUTCOME axis: compiling a candidate yields exactly two terminal outcomes, A (COMPILED, an
+        # enforceable rule) and B (REJECTED, an honest refusal), and there is provably no third.
+        wanted = ("A", "B") if outcome == "all" else (outcome,)
+        seen = set()
+        for i, oc in enumerate(wanted):
+            rid = f"o{i}"
+            if oc == "A":
+                m.propose(scope="action_class:s2", kind="GATE_PRECONDITION", effect="DENY",
+                          source_instruction="never bill without a POD", authored_by="po",
+                          clauses=_pod_clauses(), rule_id=rid)
+            else:
+                m.propose(scope="action_class:s3", kind="CONSTRAINT", effect="DENY",
+                          source_instruction="do not use Carrier X for produce", authored_by="po",
+                          clauses=[{"field": "commodity", "attr": "value", "op": "==",
+                                    "literal": "produce", "provenance_class": "SYSTEM_IMPORTED",
+                                    "modelled": False}], rule_id=rid)
+            m.compile(rid)
+            seen.add(m.require(rid).state)
+        if not seen <= {RuleState.COMPILED, RuleState.REJECTED}:
+            return FAIL(f"{MISS} compile produced a third outcome {seen}", "### A THIRD OUTCOME APPEARED ###")
+        if outcome == "all" and seen != {RuleState.COMPILED, RuleState.REJECTED}:
+            return FAIL(f"{MISS} an outcome was unreachable {seen}", "### AN OUTCOME WAS UNREACHABLE ###")
+        return OK("a-proposal-is-not-an-enforceable-rule: PROPOSED, not ACTIVE; compile reaches only "
+                  "COMPILED or REJECTED",
+                  "A HUMAN INSTRUCTION EITHER COMPILES INTO AN ENFORCEABLE RULE OR IS HONESTLY REFUSED",
+                  "THERE IS NO THIRD OUTCOME")
     finally:
         kit.close()
 
@@ -309,7 +352,7 @@ def _c(args):
         kit.human("po")
         m = kit.m12()
         sentence = "never bill without a POD"
-        m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                   source_instruction=sentence, authored_by="po", clauses=_pod_clauses(), rule_id="r1")
         if m.require("r1").source_instruction != sentence:
             return FAIL(f"{MISS} the source instruction was not retained", "### SOURCE INSTRUCTION DISCARDED ###")
@@ -326,7 +369,7 @@ def _author_refused(kind, marker, actor_kind=None, human_state="ACTIVE", author=
             kit.human(author, role="AUTHORIZED_HUMAN", state=human_state)
         m = kit.m12()
         ok = refuses(lambda: m.propose(
-            scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+            scope="action_class:s", kind="CONSTRAINT", effect="DENY",
             source_instruction="x", authored_by=author, clauses=_pod_clauses(), rule_id="r1",
             actor_kind=actor_kind or "human"))
         if not ok or kit.conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0] != 0:
@@ -360,7 +403,7 @@ def _c(args):
     kit = Kit()
     try:
         kit.human("po")
-        kit.m12().propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        kit.m12().propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                           source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
         n = kit.conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='RuleProposed' "
                              "AND aggregate_id='r1'").fetchone()[0]
@@ -376,7 +419,7 @@ def _c(args):
     kit = Kit()
     try:
         kit.human("po")
-        kit.m12().propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        kit.m12().propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                           source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
         st = kit.conn.execute("SELECT state FROM rules WHERE rule_id='r1'").fetchone()["state"]
         if st != "PROPOSED":
@@ -413,7 +456,8 @@ def _c(args):
     executable = gate_scan.executable_source(_rule_src())
     if _MODEL_CALL_RE.search(executable):
         return FAIL(f"{MISS} a model call after proposal", "### A MODEL CALL ENTERED COMPILATION ###")
-    return OK("no-model-call-occurs-after-the-text-proposal: no model call in executable source")
+    return OK("no-model-call-occurs-after-the-text-proposal: no model call in executable source",
+              "COMPILATION IS DETERMINISTIC, WITH NO MODEL IN THE LOOP")
 
 
 @case("every-referenced-field-must-be-modelled")
@@ -466,8 +510,18 @@ def _c(args):
     if compiled.effect != "DENY" or not compiled.clauses:
         return FAIL(f"{MISS} the POD rule did not compile to a precondition",
                     "### PREDICATE ADMITTED AS A PROMPT STRING ###")
-    return OK("never-bill-without-a-pod-compiles-to-a-gate-precondition: a real precondition",
-              "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION")
+    # The happy path is only real if the compiled precondition actually denies a MODEL_INFERRED
+    # POD: compiling a string that never runs is the old system's failure. Establish the second
+    # headline here, from the case that owns the rule, not only in --all.
+    inferred = {"pod": ProvenancedFact(field="pod", provenance=ProvenanceClass.MODEL_INFERRED,
+                                       evidence_condition=EvidenceCondition.CONSISTENT, _value="guess")}
+    if evaluate_rule(compiled, inferred).decision != "DENY":
+        return FAIL(f"{MISS} an inferred POD was not denied by the compiled precondition",
+                    "### MODEL_INFERRED PREDICATE COMPILED ###")
+    return OK("never-bill-without-a-pod-compiles-to-a-gate-precondition: a real precondition that "
+              "denies an inferred POD",
+              "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION",
+              "AN INFERRED POD IS NOT A POD")
 
 
 @case("the-pod-rule-admits-only-the-three-canonical-provenance-classes")
@@ -587,8 +641,29 @@ def _c(args):
         scope="book_carrier"))
     if not ok:
         return FAIL(f"{MISS} an unmodelled commodity compiled", "### UNMODELLED FIELD COMPILED INTO A PREDICATE ###")
-    return OK("do-not-use-carrier-x-for-produce-cannot-compile: commodity is not modelled",
-              "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD")
+    # The refusal is only honest if the sentence survives as non-authoritative memory: retained
+    # verbatim, REJECTED, with no activator and never enforced. Establish that second headline here,
+    # from the machine, rather than borrowing it from --all.
+    kit = Kit()
+    try:
+        kit.human("po")
+        m = kit.m12()
+        sentence = "do not use Carrier X for produce"
+        m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
+                  source_instruction=sentence, authored_by="po",
+                  clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
+                            "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
+        m.compile("r1")
+        row = m.require("r1")
+        if row.state is not RuleState.REJECTED or row.source_instruction != sentence or row.activated_by is not None:
+            return FAIL(f"{MISS} the rejected instruction did not become non-authoritative memory",
+                        "### ORGANIZATIONAL MEMORY TREATED AS AUTHORITY ###")
+        return OK("do-not-use-carrier-x-for-produce-cannot-compile: commodity is not modelled; the "
+                  "sentence is retained, never enforced",
+                  "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD",
+                  "AN INSTRUCTION THAT DID NOT COMPILE IS MEMORY, NOT AUTHORITY")
+    finally:
+        kit.close()
 
 
 @case("the-owner-is-told-commodity-is-not-a-modelled-field")
@@ -633,6 +708,7 @@ def _c(args):
     if not refuses(lambda: fact.value):
         return FAIL(f"{MISS} a MODEL_INFERRED value was read", "### MODEL_INFERRED READ AT CONFIDENCE ONE ###")
     return OK("confidence-one-does-not-make-model-inferred-compilable: refused, there is no confidence",
+              "A RULE MAY NEVER BRANCH ON A GUESS",
               "CONFIDENCE IS STRUCTURALLY NOT AN INPUT")
 
 
@@ -686,7 +762,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="book_carrier", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
                   source_instruction="do not use Carrier X for produce", authored_by="po",
                   clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
                             "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -706,7 +782,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="book_carrier", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="po",
                   clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
                             "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -730,7 +806,7 @@ def _c(args):
         kit.human("po")
         m = kit.m12()
         sentence = "do not use Carrier X for produce"
-        m.propose(scope="book_carrier", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
                   source_instruction=sentence, authored_by="po",
                   clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
                             "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -750,7 +826,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="book_carrier", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="po",
                   clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
                             "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -813,7 +889,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="po",
                   clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "p",
                             "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -829,18 +905,11 @@ def _c(args):
 
 # =========================================================== RU-3: conflict
 
-def _raise_conflict(kit, m, res):
-    kw = res.conflict.as_m7_kwargs()
-    parties = [Party(**p) for p in kw.pop("parties")]
-    m7 = M7Machine(kit.conn, tenant=kit.tenant, clock=kit.clock)
-    return m7, m7.raise_conflict(parties=parties, **kw)
-
-
 def _conflict_setup(kit):
     kit.human("po")
     activate_rule(kit, "a", scope="pay_carrier", clauses=_amount_clauses("<", 100))
     m = kit.m12()
-    m.propose(scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION", effect="PERMIT",
+    m.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="PERMIT",
               source_instruction="b", authored_by="po", clauses=_amount_clauses(">", 50), rule_id="b")
     m.compile("b")
     return m
@@ -854,8 +923,19 @@ def _c(args):
         res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
         if res.conflict is None or m.require("b").state is not RuleState.COMPILED:
             return FAIL(f"{MISS} a conflict did not fail closed", "### CONFLICTING RULES AUTO-MERGED ###")
-        return OK("two-conflicting-active-rules-fail-closed: rule stays COMPILED, blocked",
-                  "TWO CONFLICTING RULES FAIL CLOSED")
+        # Failing closed IS routing through M7: a RULE_VS_RULE conflict, minted by M7 on the
+        # `conflict` aggregate, with M12 minting no ConflictRaised of its own.
+        if res.conflict.kind != "RULE_VS_RULE":
+            return FAIL(f"{MISS} not a RULE_VS_RULE conflict", "### SECOND CONFLICT SYSTEM BUILT ###")
+        f7 = kit.conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
+                              "AND aggregate_type='conflict'").fetchone()[0]
+        on_rule = kit.conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
+                                   "AND aggregate_type='rule'").fetchone()[0]
+        if f7 != 1 or on_rule != 0:
+            return FAIL(f"{MISS} M7 did not mint the conflict, or M12 did", "### M7 BYPASSED ###")
+        return OK("two-conflicting-active-rules-fail-closed: rule stays COMPILED, blocked, via M7",
+                  "TWO CONFLICTING RULES FAIL CLOSED",
+                  "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE")
     finally:
         kit.close()
 
@@ -865,13 +945,17 @@ def _c(args):
     kit = Kit()
     try:
         m = _conflict_setup(kit)
+        # ### RU-3 CALLS M7 directly; M7 mints the F7 event on the `conflict` aggregate, M12 mints none.
         res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
         if res.conflict.kind != "RULE_VS_RULE":
             return FAIL(f"{MISS} not a RULE_VS_RULE conflict", "### SECOND CONFLICT SYSTEM BUILT ###")
-        _m7, cres = _raise_conflict(kit, m, res)
-        if cres.event_names != ("ConflictRaised",):
-            return FAIL(f"{MISS} M7 did not raise the conflict", "### M7 BYPASSED ###")
-        return OK("m12-raises-the-m7-rule-vs-rule-conflict: M7 mints ConflictRaised, M12 mints nothing",
+        f7 = kit.conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
+                              "AND aggregate_type='conflict'").fetchone()[0]
+        on_rule = kit.conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
+                                   "AND aggregate_type='rule'").fetchone()[0]
+        if f7 != 1 or on_rule != 0:
+            return FAIL(f"{MISS} M7 did not mint the conflict, or M12 did", "### M7 BYPASSED ###")
+        return OK("m12-raises-the-m7-rule-vs-rule-conflict: M7 mints the F7 conflict, M12 mints nothing",
                   "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE")
     finally:
         kit.close()
@@ -883,10 +967,8 @@ def _c(args):
     try:
         m = _conflict_setup(kit)
         res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
-        _m7, cres = _raise_conflict(kit, m, res)
-        m.block_on_conflict("b", conflict_id=cres.conflict.conflict_id)
         row = m.require("b")
-        if row.state is not RuleState.COMPILED or row.conflict_id is None:
+        if row.state is not RuleState.COMPILED or row.conflict_id != res.conflict.conflict_id:
             return FAIL(f"{MISS} the blocked rule is not COMPILED with a conflict id",
                         "### A CONFLICTING RULE ACTIVATED ###")
         return OK("the-conflicting-rule-stays-compiled-and-blocked: COMPILED, conflict_id set")
@@ -900,7 +982,8 @@ def _c(args):
     executable = gate_scan.executable_source(_rule_src())
     if re.search(r"\bauto_merge\b|def\s+merge_rules|pick_winner|choose_winner", executable):
         return FAIL(f"{MISS} an auto-merge path exists", "### CONFLICTING RULES AUTO-MERGED ###")
-    return OK("conflicting-rules-are-never-auto-merged: no merge/winner path in the machine")
+    return OK("conflicting-rules-are-never-auto-merged: no merge/winner path in the machine",
+              "NEYMA NEVER PICKS A WINNER BETWEEN TWO RULES")
 
 
 @case("neyma-never-picks-a-winner-between-two-rules")
@@ -927,19 +1010,24 @@ def _c(args):
 
 @case("m12-builds-no-second-conflict-system")
 def _c(args):
+    # ### M12 CALLS M7 (imports M7Machine) but builds NO SECOND conflict system: no conflict MACHINE of
+    # its own, no conflict-kind vocabulary, no direct conflicts-table write, no rule_conflicts table.
     src = _rule_src()
     for node in ast.walk(ast.parse(src)):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[-1] == "conflict":
-            return FAIL(f"{MISS} rule.py imports the conflict machine", "### SECOND CONFLICT SYSTEM BUILT ###")
-        if isinstance(node, ast.ClassDef) and "conflictmachine" in node.name.lower().replace("_", ""):
-            return FAIL(f"{MISS} rule.py defines a conflict machine", "### SECOND CONFLICT SYSTEM BUILT ###")
+        if isinstance(node, ast.ClassDef):
+            low = node.name.lower().replace("_", "")
+            if "conflict" in low and "machine" in low:
+                return FAIL(f"{MISS} rule.py defines a conflict machine", "### SECOND CONFLICT SYSTEM BUILT ###")
+    if "CONFLICT_KINDS =" in src or "insert into conflicts" in src.lower():
+        return FAIL(f"{MISS} rule.py redefines M7 vocabulary or writes conflicts directly",
+                    "### SECOND CONFLICT SYSTEM BUILT ###")
     kit = Kit()
     try:
         if "rule_conflicts" in {r[0] for r in kit.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
             return FAIL(f"{MISS} a rule_conflicts table exists", "### SECOND CONFLICT SYSTEM BUILT ###")
     finally:
         kit.close()
-    return OK("m12-builds-no-second-conflict-system: no conflict import, no conflict machine, no second table")
+    return OK("m12-builds-no-second-conflict-system: M12 calls M7; no conflict machine, vocabulary or table")
 
 
 @case("the-narrower-scope-wins-and-is-not-a-conflict")
@@ -982,7 +1070,7 @@ def _c(args):
     try:
         m = _conflict_setup(kit)
         res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
-        m7, cres = _raise_conflict(kit, m, res)
+        m7 = M7Machine(kit.conn, tenant=kit.tenant, clock=kit.clock)
         if not m7.is_field_conflicting(res.conflict.entity_ref, res.conflict.field):
             return FAIL(f"{MISS} an open conflict did not block the field", "### AN OPEN RULE CONFLICT DID NOT BLOCK ###")
         return OK("an-open-rule-conflict-blocks-the-action: the field is conflicting while the conflict stands")
@@ -1025,16 +1113,14 @@ def _c(args):
     kit = Kit()
     try:
         kit.human("po")
-        kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (kit.tenant, "r1", 1, "s", "action_class", "CONSTRAINT", '{"status":"COMPILED"}', "[]",
-             "COMPILED", 1, "x", "po", "narrow", "t", "t"))
+        _ins(kit.conn, rule_id="r1", rule_version=1, scope="action_class:s",
+             compiled_predicate='{"status":"COMPILED"}', test_vectors="[]", state="COMPILED",
+             source_instruction="x")
         kit.conn.commit()
         if not refuses(lambda: kit.m12().confirm("r1", confirmed_by="po")):
             return FAIL(f"{MISS} a rule confirmed with no test vectors", "### CONFIRMED WITHOUT SEEING THE TEST VECTORS ###")
-        return OK("confirmation-without-test-vectors-is-refused: no vectors, no confirmation")
+        return OK("confirmation-without-test-vectors-is-refused: no vectors, no confirmation",
+                  "THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING")
     finally:
         kit.close()
 
@@ -1158,7 +1244,7 @@ def _c(args):
         kit.human("po", tenant="T_A")
         kit.human("outsider", role="AUTHORIZED_HUMAN", tenant="T_B")
         m = kit.m12(tenant="T_A")
-        m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
         m.compile("r1")
         m.confirm("r1", confirmed_by="po")
@@ -1176,7 +1262,7 @@ def _c(args):
         kit.human("po", tenant="T_A")
         kit.human("clerk", role="AUTHORIZED_HUMAN", tenant="T_B")
         m = kit.m12(tenant="T_A")
-        if not refuses(lambda: m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT",
+        if not refuses(lambda: m.propose(scope="action_class:s", kind="CONSTRAINT",
                                          effect="DENY", source_instruction="x", authored_by="clerk",
                                          clauses=_pod_clauses(), rule_id="r1")):
             return FAIL(f"{MISS} a cross-tenant author accepted", "### CROSS-TENANT AUTHORSHIP ACCEPTED ###")
@@ -1190,12 +1276,8 @@ def _c(args):
     kit = Kit()
     try:
         kit.human("po")
-        ok = refuses(lambda: kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, activated_by, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (kit.tenant, "r1", 1, "s", "action_class", "CONSTRAINT", "{}", "[]", "ACTIVE", 1, "x", "po",
-             None, "narrow", "t", "t")))
+        ok = refuses(lambda: _ins(kit.conn, rule_id="r1", rule_version=1, scope="action_class:s",
+                                  state="ACTIVE", activated_by=None))
         kit.conn.rollback()
         if not ok:
             return FAIL(f"{MISS} ACTIVE with no activator insertable", "### ACTIVE WITHOUT AN ACTIVATOR ###")
@@ -1467,7 +1549,7 @@ def _c(args):
         kit.human("po")
         # a narrowing rule with an expiry does NOT auto-revert: its expiry needs a human (RU-8)
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1490,7 +1572,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1509,16 +1591,12 @@ def _c(args):
         # the machine refuses it, and so does the DB CHECK
         m = kit.m12()
         machine_refused = refuses(lambda: m.propose(
-            scope="s", scope_form="action_class", kind="GATE_PRECONDITION", effect="PERMIT",
+            scope="action_class:s", kind="GATE_PRECONDITION", effect="PERMIT",
             source_instruction="loosen", authored_by="po", clauses=_amount_clauses(), rule_id="r1",
             expires_at="2026-10-01T00:00:00Z"))
-        db_refused = refuses(lambda: kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, expires_at, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (kit.tenant, "rb", 1, "s", "action_class", "GATE_PRECONDITION", "{}", "[]", "PROPOSED", 1, "x",
-             "po", "2026-10-01T00:00:00Z", "broaden", "t", "t")))
-        kit.conn.rollback()
+        db_refused = not _raw_insert(kit.conn, {
+            "rule_id": "rb", "rule_version": 1, "scope": "action_class:s", "kind": "GATE_PRECONDITION",
+            "expires_at": "2026-10-01T00:00:00Z", "change_direction": "broaden"})
         if not (machine_refused and db_refused):
             return FAIL(f"{MISS} a broadening rule carried an expiry", "### BROADENING RULE CARRIED AN EXPIRY ###")
         return OK("a-broadening-rule-cannot-carry-an-expiry: refused by the machine and the DB CHECK")
@@ -1532,7 +1610,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1553,7 +1631,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1576,7 +1654,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1599,7 +1677,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1630,36 +1708,36 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
         m.compile("r1")
         m.confirm("r1", confirmed_by="po")
         m.activate("r1", activated_by="po")
+        # ### RU-8 CALLS M9's landed raise_exception directly — the human-confirmation Exception is raised.
         res = m.expire("r1", owner_id="po")
-        # the probe (the caller) drives M9's landed entry point with the named seam
-        from freight_recon.exception import M9Machine
-        m9 = M9Machine(kit.conn, tenant=kit.tenant, clock=kit.clock)
-        m9.raise_exception(**res.escalation.as_m9_kwargs())
         n = kit.conn.execute("SELECT COUNT(*) FROM exceptions WHERE source_kind='rule'").fetchone()[0]
-        if n != 1:
+        if n != 1 or res.escalation is None or res.escalation.source_kind != "rule":
             return FAIL(f"{MISS} the M9 exception was not raised through the seam", "### EXPIRY RAISED NO HUMAN CONFIRMATION ###")
-        return OK("expiry-raises-the-m9-human-confirmation-exception: driven through M9's landed entry point")
+        return OK("expiry-raises-the-m9-human-confirmation-exception: raised through M9's landed entry point")
     finally:
         kit.close()
 
 
 @case("m12-builds-no-part-of-m9")
 def _c(args):
+    # ### M12 CALLS M9's raise_exception (imports M9Machine) but EDITS NO PART OF M9: exception.py is
+    # byte-unchanged, and M12 adds no FK, mirror column or migration (### M12-AQ-6 / P6-D73).
     src = _rule_src()
-    for node in ast.walk(ast.parse(src)):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[-1] == "exception":
-            return FAIL(f"{MISS} rule.py imports the exception machine", "### M9 MACHINE EDITED ###")
+    if re.search(r"EXCEPTION_STATES|class\s+EcState|ACKNOWLEDGED", src):
+        return FAIL(f"{MISS} rule.py redefines M9's state vocabulary", "### M9 MACHINE EDITED ###")
+    if "insert into exceptions" in src.lower():
+        return FAIL(f"{MISS} rule.py writes the exceptions table directly", "### M9 MACHINE EDITED ###")
     r = _neighbour_unchanged(("exception.py",))
-    if r is not None:
+    if r is not None and "exception.py" in r:
         return FAIL(f"{MISS} exception.py changed", "### M9 MACHINE EDITED ###")
-    return OK("m12-builds-no-part-of-m9: M9 is named and unwired; exception.py unchanged")
+    return OK("m12-builds-no-part-of-m9: M12 calls M9's landed seam; exception.py byte-unchanged")
 
 
 # =========================================================== checkpoint step 6 / gate
@@ -1737,8 +1815,14 @@ def _c(args):
     minters = _mint_scan()
     if minters != {"checkpoint.py"}:
         return FAIL(f"{MISS} minters are {sorted(minters)}", "### SECOND GATE MINTER BUILT ###")
-    return OK("checkpoint-py-remains-the-sole-gate-minter: only checkpoint.py mints",
-              "THE CHECKPOINT IS STILL THE ONLY GATE MINTER")
+    # M12 IS checkpoint step 6's rule evaluation: it constructs no gate-decision object of its own,
+    # so the checkpoint stays the sole minter AND M12 mints no gate decision.
+    src = _rule_src()
+    if "GateEntry(" in src or "GateRegistry(" in src:
+        return FAIL(f"{MISS} M12 mints a gate decision", "### M12 MINTED A GATE DECISION ###")
+    return OK("checkpoint-py-remains-the-sole-gate-minter: only checkpoint.py mints, and M12 mints none",
+              "THE CHECKPOINT IS STILL THE ONLY GATE MINTER",
+              "M12 MINTS NO GATE DECISION")
 
 
 @case("m12-constructs-no-gateentry-and-no-gateregistry")
@@ -1812,16 +1896,23 @@ def _c(args):
                                      evidence_condition=EvidenceCondition.CONSISTENT, _value=1)}
     if not refuses(lambda: evaluate_rule(compiled, bad, rule_id="r1")):
         return FAIL(f"{MISS} an unavailable engine produced a decision", "### ALLOW ON RULE ERROR ###")
-    return OK("the-rule-engine-unavailable-yields-no-witness-and-no-effect: no decision, no witness")
+    return OK("the-rule-engine-unavailable-yields-no-witness-and-no-effect: no decision, no witness",
+              "THERE IS NO ALLOW-ON-ERROR DEFAULT")
 
 
 # =========================================================== precedence
 
 @case("rules-sit-beneath-policy-at-precedence-layer-six")
 def _c(args):
-    if PRECEDENCE_LAYER != 6 or PRECEDENCE_LADDER[5] != "STANDING_RULE":
+    if PRECEDENCE_LAYER != 6 or "RULE" not in PRECEDENCE_LADDER[5].upper():
         return FAIL(f"{MISS} rules are not at layer 6", "### SECOND PRECEDENCE ENGINE BUILT ###")
-    return OK("rules-sit-beneath-policy-at-precedence-layer-six: STANDING_RULE is layer 6")
+    # a rule may narrow within its own layer but override NOTHING above it
+    if not refuses(lambda: assert_within_precedence("CONSTRAINT")):
+        return FAIL(f"{MISS} a rule overrode a Constraint", "### A RULE OVERRODE A CONSTRAINT ###")
+    assert_within_precedence("STANDING_RULE")  # within its own layer: accepted
+    return OK("rules-sit-beneath-policy-at-precedence-layer-six: STANDING RULE is layer 6, overrides none above",
+              "A RULE NEVER OVERRIDES A CONSTRAINT", "A RULE NEVER OVERRIDES A PERMANENT PRODUCT TRUTH",
+              "A RULE NEVER OVERRIDES A BRAKE DENIAL", "A RULE NEVER OVERRIDES POLICY")
 
 
 def _override_refused(layer, marker):
@@ -1886,7 +1977,7 @@ def _c(args):
     try:
         kit.human("po")
         m = kit.m12()
-        m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
                   source_instruction="tighten", authored_by="po",
                   clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
                   rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -1926,7 +2017,7 @@ def _c(args):
         activate_rule(kit, "iB", scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY",
                       effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}], tenant="T_B")
         for t in ("T_A", "T_B"):
-            n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE tenant=? AND scope='carrier_invoice' "
+            n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE tenant=? AND scope='subject_type:carrier_invoice' "
                                  "AND state='ACTIVE'", (t,)).fetchone()[0]
             if n != 1:
                 return FAIL(f"{MISS} tenant {t} does not have one active rule", "### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###")
@@ -1991,12 +2082,9 @@ def _c(args):
         kit.human("po")
         activate_rule(kit, "i1", scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY",
                       effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}])
-        ok = refuses(lambda: kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, activated_by, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (kit.tenant, "i2", 99, "carrier_invoice", "subject_type", "IDENTITY", "{}", "[]", "ACTIVE", 1,
-             "x", "po", "po", "narrow", "t", "t")))
+        ok = refuses(lambda: _ins(kit.conn, rule_id="i2", rule_version=99,
+                                  scope="subject_type:carrier_invoice", kind="IDENTITY", state="ACTIVE",
+                                  activated_by="po"))
         kit.conn.rollback()
         if not ok:
             return FAIL(f"{MISS} two active rules for one single-admitting scope", "### TWO ACTIVE RULES FOR ONE SINGLE-ADMITTING SCOPE ###")
@@ -2014,7 +2102,7 @@ def _c(args):
                       clauses=_amount_clauses("<", 100))
         activate_rule(kit, "g2", scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION",
                       clauses=_amount_clauses(">", 5))
-        n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='pay_carrier' AND state='ACTIVE'").fetchone()[0]
+        n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='action_class:pay_carrier' AND state='ACTIVE'").fetchone()[0]
         if n != 2:
             return FAIL(f"{MISS} a multi-admitting scope refused a second active rule", "### FALSE UNIQUENESS IMPOSED ON A MULTI-RULE SCOPE ###")
         return OK("where-multiple-active-rules-are-permitted-conflict-detection-handles-them: two coexist")
@@ -2043,12 +2131,8 @@ def _c(args):
     try:
         kit.human("po")
         activate_rule(kit, "r1")
-        ok = refuses(lambda: kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (kit.tenant, "rdup", 1, "s2", "action_class", "CONSTRAINT", "{}", "[]", "PROPOSED", 1, "x", "po",
-             "narrow", "t", "t")))
+        ok = refuses(lambda: _ins(kit.conn, rule_id="rdup", rule_version=1, scope="action_class:s2",
+                                  state="PROPOSED"))
         kit.conn.rollback()
         if not ok:
             return FAIL(f"{MISS} a rule_version was reused", "### RULE VERSION REUSED ###")
@@ -2081,7 +2165,7 @@ def _c(args):
         n = max(2, args.concurrency or 8)
         for i in range(n):
             m = kit.m12()
-            m.propose(scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY", effect="BIND",
+            m.propose(scope="subject_type:carrier_invoice", kind="IDENTITY", effect="BIND",
                       source_instruction=f"v{i}", authored_by="po",
                       clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": str(i), **_MODELLED}],
                       rule_id=f"i{i}")
@@ -2102,7 +2186,7 @@ def _c(args):
             t.start()
         for t in threads:
             t.join()
-        active = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='carrier_invoice' "
+        active = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='subject_type:carrier_invoice' "
                                   "AND kind='IDENTITY' AND state='ACTIVE'").fetchone()[0]
         if active != 1:
             return FAIL(f"{MISS} {active} active rules after a concurrent race", "### TWO ACTIVE RULES FOR ONE SINGLE-ADMITTING SCOPE ###")
@@ -2148,7 +2232,7 @@ def _c(args):
     kit = Kit()
     try:
         _supersede_setup(kit)
-        n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='carrier_invoice'").fetchone()[0]
+        n = kit.conn.execute("SELECT COUNT(*) FROM rules WHERE scope='subject_type:carrier_invoice'").fetchone()[0]
         if n != 2:
             return FAIL(f"{MISS} a historical version was discarded", "### HISTORICAL VERSION DISCARDED ###")
         return OK("every-historical-version-is-retained: both versions persist")
@@ -2377,8 +2461,14 @@ def _c(args):
                 offenders.append(py.name)
     if offenders:
         return FAIL(f"{MISS} production importer(s): {offenders}", "### PRODUCTION RULE IMPORTER BUILT ###")
-    return OK("m12-ships-dark-with-zero-production-importers: no production importer",
-              "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS")
+    # shipping dark also means the machine after this one is not here: no M13 brake-lifecycle module
+    # in the package, and rule.py builds no brake machine of its own.
+    files = {p.name for p in src.rglob("*.py")}
+    if any("brake" in f and "lifecycle" in f for f in files) or _no_class(_rule_src(), "brakemachine", "brakelifecycle"):
+        return FAIL(f"{MISS} an M13 brake machine exists", "### M13 BRAKE MACHINE BUILT ###")
+    return OK("m12-ships-dark-with-zero-production-importers: no production importer, and no M13 brake machine",
+              "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS",
+              "THE M13 BRAKE MACHINE IS NOT BUILT")
 
 
 @case("m12-joins-no-outbound-channel")
@@ -2478,8 +2568,7 @@ def _c(args):
     try:
         m = _conflict_setup(kit)
         res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
-        # the conflict names a human owner
-        owner = next((p for p in res.conflict.parties), None)
+        # the RULE_VS_RULE conflict names an accountable human owner; Neyma resolves nothing itself
         if not res.conflict.owner_id:
             return FAIL(f"{MISS} a conflict had no human owner", "### NEYMA PICKED A WINNER ###")
         return OK("every-conflict-goes-to-a-human: the RULE_VS_RULE conflict names a human owner")
@@ -2516,7 +2605,12 @@ def _c(args):
         for name, marker in machines.items():
             if name in changed:
                 return FAIL(f"{MISS} {name} was edited", marker)
-    return OK("m1-through-m11-are-unchanged: the landed machine files are byte-identical",
+    # nothing graduates: M12 builds no autonomy-graduation engine, so no landed machine is promoted
+    # into a new authority beside being left byte-identical.
+    if _no_class(_rule_src(), "graduat"):
+        return FAIL(f"{MISS} M12 defines a graduation engine", "### AUTONOMY GRADUATION ENGINE BUILT ###")
+    return OK("m1-through-m11-are-unchanged: the landed machine files are byte-identical, and nothing graduates",
+              "NOTHING GRADUATES",
               "THE M1 WORK ITEM MACHINE IS UNCHANGED", "THE M2 PIPELINE MACHINE IS UNCHANGED",
               "THE M3 EFFECT AUTHORITY IS UNCHANGED", "THE M4 APPROVAL MACHINE IS UNCHANGED",
               "THE M7 CONFLICT MACHINE IS UNCHANGED", "THE M9 EXCEPTION MACHINE IS UNCHANGED",
@@ -2526,7 +2620,7 @@ def _c(args):
 # ------------------------------------------------------------------ the measurement block
 
 def _raw_insert(conn, over):
-    base = dict(tenant="T_A", rule_id="x", rule_version=90, scope="s", scope_form="action_class",
+    base = dict(tenant="T_A", rule_id="x", rule_version=90, scope="action_class:x",
                 kind="CONSTRAINT", compiled_predicate="{}", test_vectors="[]", state="PROPOSED", version=1,
                 source_instruction="i", authored_by="po", change_direction="narrow", created_at="t",
                 updated_at="t")
@@ -2592,7 +2686,7 @@ def _measurements():
         kit.human("ops-lead", role="AUTHORIZED_HUMAN")
         kit.human("other-owner", role="POLICY_OWNER", tenant="T_B")
         try:
-            kit.m12().propose(scope="raise_invoice", scope_form="action_class", kind="GATE_PRECONDITION",
+            kit.m12().propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION",
                               effect="DENY", source_instruction="x", authored_by="po",
                               clauses=_pod_clauses(), rule_id="prop-1")
             out.append("positive control, a well-formed PROPOSED rule: ACCEPTED")
@@ -2648,12 +2742,8 @@ def _measurements():
         activate_rule(kit, "iB", scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY",
                       effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}], tenant="T_B")
         out.append("positive control, the SAME scope and kind ACTIVE in a DIFFERENT tenant: ACCEPTED")
-        reused = refuses(lambda: kit.conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("T_A", "dup", 1, "s2", "action_class", "CONSTRAINT", "{}", "[]", "PROPOSED", 1, "x", "po",
-             "narrow", "t", "t")))
+        reused = refuses(lambda: _ins(kit.conn, tenant="T_A", rule_id="dup", rule_version=1,
+                                      scope="action_class:s2", state="PROPOSED"))
         kit.conn.rollback()
         out.append(f"a reused rule_version inside one tenant: {'refused by ix_rules_tenant_version' if reused else 'ACCEPTED'}")
         deleted = refuses(lambda: kit.conn.execute("DELETE FROM rules WHERE tenant='T_A' AND rule_id='iA'"))

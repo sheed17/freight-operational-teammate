@@ -722,12 +722,17 @@ def test_six_kinds_are_closed():
 
 
 def test_ships_dark_no_production_importer():
-    """Nothing under src/freight_recon imports the conflict module; only its own probe does."""
+    """### NO PRODUCTION-ENABLED module imports the conflict module (rule 20; corrected when M12 landed).
+    M12 (the Rule, `rule.py`) is the one landed sibling that CALLS M7's `raise_conflict` entry point — RU-3
+    fails closed into a RULE_VS_RULE conflict through it (§3.7 "CALLS it"; the permanent scenario asserts
+    "M12 reaches M7 by import: True"). M12 EDITS NO PART OF M7 (conflict.py is byte-unchanged, no second
+    conflict table or vocabulary) and M12 ITSELF SHIPS DARK — nothing production imports `rule.py` — so M7
+    stays unreachable from any production path. `rule.py` and the probe are the only importers."""
     import ast
     src_dir = ROOT / "src" / "freight_recon"
     offenders = []
     for path in src_dir.rglob("*.py"):
-        if path.name == "conflict.py":
+        if path.name in ("conflict.py", "rule.py"):   # rule.py: the landed dark sibling caller (M12)
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

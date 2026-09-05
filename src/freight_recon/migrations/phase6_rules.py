@@ -188,10 +188,18 @@ REVOKE_DIRECTIONS: tuple[str, ...] = ("narrow", "broaden")
 
 _STATES_SQL = ",".join(f"'{s}'" for s in RULE_STATES)
 _KINDS_SQL = ",".join(f"'{k}'" for k in RULE_KINDS)
-_SCOPE_FORMS_SQL = ",".join(f"'{f}'" for f in P6RU_SCOPE_FORMS)
-_SINGLE_ACTIVE_SQL = ",".join(f"'{f}'" for f in P6RU_SINGLE_ACTIVE_SCOPES)
 _CHANGE_DIR_SQL = ",".join(f"'{d}'" for d in CHANGE_DIRECTIONS)
 _REVOKE_DIR_SQL = ",".join(f"'{d}'" for d in REVOKE_DIRECTIONS)
+
+# ### THE SINGLE-ADMITTING SIGNAL LIVES IN THE SCOPE VALUE'S FORM PREFIX (### M12-AQ-4). A rule's `scope`
+# is a form-prefixed string `<scope_form>:<detail>` (e.g. `subject_type:carrier_invoice`,
+# `action_class:raise_invoice`). The one-active partial unique index keys off that prefix, so the forms in
+# P6RU_SINGLE_ACTIVE_SCOPES admit exactly one ACTIVE rule per (tenant, scope, kind) and every other form
+# admits multiple (conflict detection covers a genuine clash). Building the predicate from the declared
+# set keeps the answer mechanical and in one place, and NAMES the forms in the index SQL. GLOB is
+# case-sensitive and deterministic — the one prefix operator a partial index accepts without a pragma
+# dependency.
+_SINGLE_ACTIVE_GLOB = " OR ".join(f"scope GLOB '{f}:*'" for f in P6RU_SINGLE_ACTIVE_SCOPES)
 
 # The exact abort texts, worded WITHOUT apostrophes: they are interpolated into single-quoted SQL
 # literals inside RAISE(ABORT, ...). Matched by `rule.py` when it classifies an IntegrityError.
@@ -202,7 +210,7 @@ VERSION_ABORT = (
 )
 IDENTITY_ABORT = (
     "the identity of a rule version is immutable [entity 15 sec 15/16/19/24, C-8]: the tenant, the id, "
-    "the rule_version, the scope and scope_form it governs, the kind, the source_instruction, the human "
+    "the rule_version, the form-prefixed scope it governs, the kind, the source_instruction, the human "
     "who authored it, the direction it moves authority and when it was created are what make it THIS "
     "rule version. A wrong rule is SUPERSEDED by a new version, never edited in place, because effects "
     "were judged under it and it must still explain them under its own rule_version [entity 15 sec 23/24/29]"
@@ -236,11 +244,11 @@ P6RU_TARGET_SCHEMA: dict[str, str] = {
             -- tenant, UNIQUE (tenant, rule_version) below — so two scopes cannot each hold version 1,
             -- and this is where F12's ordering guarantee actually lives (### M12-AQ-5).
             rule_version INTEGER NOT NULL,
-            -- ### WHICH thing this rule governs. It names the scope; it does NOT open a second numbering.
+            -- ### WHICH thing this rule governs, as a FORM-PREFIXED string `<scope_form>:<detail>` (###
+            -- M12-AQ-4). The form prefix drives the one-active partial index: only the forms in
+            -- P6RU_SINGLE_ACTIVE_SCOPES admit exactly one ACTIVE rule per (tenant, scope, kind). It names
+            -- the scope; it does NOT open a second numbering.
             scope TEXT NOT NULL,
-            -- ### OF WHAT SORT the scope is (### M12-AQ-4). Drives the one-active partial index: only the
-            -- forms in P6RU_SINGLE_ACTIVE_SCOPES admit exactly one ACTIVE rule per (tenant, scope, kind).
-            scope_form TEXT NOT NULL CHECK (scope_form IN (%(scope_forms)s)),
             -- ### THE FOUR CANONICAL KINDS, ENUMERATED INLINE (entity §10). No fifth.
             kind TEXT NOT NULL CHECK (kind IN (%(kinds)s)),
             -- ### THE DETERMINISTIC, TYPED COMPILED PREDICATE over modelled, non-inferred fields (M-49,
@@ -304,8 +312,10 @@ P6RU_TARGET_SCHEMA: dict[str, str] = {
             -- broadening rule carrying an expires_at is automatic broadening with a delay — the clock
             -- may take authority away, never give it.
             CHECK (expires_at IS NULL OR change_direction = 'narrow'),
-            -- A SUPERSEDED rule names its successor; a REVOKED one carries a reason and a direction.
-            CHECK (state <> 'SUPERSEDED' OR superseded_by IS NOT NULL),
+            -- A REVOKED rule carries a reason and a direction (RU-7 writes both). `superseded_by` is
+            -- OPTIONAL metadata the RU-6 machine writes, not a NOT NULL requirement (entity §16 does not
+            -- list it), so a retained SUPERSEDED version coexists beside the ACTIVE one — the retention
+            -- guarantee is the ACTIVE-only partial index, not a row-local superseded_by CHECK.
             CHECK (state <> 'REVOKED' OR (revoked_reason IS NOT NULL AND revoked_direction IS NOT NULL)),
             CHECK (trim(rule_id) <> ''),
             CHECK (trim(scope) <> ''),
@@ -314,7 +324,7 @@ P6RU_TARGET_SCHEMA: dict[str, str] = {
             CHECK (trim(authored_by) <> ''),
             CHECK (trim(state) <> '')
         )""" % {
-        "states": _STATES_SQL, "kinds": _KINDS_SQL, "scope_forms": _SCOPE_FORMS_SQL,
+        "states": _STATES_SQL, "kinds": _KINDS_SQL,
         "change_dirs": _CHANGE_DIR_SQL, "revoke_dirs": _REVOKE_DIR_SQL,
     },
 }
@@ -330,7 +340,7 @@ P6RU_INDEXES: dict[str, str] = {
     "ix_rules_one_active_per_scope":
         "CREATE UNIQUE INDEX ix_rules_one_active_per_scope "
         "ON rules (tenant, scope, kind) "
-        f"WHERE state = 'ACTIVE' AND scope_form IN ({_SINGLE_ACTIVE_SQL})",
+        f"WHERE state = 'ACTIVE' AND ({_SINGLE_ACTIVE_GLOB})",
     # ### THE VERSION NAMESPACE IS THE TENANT (entity §17, ### M12-AQ-4b, ### M12-AQ-5). UNIQUE across ALL
     # states — every version is retained — so two scopes cannot each hold version 1 and a version is
     # never reused. This is where F12's monotonicity guarantee lives (the fail-closed side, without
@@ -359,13 +369,13 @@ P6RU_TRIGGERS: dict[str, str] = {
         WHEN NEW.state <> OLD.state AND NEW.version <> OLD.version + 1
         BEGIN SELECT RAISE(ABORT, '{VERSION_ABORT}'); END""",
     # ### THE IDENTITY OF A RULE VERSION IS IMMUTABLE (entity §15/§16/§19/§24). The tenant, id,
-    # rule_version, scope, scope_form, kind, source_instruction, author, change_direction and created_at
-    # may not be edited — a wrong rule is a NEW version, never an edit in place. The state, activator,
-    # compiled_predicate, test_vectors, expiry, supersession, revocation and conflict columns are
-    # DELIBERATELY ABSENT because the transitions write them.
+    # rule_version, scope (form prefix included), kind, source_instruction, author, change_direction and
+    # created_at may not be edited — a wrong rule is a NEW version, never an edit in place. The state,
+    # activator, compiled_predicate, test_vectors, expiry, supersession, revocation and conflict columns
+    # are DELIBERATELY ABSENT because the transitions write them.
     "trg_rules_identity_immutable": f"""
         CREATE TRIGGER trg_rules_identity_immutable
-        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, scope_form, kind, source_instruction,
+        BEFORE UPDATE OF tenant, rule_id, rule_version, scope, kind, source_instruction,
                          authored_by, change_direction, created_at
         ON rules
         BEGIN SELECT RAISE(ABORT, '{IDENTITY_ABORT}'); END""",
@@ -467,8 +477,8 @@ def stamp_phase6_rules_version(conn: sqlite3.Connection, *, now: str) -> None:
              "fields (enforced at compile), generated test vectors before confirmation, an "
              "authenticated-human activator FK-backed into tenant_humans (ACTIVE requires it), the "
              "version namespace is the tenant (UNIQUE tenant+version), one active rule per (tenant, "
-             "scope, kind) only where the scope_form admits one, only a narrowing rule carries an "
-             "expiry, identity and compiled predicate immutable and history never deleted; readiness "
+             "scope, kind) only where the scope form prefix admits one, only a narrowing rule carries "
+             "an expiry, identity and compiled predicate immutable and history never deleted; readiness "
              "proven"),
         )
         conn.commit()
@@ -478,7 +488,7 @@ def phase6_rules_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     """Every reason this database cannot carry Rules safely. Empty == ready.
 
     Structural, like the P2/P3/P5/M1..M11 oracles it extends. The eight-state CHECK, the four-kind
-    CHECK, the ACTIVE-requires-activator CHECK, the narrowing-only-expiry CHECK, the scope-form CHECK,
+    CHECK, the ACTIVE-requires-activator CHECK, the narrowing-only-expiry CHECK,
     the two partial/full unique indexes, the identity/compiled-frozen/no-delete triggers and the
     foreign keys are verified PRESENT because a `rules` table without them is an ordinary table with an
     aspirational comment: an ACTIVE rule could have no activator, a broadening rule could auto-expire
@@ -520,7 +530,8 @@ def phase6_rules_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(_partial_unique_index_problems(
         conn, name="ix_rules_one_active_per_scope",
         must_have=("TENANT", "SCOPE", "KIND"),
-        where_fragments=("WHERESTATE='ACTIVE'", "SCOPE_FORMIN("),
+        where_fragments=("WHERESTATE='ACTIVE'",
+                         *(f"GLOB'{f.upper()}:*'" for f in P6RU_SINGLE_ACTIVE_SCOPES)),
         what="two active rules for one single-admitting scope",
         why="the one-active rule (entity §17, ### M12-AQ-4) would be a convention, not a constraint"))
 
@@ -564,13 +575,6 @@ def phase6_rules_readiness_problems(conn: sqlite3.Connection) -> list[str]:
             "rules does not enumerate the four canonical kinds inline on the kind column (entity §10): "
             "without it an invented fifth kind would be writable."
         )
-    expected_forms = ("SCOPE_FORM IN (" + ",".join(f"'{f}'" for f in P6RU_SCOPE_FORMS) + ")").upper()
-    if expected_forms not in compact:
-        problems.append(
-            "rules does not enumerate the scope-form vocabulary inline on the scope_form column (### "
-            "M12-AQ-4): without it the one-active partial index cannot mechanically name which forms "
-            "admit exactly one active rule."
-        )
     for clause, why in (
         ("STATE <> 'ACTIVE' OR ACTIVATED_BY IS NOT NULL",
          "an ACTIVE rule requires a non-null activated_by (entity §16, verbatim): an ACTIVE rule with "
@@ -588,9 +592,8 @@ def phase6_rules_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     info = {r[1]: r for r in conn.execute("PRAGMA table_info(rules)").fetchall()}
     for col, why in (
         ("rule_version", "a rule with no version cannot be bound into a decision (entity §19)"),
-        ("scope", "a rule governs a scope; a scopeless rule governs nothing (entity §10)"),
-        ("scope_form", "the scope form is persisted so the one-active partial index can name which "
-         "forms admit one active rule (### M12-AQ-4)"),
+        ("scope", "a rule governs a scope; a scopeless rule governs nothing (entity §10). Its form "
+         "prefix drives the one-active partial index (### M12-AQ-4)"),
         ("kind", "a rule has one of the four canonical kinds (entity §10)"),
         ("compiled_predicate", "a rule with no compiled predicate is not a decision procedure "
          "(entity §10/§16); a PROPOSED rule carries its uncompiled candidate here"),

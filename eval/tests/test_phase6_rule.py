@@ -38,7 +38,7 @@ from freight_recon.checkpoint import (  # noqa: E402
     ProvenanceClass,
     ProvenancedFact,
 )
-from freight_recon.conflict import M7Machine, Party  # noqa: E402
+from freight_recon.conflict import M7Machine  # noqa: E402
 from freight_recon.event_contracts import CONTRACTS  # noqa: E402
 from freight_recon.migrations.phase6_rules import (  # noqa: E402
     P6RU_SCOPE_FORMS,
@@ -116,10 +116,28 @@ def _pod_clauses():
     ]
 
 
+def _fq(scope_form, scope):
+    """Compose the canonical FORM-PREFIXED scope the machine stores: `<scope_form>:<detail>` (M12-AQ-4)."""
+    return f"{scope_form}:{scope}"
+
+
+def _insert_rule(conn, **over):
+    """Raw-insert a `rules` row from a canonical base, overridden by `over`. Lets any IntegrityError
+    propagate so a `pytest.raises` wrapper can assert a CHECK/FK/index refused it. `scope` is
+    form-prefixed by default (M12-AQ-4)."""
+    base = dict(tenant=TENANT, rule_id="x", rule_version=90, scope="action_class:x", kind="CONSTRAINT",
+                compiled_predicate="{}", test_vectors="[]", state="PROPOSED", version=1,
+                source_instruction="i", authored_by="po", change_direction="narrow",
+                created_at="t", updated_at="t")
+    base.update(over)
+    conn.execute(f"INSERT INTO rules ({','.join(base)}) VALUES ({','.join('?' * len(base))})",
+                 tuple(base.values()))
+
+
 def _activate(conn, *, rule_id, scope="raise_invoice", scope_form="action_class",
               kind="GATE_PRECONDITION", effect="DENY", clauses=None, owner="po", tenant=TENANT):
     m = _m12(conn, tenant=tenant)
-    m.propose(scope=scope, scope_form=scope_form, kind=kind, effect=effect,
+    m.propose(scope=_fq(scope_form, scope), kind=kind, effect=effect,
               source_instruction=f"instruction {rule_id}", authored_by=owner,
               clauses=clauses if clauses is not None else _pod_clauses(), rule_id=rule_id)
     m.compile(rule_id)
@@ -130,7 +148,7 @@ def _activate(conn, *, rule_id, scope="raise_invoice", scope_form="action_class"
 
 def _to_confirmed(conn, *, rule_id="r1", **kw):
     m = _m12(conn)
-    m.propose(scope=kw.get("scope", "raise_invoice"), scope_form=kw.get("scope_form", "action_class"),
+    m.propose(scope=_fq(kw.get("scope_form", "action_class"), kw.get("scope", "raise_invoice")),
               kind=kw.get("kind", "GATE_PRECONDITION"), effect=kw.get("effect", "DENY"),
               source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id=rule_id)
     m.compile(rule_id)
@@ -194,12 +212,8 @@ def test_the_eight_canonical_states_and_no_ninth():
     # DRAFT and APPROVED are M11 POLICY's states; PARSED/SUSPENDED/etc. are the brief's mapped names.
     for forbidden in ("DRAFT", "APPROVED", "PARSED", "INVALID", "SUSPENDED", "PENDING", "CANCELLED"):
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, "
-                "compiled_predicate, test_vectors, state, version, source_instruction, authored_by, "
-                "change_direction, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (TENANT, f"r-{forbidden}", 99, "s", "action_class", "CONSTRAINT", "{}", "[]",
-                 forbidden, 1, "i", "po", "narrow", "t", "t"))
+            _insert_rule(conn, rule_id=f"r-{forbidden}", rule_version=99, scope="action_class:s",
+                         state=forbidden)
         conn.rollback()
 
 
@@ -211,12 +225,7 @@ def test_the_four_canonical_kinds_and_no_fifth():
     assert len(RULE_KINDS) == 4
     _human(conn, "po")
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "rk", 1, "s", "action_class", "INVENTED_KIND", "{}", "[]", "PROPOSED", 1, "i", "po",
-             "narrow", "t", "t"))
+        _insert_rule(conn, rule_id="rk", rule_version=1, scope="action_class:s", kind="INVENTED_KIND")
     conn.rollback()
 
 
@@ -235,7 +244,7 @@ def test_ru_propose():
     conn = _conn()
     _human(conn, "po")
     m = _m12(conn)
-    r = m.propose(scope="raise_invoice", scope_form="action_class", kind="GATE_PRECONDITION", effect="DENY",
+    r = m.propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION", effect="DENY",
                   source_instruction="never bill without a POD", authored_by="po", clauses=_pod_clauses(),
                   rule_id="r1")
     assert r.to_state is RuleState.PROPOSED
@@ -251,7 +260,7 @@ def test_ru_compile_requires_modelled_non_inferred_fields():
     _human(conn, "po")
     m = _m12(conn)
     # a MODEL_INFERRED field fails to compile -> REJECTED
-    m.propose(scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION", effect="DENY",
+    m.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="DENY",
               source_instruction="require approval under 12% margin", authored_by="po",
               clauses=[{"field": "carrier_cost", "attr": "value", "op": "<", "literal": 100,
                         "provenance_class": "MODEL_INFERRED", "modelled": True}], rule_id="r1")
@@ -259,7 +268,7 @@ def test_ru_compile_requires_modelled_non_inferred_fields():
     assert res.to_state is RuleState.REJECTED
     assert "carrier_cost" in res.missing
     # a modelled, non-inferred field compiles -> COMPILED
-    m.propose(scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION", effect="DENY",
+    m.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="DENY",
               source_instruction="ok", authored_by="po",
               clauses=[{"field": "carrier_cost", "attr": "value", "op": "<", "literal": 100,
                         "provenance_class": "SYSTEM_IMPORTED", "modelled": True}], rule_id="r2")
@@ -271,7 +280,7 @@ def test_ru_uncompilable_reply_does_not_claim_enforcement():
     conn = _conn()
     _human(conn, "po")
     m = _m12(conn)
-    m.propose(scope="book_carrier", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+    m.propose(scope="action_class:book_carrier", kind="CONSTRAINT", effect="DENY",
               source_instruction="do not use Carrier X for produce", authored_by="po",
               clauses=[{"field": "commodity", "attr": "value", "op": "==", "literal": "produce",
                         "provenance_class": "SYSTEM_IMPORTED", "modelled": False}], rule_id="r1")
@@ -285,29 +294,31 @@ def test_ru_uncompilable_reply_does_not_claim_enforcement():
 
 def test_ru_conflict_fails_closed():
     """RU-3: two conflicting active rules fail closed into an M7 RULE_VS_RULE conflict; the rule stays
-    COMPILED, blocked; M12 mints no ConflictRaised of its own."""
+    COMPILED, blocked; M7 mints the conflict event (not M12); the field is frozen."""
     conn = _conn()
     _human(conn, "po")
     _activate(conn, rule_id="a", scope="pay_carrier", clauses=[
         {"field": "amount", "attr": "value", "op": "<", "literal": 100, **_MODELLED}])
     m = _m12(conn)
-    m.propose(scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION", effect="PERMIT",
+    m.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="PERMIT",
               source_instruction="b", authored_by="po",
               clauses=[{"field": "amount", "attr": "value", "op": ">", "literal": 50, **_MODELLED}],
               rule_id="b")
     m.compile("b")
+    # ### RU-3 CALLS M7 directly — M7 mints the conflict, M12 mints nothing, the field is frozen.
     res = m.detect_conflict("b", against_rule_id="a", owner_id="po")
     assert res.conflict is not None and res.conflict.kind == "RULE_VS_RULE"
     assert m.require("b").state is RuleState.COMPILED
-    # M12 emitted NO ConflictRaised
+    assert m.require("b").conflict_id == res.conflict.conflict_id
+    # the F7 event was minted on M7's `conflict` aggregate, NOT on the `rule` aggregate
+    assert conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
+                        "AND aggregate_type='conflict'").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM event_outbox WHERE event_name='ConflictRaised' "
                         "AND aggregate_type='rule'").fetchone()[0] == 0
-    # the caller drives M7, and it blocks the field
-    kw = res.conflict.as_m7_kwargs()
-    parties = [Party(**p) for p in kw.pop("parties")]
     m7 = M7Machine(conn, tenant=TENANT, clock=CLOCK)
-    m7.raise_conflict(parties=parties, **kw)
     assert m7.is_field_conflicting(res.conflict.entity_ref, res.conflict.field)
+    assert conn.execute("SELECT kind FROM conflicts WHERE conflict_id=?",
+                        (res.conflict.conflict_id,)).fetchone()["kind"] == "RULE_VS_RULE"
 
 
 def test_ru_confirm_shows_test_vectors():
@@ -316,7 +327,7 @@ def test_ru_confirm_shows_test_vectors():
     conn = _conn()
     _human(conn, "po")
     m = _m12(conn)
-    m.propose(scope="raise_invoice", scope_form="action_class", kind="GATE_PRECONDITION", effect="DENY",
+    m.propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION", effect="DENY",
               source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
     m.compile("r1")
     assert m.require("r1").test_vector_list, "a compiled rule ships with non-empty test vectors"
@@ -390,7 +401,7 @@ def test_ru_narrowing_expiry_needs_human():
     conn = _conn()
     _human(conn, "po")
     m = _m12(conn)
-    m.propose(scope="ship", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+    m.propose(scope="action_class:ship", kind="CONSTRAINT", effect="DENY",
               source_instruction="tighten", authored_by="po",
               clauses=[{"field": "x", "attr": "value", "op": "==", "literal": 1, **_MODELLED}],
               rule_id="r1", expires_at="2026-10-01T00:00:00Z")
@@ -399,17 +410,15 @@ def test_ru_narrowing_expiry_needs_human():
     m.activate("r1", activated_by="po")
     result = m.expire("r1", owner_id="po")
     assert m.require("r1").state is RuleState.EXPIRED
+    # ### RU-8 CALLS M9's landed raise_exception — the human-confirmation Exception is raised through the
+    # seam; M12 edits no part of M9 (no FK, no mirror column, no migration; exception.py byte-unchanged).
     assert result.escalation is not None and result.escalation.source_kind == "rule"
-    # M9 was NOT called by M12: no exception row was created by expire()
-    assert conn.execute("SELECT COUNT(*) FROM exceptions WHERE source_kind='rule'").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM exceptions WHERE source_kind='rule'").fetchone()[0] == 1
     # a broadening rule cannot carry an expiry (DB CHECK)
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, expires_at, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "rbroad", 99, "s", "action_class", "GATE_PRECONDITION", "{}", "[]", "PROPOSED", 1,
-             "i", "po", "2026-10-01T00:00:00Z", "broaden", "t", "t"))
+        _insert_rule(conn, rule_id="rbroad", rule_version=99, scope="action_class:s",
+                     kind="GATE_PRECONDITION", expires_at="2026-10-01T00:00:00Z",
+                     change_direction="broaden")
     conn.rollback()
 
 
@@ -483,7 +492,7 @@ def test_two_conflicting_rules_fail_closed():
     _activate(conn, rule_id="a", scope="pay_carrier",
               clauses=[{"field": "amount", "attr": "value", "op": "<", "literal": 100, **_MODELLED}])
     m = _m12(conn)
-    m.propose(scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION", effect="PERMIT",
+    m.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="PERMIT",
               source_instruction="b", authored_by="po",
               clauses=[{"field": "amount", "attr": "value", "op": ">", "literal": 50, **_MODELLED}],
               rule_id="b")
@@ -580,21 +589,13 @@ def test_active_requires_a_non_null_activated_by_fk_backed():
     _human(conn, "po")
     # ACTIVE with a null activator is refused by the CHECK
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, activated_by, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "rna", 1, "s", "action_class", "CONSTRAINT", "{}", "[]", "ACTIVE", 1, "i", "po", None,
-             "narrow", "t", "t"))
+        _insert_rule(conn, rule_id="rna", rule_version=1, scope="action_class:s", state="ACTIVE",
+                     activated_by=None)
     conn.rollback()
     # ACTIVE with a ghost (unrecorded) activator is refused by the FK
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, activated_by, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "rg", 1, "s", "action_class", "CONSTRAINT", "{}", "[]", "ACTIVE", 1, "i", "po", "ghost",
-             "narrow", "t", "t"))
+        _insert_rule(conn, rule_id="rg", rule_version=1, scope="action_class:s", state="ACTIVE",
+                     activated_by="ghost")
     conn.rollback()
 
 
@@ -603,20 +604,20 @@ def test_a_model_or_inbound_or_counterparty_cannot_author_a_rule():
     _human(conn, "po")
     m = _m12(conn)
     # a model MAY propose text (accepted)
-    m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+    m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
               source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="ok",
               actor_kind="model")
     assert m.require("ok").state is RuleState.PROPOSED
     # a counterparty / inbound / automation may NOT author
     for kind in ("counterparty", "inbound", "automation"):
         with pytest.raises(IllegalTransition):
-            m.propose(scope="s2", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+            m.propose(scope="action_class:s2", kind="CONSTRAINT", effect="DENY",
                       source_instruction="x", authored_by="po", clauses=_pod_clauses(),
                       rule_id=f"r-{kind}", actor_kind=kind)
     # an offboarded / cross-tenant human cannot author
     _human(conn, "ex", role="AUTHORIZED_HUMAN", state="OFFBOARDED")
     with pytest.raises(GuardNotSatisfied):
-        m.propose(scope="s3", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s3", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="ex", clauses=_pod_clauses(), rule_id="rex")
 
 
@@ -624,7 +625,7 @@ def test_a_model_cannot_confirm_a_rule():
     conn = _conn()
     _human(conn, "po")
     m = _m12(conn)
-    m.propose(scope="raise_invoice", scope_form="action_class", kind="GATE_PRECONDITION", effect="DENY",
+    m.propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION", effect="DENY",
               source_instruction="x", authored_by="po", clauses=_pod_clauses(), rule_id="r1")
     m.compile("r1")
     with pytest.raises(IllegalTransition):
@@ -647,12 +648,9 @@ def test_confirmation_without_test_vectors_is_refused():
     m = _m12(conn)
     # raw-insert a COMPILED rule that carries NO test vectors (the state the "test vectors omitted"
     # mutant produces) and confirm that RU-4 refuses it — the owner cannot approve what they cannot see.
-    conn.execute(
-        "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-        "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-        "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (TENANT, "r1", 1, "raise_invoice", "action_class", "GATE_PRECONDITION",
-         '{"status":"COMPILED","clauses":[]}', "[]", "COMPILED", 1, "x", "po", "narrow", "t", "t"))
+    _insert_rule(conn, rule_id="r1", rule_version=1, scope="action_class:raise_invoice",
+                 kind="GATE_PRECONDITION", compiled_predicate='{"status":"COMPILED","clauses":[]}',
+                 test_vectors="[]", state="COMPILED", source_instruction="x")
     conn.commit()
     with pytest.raises(GuardNotSatisfied):
         m.confirm("r1", confirmed_by="po")
@@ -690,12 +688,7 @@ def test_a_rule_version_is_never_reused_within_a_tenant():
     _human(conn, "po")
     _activate(conn, rule_id="r1")
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, change_direction, created_at, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "rdup", 1, "s2", "action_class", "CONSTRAINT", "{}", "[]", "PROPOSED", 1, "i", "po",
-             "narrow", "t", "t"))
+        _insert_rule(conn, rule_id="rdup", rule_version=1, scope="action_class:s2", state="PROPOSED")
     conn.rollback()
 
 
@@ -708,19 +701,16 @@ def test_one_active_rule_where_the_scope_admits_one_and_many_where_it_does_not()
     _activate(conn, rule_id="i1", scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY",
               effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}])
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO rules (tenant, rule_id, rule_version, scope, scope_form, kind, compiled_predicate, "
-            "test_vectors, state, version, source_instruction, authored_by, activated_by, change_direction, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (TENANT, "i2", 99, "carrier_invoice", "subject_type", "IDENTITY", "{}", "[]", "ACTIVE", 1, "i",
-             "po", "po", "narrow", "t", "t"))
+        _insert_rule(conn, rule_id="i2", rule_version=99, scope="subject_type:carrier_invoice",
+                     kind="IDENTITY", state="ACTIVE", activated_by="po")
     conn.rollback()
     # multi-admitting: two ACTIVE GATE_PRECONDITION rules on one action_class coexist
     _activate(conn, rule_id="g1", scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION",
               clauses=[{"field": "amount", "attr": "value", "op": "<", "literal": 100, **_MODELLED}])
     _activate(conn, rule_id="g2", scope="pay_carrier", scope_form="action_class", kind="GATE_PRECONDITION",
               clauses=[{"field": "amount", "attr": "value", "op": ">", "literal": 5, **_MODELLED}])
-    n = conn.execute("SELECT COUNT(*) FROM rules WHERE scope='pay_carrier' AND state='ACTIVE'").fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM rules WHERE scope='action_class:pay_carrier' "
+                     "AND state='ACTIVE'").fetchone()[0]
     assert n == 2, "a multi-admitting scope wrongly refused a second active rule"
 
 
@@ -741,7 +731,7 @@ def test_the_same_scope_and_kind_is_active_in_two_tenants_without_collision():
               effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}],
               tenant="T_B")
     for t in ("T_A", "T_B"):
-        n = conn.execute("SELECT COUNT(*) FROM rules WHERE tenant=? AND scope='carrier_invoice' "
+        n = conn.execute("SELECT COUNT(*) FROM rules WHERE tenant=? AND scope='subject_type:carrier_invoice' "
                          "AND state='ACTIVE'", (t,)).fetchone()[0]
         assert n == 1
 
@@ -752,7 +742,7 @@ def test_a_cross_tenant_activator_or_author_fails_closed():
     _human(conn, "clerk", role="AUTHORIZED_HUMAN", tenant="T_B")
     m = M12Machine(conn, tenant="T_A", clock=CLOCK)
     with pytest.raises(GuardNotSatisfied):
-        m.propose(scope="s", scope_form="action_class", kind="CONSTRAINT", effect="DENY",
+        m.propose(scope="action_class:s", kind="CONSTRAINT", effect="DENY",
                   source_instruction="x", authored_by="clerk", clauses=_pod_clauses(), rule_id="r1")
 
 
@@ -763,7 +753,7 @@ def test_concurrent_activation_yields_exactly_one_active_rule():
     _human(conn, "po")
     _activate(conn, rule_id="i1", scope="carrier_invoice", scope_form="subject_type", kind="IDENTITY",
               effect="BIND", clauses=[{"field": "pro", "attr": "value", "op": "==", "literal": "A", **_MODELLED}])
-    n = conn.execute("SELECT COUNT(*) FROM rules WHERE scope='carrier_invoice' AND kind='IDENTITY' "
+    n = conn.execute("SELECT COUNT(*) FROM rules WHERE scope='subject_type:carrier_invoice' AND kind='IDENTITY' "
                      "AND state='ACTIVE'").fetchone()[0]
     assert n == 1
 
@@ -902,7 +892,7 @@ def test_m12_is_not_a_gate_runtime_carrier_and_the_boundary_is_unchanged():
 
 
 def test_a_rule_never_overrides_a_higher_layer():
-    assert PRECEDENCE_LADDER[PRECEDENCE_LAYER - 1] == "STANDING_RULE"
+    assert PRECEDENCE_LADDER[PRECEDENCE_LAYER - 1] == "STANDING RULE"
     # layers 1..5 (Constraint, Permanent Truth, Brake, Product Policy, Tenant Policy) are above a rule
     for layer in range(1, PRECEDENCE_LAYER):
         with pytest.raises(IllegalTransition):
@@ -923,27 +913,37 @@ def test_the_rule_engine_fails_closed_no_allow_on_error():
         evaluate_rule(compiled, bad, rule_id="r1")
 
 
-def test_m12_builds_no_second_conflict_system_and_no_rules_conflict_table():
+def test_m12_calls_m7_but_builds_no_second_conflict_system():
+    """### M12 CALLS M7's landed conflict entry point (imports M7Machine) but builds NO SECOND conflict
+    system — no `rule_conflicts` table, no conflict MACHINE of its own, no conflict-kind vocabulary, no
+    direct `conflicts` write. M7 mints; M12 does not."""
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "rule_conflicts" not in tables, "M12 must not create a second conflict table"
-    # rule.py defines no conflict MACHINE and does not import the conflict machine module
-    tree = ast.parse(RULE_SRC)
-    for node in ast.walk(tree):
+    for node in ast.walk(ast.parse(RULE_SRC)):
         if isinstance(node, ast.ClassDef):
-            assert "conflictmachine" not in node.name.lower().replace("_", ""), (
+            low = node.name.lower().replace("_", "")
+            assert not ("conflict" in low and "machine" in low), (
                 f"rule.py defines a conflict machine: {node.name}")
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[-1] == "conflict":
-            pytest.fail("rule.py imports the conflict machine — M7 must keep zero importers")
+    # M12 imports the LANDED M7 machine (it CALLS it) but neither redefines its vocabulary nor writes
+    # the conflicts table directly.
+    assert "M7Machine" in RULE_SRC, "M12 must call M7's landed raise entry point"
+    assert "CONFLICT_KINDS =" not in RULE_SRC, "M12 must not redefine M7's conflict-kind vocabulary"
+    assert "insert into conflicts" not in RULE_SRC.lower(), "M12 must not write the conflicts table directly"
 
 
-def test_rule_py_does_not_import_the_exception_or_policy_or_brake_machines():
+def test_rule_py_calls_m7_m9_but_does_not_import_policy_or_brake():
+    """M12 imports the M7 conflict and M9 exception machines (it CALLS their landed entry points), but
+    NEVER imports the policy machine (it declares its precedence layer and defers the ceiling comparison)
+    nor the brake (it engages/narrows none)."""
     tree = ast.parse(RULE_SRC)
-    banned = {"exception", "policy", "brake"}
+    imported = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
-            last = node.module.split(".")[-1]
-            assert last not in banned, f"rule.py imports {last} — that machine must keep zero importers"
+            imported.add(node.module.split(".")[-1])
+    assert "conflict" in imported and "exception" in imported, "M12 CALLS M7 and M9 by import"
+    assert "policy" not in imported, "M12 must not import the policy machine (it defers to it)"
+    assert "brake" not in imported, "M12 must not import the brake (it engages/narrows none)"
 
 
 def test_m12_ships_dark_no_production_importer():
