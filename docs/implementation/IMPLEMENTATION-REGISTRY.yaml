@@ -2773,6 +2773,35 @@ units:
     # NOW. It is KEPT, not deleted, so the old phrasing stays recognisable if it returns (CLAUDE.md
     # sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE INSTRUCTION, so it is
     # CORRECTED HERE rather than left to send a fresh session to rebuild something landed.
+    # ### AS OF THE `P6-CP-12` LANDING: M12 LANDED as `P6-CP-12`. The phase still owes M13 and 5 of the
+    # 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 + 7 + 9 = 129 written, re-derived
+    # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
+    # the parse DISCOVERED 13 files and counted 134 rows, and no prior figure was carried; the 5
+    # remaining are exactly M13's BR-1..BR-5). M12 ships dark with ZERO production importers,
+    # `criteria_scored` is empty on ALL TWELVE checkpoints, no P6 weighted criterion is scored, P6 has
+    # NOT reached phase acceptance and P7 is NOT unlocked. ### M13 - THE BRAKE - IS THE NEXT
+    # CHECKPOINT, and M13 is NOT BUILT: `brake_lifecycle.py` and `phase6_brakes.py` are ABSENT from
+    # the tree, verified at this landing (`brake.py` is P3's landed kernel brake, not M13).
+    # ### THE SENTENCE "M12 - THE RULE - IS THE NEXT CHECKPOINT" BELOW, AND THE CLAIM THAT `rule.py`
+    # AND `phase6_rules.py` ARE ABSENT FROM THE TREE, WERE TRUE AT THE `P6-CP-11` LANDING AND ARE
+    # FALSE NOW. They are KEPT inside that landing's own note, which records what was true then, and
+    # are CORRECTED HERE rather than deleted (CLAUDE.md sec 5 rule 20) - a stale next-checkpoint line
+    # is an ACTIVE FALSE INSTRUCTION that sends a fresh session to build something that exists.
+    # ### THE `P6-CP-12` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing
+    # over the already-verified, already-reviewed tree 99831ae: three documents change and NOTHING
+    # under `src/`, `eval/`, `scripts/`, `migrations/` or `.github/` is touched.
+    # ### AND UNLIKE `P6-CP-11`, THE REVIEW IS *NOT* BOUND TO THE LANDING CANDIDATE - THE `P6-D68`
+    # CLASS RECURS, AND IS BOUNDED BY A TREE HASH RATHER THAN BY A PROMISE. The reviewed content is
+    # 019a43d (the reviewer's declared HEAD 54193f7 plus seven modified files, whose recorded
+    # diffstat is byte-identical to `git diff --stat 54193f7 019a43d`); the candidate is 99831ae, a
+    # post-push CI correction. The `src/` tree is BYTE-IDENTICAL at both -
+    # a6fa4d8d27b73606b6e2a0217ccad83ada3a804a - so THE REVIEWED M12 RUNTIME IS THE LANDED M12
+    # RUNTIME, and the correction touched only `eval/` and `scripts/`. Recorded as `P6-D87`.
+    # ### `P6-D4` NAMES `closes_at: M12` AND M12 DOES NOT CLOSE IT. The `rules` table exists, but
+    # `work_item.py` is byte-unchanged across the entire M12 range, so K-1's RULE branch still
+    # refuses. M12 deliberately did not retro-wire M1, on the landed M10/M11 precedent. `P6-D71` and
+    # `P6-D73` are NOT closed either and stay open unchanged; `P6-D71`'s expected closure at M12 did
+    # not occur and is recorded as `P6-D83`.
     # ### AS OF THE `P6-CP-11` LANDING: M11 LANDED as `P6-CP-11`. The phase still owes M12-M13 and 14 of
     # the 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 + 7 = 120 written, re-derived
     # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
@@ -5680,6 +5709,305 @@ units:
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
           PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
+      - id: P6-CP-12
+        name: The Rule - a human instruction either compiles into a registered, versioned, enforceable rule with an id, or is honestly refused as unenforceable; there is no third outcome
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        build_commit: 54193f75ee838cdd567efb5a29c9e4630754934c
+        reviewed_commit: 54193f75ee838cdd567efb5a29c9e4630754934c
+        reviewed_tree: 64a6f934f83153440ad6224cc0e2f8f37fad73cb
+        reviewed_worktree_note: >-
+          ### THE REVIEWER OPERATED A DIRTY TREE, AND THAT IS RECORDED RATHER THAN ROUNDED TO A
+          COMMIT. Its declared fingerprint is HEAD 54193f7 / tree 64a6f934 PLUS SEVEN MODIFIED FILES,
+          ZERO UNTRACKED - the content committed moments later as 019a43d. Established rather than
+          assumed: the run's own recorded `git-diff-stat.txt` for those seven files is BYTE-IDENTICAL
+          to `git diff --stat 54193f7 019a43d`, compared mechanically at this landing.
+        reviewed_content_commit: 019a43d6f21625dae3fc3c8e7c8433866eb44a50
+        reviewed_content_tree: 345a6152fded81bc7c4b2e0c7653cbdedd1a8c4c
+        candidate_commit: 99831ae0dfcbb8e4606294443fb4a5ce8f451ddd
+        candidate_tree: 1a271c63aa4c0133da2d518d54bd7de17adb3db5
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M12 of the thirteen - one `rules` row, EIGHT canonical states (PROPOSED, COMPILED,
+          CONFIRMED, ACTIVE, REJECTED, SUPERSEDED, REVOKED, EXPIRED), one machine, NINE transitions
+          (`RU-1`, `RU-2`, `RU-2f`, `RU-3`, `RU-4`, `RU-5`, `RU-6`, `RU-7`, `RU-8` - an exact set
+          match with sec 14 of the machine specification), the EIGHT already-registered F12 contracts
+          and no ninth, and the `CHECK (state <> 'ACTIVE' OR activated_by IS NOT NULL)` reinforced by
+          a composite `FOREIGN KEY (tenant, activated_by) -> tenant_humans` that makes AN ENFORCED
+          RULE ALWAYS TRACEABLE TO THE HUMAN WHO SWITCHED IT ON something the database enforces.
+          ### AN OWNER'S SENTENCE EITHER COMPILES INTO A RULE WITH AN ID, OR IS HONESTLY REFUSED -
+          THERE IS NO THIRD OUTCOME. "Never bill without a POD" compiles DETERMINISTICALLY into a
+          real GATE_PRECONDITION over modelled, non-inferred evidence fields, ships GENERATED TEST
+          VECTORS THE OWNER SEES BEFORE CONFIRMING, is activated by an authenticated human, and then
+          DENIES on a MODEL_INFERRED POD. "Do not use Carrier X for produce" is REFUSED in the
+          owner's own language - "I can't enforce that. I don't track commodity, so this is NOT a
+          rule and it will NOT stop me on its own..." - naming the missing field, retaining the
+          sentence and enforcing nothing.
+          ### THE FAILURE MODE HERE IS A SENTENCE, NOT A STATE. A machine that gets every column
+          right and still replies "Noted the procedure" has failed completely, and every structural
+          test in the repository would be green while it did. So `assert_reply_is_honest` is asserted
+          ON LITERAL REPLY TEXT and was exercised IN BOTH DIRECTIONS: the claiming sentence is
+          refused with no ACTIVE rule id and ACCEPTED with a real one. A guard that only ever refuses
+          is a guard nobody has watched pass.
+          ### THE MODEL PROPOSES TEXT; IT NEVER COMPILES, ACTIVATES, EVALUATES OR RESOLVES. A
+          predicate touching a MODEL_INFERRED field FAILS TO COMPILE AT CONFIDENCE 1.0, and
+          `confidence` is STRUCTURALLY ABSENT from `CompilerInput` - there is no number a caller
+          could raise. An unmodelled field, an undecidable predicate and an unresolvable scope are
+          each refused. `evaluate_rule` fails closed with NO ALLOW-ON-ERROR PATH, and a mutant that
+          adds one is caught. Activation attempts by a MODEL, AUTOMATION, A TIMER, A RETRY HANDLER
+          and A COUNTERPARTY are each refused AND RECORDED as the already-registered F14
+          `UnauthorizedPolicyActivationAttempted` - M12 mints no second contract for that.
+          ### GENUINE CONFLICTS FAIL CLOSED AND NOTHING AUTO-MERGES. Two conflicting rules fail
+          closed into M7's LANDED `raise_conflict` (RULE_VS_RULE), which M12 CALLS rather than
+          reimplements: it mints no F7, no F9 and no second F14 contract of its own.
+          ### HISTORICAL VERSIONS ARE RETAINED AND VERSIONS ARE TENANT-MONOTONIC. A DELETE against a
+          rule row is refused outright; `UNIQUE (tenant, rule_version)` makes the version monotonic
+          per tenant; and `UNIQUE (tenant, scope, kind) WHERE state = 'ACTIVE'` gives ONE ACTIVE RULE
+          PER SINGLE-ADMITTING SCOPE, PER BROKERAGE - proven IN BOTH DIRECTIONS, refusing the second
+          ACTIVE rule while ACCEPTING the same scope and kind in another tenant and multiple rules in
+          a multi-admitting scope.
+        what_is_in_the_tree: >-
+          Two new production files and two wiring edits, and NOTHING ELSE under `src/` across the
+          whole range 974787b..99831ae - measured by `git diff --stat`, not asserted:
+          `src/freight_recon/rule.py` (the M12 machine, nine transitions, the typed confidence-free
+          compiler, the literal-reply L-C guard, precedence layer 6, and the M7/M9 calls);
+          `src/freight_recon/migrations/phase6_rules.py` (the tenant-first `rules` table, eight
+          states, four kinds, the single-admitting partial unique index, the tenant-monotonic version
+          index, and the identity / compiled-frozen / no-delete triggers); plus `schema.py` (+33/-3,
+          canonical build, readiness and partition) and `migrations/phase2_tenant_first.py` (+10, the
+          M12 step of the legacy migration walk). Tests, probe and mutation battery:
+          `eval/tests/test_phase6_rule.py` (61 tests), `scripts/probe_phase6_rule.py`,
+          `scripts/mutate_phase6_rule.py` (35 mutants).
+          ### NO M1-M11 MACHINE MODULE APPEARS IN THAT LIST. `work_item.py`, `pipeline_instance.py`,
+          `external_effect.py`, `approval.py`, `observation.py`, `identity_binding_claim.py`,
+          `conflict.py`, `expectation.py`, `exception.py`, `compensation.py`, `policy.py`,
+          `checkpoint.py`, `brake.py` and `migrations/phase6_exceptions.py` are byte-unchanged.
+          ### AND `eval/phase0/gate_scan.py` WAS DELIBERATELY NOT TOUCHED. Unlike M11, M12 WIDENS NO
+          SAFETY GUARD: it carries no gate vocabulary in executable code, so `GATE_RUNTIME_MODULES`
+          needed no new member. The gate-minter allowlist is unchanged.
+          ### THE LOAD-BEARING DDL WAS INTROSPECTED LIVE AT THIS LANDING, NOT READ, on a fresh
+          canonical database built the way production builds one (`schema_readiness_problems`
+          returned NONE): PRIMARY KEY ['tenant','rule_id'], 20 columns, 5 indexes OF WHICH 5 LEAD
+          WITH `tenant`, exactly EIGHT state literals and no ninth, exactly FOUR kind literals and no
+          fifth, and 8 foreign-key half-columns EVERY ONE OF WHICH CARRIES THE TENANT - into
+          `tenant_humans` for the author and the authenticated activator, a self-FK for supersession,
+          and into `conflicts` for the M7 RULE_VS_RULE conflict a COMPILED rule is blocked on. A
+          cross-tenant author, activator, supersession or conflict CANNOT BE SPELLED.
+        implementer_evidence: >-
+          Builder session 2d159710 at 54193f7, corrected at 019a43d after Product Driver rejected the
+          first iteration. On the committed candidate tree: `test_phase6_rule.py` 61 passed;
+          `probe_phase6_rule.py --all` exit 0, "behaviours as specified, 0 wrong"; the mutation
+          battery 35 CAUGHT, 0 ESCAPED with the anti-vacuity control GREEN.
+          ### THE MUTATION BATTERY'S OWN FALSE GREEN IS RECORDED RATHER THAN QUIETLY FIXED. An
+          earlier iteration reported escapes. The cause was self-inflicted: a foreground SIGKILL at a
+          120-second timeout stranded two interrupted mutants inside `rule.py`, so every subsequent
+          count was measured against a poisoned tree. They were SURGICALLY RESTORED TO THEIR HEAD
+          TEXT - never by `git checkout`, `git restore`, `git stash` or `git clean`, which CLAUDE.md
+          sec 6 forbids - and a sec-6-aligned `assert_pristine()` PRE-FLIGHT GUARD was added, so
+          stranded residue is now REFUSED AND REPORTED rather than silently miscounted. The harness
+          saves and restores in memory and purges `__pycache__`.
+          ### THE POST-PUSH CORRECTION 99831ae CHANGED NO RUNTIME AT ALL. Three files
+          (`eval/tests/test_bootstrap_hermeticity.py`, `eval/tests/test_phase3_schema.py`,
+          `scripts/probe_phase6_rule.py`), and the `src/` tree hash is IDENTICAL either side of it -
+          a6fa4d8d27b73606b6e2a0217ccad83ada3a804a at 019a43d AND at 99831ae. `.github/` is
+          byte-identical (41f76934b715f253da6e7f6a261c351186a7447b) across the ENTIRE range
+          974787b..99831ae, so the CI workflow was not weakened.
+          ### THAT CORRECTION FIXED TWO REAL DEFECTS AND ADDED A PERMANENT GUARD. (1)
+          `probe_phase6_rule.py` wrote two regexes INLINE INSIDE F-STRING EXPRESSION PARTS, which PEP
+          701 legalised only in 3.12 while pyproject declares the floor at 3.11 - so on the floor
+          interpreter the whole probe was a SyntaxError, and NINE discovery-based phase-0 guards
+          failed closed because a file in their population would not parse. THE GUARDS WERE RIGHT;
+          THE FILE WAS WRONG. (2) The migration walk still stopped at M11, so a P2-shaped database
+          walked forward could not construct a WorkflowStore once `rules` existed - REAL ON BOTH
+          INTERPRETERS, and it would have reddened the py3.12 leg too. (3) A permanent repository
+          guard now parses every `.py` the repository ships against the declared floor, scanning
+          f-string expression parts on newer interpreters for exactly what 3.12 relaxed - SAME
+          INVARIANT EITHER WAY, NEVER A WEAKER RULE ON 3.11. Mutation proof accompanies it: the
+          reintroduced mutant is a SyntaxError on 3.11 and parses clean on 3.12 (which is why it
+          escaped review), the new guard fails on BOTH, and the nine phase-0 guards fail again -
+          observed exactly 9. Three mutants against the migration walk were caught 3/3.
+          ### LOCAL VALIDATION ON THE FINAL TREE, WITH ITS NUANCE PRESERVED. On CPython 3.11.16 AND
+          3.12.14, dependencies installed fresh from pyproject on each: the exact nine 9 passed on
+          both; the six CI never reached 6 passed on both; `test_phase6_rule.py` 61 passed;
+          `probe --all` exit 0; the mutation battery 35/35 caught; the targeted
+          M7/M9/M11/checkpoint/phase-0/migration/replay batteries 668 passed, 1 skipped on both; and
+          the full `pytest eval` 3264 passed, 1 skipped on both.
+          ### THE REMAINING LOCAL FAILURES ARE NOT PRODUCT PASSES AND ARE NOT PRESENTED AS ANY KIND
+          OF PASS. Twenty tests failed locally on both interpreters, every one of them the sandbox
+          refusing `socket.bind` on 127.0.0.1 (20 FAILED ids, 20 bind sites, PermissionError the only
+          exception type in the section). THEY WERE NOT GITHUB CI FAILURES - py3.12 in CI ran the
+          full 3284 - and this landing does not pretend they were product passes. The landing session
+          independently re-ran `test_phase6_rule.py` (61 passed) and `probe --all` (exit 0) on the
+          committed candidate tree under CPython 3.14.4, a third interpreter, and that too is
+          recorded as a local result and never as a CI one.
+        independent_review_report: docs/implementation/p6-cp12-independent-review-report-019a43d.md
+        independent_review_note: >-
+          SUPPORTED, confidence 0.90, findings [], adjudications [], 8/8 criteria PASS,
+          `blocked_on.kind: NONE`, by reviewer session 22551bfc with `inherited_builder_context:
+          false` against builder session 2d159710. `evidence_reproduced: true` and
+          `claimed_evidence_reproduced: true`.
+          ### THE REVIEWER EXECUTED THE PRODUCT RATHER THAN ONLY READING IT. All EIGHT of its
+          declared commands ran: `git rev-parse`; `git status --porcelain=v1` BEFORE AND AFTER the
+          mutation battery (7 modified, 0 untracked, both times - no stranded mutant residue);
+          `pytest test_phase6_rule.py` (61 passed); `pytest test_phase6_conflict.py
+          test_phase6_exception.py` (107 passed); `probe_phase6_rule.py --all` ("behaviours as
+          specified, 0 wrong"); `mutate_phase6_rule.py` (35/35 caught, 0 escaped, anti-vacuity
+          GREEN, explicitly catching allow-on-rule-error, a self-minted gate decision and
+          replay-mints-authority); and two AST scans for production importers of `conflict` and
+          `exception`, each returning ['src/freight_recon/rule.py'].
+          ### THE HARNESS DID REFUSE THREE COMMANDS, AND THAT IS RECORDED RATHER THAN OMITTED. Of 18
+          attempted commands, 15 were allowed and 3 refused - two at the `vocabulary` layer, one at
+          the `composition` layer. UNLIKE P6-CP-11, THIS IS NOT A LANDING WITH NO HARNESS REFUSAL AT
+          ANY LAYER. What survives: every one of the eight DECLARED review commands ran, and
+          `blocked_on.kind` is NONE with the reviewer's own note that the read-only boundary was
+          sufficient; the three refusals were re-spellings of commands that then ran.
+          ### CRITERION 8 IS THE ONE A BUSY REVIEWER SKIPS, AND IT IS WHY THIS REVIEW WAS REQUIRED.
+          M12's build edited the M7 and M9 NEIGHBOUR GUARD FILES. The reviewer judged those edits
+          specifically and concluded they are legitimate rule-20 adaptations - adding `rule.py` to
+          the dark-importer exclusion because it legitimately calls those entry points and itself
+          ships dark - and NOT guard weakening. The corroborating measurement is that the exclusion
+          is NARROW AND TRUE: the same AST scan at this landing returns ['src/freight_recon/rule.py']
+          and nothing else for each of `conflict` and `exception`.
+          ### THE REVIEW IS BOUND TO 019a43d, NOT TO THE LANDING CANDIDATE 99831ae, AND THAT IS
+          STATED RATHER THAN GLOSSED. This is the P6-D68 class and it recurs (P6-D87). What bounds
+          it, by tree hash rather than by promise: the `src/` tree is BYTE-IDENTICAL at 019a43d and
+          99831ae, so THE REVIEWED M12 RUNTIME IS THE LANDED M12 RUNTIME; the post-push correction
+          touched only `eval/` and `scripts/`. NO INDEPENDENT REVIEWER SAW 99831ae.
+          ### PRODUCT DRIVER, run 20260904-220427, iteration 2, accepted: decision ACCEPT (confidence
+          0.86, problems []), `task_result: VERIFIED`, `task_outstanding: []`,
+          `parent_phase_accepted: false`; completion audit VERIFIED (confidence 0.85,
+          `implementation_present: true`, `contradictions: []`, `missing_evidence: []`); 11 of 11
+          required scenarios present and passed; 15 scenarios executed (1 permanent + 14 generated),
+          15 PASSED, 0 failed, 0 blocked, 0 skipped; 1037 assertions, 0 failed; `assembly_problems:
+          []`; `uncovered_risks: []`; across authorization, boundary, conflicting_evidence,
+          happy_path, regression, safety_invariant, service_unavailable and
+          unexpected_state_transition.
+          ### THE RUN FORCED A REAL PRODUCT CORRECTION, AND THAT IS THE PART WORTH KEEPING. At
+          54193f7 M12 NAMED the M7 and M9 seams and LEFT THEM UNWIRED - the build commit says so in
+          its own words. The accepted correction 019a43d WIRED them: `rule.py` imports `M7Machine` /
+          `Party` and `M9Machine`, and two conflicting rules now fail closed into M7's landed
+          `raise_conflict` rather than auto-merging. The specification asked for that behaviour; the
+          build had left it as an intention.
+          ### THE EVENT CONTRACTS, MEASURED: 118 REGISTERED CONTRACTS - THE IDENTICAL TOTAL RECORDED
+          AT THE P6-CP-11 LANDING. M12 MINTED NO EVENT CONTRACT AT ALL, which is the strongest form
+          of rule-17 compliance available: the eight F12 contracts it emits were already registered,
+          and `rule.py`'s `PRODUCED_CONTRACTS` is EXACTLY those eight and nothing else.
+          `PolicyOverridden` is STILL NOT REGISTERED, verified against all 118.
+          ### AND M12 IS AN INPUT TO THE CHECKPOINT AND NEVER A SECOND GATE. Measured by AST across
+          125 production modules at this landing: `modules that MINT a gate decision:
+          ['checkpoint.py']`, and the SOLE GateEntry/GateRegistry construction anywhere in the
+          package is the kernel's own `GateRegistry._DEFAULT` fallback at checkpoint.py:242. The
+          production GateRegistry population stays EMPTY until U8.1/P8.
+          ### THE TRANSITION ARITHMETIC WAS RE-DERIVED, NOT CARRIED. Section 14 of ALL THIRTEEN
+          machine files was parsed and its rows counted: the parse DISCOVERED 13 files and counted
+          134 rows, matching this unit's own `expected_production_outputs`. M12's nine are an exact
+          set match between `rule.py`'s TRANSITIONS_BY_ID and the specification. 129 of 134 are
+          written and landed; the 5 remaining are exactly M13's BR-1..BR-5.
+          ### SHIP-DARK, WITH ITS DENOMINATOR AND ITS POSITIVE CONTROLS. `production importers of
+          rule: []` is a negative assertion, and a negative assertion over an unproven population
+          proves nothing (CLAUDE.md sec 6). The same scanner over the same 125 discovered modules
+          returns 9 importers of `checkpoint` and 6 of `commit_key`. A first version of the scan
+          matched on the LAST DOTTED SEGMENT and reported `imap_mailbox.py` and `inbox_discovery.py`
+          as importers of `policy`; both are `from email.policy import default`. THAT FALSE POSITIVE
+          IS RECORDED RATHER THAN QUIETLY CORRECTED, because a scanner that cannot tell
+          `freight_recon.policy` from `email.policy` can miss a real ship-dark breach as easily as
+          invent one.
+        ci_note: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THIS COMMIT, AND NO DOCUMENT IN THIS REPOSITORY SAYS
+          IT DID. Two runs matter and they are kept apart.
+          ### RUN 33942518450, ON THE FIRST PUSHED CANDIDATE 019a43d, FOUND NINE REAL FAILURES. It
+          printed nine pytest failure markers on Python 3.11 at ~43% - FFFF.FF.F........F..........F.
+          THEY WERE NOT IGNORED AND NOT WAITED OUT: they were reproduced mechanically, diagnosed to
+          one f-string/PEP-701 defect in the M12 PROBE (not in M12 runtime), corrected, and
+          regression-protected by a permanent repository guard. A second, deeper defect that CI never
+          printed - the migration walk stopping at M11 - was found in the same pass and was REAL ON
+          BOTH INTERPRETERS.
+          ### RUN 33948926997, ON THE LANDING CANDIDATE 99831ae, CONCLUDED `cancelled`. Job
+          conclusions: `Full test suite (py3.12)` SUCCESS - 3284 passed, 1 skipped, 100% REACHED;
+          `P6/M3 effect-grant probe + mutation` SUCCESS; `Full test suite (py3.11)` CANCELLED at the
+          ~60-minute job ceiling having reached 52% with ZERO pytest failure markers;
+          `Safety invariants (fast)` CANCELLED at its own ~30-minute ceiling with no failure marker
+          observed; `Risk radar` skipped as pull-request-only. `cancelled` IS NOT `success`.
+          ### BUT A FULL SUITE COMPLETED AND M12'S OWN TESTS RAN IN IT - MEASURED, NOT ASSUMED.
+          `pytest eval --collect-only` collects 3285 tests on this tree, matching py3.12's 3284+1
+          EXACTLY, and `eval/tests/test_phase6_rule.py` occupies positions 2678-2738 (81.5%-83.3%),
+          61 tests. py3.12 reached 100%, SO ALL 61 RAN AND PASSED. That is more than P6-CP-11 could
+          say and more than P6-CP-7 could say.
+          ### AND THE PY3.11 LEG RE-EXECUTED THE EXACT FAILURE REGION CLEANLY. The nine failures sat
+          at ~43%; measured on this tree that region is precisely `test_phase0_adapter_imports.py`
+          (43.0%-43.3%), `test_phase0_baseline_manifest.py` (43.3%-43.7%) and
+          `test_phase0_entry_points.py` (43.9%-44.0%) - the three families the correction names. The
+          py3.11 leg reached 52%, ran past all of them, and emitted DOTS.
+          ### THE CANCELLED SAFETY JOB IS MITIGATED, AND THE MITIGATION IS MEASURED. That job names
+          26 files, DISCOVERED from the workflow rather than enumerated; all 26 are inside
+          `pytest eval` - 621 tests, the last at 99.6% of the run - so the completed py3.12 suite ran
+          every one of them to completion. `test_phase0_null_gate.py` (45.6%-45.8%), which carries
+          the sole-gate-minter guard, and `test_phase0_tenant_posture.py` (46.1%-46.4%), where a new
+          canonical table failing to declare itself turns red, ALSO ran on the py3.11 leg, being well
+          inside its 52%.
+          ### WHAT HAS NO PY3.11 CI RESULT, STATED PLAINLY. `test_phase3_schema.py` - which carries
+          the corrected M12 migration walk - sits at 55.9%-56.2%, PAST the cancellation, and
+          `test_phase6_rule.py` at 81.5%-83.3%. NEITHER EXECUTED ON PY3.11 IN CI ON THIS COMMIT:
+          not failing, not passing - NO EXECUTION. Both passed on py3.12 in CI, and both were run
+          locally on CPython 3.11.16 and 3.12.14. The new floor guard sits at 4.0%-5.6% and therefore
+          DID execute on both legs.
+          ### CI RUNS NO M12 PROBE OR MUTATION JOB. Verified mechanically: the count of `phase6_rule`
+          occurrences in `.github/workflows/ci.yml` is ZERO. Unlike P6-CP-11, the mitigating sentence
+          IS available here, because M12's 61 tests are inside `pytest eval` and that job completed
+          on py3.12. The 35-mutant battery and the probe remain uncovered by CI and were re-executed
+          locally.
+          ### THE JOB CONCLUSIONS WERE FOUNDER-SUPPLIED AND COULD NOT BE RE-READ AT THIS LANDING.
+          `gh run view 33948926997` fails from this sandbox with
+          `tls: failed to verify certificate: x509: OSStatus -26276`, the identical failure recorded
+          at every landing since P6-CP-5, reproduced at this one. The founder chose to land on the
+          evidence that exists, treating both cancellations as non-product CI runtime limitations;
+          THAT IS RECORDED AS A DECISION, NOT AS A VERIFICATION (P6-D87), and it closes only by a CI
+          run on this branch that concludes SUCCESS.
+        nonblocking_residuals: >-
+          Seven rows - P6-D82, P6-D83, P6-D84, P6-D85, P6-D86, P6-D87, P6-D88 - recorded below in
+          `residual_risks_carried_forward`. NONE IS A REVIEWER FINDING; the focused independent
+          review returned `findings: []` and `adjudications: []`. Each was identified AT THIS LANDING
+          from the run's own structured evidence, the M12 source, the specification corpus and the CI
+          record.
+          ### ONE CARRIED RESIDUAL NAMES `closes_at: M12` AND M12 DOES NOT CLOSE IT - STATED RATHER
+          THAN LET PASS. P6-D4 (K-1's RULE referent cannot resolve because there is no `rules` table
+          until M12) stays OPEN. The table now exists, but `work_item.py` is BYTE-UNCHANGED across
+          the entire M12 range - `git log 974787b..99831ae -- src/freight_recon/work_item.py` is
+          empty - so `resolve_decision_ref(kind="RULE", ...)` still refuses. M12 DELIBERATELY DID NOT
+          RETRO-WIRE M1, on the landed M10/M11 precedent for `compensation` and `policy`; retro-wiring
+          a tier-1 M1 runtime file is a separate change with its own review, not a side effect of
+          landing M12. Its `closes_at` marker is left unchanged, on the P6-D1 / P6-D2 precedent. What
+          IS now wrong is the refusal's stated REASON, and that is P6-D82.
+          ### TWO CARRIED RESIDUALS THAT M12 DOES NOT CLOSE EITHER. P6-D71 (PolicyOverridden) stays
+          OPEN / BLOCKED_AUTHORITY - verified absent from the 118 registered contracts, and M12 builds
+          NO override mechanism at all, not as an event, a field or a code path. The P6-CP-11 record
+          says minting it "is a founder/architect act that lands with M12/Rule"; IT DID NOT LAND, and
+          no ninth F12 event was registered or may be minted here (P6-D83). P6-D73 (M9's
+          `exceptions.source_kind = 'policy'` with no FK) stays OPEN, and M12 reproduces its shape for
+          'rule': SOURCE_KINDS_WITHOUT_TABLE still contains both and `phase6_exceptions.py` is
+          byte-unchanged across the entire M12 range (P6-D84).
+          ### P6-D40 IS CARRIED FORWARD UNCHANGED AND WAS NOT RE-VERIFIED AT THIS LANDING. No mutation
+          battery was run against the status guards here and none is claimed.
+        what_it_owed: >-
+          M12 is TIER-1 under CLAUDE.md sec 7 for three reasons: it lands a migration, it is
+          load-bearing for tenant isolation, and it decides whether an action is allowed inside the
+          checkpoint. So it owes builder evidence, ONE focused independent review by someone who did
+          not write it, mutation proof that the guard can fail, and CI. THE FIRST THREE ARE
+          DISCHARGED; the fourth is NOT, and P6-D87 records that rather than asserting it.
+          ### UNLIKE M11, NO SAFETY GUARD WAS WIDENED, SO NO WIDENING PRICE WAS OWED.
+          `eval/phase0/gate_scan.py` is byte-unchanged and `GATE_RUNTIME_MODULES` gained no member.
+          ### LANDED IS NOT ENABLED, AND IMPLEMENTED + VERIFIED + LANDED IS NOT PRODUCTION.
+          `criteria_scored` is EMPTY below and stays empty on ALL TWELVE checkpoints; no P6 weighted
+          criterion is scored; P6 stays `status: READY` / `execution_state: IN_PROGRESS` AND DOES NOT
+          MOVE; P7 stays BLOCKED / NOT_STARTED; the phase still owes M13 and 5 of the 134 transitions;
+          and NOTHING IS ENABLED IN PRODUCTION. M12 ships dark with ZERO production importers, mints
+          no gate decision, engages no brake, joins no channel, and builds NO rule editor, importer,
+          admin screen, console or dashboard of any kind. Nothing graduates: V11 and V12 stay OPEN at
+          their fail-closed defaults.
+          ### M13 IS NOT BUILT AND NOT LANDED. `brake_lifecycle.py` and `phase6_brakes.py` are ABSENT
+          from the tree, verified at this landing (`brake.py` is P3's landed kernel brake, not M13).
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -6391,6 +6719,172 @@ units:
           that a landing happened.
         severity: LOW - nonblocking
         closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+      # ### THE SEVEN ROWS BELOW ARE THE P6/M12 LANDING RESIDUALS (`P6-CP-12`). None is a reviewer
+      # finding - the focused independent review returned `findings: []` and `adjudications: []`.
+      # Each was identified AT THE LANDING from the run's own structured evidence, the M12 source,
+      # the specification corpus and the CI record. NOTE THAT NO ROW IS CLOSED BY THIS CHECKPOINT:
+      # `P6-D4` names `closes_at: M12` and is NOT closed (see the P6-CP-12 record above), and
+      # `P6-D71` and `P6-D73` stay open unchanged.
+      - id: P6-D82
+        finding: >-
+          ### M1's `RULE` REFUSAL NOW STATES A REASON THAT IS FALSE ON THIS TREE.
+          `work_item.py::resolve_decision_ref` refuses `kind == "RULE"` with the message "Rules
+          (machine M12) are not implemented yet - there is no `rules` table to resolve an ACTIVE
+          rule_id against. ... Use an AUDIT_EVENT reference, or wait for M12 (debt P6-D4)." The
+          BEHAVIOUR (refuse) is still correct and still the safe direction. THE SECOND HALF OF THE
+          SENTENCE IS NOT: `rules` exists on this tree, introspected live at this landing with a
+          PRIMARY KEY of ['tenant','rule_id']. The docstring at `work_item.py` point (b) carries the
+          same now-stale claim.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. `work_item.py` is BYTE-UNCHANGED across the entire M12 range -
+          `git log 974787b..99831ae -- src/freight_recon/work_item.py` is empty - and editing a
+          tier-1, already-reviewed M1 runtime file to correct a message is a change with its own
+          review, not a side effect of a status/evidence landing. The row exists so a later session
+          reading that message does not conclude the table is missing. It closes with whatever change
+          resolves P6-D4, which will have to touch the same lines.
+        severity: LOW - nonblocking
+        closes_at: the change that resolves P6-D4
+      - id: P6-D83
+        finding: >-
+          ### THE P6-CP-11 RECORD EXPECTED `P6-D71` TO CLOSE AT M12, AND IT DID NOT. That record
+          states that `PolicyOverridden` is not registered and that "minting one is a founder/architect
+          act that lands with M12/Rule". M12 landed and it did not. Verified mechanically at this
+          landing: `PolicyOverridden` is absent from all 118 registered contracts, and M12 builds NO
+          override mechanism at all - not as an event, a field or a code path. The build commit says
+          so in its own words: "P6-D71 (PolicyOverridden) remains OPEN - unmet at the point CURRENT.md
+          expected it to close (M12-AQ-7)."
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND EXPLICITLY NOT INVENTED. `P6-D71` stays OPEN /
+          BLOCKED_AUTHORITY with its own row unchanged. Minting a ninth F12 contract is a
+          founder/architect act under rule 17 and a builder session may not perform it; a unit that
+          minted an override event to discharge a debt row would be manufacturing exactly the
+          authority the row exists to withhold. What M12 DID do is leave the surface clean: no
+          override event, no override field, no override code path, and no ninth F12 contract.
+        severity: LOW - nonblocking
+        closes_at: a founder/architect determination on PolicyOverridden - not a builder session
+      - id: P6-D84
+        finding: >-
+          ### `P6-D73`'s SHAPE RECURS FOR `rule`. M9's `exceptions.source_kind` closed vocabulary
+          contains 'rule' with NO MIRROR FK: `SOURCE_KINDS_WITHOUT_TABLE` reads
+          ('compensation', 'evidence', 'rule', 'policy', 'pending_reference') at this landing, and
+          `phase6_exceptions.py` is BYTE-UNCHANGED across the entire M12 range. So an Exception can
+          name a rule as its source without the database proving that rule exists.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED - ON THE LANDED M10 AND M11 PRECEDENT. M10 created the
+          `compensations` referent and did not retro-wire M9's FK; M11 did the same for `policies`
+          (P6-D73); M12 does the same for `rules`. Retro-wiring M9's polymorphic mirror FKs is a
+          change to a landed tier-1 migration and belongs to whichever session owns that surface, not
+          to the unit that happens to create the referent. RU-8's M9 escalation seam is NAMED and the
+          machine is CALLED, which is strictly more than M11 did, and the FK question is unchanged
+          either way.
+        severity: LOW - nonblocking
+        closes_at: the session that owns M9's polymorphic mirror FKs
+      - id: P6-D85
+        finding: >-
+          ### THE BUILD WROTE "M12 LANDED" AND `P6-CP-12` INTO GUARD, PROBE AND TEST COMMENTS BEFORE
+          THE LANDING EXISTED - THE THIRD RECURRENCE OF THE `P6-D58` / `P6-D81` CLASS. Discovered
+          mechanically at this landing rather than enumerated: 11 occurrences across 7 files under
+          `eval/`, `scripts/` and `src/` assert "M12 LANDED" or name `P6-CP-12`. ZERO were present at
+          the P6-CP-11 landing (974787b); NINE were introduced at the build commit 54193f7 and the
+          remaining two in the M12 range. All were FALSE WHEN WRITTEN - no P6-CP-12 existed until this
+          landing commit - and all become TRUE as of it.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. The statements are comments and docstrings in test, guard and
+          probe files; none is an assertion, none changes what any guard reads or permits, and none
+          appears in a status authority - CURRENT.md at 54193f7 carried no M12 claim at all, and the
+          build commit message correctly said "IMPLEMENTATION-COMMITTED - NOT a landed checkpoint".
+          They are not edited here, because editing already-reviewed files for cosmetic reasons is
+          itself a change this landing may not make; the row exists so a later session does not read a
+          build-time comment as evidence that a landing happened. That this is the THIRD recurrence -
+          P6-D58 at M8, P6-D81 at M11, this at M12 - is itself the finding worth carrying.
+        severity: LOW - nonblocking
+        closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+      - id: P6-D86
+        finding: >-
+          ### THE PRODUCT DRIVER RUN DECLARED THREE COVERAGE GAPS ABOUT ITSELF, AND THEY ARE CARRIED
+          RATHER THAN DROPPED. `scenario-plan.json` records `unresolved_questions` naming three things
+          no approved command exercised: (1) OUTCOME C - "Customer Y requires hourly updates"
+          compiling through M8 as a recurring Expectation - which is acceptance-grade per ADR-010 sec
+          6.1 and spec sec 20.5 and has no approved probe --case command; (2) M12-AQ-5, the F12
+          strict-order monotonic-per-tenant constraint and the additive `previous_aggregate_version`
+          emission, covered only INDIRECTLY by the concurrency/OCC oracles; and (3) the probe's own
+          fault contract (an unknown --inject fault exiting 2), not directly verifiable in this wave.
+          Separately, generation yield: 17 scenarios PROPOSED, 14 ACCEPTED, 3 FILTERED at assembly, 0
+          invalid.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. `uncovered_risks` is `[]` and `assembly_problems` is `[]`: every
+          declared risk category was still established by an accepted scenario, across eight
+          categories for 175 generated assertions alongside the permanent scenario's 862 - 1037 total,
+          0 failed, 0 blocked, 0 skipped. Fourteen accepted is the SECOND-LARGEST generated
+          contribution of any P6 landing, behind M10's twelve only if counted per-scenario and ahead
+          of M11's four (P6-D80), M9's ten (P6-D62), M7's four (P6-D52), M8's one (P6-D57) and M6's
+          zero (P6-D46). Of the three declared gaps, (1) is an M8-adjacent surface M12 does not own,
+          (2) is partially covered rather than uncovered, and (3) is probe hygiene. None is a defect in
+          M12's runtime, and none was raised as a finding by the independent review.
+        severity: LOW - nonblocking
+        closes_at: not a defect - a coverage and generation-yield observation
+      - id: P6-D87
+        finding: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THE LANDING CANDIDATE, AND THE REVIEW IS NOT BOUND TO
+          IT EITHER. Three separate gaps, kept apart. (a) Run 33948926997 on 99831ae concluded
+          `cancelled`: `Full test suite (py3.11)` was cancelled at the ~60-minute ceiling having
+          reached 52% with ZERO pytest failure markers, and `Safety invariants (fast)` was cancelled at
+          its own ~30-minute ceiling with no failure marker - so the repository has NO py3.11 result
+          for this commit and NO fast-safety result, neither failing nor passing. Measured, not
+          assumed: `test_phase3_schema.py`, which carries the corrected M12 migration walk, sits at
+          55.9%-56.2% and `test_phase6_rule.py` at 81.5%-83.3%, both PAST the 52% cancellation - NO
+          EXECUTION on py3.11. (b) CI runs NO M12 probe or mutation job: the count of `phase6_rule`
+          occurrences in `.github/workflows/ci.yml` is ZERO, so the 35-mutant battery and the
+          153-case probe are uncovered by CI. (c) THE INDEPENDENT REVIEW IS BOUND TO 019a43d WHILE THE
+          LANDING CANDIDATE IS 99831ae - the P6-D68 class, recurring. No independent reviewer saw
+          99831ae.
+        disposition: >-
+          ### RECORDED AS A DECISION, NOT A VERIFICATION, AND EVERY MITIGATION IS MEASURED RATHER THAN
+          ASSERTED. For (a): `Full test suite (py3.12)` concluded SUCCESS with 3284 passed, 1 skipped,
+          100% REACHED, and `pytest eval --collect-only` collects 3285 on this tree - matching
+          exactly - so all 61 of M12's tests and all 26 safety-job files (621 tests, the last at 99.6%)
+          RAN TO COMPLETION AND PASSED on py3.12. The py3.11 leg re-executed the exact ~43% region the
+          first push had reddened - `test_phase0_adapter_imports.py` 43.0%-43.3%,
+          `test_phase0_baseline_manifest.py` 43.3%-43.7%, `test_phase0_entry_points.py` 43.9%-44.0% -
+          and emitted DOTS. THIS IS A STRONGER CI POSITION THAN P6-CP-11 (where neither suite
+          completed) AND WEAKER IN ONE RESPECT (there, the fast safety job concluded SUCCESS; here it
+          did not). For (b): unlike P6-D77, the mitigating sentence IS available - M12's tests are
+          inside `pytest eval` and that job completed on py3.12 - and the probe and battery were
+          re-executed locally on three interpreters. For (c): the gap is bounded by TREE HASH rather
+          than by promise - the `src/` tree is BYTE-IDENTICAL at 019a43d and 99831ae
+          (a6fa4d8d27b73606b6e2a0217ccad83ada3a804a), so THE REVIEWED M12 RUNTIME IS THE LANDED M12
+          RUNTIME, and the correction touched only `eval/` and `scripts/`; and the run's recorded
+          `git-diff-stat.txt` is byte-identical to `git diff --stat 54193f7 019a43d`, which is how the
+          reviewed content is IDENTIFIED rather than assumed. The job conclusions were founder-supplied
+          and could not be re-read - `gh run view 33948926997` fails from this sandbox with
+          `tls: failed to verify certificate: x509: OSStatus -26276`, as at every landing since
+          P6-CP-5. The founder chose to land on the evidence that exists, treating both cancellations
+          as non-product CI runtime limitations.
+        severity: LOW - nonblocking
+        closes_at: a CI run on this branch that concludes SUCCESS
+      - id: P6-D88
+        finding: >-
+          ### THE PARTITION GUARD'S PER-TABLE CHECK ON `CURRENT.md` IS A SUBSTRING MATCH AND COULD
+          NOT HAVE FAILED FOR `rules`. `test_bootstrap_hermeticity.py::test_the_canonical_table_
+          partition_is_exact_and_disjoint` ends with `for t in sorted(union): assert t in text` over
+          the raw text of `CURRENT.md`. Measured at this landing rather than assumed: the bare token
+          `rules` already occurred in `CURRENT.md` at 99831ae, BEFORE the M12 partition row was added
+          - so that half of the guard was already GREEN for this table and is not evidence that the
+          row exists. This is exactly the substring-versus-whole-token weakness CLAUDE.md sec 6 names.
+          The guard's OTHER halves are unaffected and did real work here: the disjointness check, the
+          `set(CANONICAL_TABLES) == union` exactness check and the hand-pinned `shape` dict (which
+          already carries `p6_rules_tenant: 1`) all constrain the migrations rather than the prose.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND STATED SO THIS LANDING DOES NOT CITE A GREEN THAT WAS NEVER
+          CAPABLE OF FAILING. The guard predates M12 and M12 neither introduced nor widened it, so
+          changing it is not this landing's to make - and this landing may not change a test at all.
+          The partition row was verified DIRECTLY instead: the `rules` table was introspected live
+          from a fresh canonical schema (PRIMARY KEY ['tenant','rule_id'], 5 indexes all leading with
+          `tenant`), and its REG-1 tenant-first adjudication is already recorded in
+          `phase-0-baseline-manifest.yaml`, landed with the build commit. The row exists so a later
+          session strengthening that guard knows the weakness was seen and priced rather than missed.
+        severity: LOW - nonblocking
+        closes_at: a session that owns the phase-0 status guards - not a P6 machine unit
     next_units_unlocked: [P7]
 
   - unit_id: P7
