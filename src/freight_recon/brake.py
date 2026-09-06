@@ -444,22 +444,35 @@ class BrakeStore:
         return self._row_status(row)
 
     def platform_status(self) -> BrakeStatus:
-        row = self._conn.execute("SELECT * FROM platform_brake WHERE id = 1").fetchone()
+        # Fail closed like admission_denied and version_token: an unreadable store (the table gone,
+        # or any sqlite error) is the canonical BrakeStoreUnreachable, never a raw error the caller
+        # might mistake for a readable brake. "Cannot read the brake" NEVER means "off" — and the
+        # operator report is a read path too (entity point 36).
+        try:
+            row = self._conn.execute("SELECT * FROM platform_brake WHERE id = 1").fetchone()
+        except sqlite3.Error as exc:
+            raise BrakeStoreUnreachable(f"the platform brake could not be read: {exc}") from exc
         if row is None:
             raise BrakeStoreUnreachable("the platform brake row is absent")
         return self._platform_status_row(row)
 
     def active_report(self, *, tenant: str) -> list[BrakeStatus]:
-        """Every ACTIVE brake affecting this tenant, platform first (R17: reported unprompted)."""
+        """Every ACTIVE brake affecting this tenant, platform first (R17: reported unprompted).
+
+        Fail-closed: any read failure raises BrakeStoreUnreachable so the R17 report path cannot
+        read an unreadable store as 'no brake'."""
         bound = require_tenant(tenant, context="BrakeStore.active_report")
         out: list[BrakeStatus] = []
-        platform = self._conn.execute("SELECT * FROM platform_brake WHERE id = 1").fetchone()
+        try:
+            platform = self._conn.execute("SELECT * FROM platform_brake WHERE id = 1").fetchone()
+            rows = self._conn.execute(
+                "SELECT * FROM brakes WHERE tenant = ? AND state = 'ACTIVE' ORDER BY engaged_at",
+                (bound,),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            raise BrakeStoreUnreachable(f"the active-brake report could not be read: {exc}") from exc
         if platform is not None and platform["state"] == "ACTIVE":
             out.append(self._platform_status_row(platform))
-        rows = self._conn.execute(
-            "SELECT * FROM brakes WHERE tenant = ? AND state = 'ACTIVE' ORDER BY engaged_at",
-            (bound,),
-        ).fetchall()
         out.extend(self._row_status(r) for r in rows)
         return out
 

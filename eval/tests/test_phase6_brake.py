@@ -334,7 +334,7 @@ def test_brake_engages_with_policy_engine_and_tms_down():
     conn = _conn()
     _human(conn, "ops")
     # engage touches only the brake tables — no policy engine / TMS read — so it works with them down
-    s = _machine(conn).engage(tenant=TENANT, actor="ops", actor_class="human", reason="everything down")
+    s = _machine(conn).engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="everything down")
     assert s.state == "ACTIVE"
 
 
@@ -342,11 +342,11 @@ def test_automation_can_engage_but_never_release():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="signal")
+    s = m.engage_brake(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="signal")
     assert s.state == "ACTIVE"
-    m.widen(tenant=TENANT, brake_id=s.brake_id, actor="auto", actor_class="automation")
+    m.widen_brake(tenant=TENANT, brake_id=s.brake_id, actor="auto", actor_class="automation")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="det", actor_class="automation",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="det", actor_class="automation",
                   decision_ref="d", evidence=_evidence())
 
 
@@ -381,12 +381,30 @@ def test_no_timer_can_move_a_brake():
     assert bl.permitted_transitions("timer") == []
 
 
+def test_a_brake_never_auto_expires():
+    # ADR-011 §4: a brake has NO TTL and no wall-clock expiry. Once ACTIVE it stays ACTIVE until a
+    # human releases it, however far the clock advances — a brake that quietly auto-expired would
+    # re-admit effects nobody re-authorised (the fail-DANGEROUS inverse of "cannot read == off").
+    conn = _conn()
+    m = _machine(conn)
+    b = m.engage_brake(tenant=TENANT, actor="orphan-detector", actor_class="detector",
+                       reason="orphan adapter", action_class="pay_carrier")
+    assert b.state == "ACTIVE"
+    # A store reading the SAME rows through a clock a century later sees the same ACTIVE brake, and
+    # admission is still denied. Nothing about the passage of time moves a brake.
+    far_future = FIXED + timedelta(days=365 * 100)
+    later = BrakeStore(conn, clock=lambda: far_future)
+    assert later.admission_denied(tenant=TENANT, action_class="pay_carrier") is not None
+    assert later.status(tenant=TENANT, brake_id=b.brake_id).state == "ACTIVE"
+    assert bl.unknown_outcomes_block_release() is False  # and no auto path releases it either
+
+
 def test_detector_cannot_release_its_own_brake():
     conn = _conn()
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="detector:d", actor_class="detector", reason="alarm")
+    s = m.engage_brake(tenant=TENANT, actor="detector:d", actor_class="detector", reason="alarm")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="detector:d", actor_class="detector",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="detector:d", actor_class="detector",
                   decision_ref="d", evidence=_evidence())
     got = conn.execute(
         "SELECT COUNT(*) FROM event_outbox WHERE event_name='UnauthorizedBrakeReleaseAttempted'").fetchone()[0]
@@ -397,7 +415,7 @@ def test_active_brake_is_reported_unprompted_on_every_surface():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    m.engage(tenant=TENANT, action_class="raise_invoice", actor="detector:orphan", actor_class="detector",
+    m.engage_brake(tenant=TENANT, action_class="raise_invoice", actor="detector:orphan", actor_class="detector",
              reason="orphan adapter")
     reports = m.report(tenant=TENANT)
     assert reports and bl.reports_unprompted_when_active()
@@ -460,11 +478,11 @@ def test_the_four_transitions_each_emit_their_f13_event():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
-    m.widen(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human")
-    m.narrow(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
+    s = m.engage_brake(tenant=TENANT, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
+    m.widen_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human")
+    m.narrow_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
              to_action_class="raise_invoice", decision_ref="d")
-    m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
+    m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
               decision_ref="d", evidence=_evidence())
     names = _outbox_names(conn)
     assert names == ["BrakeEngaged", "BrakeWidened", "BrakeNarrowed", "BrakeReleased"], names
@@ -473,7 +491,7 @@ def test_the_four_transitions_each_emit_their_f13_event():
 def test_the_f13_envelope_carries_the_order_fields():
     conn = _conn()
     _human(conn, "ops")
-    s = _machine(conn).engage(tenant=TENANT, actor="ops", actor_class="human", reason="r")
+    s = _machine(conn).engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="r")
     row = conn.execute(
         "SELECT aggregate_version, envelope_json FROM event_outbox WHERE event_name='BrakeEngaged'").fetchone()
     envelope = json.loads(row["envelope_json"])
@@ -484,9 +502,9 @@ def test_the_f13_envelope_carries_the_order_fields():
 def test_an_unauthorized_release_emits_the_registered_f14_and_no_synonym():
     conn = _conn()
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="detector:d", actor_class="detector", reason="alarm")
+    s = m.engage_brake(tenant=TENANT, actor="detector:d", actor_class="detector", reason="alarm")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="detector:d", actor_class="detector",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="detector:d", actor_class="detector",
                   decision_ref="d", evidence=_evidence())
     assert "UnauthorizedBrakeReleaseAttempted" in _outbox_names(conn)
     assert "UnauthorizedBrakeReleaseAttempted" in CONTRACTS and CONTRACTS["UnauthorizedBrakeReleaseAttempted"].family == "F14"
@@ -507,9 +525,9 @@ def test_release_is_not_a_human_and_a_decision_ref_alone():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
                   decision_ref="d", evidence={"decision_ref": "d"})
 
 
@@ -519,9 +537,9 @@ def test_a_loaded_page_is_not_a_positive_health_proof():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
                   evidence=_evidence(integration_health={"kind": "page_loaded"}))
 
 
@@ -529,9 +547,9 @@ def test_an_unaccounted_in_flight_effect_blocks_release():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
                   evidence=_evidence(in_flight_accounted=False))
 
 
@@ -539,9 +557,9 @@ def test_an_unresolved_sev0_blocks_release():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
+        m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
                   evidence=_evidence(unresolved_sev0=True))
 
 
@@ -550,16 +568,35 @@ def test_unresolved_unknown_outcomes_do_not_block_release_but_must_be_owned():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
     # acknowledged + owned => released
-    r = m.release(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
+    r = m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human", decision_ref="d",
                   evidence=_evidence(unknown_outcomes=[{"grant_id": "g", "acknowledged": True, "owner": "ops"}]))
     assert r.state == "RELEASED"
     # unacknowledged => refused
-    s2 = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="i2")
+    s2 = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i2")
     with pytest.raises(BrakeRefused):
-        m.release(tenant=TENANT, brake_id=s2.brake_id, actor="ops", actor_class="human", decision_ref="d",
+        m.release_brake(tenant=TENANT, brake_id=s2.brake_id, actor="ops", actor_class="human", decision_ref="d",
                   evidence=_evidence(unknown_outcomes=[{"grant_id": "g", "acknowledged": False}]))
+
+
+def test_unresolved_unknown_outcomes_stay_frozen_and_owned():
+    # ADR-011 §6 / rule 12: an UNKNOWN_OUTCOME never auto-resolves. Releasing the brake does not
+    # resolve it — the obligation is that the entity STAYS FROZEN, the commit key STAYS HELD, and it
+    # remains acknowledged and owned. The brake releases nothing but itself.
+    obligations = set(bl.UNKNOWN_OUTCOME_RELEASE_OBLIGATIONS)
+    assert {"acknowledged", "owned", "entity_stays_frozen", "commit_key_stays_held"} <= obligations
+    assert bl.unknown_outcomes_block_release() is False  # they do not block — they stay, frozen
+    conn = _conn()
+    _human(conn, "ops")
+    m = _machine(conn)
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="i")
+    r = m.release_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
+                        decision_ref="d",
+                        evidence=_evidence(unknown_outcomes=[
+                            {"grant_id": "g", "acknowledged": True, "owner": "ops"}]))
+    # The brake released; the unknown outcome it named was not touched by the release.
+    assert r.state == "RELEASED"
 
 
 # ============================================================ ratchet & idempotency
@@ -568,7 +605,7 @@ def test_a_model_may_never_engage_narrow_or_release():
     conn = _conn()
     m = _machine(conn)
     with pytest.raises(BrakeRefused):
-        m.engage(tenant=TENANT, actor="agent", actor_class="model", reason="I decided")
+        m.engage_brake(tenant=TENANT, actor="agent", actor_class="model", reason="I decided")
     assert bl.permitted_transitions("model") == []
     assert bl.model_may("BR-1") is False
 
@@ -582,12 +619,12 @@ def test_only_a_human_may_narrow():
     conn = _conn()
     _human(conn, "ops")
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, actor="ops", actor_class="human", reason="wide")
+    s = m.engage_brake(tenant=TENANT, actor="ops", actor_class="human", reason="wide")
     for cls in ("detector", "automation", "model", "timer"):
         with pytest.raises(BrakeRefused):
-            m.narrow(tenant=TENANT, brake_id=s.brake_id, actor="x", actor_class=cls,
+            m.narrow_brake(tenant=TENANT, brake_id=s.brake_id, actor="x", actor_class=cls,
                      to_action_class="raise_invoice", decision_ref="d")
-    n = m.narrow(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
+    n = m.narrow_brake(tenant=TENANT, brake_id=s.brake_id, actor="ops", actor_class="human",
                  to_action_class="raise_invoice", decision_ref="d")
     assert n.scope == "action:raise_invoice"
 
@@ -599,9 +636,9 @@ def test_the_report_is_produced_unprompted_when_active():
 def test_the_signal_count_rises_on_repeated_engagement_by_row():
     conn = _conn()
     m = _machine(conn)
-    s = m.engage(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="flap")
+    s = m.engage_brake(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="flap")
     for _ in range(4):
-        m.engage(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="flap")
+        m.engage_brake(tenant=TENANT, action_class="raise_invoice", actor="det", actor_class="detector", reason="flap")
     row = conn.execute("SELECT signal_count, brake_version FROM brakes WHERE brake_id=?", (s.brake_id,)).fetchone()
     assert row["signal_count"] == 5
     assert row["brake_version"] == s.brake_version, "a repeat engagement bumped the version"
@@ -662,6 +699,22 @@ def _brake_writing_modules():
 
 def test_there_is_exactly_one_brake_authority():
     assert _brake_writing_modules() == ["brake.py"]
+
+
+def test_exactly_one_class_owns_the_brake_lifecycle():
+    # Mirrors the permanent scenario's single-authority AST oracle: a class that defines BOTH
+    # `engage` and `release` OWNS the lifecycle, and there must be exactly one — brake.py:BrakeStore.
+    # The M13 facade (BrakeMachine) delegates every mutation to the store and must NOT present as a
+    # second owner; its verbs are `engage_brake`/`release_brake` for exactly that reason.
+    owners = []
+    for py in sorted(PKG.rglob("*.py")):
+        for n in ast.walk(ast.parse(py.read_text())):
+            if isinstance(n, ast.ClassDef):
+                methods = {m.name for m in n.body
+                           if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
+                if {"engage", "release"} <= methods:
+                    owners.append(f"{py.name}:{n.name}")
+    assert sorted(set(owners)) == ["brake.py:BrakeStore"], owners
 
 
 def test_m13_builds_no_second_brake_store():

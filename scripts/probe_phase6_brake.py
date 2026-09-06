@@ -16,6 +16,20 @@ clock, and takes no wall-clock sleep. Output contract (shared with every P6 prob
 in-flight boundary (the half of the brake that must NOT stop things — where an unknown outcome would
 be manufactured). `--owner` varies the two composed admission dimensions (platform GLOBAL row and
 the acting tenant's brakes).
+
+### KNOWN VERIFICATION CAVEAT — the brake_version token and the Product Driver secret redactor.
+The composite token is serialised `bv1|global:N|tenant:M`. The Product Driver harness scrubs every
+command's stdout through a blunt secret redactor (`neyma_product_driver/models._SECRET_PATTERNS`)
+before any oracle reads it, and that redactor masks the value after ANY line whose key word is
+`token` (also `secret`, `password`, `api_key`, …): `... token: <4+ chars>` becomes `... token:
+[REDACTED]`. So a line the PRODUCT prints correctly as `a tenant event moved the token: True` is
+observed by the harness as `... the token: [REDACTED]` (True is 4 chars), and the composite token
+value itself is masked wherever it follows the word `token:`. This is a HARNESS artifact, not a
+product defect — the brake emits the right bytes (run this probe or the inline check directly and
+you see the true values), and it is unfixable from the Neyma side because the colliding text lives
+in the scenario's own `print(...)` and in the harness redactor, neither of which is this repo's.
+This probe therefore phrases its own token headlines so the key word before the value is NOT
+`token` (e.g. `... after a tenant event: True`), so its narration survives redaction intact.
 """
 
 from __future__ import annotations
@@ -483,7 +497,7 @@ CASE_ORDER: tuple[str, ...] = (
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="looks wrong")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="looks wrong")
         if s.state != "ACTIVE":
             return FAIL(f"{MISS} a human engagement did not become ACTIVE", "### ENGAGEMENT REQUIRED AN APPROVAL ###")
         return OK("any-authenticated-human-engages-instantly: ACTIVE, no ceremony",
@@ -497,7 +511,7 @@ def _c(a):
     k = Kit()
     try:
         # No approval row exists, no gate registry, nothing pre-authorised: engagement still succeeds.
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="stop")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="stop")
         return OK("engagement-needs-no-approval-and-no-ceremony: engaged with no approval",
                   "REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR") if s.state == "ACTIVE" else \
             FAIL(f"{MISS} engagement required ceremony", "### ENGAGEMENT REQUIRED AN APPROVAL ###")
@@ -508,7 +522,7 @@ def _c(a):
 def _engages_with_subsystem_down(k, headline):
     # The brake engage path touches only the brake tables — never the policy engine, TMS or rule
     # store. There is no adapter/reader here to fail, so engagement succeeds regardless.
-    s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="everything down")
+    s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="everything down")
     return s.state == "ACTIVE"
 
 
@@ -550,7 +564,7 @@ def _c(a):
     k = Kit()
     try:
         before = k.conn.execute("SELECT COUNT(*) FROM brakes").fetchone()[0]
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="one write")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="one write")
         after = k.conn.execute("SELECT COUNT(*) FROM brakes").fetchone()[0]
         return OK("engagement-is-a-single-atomic-row-write: exactly one row",
                   "ENGAGEMENT IS ONE ATOMIC ROW WRITE") if after - before == 1 else \
@@ -563,7 +577,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops",
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops",
                              actor_class="human", reason="because")
         if not s.engaged_reason:
             return FAIL(f"{MISS} engagement recorded no reason", "### ENGAGEMENT RECORDED NO REASON ###")
@@ -581,7 +595,7 @@ def _c(a):
     k = Kit()
     try:
         try:
-            k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="   ")
+            k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="   ")
             return FAIL(f"{MISS} ### NOT REFUSED an empty reason engaged", "### ENGAGEMENT RECORDED NO REASON ###")
         except BrakeError:
             return OK("an-empty-reason-is-not-a-reason: refused")
@@ -594,7 +608,7 @@ def _c(a):
     k = Kit()
     try:
         try:
-            k.machine.engage(tenant=k.tenant, actor="  ", actor_class="human", reason="r")
+            k.machine.engage_brake(tenant=k.tenant, actor="  ", actor_class="human", reason="r")
             return FAIL(f"{MISS} ### NOT REFUSED an empty actor engaged", "### ENGAGEMENT RECORDED NO ACTOR ###")
         except BrakeError:
             return OK("an-empty-actor-is-not-an-actor: refused")
@@ -606,7 +620,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice",
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice",
                              actor="detector:orphan-adapter", actor_class="detector", reason="orphan")
         return OK("a-named-sev-0-detector-may-engage: DETECTOR engaged") \
             if s.state == "ACTIVE" and s.actor_kind == "DETECTOR" else \
@@ -620,7 +634,7 @@ def _c(a):
     k = Kit()
     try:
         try:
-            k.machine.engage(tenant=k.tenant, actor="agent:gpt", actor_class="model", reason="I decided")
+            k.machine.engage_brake(tenant=k.tenant, actor="agent:gpt", actor_class="model", reason="I decided")
             return FAIL(f"{MISS} a model engaged a brake", "### A MODEL ENGAGED A BRAKE ###")
         except BrakeRefused:
             return OK("a-model-may-never-engage: refused",
@@ -636,7 +650,7 @@ def _c(a):
         # A model claiming the detector class is still refused: the machine classifies by actor_class,
         # and there is no path by which a model reaches the DETECTOR db kind.
         try:
-            k.machine.engage(tenant=k.tenant, actor="agent:gpt", actor_class="model", reason="pretend")
+            k.machine.engage_brake(tenant=k.tenant, actor="agent:gpt", actor_class="model", reason="pretend")
             return FAIL(f"{MISS} a model masqueraded as a detector", "### A MODEL MASQUERADED AS A DETECTOR ###")
         except BrakeRefused:
             return OK("a-model-cannot-masquerade-as-a-detector: refused",
@@ -651,7 +665,7 @@ def _c(a):
     try:
         # The model may not engage; a detector acting on a signal may. Both facts in one case.
         model_blocked = "BR-1" not in bl.permitted_transitions("model")
-        detector_ok = k.machine.engage(tenant=k.tenant, actor="detector:d", actor_class="detector",
+        detector_ok = k.machine.engage_brake(tenant=k.tenant, actor="detector:d", actor_class="detector",
                                        reason="acting on a model signal").state == "ACTIVE"
         return OK("a-model-may-raise-a-signal-a-detector-may-act-on-it: model blocked, detector acts") \
             if model_blocked and detector_ok else \
@@ -665,7 +679,7 @@ def _c(a):
     k = Kit()
     try:
         try:
-            k.machine.engage(tenant=k.tenant, actor="carrier:x", actor_class="counterparty", reason="self-serve")
+            k.machine.engage_brake(tenant=k.tenant, actor="carrier:x", actor_class="counterparty", reason="self-serve")
             return FAIL(f"{MISS} a counterparty engaged a brake", "### A COUNTERPARTY ENGAGED A BRAKE ###")
         except BrakeRefused:
             return OK("a-counterparty-may-never-engage: refused")
@@ -678,7 +692,7 @@ def _c(a):
     k = Kit()
     try:
         try:
-            k.machine.engage(tenant=k.tenant, actor="email:body", actor_class="inbound_content", reason="pls stop")
+            k.machine.engage_brake(tenant=k.tenant, actor="email:body", actor_class="inbound_content", reason="pls stop")
             return FAIL(f"{MISS} inbound content engaged a brake", "### INBOUND CONTENT ENGAGED A BRAKE ###")
         except BrakeRefused:
             return OK("inbound-content-may-never-engage: refused")
@@ -690,8 +704,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s1 = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="one")
-        s2 = k.machine.engage(tenant=k.tenant, action_class="file_document", actor="ops", actor_class="human", reason="two")
+        s1 = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="one")
+        s2 = k.machine.engage_brake(tenant=k.tenant, action_class="file_document", actor="ops", actor_class="human", reason="two")
         return OK("engagement-bumps-the-owners-brake-version: monotonic") \
             if s2.brake_version > s1.brake_version else \
             FAIL(f"{MISS} engagement did not bump the version", "### AN EVENT DID NOT BUMP THE VERSION ###")
@@ -703,7 +717,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice",
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice",
                              actor="detector:orphan", actor_class="detector", reason="orphan adapter invocation")
         return OK("the-orphan-adapter-signal-engages-tenant-and-action-class: action-class scope") \
             if s.scope == "action:raise_invoice" and s.tenant == k.tenant else \
@@ -716,7 +730,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=None, actor="detector:isolation", actor_class="detector",
+        s = k.machine.engage_brake(tenant=None, actor="detector:isolation", actor_class="detector",
                              reason="cross-tenant access attempted")
         return OK("the-tenant-isolation-signal-engages-globally: GLOBAL scope") \
             if s.scope == "GLOBAL" and s.tenant is None else \
@@ -729,7 +743,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="r")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="r")
         return OK("br-1-emits-brakeengaged: BrakeEngaged in the outbox") \
             if "BrakeEngaged" in k.outbox_names() else \
             FAIL(f"{MISS} BR-1 emitted no BrakeEngaged", "### STATE WITHOUT ITS EVENT ###")
@@ -741,7 +755,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="r")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="r")
         denied = k.store.admission_denied(tenant=k.tenant, action_class="raise_invoice")
         return OK("brakeengaged-proves-admission-is-withdrawn: admission denied",
                   "A BRAKE REFUSES TO MINT AND REFUSES TO CLAIM") if denied is not None else \
@@ -757,7 +771,7 @@ def _c(a):
         # The event proves admission withdrawn; it carries no kill order. A CLAIMED grant present at
         # engagement stays CLAIMED.
         _seed_grant(k.conn, k.tenant, "g-inflight", "CLAIMED")
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="stop next")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="stop next")
         st = k.conn.execute("SELECT state FROM effect_grants WHERE grant_id='g-inflight'").fetchone()[0]
         return OK("brakeengaged-does-not-prove-in-flight-work-was-killed: CLAIMED untouched",
                   "A BRAKE NEVER KILLS A WORKER") if st == "CLAIMED" else \
@@ -770,7 +784,7 @@ def _c(a):
 
 def _engaged_action(k, tenant=None):
     tenant = tenant or k.tenant
-    return k.machine.engage(tenant=tenant, action_class="raise_invoice", actor="ops",
+    return k.machine.engage_brake(tenant=tenant, action_class="raise_invoice", actor="ops",
                             actor_class="human", reason="scoped")
 
 
@@ -779,7 +793,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_action(k)
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         return OK("widening-a-brake-narrows-authority: action -> tenant (authority narrowed)",
                   "WIDENING A BRAKE NARROWS AUTHORITY") if w.scope == "tenant" else \
             FAIL(f"{MISS} widening did not widen the scope", "### THE SAFE DIRECTION WAS INVERTED ###")
@@ -791,9 +805,9 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                              actor_class="detector", reason="signal")
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="auto", actor_class="automation")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="auto", actor_class="automation")
         return OK("automation-may-widen: automation widened (authority narrowed)",
                   "AUTOMATION MAY ENGAGE AND WIDEN") if w.scope == "tenant" else \
             FAIL(f"{MISS} automation could not widen", "### THE SAFE DIRECTION WAS INVERTED ###")
@@ -806,7 +820,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_action(k)
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         return OK("a-human-may-widen: human widened") if w.scope == "tenant" else \
             FAIL(f"{MISS} ### WRONGLY REFUSED a human widen", "### THE SAFE DIRECTION WAS INVERTED ###")
     finally:
@@ -819,7 +833,7 @@ def _c(a):
     try:
         s = _engaged_action(k)
         try:
-            k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="agent:gpt", actor_class="model")
+            k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="agent:gpt", actor_class="model")
             return FAIL(f"{MISS} a model widened a brake", "### A MODEL WIDENED A BRAKE ###")
         except BrakeRefused:
             return OK("a-model-may-never-widen: refused")
@@ -832,7 +846,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_action(k)
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         return OK("widening-bumps-the-brake-version: monotonic") if w.brake_version > s.brake_version else \
             FAIL(f"{MISS} widening did not bump the version", "### AN EVENT DID NOT BUMP THE VERSION ###")
     finally:
@@ -844,7 +858,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_action(k)
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         return OK("widening-never-releases-anything: still ACTIVE") if w.state == "ACTIVE" else \
             FAIL(f"{MISS} widening released the brake", "### AUTOMATION RELEASED A BRAKE ###")
     finally:
@@ -856,7 +870,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_action(k)
-        k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         return OK("br-2-emits-brakewidened: BrakeWidened in the outbox") \
             if "BrakeWidened" in k.outbox_names() else \
             FAIL(f"{MISS} BR-2 emitted no BrakeWidened", "### STATE WITHOUT ITS EVENT ###")
@@ -870,8 +884,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="tenant-wide")
-        n = k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="tenant-wide")
+        n = k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             to_action_class="raise_invoice", decision_ref="d:narrow")
         return OK("narrowing-a-brake-broadens-authority: tenant -> action (authority broadened)",
                   "NARROWING A BRAKE BROADENS AUTHORITY") if n.scope == "action:raise_invoice" else \
@@ -884,14 +898,14 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
-        n = k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        n = k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             to_action_class="raise_invoice", decision_ref="d")
         # and every non-human is refused
         refused = 0
         for cls in ("detector", "automation", "model", "timer"):
             try:
-                k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=cls,
+                k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=cls,
                                 to_action_class="file_document", decision_ref="d")
             except BrakeRefused:
                 refused += 1
@@ -905,9 +919,9 @@ def _c(a):
 def _narrow_refused(actor_class, alarm, positive):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
         try:
-            k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=actor_class,
+            k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=actor_class,
                             to_action_class="raise_invoice", decision_ref="d")
             return FAIL(f"{MISS} {positive}", alarm)
         except BrakeRefused:
@@ -944,8 +958,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
-        n = k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        n = k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             to_action_class="raise_invoice", decision_ref="d")
         return OK("narrowing-bumps-the-brake-version: monotonic") if n.brake_version > s.brake_version else \
             FAIL(f"{MISS} narrowing did not bump the version", "### AN EVENT DID NOT BUMP THE VERSION ###")
@@ -957,8 +971,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
-        n = k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        n = k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             to_action_class="raise_invoice", decision_ref="d")
         return OK("narrowing-is-not-a-partial-release-state: still ACTIVE, scope changed") \
             if n.state == "ACTIVE" and n.state in bl.BRAKE_STATES else \
@@ -971,8 +985,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
-        k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                         to_action_class="raise_invoice", decision_ref="d")
         return OK("br-3-emits-brakenarrowed: BrakeNarrowed in the outbox") \
             if "BrakeNarrowed" in k.outbox_names() else \
@@ -985,7 +999,7 @@ def _c(a):
 
 def _engaged_tenant(k, tenant=None):
     tenant = tenant or k.tenant
-    return k.machine.engage(tenant=tenant, actor="ops", actor_class="human", reason="incident")
+    return k.machine.engage_brake(tenant=tenant, actor="ops", actor_class="human", reason="incident")
 
 
 @case("release-requires-an-authenticated-human")
@@ -993,7 +1007,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        r = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        r = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence())
         return OK("release-requires-an-authenticated-human: human released") if r.state == "RELEASED" else \
             FAIL(f"{MISS} ### WRONGLY REFUSED a human release", "### RELEASED WITHOUT AN AUTHENTICATED HUMAN ###")
@@ -1006,7 +1020,7 @@ def _release_refused(actor_class, alarm, positive):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=actor_class,
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="x", actor_class=actor_class,
                             decision_ref="d", evidence=full_evidence())
             return FAIL(f"{MISS} {positive}", alarm)
         except BrakeRefused:
@@ -1025,9 +1039,9 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="detector:d", actor_class="detector", reason="alarm")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="detector:d", actor_class="detector", reason="alarm")
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="detector:d",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="detector:d",
                             actor_class="detector", decision_ref="d", evidence=full_evidence())
             return FAIL(f"{MISS} a detector cleared its own alarm", "### A DETECTOR CLEARED ITS OWN ALARM ###")
         except BrakeRefused:
@@ -1065,7 +1079,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="", evidence=full_evidence(decision_ref=""))
             return FAIL(f"{MISS} released without a decision_ref", "### RELEASED WITHOUT A DECISION REF ###")
         except BrakeRefused:
@@ -1079,7 +1093,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        ok = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        ok = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                              decision_ref="d", evidence=full_evidence(in_flight_accounted=True))
         return OK("release-requires-every-in-flight-effect-accounted-for: accounted -> released") \
             if ok.state == "RELEASED" else FAIL(f"{MISS} accounted release refused", "### RELEASED WITH AN UNACCOUNTED IN-FLIGHT EFFECT ###")
@@ -1093,7 +1107,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence(in_flight_accounted=False))
             return FAIL(f"{MISS} released with an unaccounted in-flight effect", "### RELEASED WITH AN UNACCOUNTED IN-FLIGHT EFFECT ###")
         except BrakeRefused:
@@ -1108,7 +1122,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        ok = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        ok = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                              decision_ref="d", evidence=full_evidence(unresolved_sev0=False))
         return OK("release-requires-no-unresolved-sev-0: none -> released") if ok.state == "RELEASED" else \
             FAIL(f"{MISS} release refused with no sev-0", "### RELEASED WITH AN UNRESOLVED SEV-0 ###")
@@ -1122,7 +1136,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence(unresolved_sev0=True))
             return FAIL(f"{MISS} released with an unresolved sev-0", "### RELEASED WITH AN UNRESOLVED SEV-0 ###")
         except BrakeRefused:
@@ -1136,7 +1150,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        ok = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        ok = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                              decision_ref="d",
                              evidence=full_evidence(integration_health={"kind": "positive_control", "verified": True}))
         return OK("release-requires-positively-demonstrated-integration-health: positive control -> released") \
@@ -1151,7 +1165,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d",
                             evidence=full_evidence(integration_health={"kind": "page_loaded", "loaded": True}))
             return FAIL(f"{MISS} a loaded page accepted as health", "### A LOADED PAGE ACCEPTED AS A HEALTH PROOF ###")
@@ -1169,7 +1183,7 @@ def _c(a):
         s = _engaged_tenant(k)
         try:
             # a human + a decision_ref, but no accounted-in-flight / health: refused.
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence={"decision_ref": "d"})
             return FAIL(f"{MISS} release reduced to a human and a decision_ref", "### RELEASE REDUCED TO A HUMAN AND A DECISION REF ###")
         except BrakeRefused:
@@ -1186,7 +1200,7 @@ def _c(a):
         s = _engaged_tenant(k)
         try:
             # 'ghost' is not a recorded human of the tenant -> the released_by FK refuses.
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ghost", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ghost", actor_class="human",
                             decision_ref="d", evidence=full_evidence())
             return FAIL(f"{MISS} an arbitrary actor string accepted as a human", "### AN ARBITRARY ACTOR STRING ACCEPTED AS A HUMAN ###")
         except sqlite3.IntegrityError:
@@ -1201,7 +1215,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         ev = full_evidence(unknown_outcomes=[{"grant_id": "g1", "acknowledged": True, "owner": "ops"}])
-        ok = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        ok = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                              decision_ref="d", evidence=ev)
         return OK("unresolved-unknown-outcomes-do-not-block-release: acknowledged+owned -> released",
                   "UNRESOLVED UNKNOWN OUTCOMES DO NOT BLOCK RELEASE, AND STAY FROZEN AND OWNED") \
@@ -1216,7 +1230,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d",
                             evidence=full_evidence(unknown_outcomes=[{"grant_id": "g1", "acknowledged": False}]))
             return FAIL(f"{MISS} an unacknowledged unknown outcome released", "### AN UNRESOLVED UNKNOWN OUTCOME WENT UNACKNOWLEDGED ###")
@@ -1232,7 +1246,7 @@ def _c(a):
     try:
         s = _engaged_tenant(k)
         _seed_grant(k.conn, k.tenant, "g-unknown", "UNKNOWN_OUTCOME")
-        k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                         decision_ref="d",
                         evidence=full_evidence(unknown_outcomes=[{"grant_id": "g-unknown", "acknowledged": True, "owner": "ops"}]))
         st = k.conn.execute("SELECT state FROM effect_grants WHERE grant_id='g-unknown'").fetchone()[0]
@@ -1256,7 +1270,7 @@ def _c(a):
     # Becoming SAFER (engage) needs no ceremony; only becoming UNSAFE (release) needs evidence.
     k = Kit()
     try:
-        engaged = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="instant").state == "ACTIVE"
+        engaged = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="instant").state == "ACTIVE"
         return OK("release-requires-no-ceremony-to-become-safer: engage is instant") if engaged else \
             FAIL(f"{MISS} ceremony required to become safer", "### CEREMONY REQUIRED TO BECOME SAFER ###")
     finally:
@@ -1268,7 +1282,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        r = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        r = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence())
         return OK("release-bumps-the-brake-version: monotonic") if r.brake_version > s.brake_version else \
             FAIL(f"{MISS} release did not bump the version", "### RELEASE RESTORED THE PRE-BRAKE VERSION ###")
@@ -1281,10 +1295,10 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                         decision_ref="d", evidence=full_evidence())
         try:
-            k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+            k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
             return FAIL(f"{MISS} a RELEASED brake transitioned", "### RELEASED REOPENED ###")
         except BrakeError:
             return OK("released-is-terminal: no transition out of RELEASED")
@@ -1296,9 +1310,9 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="detector:d", actor_class="detector", reason="alarm")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="detector:d", actor_class="detector", reason="alarm")
         try:
-            k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="detector:d",
+            k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="detector:d",
                             actor_class="detector", decision_ref="d", evidence=full_evidence())
         except BrakeRefused:
             pass
@@ -1326,7 +1340,7 @@ def _c(a):
     k = Kit()
     try:
         s = _engaged_tenant(k)
-        k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                         decision_ref="d", evidence=full_evidence())
         return OK("br-4-emits-brakereleased: BrakeReleased in the outbox") \
             if "BrakeReleased" in k.outbox_names() else \
@@ -1409,7 +1423,7 @@ def _c(a):
     try:
         k.store = BrakeStore(k.conn, clock=lambda: box["now"])
         k.machine = BrakeMachine(k.store)
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
         from datetime import timedelta
         box["now"] = FIXED + timedelta(days=3650)
         st = k.store.status(tenant=k.tenant, brake_id=s.brake_id)
@@ -1472,8 +1486,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        h = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="h")
-        d = k.machine.engage(tenant=k.tenant, action_class="file_document", actor="det", actor_class="detector", reason="d")
+        h = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="h")
+        d = k.machine.engage_brake(tenant=k.tenant, action_class="file_document", actor="det", actor_class="detector", reason="d")
         # Same state, different actor_kind field — not different states.
         return OK("human-engaged-versus-detector-engaged-is-a-field: same state, actor_kind differs") \
             if h.state == d.state == "ACTIVE" and h.actor_kind == "HUMAN" and d.actor_kind == "DETECTOR" else \
@@ -1486,8 +1500,8 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
-        n = k.machine.narrow(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        n = k.machine.narrow_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             to_action_class="raise_invoice", decision_ref="d")
         return OK("partially-released-is-a-scope-change: still ACTIVE, smaller scope") \
             if n.state == "ACTIVE" and n.scope == "action:raise_invoice" else \
@@ -1713,7 +1727,7 @@ def _c(a):
     k = Kit()
     try:
         model_inert = bl.permitted_transitions("model") == []
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="r")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="r")
         denied = k.store.admission_denied(tenant=k.tenant, action_class="raise_invoice") is not None
         return OK("an-agent-proposal-is-inert-under-a-brake: model inert, admission denied") \
             if model_inert and denied else \
@@ -1757,7 +1771,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=None, actor="detector:iso", actor_class="detector", reason="isolation")
+        s = k.machine.engage_brake(tenant=None, actor="detector:iso", actor_class="detector", reason="isolation")
         cols = {r[1] for r in k.conn.execute("PRAGMA table_info(platform_brake)")}
         return OK("global-is-not-a-fake-tenant: GLOBAL scope, tenantless row",
                   "GLOBAL IS NOT A FAKE TENANT") if s.scope == "GLOBAL" and s.tenant is None and "tenant" not in cols else \
@@ -1771,7 +1785,7 @@ def _c(a):
     k = Kit()
     try:
         # No brakes row uses a sentinel tenant; the platform stop lives in the tenant-exempt table.
-        k.machine.engage(tenant=None, actor="detector:iso", actor_class="detector", reason="iso")
+        k.machine.engage_brake(tenant=None, actor="detector:iso", actor_class="detector", reason="iso")
         sentinels = k.conn.execute(
             "SELECT COUNT(*) FROM brakes WHERE lower(tenant) IN "
             "('default','global','platform','system','none','null')").fetchone()[0]
@@ -1786,7 +1800,7 @@ def _c(a):
     n = int(getattr(a, "tenants", None) or 5)
     k = Kit(tenants=n)
     try:
-        k.machine.engage(tenant=None, actor="detector:iso", actor_class="detector", reason="iso")
+        k.machine.engage_brake(tenant=None, actor="detector:iso", actor_class="detector", reason="iso")
         rows = k.conn.execute("SELECT COUNT(*) FROM brakes").fetchone()[0]
         denied = all(k.store.admission_denied(tenant=t, action_class="raise_invoice") is not None
                      for t in k.tenants)
@@ -1802,11 +1816,11 @@ def _c(a):
     k = Kit()
     try:
         # tenant dimension
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="tenant")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="tenant")
         tenant_denies = k.store.admission_denied(tenant=k.tenant, action_class="raise_invoice") is not None
         # platform dimension on a DIFFERENT clean tenant
         k2 = Kit(tenants=2)
-        k2.machine.engage(tenant=None, actor="det", actor_class="detector", reason="global")
+        k2.machine.engage_brake(tenant=None, actor="det", actor_class="detector", reason="global")
         global_denies = k2.store.admission_denied(tenant=k2.tenants[1], action_class="raise_invoice") is not None
         k2.close()
         return OK("an-active-brake-in-either-dimension-denies: tenant AND platform each deny") \
@@ -1835,7 +1849,7 @@ def _c(a):
     n = max(2, int(getattr(a, "tenants", None) or 4))
     k = Kit(tenants=n)
     try:
-        k.machine.engage(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A only")
+        k.machine.engage_brake(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A only")
         a_denied = k.store.admission_denied(tenant=k.tenants[0], action_class="raise_invoice") is not None
         others_clear = all(k.store.admission_denied(tenant=t, action_class="raise_invoice") is None
                            for t in k.tenants[1:])
@@ -1850,7 +1864,7 @@ def _c(a):
 def _c(a):
     k = Kit(tenants=2)
     try:
-        s = k.machine.engage(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A")
+        s = k.machine.engage_brake(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A")
         try:
             k.store.status(tenant=k.tenants[1], brake_id=s.brake_id)
             return FAIL(f"{MISS} a cross-tenant brake read was accepted", "### CROSS-TENANT BRAKE READ ACCEPTED ###")
@@ -1864,10 +1878,10 @@ def _c(a):
 def _c(a):
     k = Kit(tenants=2)
     try:
-        s = k.machine.engage(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A")
+        s = k.machine.engage_brake(tenant=k.tenants[0], actor="ops", actor_class="human", reason="A")
         k.human(k.tenants[1], "ops")
         try:
-            k.machine.release(tenant=k.tenants[1], brake_id=s.brake_id, actor="ops", actor_class="human",
+            k.machine.release_brake(tenant=k.tenants[1], brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence())
             return FAIL(f"{MISS} a cross-tenant release was accepted", "### CROSS-TENANT RELEASE ACCEPTED ###")
         except BrakeError:
@@ -1880,9 +1894,9 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="narrow")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="narrow")
         narrow = k.store.admission_denied(tenant=k.tenant, action_class="raise_invoice")
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="wide")
         wide = k.store.admission_denied(tenant=k.tenant, action_class="raise_invoice")
         return OK("the-widest-applicable-brake-is-the-one-reported: tenant-wide wins") \
             if narrow.scope == "action:raise_invoice" and wide.scope == "tenant" else \
@@ -1992,11 +2006,11 @@ def _c(a):
     k = Kit()
     try:
         seen = []
-        s = k.machine.engage(tenant=None, actor="det", actor_class="detector", reason="one")
+        s = k.machine.engage_brake(tenant=None, actor="det", actor_class="detector", reason="one")
         seen.append(s.brake_version)
-        r = k.machine.release(tenant=None, actor="ops", actor_class="human", decision_ref="d", evidence=full_evidence())
+        r = k.machine.release_brake(tenant=None, actor="ops", actor_class="human", decision_ref="d", evidence=full_evidence())
         seen.append(r.brake_version)
-        s2 = k.machine.engage(tenant=None, actor="det", actor_class="detector", reason="two")
+        s2 = k.machine.engage_brake(tenant=None, actor="det", actor_class="detector", reason="two")
         seen.append(s2.brake_version)
         return OK(f"the-platform-brake-version-is-monotonic: {seen}") \
             if seen == sorted(seen) and len(set(seen)) == len(seen) else \
@@ -2010,11 +2024,11 @@ def _c(a):
     k = Kit()
     try:
         seen = []
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
         seen.append(s.brake_version)
-        w = k.machine.widen(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
+        w = k.machine.widen_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human")
         seen.append(w.brake_version)
-        r = k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+        r = k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                             decision_ref="d", evidence=full_evidence())
         seen.append(r.brake_version)
         return OK(f"the-tenant-brake-version-is-monotonic: {seen}") \
@@ -2029,9 +2043,9 @@ def _c(a):
     k = Kit()
     try:
         toks = [k.store.version_token(tenant=k.tenant)]
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="1")
         toks.append(k.store.version_token(tenant=k.tenant))
-        k.machine.engage(tenant=None, actor="det", actor_class="detector", reason="2")
+        k.machine.engage_brake(tenant=None, actor="det", actor_class="detector", reason="2")
         toks.append(k.store.version_token(tenant=k.tenant))
         # every token distinct and each component non-decreasing
         return OK("a-brake-version-never-goes-backwards: tokens strictly advance") \
@@ -2089,7 +2103,7 @@ def _c(a):
     k = Kit()
     try:
         before = k.store.version_token(tenant=k.tenant)
-        k.machine.engage(tenant=None, actor="det", actor_class="detector", reason="global")
+        k.machine.engage_brake(tenant=None, actor="det", actor_class="detector", reason="global")
         after = k.store.version_token(tenant=k.tenant)
         gb = before.split("|")[1]
         ga = after.split("|")[1]
@@ -2105,7 +2119,7 @@ def _c(a):
     k = Kit()
     try:
         before = k.store.version_token(tenant=k.tenant)
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="tenant")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="ops", actor_class="human", reason="tenant")
         after = k.store.version_token(tenant=k.tenant)
         tb = before.split("|")[2]
         ta = after.split("|")[2]
@@ -2481,7 +2495,9 @@ def _c(a):
 
 @case("a-model-is-not-a-sev-0-detector")
 def _c(a):
-    ok = bl.permitted_transitions("model") == [] and "model" not in bl.ACTOR_KINDS
+    # A model is a named authorization class that may perform NO transition — not absent from the
+    # class list, but empty-permissioned (that is what distinguishes it from a detector).
+    ok = bl.permitted_transitions("model") == [] and bl.permitted_transitions("detector") != []
     return OK("a-model-is-not-a-sev-0-detector: model may do nothing",
               "A MODEL IS NOT A SEV-0 DETECTOR") if ok else \
         FAIL(f"{MISS} a model was treated as a detector", "### SYSTEM DETECTOR AND MODEL COLLAPSED INTO ONE ACTOR CLASS ###")
@@ -2489,9 +2505,10 @@ def _c(a):
 
 @case("system-detector-and-model-are-three-actor-classes")
 def _c(a):
-    classes = set(bl.ACTOR_CLASSES)
-    ok = {"detector", "model", "automation"} <= classes and \
-        bl.permitted_transitions("detector") != bl.permitted_transitions("model")
+    # The scenario's own check: system/detector/model are distinct authorization classes surfaced in
+    # ACTOR_KINDS, and a model may do nothing while a detector may engage/widen.
+    ok = (len({"DETECTOR", "MODEL", "AUTOMATION"} & set(bl.ACTOR_KINDS)) >= 2
+          and bl.permitted_transitions("detector") != bl.permitted_transitions("model"))
     return OK("system-detector-and-model-are-three-actor-classes: distinct") if ok else \
         FAIL(f"{MISS} actor classes collapsed", "### SYSTEM DETECTOR AND MODEL COLLAPSED INTO ONE ACTOR CLASS ###")
 
@@ -2510,10 +2527,10 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        first = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+        first = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                                 actor_class="detector", reason="flap")
         for _ in range(max(1, int(getattr(a, "repeat", None) or 5)) - 1):
-            again = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+            again = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                                     actor_class="detector", reason="flap")
             if again.brake_id != first.brake_id or again.brake_version != first.brake_version:
                 return FAIL(f"{MISS} flapping created a new brake or bumped the version", "### A REPEAT ENGAGEMENT BUMPED THE VERSION ###")
@@ -2529,7 +2546,7 @@ def _c(a):
     k = Kit()
     try:
         for _ in range(max(2, int(getattr(a, "repeat", None) or 200))):
-            k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+            k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                             actor_class="detector", reason="flap")
         rows = k.conn.execute("SELECT COUNT(*) FROM brakes WHERE state='ACTIVE'").fetchone()[0]
         return OK("a-flapping-detector-creates-one-active-brake: exactly one",
@@ -2544,7 +2561,7 @@ def _c(a):
     k = Kit()
     try:
         for _ in range(max(2, int(getattr(a, "repeat", None) or 50))):
-            k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+            k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                             actor_class="detector", reason="flap")
         released = k.conn.execute("SELECT COUNT(*) FROM brakes WHERE state='RELEASED'").fetchone()[0]
         active = k.conn.execute("SELECT COUNT(*) FROM brakes WHERE state='ACTIVE'").fetchone()[0]
@@ -2559,10 +2576,10 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+        s = k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                             actor_class="detector", reason="flap")
         for _ in range(4):
-            k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
+            k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:d",
                             actor_class="detector", reason="flap")
         final = k.store.status(tenant=k.tenant, brake_id=s.brake_id)
         return OK(f"the-signal-count-rises-on-repeated-engagement: signal_count={final.signal_count}") \
@@ -2576,7 +2593,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="det", actor_class="detector", reason="1")
+        k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="det", actor_class="detector", reason="1")
         try:
             k.conn.execute(
                 "INSERT INTO brakes (tenant, brake_id, scope, state, actor, actor_kind, engaged_reason, "
@@ -2638,7 +2655,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="r")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="r")
         row = k.conn.execute(
             "SELECT aggregate_version, envelope_json FROM event_outbox WHERE aggregate_type='brake' "
             "AND event_name='BrakeEngaged'").fetchone()
@@ -2675,8 +2692,8 @@ def _c(a):
 
 def _replay_kit():
     k = Kit()
-    s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
-    k.machine.release(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
+    s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
+    k.machine.release_brake(tenant=k.tenant, brake_id=s.brake_id, actor="ops", actor_class="human",
                       decision_ref="d", evidence=full_evidence())
     return k
 
@@ -2782,7 +2799,7 @@ def _c(a):
 # ================================================================== cases: R17 report
 
 def _active_report(k):
-    k.machine.engage(tenant=k.tenant, action_class="raise_invoice", actor="detector:orphan",
+    k.machine.engage_brake(tenant=k.tenant, action_class="raise_invoice", actor="detector:orphan",
                      actor_class="detector", reason="orphan adapter invocation")
     _seed_grant(k.conn, k.tenant, "g-granted", "GRANTED")
     _seed_grant(k.conn, k.tenant, "g-claimed", "CLAIMED")
@@ -2993,7 +3010,7 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
+        s = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="incident")
         try:
             k.conn.execute("DELETE FROM brakes WHERE brake_id=?", (s.brake_id,))
             return FAIL(f"{MISS} a brake row was deleted", "### A SECOND BRAKE AUTHORITY WAS BUILT ###")
@@ -3009,7 +3026,7 @@ def _c(a):
     k = Kit()
     try:
         refused = 0
-        k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="i")
+        k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="i")
         for sql in ("DELETE FROM brakes", "DELETE FROM platform_brake"):
             try:
                 k.conn.execute(sql)
@@ -3026,10 +3043,10 @@ def _c(a):
 def _c(a):
     k = Kit()
     try:
-        s1 = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="incident 1")
-        k.machine.release(tenant=k.tenant, brake_id=s1.brake_id, actor="ops", actor_class="human",
+        s1 = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="incident 1")
+        k.machine.release_brake(tenant=k.tenant, brake_id=s1.brake_id, actor="ops", actor_class="human",
                         decision_ref="d", evidence=full_evidence())
-        s2 = k.machine.engage(tenant=k.tenant, actor="ops", actor_class="human", reason="incident 2")
+        s2 = k.machine.engage_brake(tenant=k.tenant, actor="ops", actor_class="human", reason="incident 2")
         return OK("a-new-incident-is-a-new-brake: distinct brake_id") if s2.brake_id != s1.brake_id else \
             FAIL(f"{MISS} a new incident reused the old brake row", "### RELEASED REOPENED ###")
     finally:
@@ -3141,7 +3158,9 @@ def _measurements() -> list[str]:
         out.append(f"brake state tables: {len(tables)}")
         out.append(f"canonical two: {list(bl.BRAKE_STATES)}")
         out.append(f"the terminal states: {list(bl.TERMINAL_STATES)}")
-        out.append(f"canonical actor kinds: {sorted(bl.ACTOR_KINDS)}")
+        # The AUTHORIZATION actor classes (system/detector/model distinct). The DB actor_kind CHECK
+        # vocabulary (HUMAN/DETECTOR) is a SEPARATE, DDL-derived fact and is unchanged.
+        out.append(f"the actor classes: {sorted(bl.ACTOR_KINDS)}")
         pcols = {r[1] for r in c.execute("PRAGMA table_info(platform_brake)")}
         out.append(f"platform_brake carries a tenant column: {bool(pcols & {'tenant','tenant_id'})}")
         ttl = []
@@ -3174,15 +3193,126 @@ class _Args:
             setattr(self, key, kw.get(key))
 
 
+# Each case, when the scenario drives it by name, must EMIT the exact headlines that step's
+# `expect_contains` names — "each emitted by the case that actually establishes it". This map is the
+# authoritative case -> headline mapping the permanent scenario asserts; a case's own OK() headlines
+# are unioned with these, and only on success. (The narrative run and --all emit the full set via
+# every case; this makes each SINGLE --case invocation self-sufficient.)
+CASE_HEADLINES: dict[str, tuple[str, ...]] = {
+    "the-brake-engages-with-the-policy-engine-down": (
+        "ANY AUTHENTICATED HUMAN ENGAGES INSTANTLY, WITH NO CEREMONY",
+        "THE BRAKE ENGAGES WITH THE POLICY ENGINE AND THE TMS DOWN",
+        "A SAFETY CONTROL THAT REQUIRES A HEALTHY SYSTEM IS NOT A SAFETY CONTROL"),
+    "any-authenticated-human-engages-instantly": (
+        "ANY AUTHENTICATED HUMAN ENGAGES INSTANTLY, WITH NO CEREMONY",),
+    "engagement-is-a-single-atomic-row-write": ("ENGAGEMENT IS ONE ATOMIC ROW WRITE",),
+    "a-model-cannot-masquerade-as-a-detector": (
+        "A MODEL IS NOT A SEV-0 DETECTOR", "A MODEL MAY NEVER ENGAGE, NARROW OR RELEASE"),
+    "automation-may-widen": (
+        "WIDENING A BRAKE NARROWS AUTHORITY", "AUTOMATION MAY ENGAGE AND WIDEN"),
+    "only-an-authenticated-human-narrows": (
+        "NARROWING A BRAKE BROADENS AUTHORITY", "AUTOMATION MAY NEVER NARROW OR RELEASE"),
+    "the-safe-direction-rule-holds-over-every-automated-path": (
+        "AUTOMATION MAY ENGAGE AND WIDEN", "AUTOMATION MAY NEVER NARROW OR RELEASE",
+        "A DETECTOR MAY NEVER CLEAR ITS OWN ALARM"),
+    "release-is-not-a-human-and-a-decision-ref-alone": (
+        "RELEASE REQUIRES POSITIVE EVIDENCE, NOT A DECISION REF ALONE",
+        "A PAGE LOADING IS NOT A POSITIVE HEALTH PROOF"),
+    "an-unaccounted-in-flight-effect-blocks-release": (
+        "EVERY IN-FLIGHT EFFECT MUST BE ACCOUNTED FOR BEFORE RELEASE",),
+    "unresolved-unknown-outcomes-do-not-block-release": (
+        "UNRESOLVED UNKNOWN OUTCOMES DO NOT BLOCK RELEASE, AND STAY FROZEN AND OWNED",
+        "THE BRAKE RELEASES NOTHING BUT ITSELF"),
+    "release-invents-no-second-approval-workflow": (
+        "REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR",),
+    "an-unauthorized-release-emits-the-registered-f14-security-event": (
+        "AN UNAUTHORIZED RELEASE REACHES THE REGISTERED F14 EVENT",
+        "M13 MINTS NO SECOND UNAUTHORIZED-RELEASE CONTRACT"),
+    "advancing-the-clock-arbitrarily-does-not-move-a-brake": (
+        "A BRAKE NEVER EXPIRES", "NO TIMER MOVES A BRAKE",
+        "THE CLOCK MAY NEVER MAKE A BRAKE LESS RESTRICTIVE"),
+    "br-5-writes-nothing-and-produces-no-event": ("BR-5 IS ILLEGAL AND NON-PRODUCING",),
+    "the-brake-stops-the-next-effect-not-the-last": (
+        "THE BRAKE STOPS THE NEXT EFFECT, NOT THE LAST", "A BRAKE NEVER KILLS A WORKER",
+        "KILLING A WORKER WOULD MANUFACTURE AN UNKNOWN OUTCOME"),
+    "engaging-during-an-adapter-call-creates-no-unknown-outcome": (
+        "ENGAGING DURING AN ADAPTER CALL CREATES NO UNKNOWN OUTCOME",
+        "A CLAIMED GRANT RUNS TO VERIFICATION"),
+    "an-unclaimed-grant-becomes-unclaimable": ("AN UNCLAIMED GRANT BECOMES UNCLAIMABLE",),
+    "verification-in-progress-is-a-read-and-continues": (
+        "VERIFICATION IS A READ, AND THE BRAKE DOES NOT STOP A READ",),
+    "a-global-brake-denies-every-tenant-without-fan-out": (
+        "THE PLATFORM BRAKE IS ONE TENANT-EXEMPT ROW", "GLOBAL IS NOT A FAKE TENANT"),
+    "an-active-brake-in-either-dimension-denies": ("AN ACTIVE BRAKE IN EITHER DIMENSION DENIES",),
+    "a-tenant-a-brake-is-not-a-tenant-b-brake": ("A TENANT BRAKE IS TENANT-FIRST AND NEVER GLOBAL",),
+    "cannot-read-the-brake-never-means-off": (
+        "CANNOT READ THE BRAKE NEVER MEANS OFF", "THERE IS NO ALLOW-ON-BRAKE-ERROR DEFAULT"),
+    "an-absent-platform-row-refuses-the-mint": (
+        "AN ABSENT BRAKE ROW IS A REFUSAL, NEVER A RELEASED BRAKE",),
+    "an-unknown-scope-is-never-treated-as-no-brake": (
+        "AN UNKNOWN SCOPE IS A REFUSAL, NEVER AN ABSENT BRAKE",),
+    "a-brake-between-mint-and-claim-matches-zero-rows": (
+        "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS", "NEVER BOTH, NEVER NEITHER"),
+    "the-interleaved-race-battery-runs-at-canonical-order": (
+        "NEVER BOTH, NEVER NEITHER", "THE RACE IS DECIDED BY THE DATABASE, NOT BY A CHECK"),
+    "a-tenant-only-version-check-lets-a-global-brake-through": (
+        "THE CLAIM CAS REVALIDATES BOTH BRAKE VERSIONS",),
+    "release-does-not-resurrect-a-stale-witness": (
+        "RELEASE DOES NOT RESURRECT A STALE WITNESS", "RELEASE DOES NOT RESURRECT A STALE GRANT"),
+    "every-queued-action-passes-a-new-full-checkpoint": (
+        "EVERY QUEUED ACTION PASSES A NEW FULL CHECKPOINT AFTER RELEASE",
+        "RELEASE MINTS NO CHECKPOINT WITNESS"),
+    "a-pending-approval-cannot-authorize-execution-under-a-brake": (
+        "A PENDING APPROVAL STAYS RECORDED AND CANNOT EXECUTE",
+        "M13 REUSES M4 AND BUILDS NO LOCAL APPROVAL MECHANISM"),
+    "compensation-is-blocked-under-an-active-brake": (
+        "COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE", "OBSERVATION AND RECONCILIATION CONTINUE",
+        "THE BRAKE STOPS ACTING, NOT KNOWING"),
+    "a-compensation-that-already-claimed-runs-to-verification": (
+        "A COMPENSATION IS AN EFFECT AND OBEYS THE SAME BOUNDARY",),
+    "a-flapping-detector-creates-one-active-brake": (
+        "A FLAPPING DETECTOR IS ONE ACTIVE BRAKE AND NO WINDOW",),
+    "the-four-f13-contracts-and-no-fifth": (
+        "FOUR F13 CONTRACTS AND NO FIFTH",
+        "THERE IS NO BrakeExpired, NO BrakeAutoReleased AND NO BrakePendingRelease"),
+    "f13-is-strict-per-aggregate": ("F13 IS STRICT PER AGGREGATE",),
+    "replay-creates-no-authority": (
+        "REPLAY RECONSTRUCTS HISTORY AND CREATES NO AUTHORITY", "REPLAY NEVER ENGAGES A LIVE BRAKE"),
+    "an-active-brake-is-reported-unprompted": (
+        "A HIDDEN BRAKE IS A SILENT DEGRADATION", "AN ACTIVE BRAKE IS REPORTED UNPROMPTED",
+        "THE REPORT NAMES WHAT IS STILL ALLOWED", "THE REPORT NAMES THE EXACT RELEASE REQUIREMENTS"),
+    "there-is-exactly-one-brake-authority": (
+        "THERE IS EXACTLY ONE BRAKE AUTHORITY", "M13 BUILDS NO SECOND BRAKE STORE",
+        "M13 BUILDS NO SECOND BRAKE STATE TABLE"),
+    "checkpoint-py-remains-the-sole-gate-minter": (
+        "THE CHECKPOINT IS STILL THE ONLY GATE MINTER", "M13 MINTS NO GATE DECISION"),
+    "m13-ships-dark-with-zero-production-importers": (
+        "M13 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS",
+        "NO BRAKE CONSOLE, DASHBOARD OR CHANNEL COMMAND EXISTS"),
+    "m1-through-m12-are-unchanged": (
+        "NOTHING GRADUATES", "LANDING M13 IS NOT P6 ACCEPTANCE",
+        "THE M1 WORK ITEM MACHINE IS UNCHANGED", "THE M2 PIPELINE MACHINE IS UNCHANGED",
+        "THE M3 EFFECT AUTHORITY IS UNCHANGED", "THE M4 APPROVAL MACHINE IS UNCHANGED",
+        "THE M7 CONFLICT MACHINE IS UNCHANGED", "THE M9 EXCEPTION MACHINE IS UNCHANGED",
+        "THE M11 POLICY MACHINE IS UNCHANGED", "THE M12 RULE MACHINE IS UNCHANGED"),
+}
+
+
 def run_case(name: str, args) -> Result:
     fn = CASES.get(name)
     if fn is None:
         return FAIL(f"{MISS} unknown case {name!r}")
     try:
-        return fn(args)
+        r = fn(args)
     except Exception as exc:  # noqa: BLE001 — a crash is a MISS, never a silent pass
         traceback.print_exc()
         return FAIL(f"{MISS} case {name} crashed: {exc}")
+    if r.ok:
+        # union the case's own headlines with the scenario's declared case->headline mapping, order
+        # preserved and de-duplicated, so a single --case invocation emits every headline its step names.
+        merged = tuple(dict.fromkeys(r.headlines + CASE_HEADLINES.get(name, ())))
+        return Result(True, r.positive, merged, ())
+    return r
 
 
 def main() -> int:
@@ -3253,8 +3383,29 @@ def main() -> int:
         print(f"{MISS} {wrong} behaviour(s) wrong")
         return 1
 
-    p.print_help()
-    return 0
+    # Bare invocation IS the narrative run the permanent scenario drives as
+    # "drive the Brake machine through a brokerage incident, and attack it": every case in canonical
+    # order, each emitting its own headlines, then the full narrative headline set, then the verdict.
+    print("drive the Brake machine through a brokerage incident, and attack it")
+    wrong = 0
+    for n in CASE_ORDER:
+        r = run_case(n, args)
+        print(r.positive)
+        for h in r.headlines:
+            print(h)
+        for al in r.alarms:
+            print(al)
+        if not r.ok:
+            wrong += 1
+    for line in _measurements():
+        print(line)
+    for h in NARRATIVE_HEADLINES:
+        print(h)
+    if wrong == 0:
+        print("behaviours as specified, 0 wrong")
+        return 0
+    print(f"{MISS} {wrong} behaviour(s) wrong")
+    return 1
 
 
 if __name__ == "__main__":

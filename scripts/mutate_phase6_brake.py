@@ -85,8 +85,8 @@ CASES = [
      f"{T}::test_a_model_may_never_engage_narrow_or_release"),
 
     ("a loaded page is accepted as positive health",
-     [(BL, '    if proof.get("kind") != "positive_control":\n        return False\n    return bool(proof.get("verified"))',
-       '    return True  # MUTANT accepts any proof as positive health')],
+     [(BL, '    if proof.get("kind") != "positive_control":\n        return False',
+       '    if False:  # MUTANT accepts a loaded page as positive health\n        return False')],
      f"{T}::test_a_loaded_page_is_not_a_positive_health_proof"),
 
     ("release stops requiring in-flight effects accounted for",

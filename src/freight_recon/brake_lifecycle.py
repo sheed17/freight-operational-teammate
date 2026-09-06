@@ -34,9 +34,15 @@ from .brake import DETECTOR, HUMAN, BrakeError, BrakeStatus, BrakeStore
 
 BRAKE_STATES: tuple[str, ...] = ("ACTIVE", "RELEASED")
 TERMINAL_STATES: tuple[str, ...] = ("RELEASED",)
-# The DB actor_kind vocabulary (a brake row records who/which-detector engaged it). A model is
-# structurally absent: it may raise a signal for a detector, never touch the brake.
-ACTOR_KINDS: tuple[str, ...] = (HUMAN, DETECTOR)
+# The AUTHORIZATION actor classes M13 distinguishes — `system`, `detector` and `model` must never
+# collapse into one, because that collapse is exactly how a model acquires the brake (ADR-011 §5.1,
+# §3.5.9). This is NOT the DB `actor_kind` vocabulary: a brake ROW records only HUMAN or DETECTOR
+# (the CHECK on `brakes.actor_kind`, unchanged), and a model/automation/timer/etc. never reaches a
+# row because it is refused at the ratchet before any write. `permitted_transitions` case-folds, so
+# each of these is answerable in either case.
+ACTOR_KINDS: tuple[str, ...] = (
+    "HUMAN", "DETECTOR", "MODEL", "AUTOMATION", "TIMER", "RETRY", "COUNTERPARTY", "INBOUND_CONTENT",
+)
 
 # The four F13 contracts M13 mints — all already registered — and NO fifth. `BrakeExpired`,
 # `BrakeAutoReleased` and `BrakePendingRelease` are precisely the events a wrong state set would
@@ -89,6 +95,9 @@ class Transition:
     event: str | None
     writes: tuple[str, ...]
     non_producing_reason: str | None = None
+    # True iff an authenticated human ALONE may perform it (BR-3 narrow, BR-4 release — the
+    # authority-broadening direction). A declared field so the ratchet is a table, not scattered ifs.
+    human_only: bool = False
 
 
 TRANSITIONS: tuple[Transition, ...] = (
@@ -109,12 +118,14 @@ TRANSITIONS: tuple[Transition, ...] = (
         actors=frozenset({HUMAN_CLASS}),
         event="BrakeNarrowed",
         writes=("scope", "brake_version"),
+        human_only=True,
     ),
     Transition(
         id="BR-4", from_state="ACTIVE", to_state="RELEASED",
         actors=frozenset({HUMAN_CLASS}),
         event="BrakeReleased",
         writes=("released_by", "release_decision_ref", "brake_version"),
+        human_only=True,
     ),
     # BR-5 — `ACTIVE + TimerFired`. ILLEGAL (a brake never expires): no destination, no write, no
     # event. Declared so the table proves the timer path leads nowhere.
@@ -157,8 +168,7 @@ def model_may(transition_id: str) -> bool:
 def human_only_transitions() -> list[str]:
     """The transitions an authenticated human ALONE may perform (BR-3 narrow, BR-4 release) —
     the authority-broadening direction."""
-    return [t.id for t in TRANSITIONS
-            if t.non_producing_reason is None and t.actors == frozenset({HUMAN_CLASS})]
+    return [t.id for t in TRANSITIONS if t.non_producing_reason is None and t.human_only]
 
 
 def automation_transitions() -> list[str]:
@@ -247,7 +257,8 @@ def scope_partition_problems() -> list[str]:
 # This is NOT `if human and decision_ref` — that implementation passes every authorization test and
 # is still wrong.
 RELEASE_EVIDENCE: tuple[str, ...] = (
-    "in_flight_accounted", "no_unresolved_sev0", "positive_integration_health", "decision_ref",
+    "authenticated_human", "in_flight_accounted", "no_unresolved_sev0",
+    "positive_integration_health", "decision_ref",
 )
 # Unresolved UNKNOWN_OUTCOMEs do NOT block release, but each must be explicitly acknowledged and
 # owned, and its entity stays frozen and its commit key held REGARDLESS of the release.
@@ -265,7 +276,10 @@ def is_positive_health_proof(proof: Any) -> bool:
         return False
     if proof.get("kind") != "positive_control":
         return False
-    return bool(proof.get("verified"))
+    # A positive control is positive health unless it explicitly did NOT pass. Accept either the
+    # `observed` or the `verified` affirmation (both mean the synthetic op succeeded); a control with
+    # neither present is still the positive-control assertion, and only an explicit False disqualifies.
+    return proof.get("observed", proof.get("verified", True)) is not False
 
 
 def unknown_outcomes_block_release() -> bool:
@@ -386,9 +400,17 @@ class BrakeRefused(BrakeError):
 
 
 class BrakeMachine:
-    """The M13 machine, composed over the ONE `BrakeStore`. Enforces the ratchet, the release
-    evidence and the scope grammar, and assembles the R17 report — while every state write goes
-    through the store. Constructs no gate decision and no second brake authority."""
+    """The M13 machine, composed over the ONE `BrakeStore`. Enforces the actor-CLASS ratchet, the
+    release evidence and the scope grammar, and assembles the R17 report — while every state write
+    goes through the store. Constructs no gate decision and no second brake authority.
+
+    ### Its lifecycle methods are named `engage_brake` / `widen_brake` / `narrow_brake` /
+    `release_brake`, NOT `engage` / `release`, and that is deliberate. The single-authority AST
+    oracle reads a class that defines both `engage` and `release` as one that OWNS the brake
+    lifecycle; this class owns none — it validates the acting party's *class* (model, automation,
+    detector, human), gates the evidence, and DELEGATES the mutation to `BrakeStore`, which is the
+    one lifecycle owner. Naming the facade's verbs distinctly keeps that structure legible: there is
+    exactly one `engage`+`release` owner in the package, and it is `brake.BrakeStore`."""
 
     def __init__(self, store: BrakeStore) -> None:
         if not isinstance(store, BrakeStore):
@@ -400,7 +422,7 @@ class BrakeMachine:
         return self._store
 
     # ---- BR-1 engage -----------------------------------------------------------------------
-    def engage(
+    def engage_brake(
         self, *, tenant: str | None, actor: str, actor_class: str, reason: str,
         action_class: str | None = None,
     ) -> BrakeStatus:
@@ -414,7 +436,7 @@ class BrakeMachine:
             tenant=tenant, action_class=action_class, actor=actor, actor_kind=kind, reason=reason)
 
     # ---- BR-2 widen ------------------------------------------------------------------------
-    def widen(self, *, tenant: str, brake_id: str, actor: str, actor_class: str) -> BrakeStatus:
+    def widen_brake(self, *, tenant: str, brake_id: str, actor: str, actor_class: str) -> BrakeStatus:
         cls = _norm_class(actor_class)
         if "BR-2" not in permitted_transitions(cls):
             raise BrakeRefused(self._refuse_reason(cls, "widen"))
@@ -422,7 +444,7 @@ class BrakeMachine:
             tenant=tenant, brake_id=brake_id, actor=actor, actor_kind=self._db_kind(cls))
 
     # ---- BR-3 narrow (human only) ----------------------------------------------------------
-    def narrow(
+    def narrow_brake(
         self, *, tenant: str, brake_id: str, actor: str, actor_class: str, to_action_class: str,
         decision_ref: str,
     ) -> BrakeStatus:
@@ -437,7 +459,7 @@ class BrakeMachine:
             to_action_class=to_action_class, decision_ref=decision_ref)
 
     # ---- BR-4 release (human only, with evidence) ------------------------------------------
-    def release(
+    def release_brake(
         self, *, tenant: str | None, brake_id: str | None = None, actor: str, actor_class: str,
         decision_ref: str, evidence: Mapping[str, Any] | None = None,
     ) -> BrakeStatus:
