@@ -55,7 +55,12 @@ def test_missing_witness_triggers_are_a_readiness_problem(tmp_path):
 
 
 def test_a_missing_platform_brake_row_is_a_readiness_problem(tmp_path):
+    # M13 makes the platform row UNDELETABLE (C-9, the no-DELETE trigger), which is the stronger
+    # guarantee. The readiness check that a missing row is a problem is defense-in-depth for exactly
+    # the case where that guard is somehow gone (a corrupted/tampered database), so we drop the guard
+    # first to reach the state it defends — the readiness oracle must still catch it.
     store = make_store(tmp_path)
+    store.conn.execute("DROP TRIGGER trg_platform_brake_no_delete")
     store.conn.execute("DELETE FROM platform_brake")
     store.conn.commit()
     problems = phase3_readiness_problems(store.conn)
@@ -345,6 +350,25 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_rules_no_delete"
                for step in p6ru_performed), p6ru_performed
     assert phase6_rules_readiness_problems(conn) == []
+
+    # M13 (the Brake) HARDENS the P3-created `brakes`/`platform_brake` tables rather than creating a
+    # new one: the released_by FK into tenant_humans, released_by_kind, signal_count and the
+    # append-only DELETE triggers. A P2..M12 database is still refused until the hardening runs, and
+    # the migration that closes the gap rebuilds `brakes` for the FK. The property under test is
+    # unchanged: a migrated database and a fresh one agree about what canonical means.
+    from freight_recon.migrations.phase6_brakes import (  # noqa: E402
+        create_phase6_brakes_schema,
+        phase6_brakes_readiness_problems,
+    )
+
+    assert any("brakes" in p for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p6br_performed = create_phase6_brakes_schema(conn, now=utc_now())
+    assert any(step.startswith("rebuild-table:brakes") for step in p6br_performed), p6br_performed
+    assert any(step == "create-trigger:trg_brakes_no_delete"
+               for step in p6br_performed), p6br_performed
+    assert any(step == "create-trigger:trg_platform_brake_no_delete"
+               for step in p6br_performed), p6br_performed
+    assert phase6_brakes_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

@@ -1,4 +1,4 @@
-"""The human brake — admission control (ADR-011, machine M13).
+"""The human brake — admission control (ADR-011, machine M13). The ONE brake authority.
 
 THE RULE: the brake is ADMISSION CONTROL, not process termination. It is enforced by refusing to
 mint (checkpoint step 7) and refusing to claim (the CAS re-derives the version token) — never by
@@ -22,14 +22,35 @@ and the claim CAS matches zero rows. Never both, never neither.
 
 FAIL-CLOSED READ. "Cannot read the brake" NEVER means "off": the reader raises
 `BrakeStoreUnreachable`, and both checkpoint step 7 and the claim CAS treat that as a refusal.
+
+EVENTS (M13). Every tenant brake transition co-commits its F13 event into the transactional outbox
+(GR-2, C-2): `BrakeEngaged` (BR-1), `BrakeWidened` (BR-2), `BrakeNarrowed` (BR-3), `BrakeReleased`
+(BR-4). A non-human release ATTEMPT co-commits the already-registered F14
+`UnauthorizedBrakeReleaseAttempted` and refuses. There is no fifth F13 contract and no M13-local
+synonym for the F14 one. BR-5 (`TimerFired`) is illegal and produces nothing — there is no method
+for it, so no door exists for a scheduler to find.
+
+  ### THE PLATFORM (GLOBAL) BRAKE EMITS NO F13 EVENT — a recorded gap, `M13-AQ-5`. The per-tenant
+  event transport (`event_outbox`, `EventEnvelope`, `TransactionalOutbox`) all `require_tenant(...)`,
+  which refuses `None` and every sentinel (including "global"). The platform row belongs to no
+  tenant (amendment A1), so a platform brake event has no honest tenant partition, and inventing a
+  sentinel tenant is exactly the defect A1 forbids. The platform brake's SAFETY mechanism —
+  admission denial via the row read in checkpoint step 7 and the claim CAS — is fully intact; its
+  incident record is the retained `platform_brake` row and its columns. Emitting a tenantless F13
+  event on a per-tenant transport is deferred to whoever resolves M13-AQ-5, not guessed here.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable
 
+from .event_contracts import CONTRACTS
+from .event_envelope import EventEnvelope, format_instant
 from .tenant import require_tenant
 
 # Scope grammar at P3: the whole tenant, or one action class within it. Wider vocabularies
@@ -41,6 +62,12 @@ HUMAN = "HUMAN"
 DETECTOR = "DETECTOR"
 
 _TOKEN_PREFIX = "bv1"
+
+AGGREGATE_TYPE = "brake"
+PRODUCER_COMPONENT = "brake"
+# The idempotency-identity prefix for the F14 unauthorized-release attempt. A refused release
+# advances no brake version, so a retry storm re-derives the same identity and the outbox dedups it.
+_F14_IDENTITY_PREFIX = "ubra_v1"
 
 
 class BrakeError(RuntimeError):
@@ -65,6 +92,7 @@ class BrakeStatus:
     engaged_reason: str
     engaged_at: str
     brake_version: int
+    signal_count: int = 1
 
 
 def _scope_for(action_class: str | None) -> str:
@@ -84,8 +112,12 @@ class BrakeStore:
     operations validate their tenant argument at the boundary exactly as the store does.
     """
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection,
+                 clock: Callable[[], datetime] | None = None) -> None:
         self._conn = conn
+        # A datetime clock (for the F13/F14 envelope timestamps, which need the `…Z` instant shape
+        # `format_instant` produces). Defaults to real UTC; tests inject a fixed one for determinism.
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     # ------------------------------------------------------------------ writes (the ratchet)
 
@@ -101,8 +133,9 @@ class BrakeStore:
         """BR-1: any authenticated human INSTANTLY, or an automated Sev-0 detector. One row write.
 
         NEVER requires the system to be healthy. Idempotent on scope: engaging an already-braked
-        scope records nothing new and returns the existing brake — a flapping detector is one
-        ACTIVE brake, not a pile, and it cannot self-release, so flapping opens no window.
+        scope records nothing new, bumps no version, emits no event, and only raises the row's
+        `signal_count` — a flapping detector is one ACTIVE brake, not a pile, and it cannot
+        self-release, so flapping opens no window. The first engagement co-commits `BrakeEngaged`.
         """
         kind = self._require_actor(actor, actor_kind)
         if not str(reason or "").strip():
@@ -118,19 +151,32 @@ class BrakeStore:
                 (bound, scope),
             ).fetchone()
             if existing is not None:
-                self._conn.rollback()
-                return self._row_status(existing)
+                # Idempotent re-engagement: raise the signal count, bump NO version, emit NO event.
+                self._conn.execute(
+                    "UPDATE brakes SET signal_count = signal_count + 1 "
+                    "WHERE tenant = ? AND brake_id = ? AND state = 'ACTIVE'",
+                    (bound, existing["brake_id"]),
+                )
+                self._conn.commit()
+                return self.status(tenant=bound, brake_id=existing["brake_id"])
             version = self._next_tenant_version_locked(bound)
             brake_id = str(uuid.uuid4())
-            now = _now()
+            now = self._ts()
             self._conn.execute(
                 """
                 INSERT INTO brakes (
                     tenant, brake_id, scope, state, actor, actor_kind, engaged_reason,
-                    engaged_at, brake_version
-                ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+                    engaged_at, brake_version, signal_count
+                ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, 1)
                 """,
                 (bound, brake_id, scope, actor, kind, reason, now, version),
+            )
+            self._emit_f13(
+                tenant=bound, event_name="BrakeEngaged", transition_id="BR-1",
+                aggregate_id=brake_id, aggregate_version=version, actor=actor, actor_kind=kind,
+                payload={"scope": scope, "actor": actor, "reason": reason,
+                         "brake_version": int(version)},
+                consequential=True,
             )
             self._conn.commit()
         except BaseException:
@@ -139,12 +185,15 @@ class BrakeStore:
         return BrakeStatus(
             brake_id=brake_id, tenant=bound, scope=scope, state="ACTIVE", actor=actor,
             actor_kind=kind, engaged_reason=reason, engaged_at=now, brake_version=version,
+            signal_count=1,
         )
 
     def widen(self, *, tenant: str, brake_id: str, actor: str, actor_kind: str) -> BrakeStatus:
         """BR-2: widening a brake NARROWS AUTHORITY, so human OR automation may do it.
 
-        At P3's closed scope grammar, widening means action-class -> tenant-wide.
+        "Narrow"/"broaden" refer to AUTHORITY throughout (ADR-011 §5.1): widening the brake's SCOPE
+        narrows what Neyma may do, which is the safe direction. At P3's closed scope grammar,
+        widening means action-class -> tenant-wide. Co-commits `BrakeWidened`.
         """
         self._require_actor(actor, actor_kind)  # widening narrows authority: both kinds may
         bound = require_tenant(tenant, context="BrakeStore.widen")
@@ -160,6 +209,12 @@ class BrakeStore:
                 "WHERE tenant = ? AND brake_id = ? AND state = 'ACTIVE'",
                 (TENANT_WIDE, version, bound, brake_id),
             )
+            self._emit_f13(
+                tenant=bound, event_name="BrakeWidened", transition_id="BR-2",
+                aggregate_id=brake_id, aggregate_version=version, actor=actor, actor_kind=actor_kind,
+                payload={"scope": TENANT_WIDE, "brake_version": int(version)},
+                consequential=False,
+            )
             self._conn.commit()
         except BaseException:
             self._conn.rollback()
@@ -170,7 +225,11 @@ class BrakeStore:
         self, *, tenant: str, brake_id: str, actor: str, actor_kind: str, to_action_class: str,
         decision_ref: str,
     ) -> BrakeStatus:
-        """BR-3: narrowing a brake BROADENS AUTHORITY => an authenticated human ONLY."""
+        """BR-3: narrowing a brake BROADENS AUTHORITY => an authenticated human ONLY.
+
+        Narrowing the brake's SCOPE broadens what Neyma may do — the unsafe direction — so a
+        detector, a model, automation and a timer are each refused. Co-commits `BrakeNarrowed`.
+        """
         kind = self._require_actor(actor, actor_kind)
         if kind != HUMAN:
             raise BrakeError(
@@ -190,6 +249,12 @@ class BrakeStore:
                 "WHERE tenant = ? AND brake_id = ? AND state = 'ACTIVE'",
                 (scope, version, bound, brake_id),
             )
+            self._emit_f13(
+                tenant=bound, event_name="BrakeNarrowed", transition_id="BR-3",
+                aggregate_id=brake_id, aggregate_version=version, actor=actor, actor_kind=kind,
+                payload={"scope": scope, "brake_version": int(version)},
+                consequential=False,
+            )
             self._conn.commit()
         except BaseException:
             self._conn.rollback()
@@ -203,19 +268,33 @@ class BrakeStore:
         """BR-4: an authenticated human ONLY, with a decision_ref. A detector that engaged a brake
         may never release it — nor may any other automation.
 
-        Release preconditions beyond authority (in-flight effects accounted for, no unresolved
-        Sev-0 in scope) are read against the ledger by the caller at P3-proportionate depth in
-        `release_blockers`; this method enforces the structural ones the database can state.
+        This method enforces the STRUCTURAL release contract the database can state: the actor is a
+        human, a `decision_ref` is present, and (for a tenant brake) `released_by` is a recorded
+        human of the tenant, enforced by the foreign key into `tenant_humans`. The RICHER release
+        evidence of ADR-011 §6 — every in-flight effect accounted for, no unresolved Sev-0, and
+        integration health POSITIVELY demonstrated — is read against the ledger by the caller
+        (`brake_lifecycle.release_evidence_satisfied`) at P3-proportionate depth BEFORE this is
+        called. (This replaces the earlier docstring's reference to a `release_blockers` seam that
+        was never built — `M13-AQ-9`; the seam is `brake_lifecycle`, and the structural half is here.)
+
+        A non-human release ATTEMPT co-commits the F14 `UnauthorizedBrakeReleaseAttempted` and
+        refuses. Co-commits `BrakeReleased` on success.
         """
         kind = self._require_actor(actor, actor_kind)
         if kind != HUMAN:
+            # A detector cannot clear its own alarm. Record the attempt (F14) in its OWN transaction
+            # so the security record survives, then refuse. (A platform-brake attempt has no tenant
+            # partition for the event — see the module docstring — so it is refused without F14.)
+            if tenant is not None and brake_id:
+                self.record_unauthorized_release_attempt(
+                    tenant=tenant, brake_id=brake_id, actor=actor, attempted_kind=kind)
             raise BrakeError(
                 "automation may never release a brake — a detector cannot clear its own alarm "
                 "(ADR-011 §6). Release is a human act with a decision_ref."
             )
         if not str(decision_ref or "").strip():
             raise BrakeError("release requires a decision_ref: an unexplained release is not a decision")
-        now = _now()
+        now = self._ts()
         if tenant is None:
             self._conn.execute("BEGIN IMMEDIATE")
             try:
@@ -225,9 +304,11 @@ class BrakeStore:
                     raise BrakeError("the platform brake is not ACTIVE; nothing to release")
                 self._conn.execute(
                     "UPDATE platform_brake SET state = 'RELEASED', brake_version = brake_version + 1, "
-                    "released_by = ?, release_decision_ref = ?, released_at = ? WHERE id = 1",
+                    "released_by = ?, released_by_kind = 'HUMAN', release_decision_ref = ?, "
+                    "released_at = ? WHERE id = 1",
                     (actor, decision_ref, now),
                 )
+                # No F13 emit for the platform brake — tenantless transport, M13-AQ-5 (module doc).
                 self._conn.commit()
             except BaseException:
                 self._conn.rollback()
@@ -242,9 +323,16 @@ class BrakeStore:
             version = self._next_tenant_version_locked(bound)
             self._conn.execute(
                 "UPDATE brakes SET state = 'RELEASED', brake_version = ?, released_by = ?, "
-                "release_decision_ref = ?, released_at = ? "
+                "released_by_kind = 'HUMAN', release_decision_ref = ?, released_at = ? "
                 "WHERE tenant = ? AND brake_id = ? AND state = 'ACTIVE'",
                 (version, actor, decision_ref, now, bound, brake_id),
+            )
+            self._emit_f13(
+                tenant=bound, event_name="BrakeReleased", transition_id="BR-4",
+                aggregate_id=brake_id, aggregate_version=version, actor=actor, actor_kind=kind,
+                payload={"released_by": actor, "release_decision_ref": decision_ref,
+                         "brake_version": int(version)},
+                consequential=True,
             )
             self._conn.commit()
         except BaseException:
@@ -258,6 +346,53 @@ class BrakeStore:
         if not str(reason or "").strip():
             raise BrakeError("a brake engagement records WHY; an empty reason is not a reason")
         return self._engage_platform(actor=actor, actor_kind=kind, reason=reason)
+
+    def record_unauthorized_release_attempt(
+        self, *, tenant: str, brake_id: str, actor: str, attempted_kind: str,
+    ) -> None:
+        """Co-commit the already-registered F14 `UnauthorizedBrakeReleaseAttempted` for a non-human
+        release attempt, in its OWN transaction (so the security record survives the refusal), plus
+        a Sev-0 `security_events` row. Idempotent: a refused release advances no version, so a retry
+        re-derives the same idempotency identity and the outbox dedups it. There is NO M13-local
+        synonym for this contract — it is F14, shared with M11/M12.
+        """
+        bound = require_tenant(tenant, context="BrakeStore.record_unauthorized_release_attempt")
+        conn = self._conn
+        own = not conn.in_transaction
+        if own:
+            conn.execute("BEGIN IMMEDIATE")
+        try:
+            ob = self._outbox(bound)
+            version = max(1, ob.last_emitted_version(AGGREGATE_TYPE, brake_id))
+            identity = (f"{_F14_IDENTITY_PREFIX}|{bound}|{AGGREGATE_TYPE}|{brake_id}|{version}"
+                        f"|UnauthorizedBrakeReleaseAttempted|{attempted_kind}")
+            existing = conn.execute(
+                "SELECT event_id FROM event_outbox WHERE tenant = ? AND idempotency_identity = ?",
+                (bound, identity),
+            ).fetchone()
+            if existing is None:
+                now = self._ts()
+                envelope = EventEnvelope(
+                    event_id=str(uuid.uuid4()),
+                    event_name="UnauthorizedBrakeReleaseAttempted",
+                    event_version=CONTRACTS["UnauthorizedBrakeReleaseAttempted"].current_version,
+                    occurred_at=now, recorded_at=now, tenant_id=bound,
+                    aggregate_type=AGGREGATE_TYPE, aggregate_id=brake_id, aggregate_version=version,
+                    previous_aggregate_version=None, causation_id=None, correlation_id=brake_id,
+                    producer_component=PRODUCER_COMPONENT, producer_transition_id="BR-4",
+                    actor_type=self._f14_actor_type(attempted_kind), actor_id=actor,
+                    trace_id=f"trace-{brake_id}",
+                    payload={"brake_id": brake_id, "actor_type": attempted_kind},
+                    idempotency_identity=identity,
+                )
+                ob.emit(envelope)
+                self._store_security_event(bound, envelope, actor)
+            if own:
+                conn.commit()
+        except BaseException:
+            if own and conn.in_transaction:
+                conn.rollback()
+            raise
 
     # ------------------------------------------------------------------ reads (fail closed)
 
@@ -295,17 +430,7 @@ class BrakeStore:
         """
         bound = require_tenant(tenant, context="BrakeStore.version_token")
         try:
-            platform = self._conn.execute(
-                "SELECT brake_version FROM platform_brake WHERE id = 1").fetchone()
-            if platform is None:
-                raise BrakeStoreUnreachable(
-                    "the platform brake row is absent; a version token cannot be derived"
-                )
-            tenant_version = self._conn.execute(
-                "SELECT COALESCE(MAX(brake_version), 0) AS v FROM brakes WHERE tenant = ?",
-                (bound,),
-            ).fetchone()["v"]
-            return f"{_TOKEN_PREFIX}|global:{int(platform['brake_version'])}|tenant:{int(tenant_version)}"
+            return self._version_token_locked(bound)
         except sqlite3.Error as exc:
             raise BrakeStoreUnreachable(f"brake versions could not be read: {exc}") from exc
 
@@ -345,14 +470,20 @@ class BrakeStore:
         try:
             row = self._platform_row_locked()
             if row["state"] == "ACTIVE":
-                self._conn.rollback()
-                return self._platform_status_row(row)
+                # Idempotent re-engagement of the GLOBAL brake: raise the signal count, bump no
+                # version, emit nothing.
+                self._conn.execute(
+                    "UPDATE platform_brake SET signal_count = signal_count + 1 WHERE id = 1")
+                self._conn.commit()
+                return self.platform_status()
             self._conn.execute(
                 "UPDATE platform_brake SET state = 'ACTIVE', brake_version = brake_version + 1, "
-                "actor = ?, actor_kind = ?, engaged_reason = ?, engaged_at = ?, released_by = NULL, "
-                "release_decision_ref = NULL, released_at = NULL WHERE id = 1",
-                (actor, actor_kind, reason, _now()),
+                "signal_count = 1, actor = ?, actor_kind = ?, engaged_reason = ?, engaged_at = ?, "
+                "released_by = NULL, released_by_kind = NULL, release_decision_ref = NULL, "
+                "released_at = NULL WHERE id = 1",
+                (actor, actor_kind, reason, self._ts()),
             )
+            # No F13 emit for the platform brake — tenantless transport, M13-AQ-5 (module docstring).
             self._conn.commit()
         except BaseException:
             self._conn.rollback()
@@ -382,6 +513,98 @@ class BrakeStore:
         ).fetchone()
         return int(row["v"])
 
+    def _version_token_locked(self, tenant: str) -> str:
+        platform = self._conn.execute(
+            "SELECT brake_version FROM platform_brake WHERE id = 1").fetchone()
+        if platform is None:
+            raise BrakeStoreUnreachable(
+                "the platform brake row is absent; a version token cannot be derived"
+            )
+        tenant_version = self._conn.execute(
+            "SELECT COALESCE(MAX(brake_version), 0) AS v FROM brakes WHERE tenant = ?",
+            (tenant,),
+        ).fetchone()["v"]
+        return f"{_TOKEN_PREFIX}|global:{int(platform['brake_version'])}|tenant:{int(tenant_version)}"
+
+    def _current_policy_version(self, tenant: str) -> str:
+        """The tenant's current ACTIVE policy version, as an audit pin for a consequential brake
+        event (§5/ER-13: reproduce the regime in force). A pure local read of the policies row —
+        NOT a call to the policy evaluation runtime — so it is available with the policy engine and
+        the TMS down. Defaults to "0" (no active policy in force), which is honest and non-blank."""
+        try:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(policy_version), 0) AS v FROM policies "
+                "WHERE tenant = ? AND state = 'ACTIVE'",
+                (tenant,),
+            ).fetchone()
+            return str(int(row["v"])) if row is not None else "0"
+        except sqlite3.Error:
+            return "0"
+
+    def _outbox(self, tenant: str):
+        from .event_outbox import TransactionalOutbox
+
+        return TransactionalOutbox(self._conn, tenant=tenant, clock=self._clock)
+
+    def _emit_f13(
+        self, *, tenant: str, event_name: str, transition_id: str, aggregate_id: str,
+        aggregate_version: int, actor: str, actor_kind: str, payload: dict[str, Any],
+        consequential: bool,
+    ) -> None:
+        """Co-commit one F13 event inside the caller's OPEN transaction (GR-2). Strict per-aggregate
+        on `brake_version`, so `previous_aggregate_version` links to this aggregate's prior event
+        (0 for the first). Consequential events (BrakeEngaged/BrakeReleased) pin the regime."""
+        ob = self._outbox(tenant)
+        now = self._ts()
+        previous = ob.last_emitted_version(AGGREGATE_TYPE, aggregate_id, below=int(aggregate_version))
+        pins: dict[str, Any] = {}
+        if consequential:
+            pins = {
+                "entity_versions": {"brake": int(aggregate_version)},
+                "policy_version": self._current_policy_version(tenant),
+                "brake_version": self._version_token_locked(tenant),
+            }
+        envelope = EventEnvelope(
+            event_id=str(uuid.uuid4()), event_name=event_name,
+            event_version=CONTRACTS[event_name].current_version,
+            occurred_at=now, recorded_at=now, tenant_id=tenant,
+            aggregate_type=AGGREGATE_TYPE, aggregate_id=aggregate_id,
+            aggregate_version=int(aggregate_version), previous_aggregate_version=previous,
+            causation_id=None, correlation_id=aggregate_id,
+            producer_component=PRODUCER_COMPONENT, producer_transition_id=transition_id,
+            actor_type=self._actor_type(actor_kind), actor_id=actor,
+            trace_id=f"trace-{aggregate_id}", payload=dict(payload), **pins,
+        )
+        ob.emit(envelope)
+
+    def _store_security_event(self, tenant: str, envelope: EventEnvelope, actor: str) -> None:
+        next_id = self._conn.execute(
+            "SELECT COALESCE(MAX(id), 0) + 1 FROM security_events WHERE tenant = ?",
+            (tenant,),
+        ).fetchone()[0]
+        self._conn.execute(
+            "INSERT INTO security_events (tenant, id, event_type, actor, payload_json, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (tenant, next_id, envelope.event_name, actor,
+             json.dumps(dict(envelope.payload), sort_keys=True), self._ts()),
+        )
+
+    def _ts(self) -> str:
+        return format_instant(self._clock())
+
+    @staticmethod
+    def _actor_type(actor_kind: str) -> str:
+        return {"HUMAN": "human", "DETECTOR": "detector"}.get(actor_kind, "system")
+
+    @staticmethod
+    def _f14_actor_type(attempted_kind: str) -> str:
+        # The F14 event is the SYSTEM recording that a non-human attempted a release — the recorder
+        # is the system, and the ATTEMPTED kind travels in the payload. A detector attempt is
+        # recorded as `detector`; everything else (automation, a model, a timer, a retry handler, a
+        # counterparty) is `system`. It is never `model`: ER-9 forbids a model actor_type from
+        # producing anything but a claim/proposal, and this security record is neither.
+        return "detector" if str(attempted_kind).upper() == "DETECTOR" else "system"
+
     @staticmethod
     def _require_actor(actor: str, actor_kind: str) -> str:
         if not str(actor or "").strip():
@@ -395,24 +618,22 @@ class BrakeStore:
 
     @staticmethod
     def _row_status(row: sqlite3.Row) -> BrakeStatus:
+        keys = row.keys()
         return BrakeStatus(
             brake_id=row["brake_id"], tenant=row["tenant"], scope=row["scope"],
             state=row["state"], actor=row["actor"], actor_kind=row["actor_kind"],
             engaged_reason=row["engaged_reason"], engaged_at=row["engaged_at"],
             brake_version=int(row["brake_version"]),
+            signal_count=int(row["signal_count"]) if "signal_count" in keys else 1,
         )
 
     @staticmethod
     def _platform_status_row(row: sqlite3.Row) -> BrakeStatus:
+        keys = row.keys()
         return BrakeStatus(
             brake_id="platform", tenant=None, scope="GLOBAL", state=row["state"],
             actor=row["actor"] or "", actor_kind=row["actor_kind"] or "",
             engaged_reason=row["engaged_reason"] or "", engaged_at=row["engaged_at"] or "",
             brake_version=int(row["brake_version"]),
+            signal_count=int(row["signal_count"]) if "signal_count" in keys else 0,
         )
-
-
-def _now() -> str:
-    from .workflow import utc_now
-
-    return utc_now()

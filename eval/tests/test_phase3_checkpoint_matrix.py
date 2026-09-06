@@ -451,7 +451,9 @@ def _perturb(s: _Scenario, step: int, condition: str):
 
     if step == 7:
         if condition == "missing_input":
-            s.store.conn.execute("DELETE FROM platform_brake")
+            # M13's no-DELETE trigger (C-9) makes the platform row undeletable; an unreadable brake
+            # store is simulated by dropping the table, and step 7 must still refuse BRAKE_UNREADABLE.
+            s.store.conn.execute("DROP TABLE platform_brake")
             s.store.conn.commit()
             return {"step": 7, "reason": "BRAKE_UNREADABLE"}
         if condition == "stale_input":

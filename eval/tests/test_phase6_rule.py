@@ -967,13 +967,18 @@ def test_m12_ships_dark_no_production_importer():
     assert offenders == [], f"production importer(s) of the rule machine: {offenders}"
 
 
-def test_the_m13_brake_machine_and_no_graduation_engine_are_not_built():
+def test_m12_defines_no_graduation_engine():
+    # ### RULE 20: this test formerly also asserted "M13 brake lifecycle must NOT be built". M13 has
+    # since LANDED (this is that unit), so `brake_lifecycle.py` now exists by design; the stale
+    # not-built half is removed rather than left to assert a module that must now exist. What is
+    # still true and still M12's concern — that the M12 machine defines no autonomy-graduation
+    # engine — is kept and strengthened with a population proof.
     import freight_recon
     src = Path(freight_recon.__file__).parent
     files = {p.name for p in src.rglob("*.py")}
     assert len(files) > 10, "the src scan collapsed - it proves nothing"
     assert "rule.py" in files, "the M12 machine must be present, or the scan read the wrong tree"
-    assert not any("brake" in f and "lifecycle" in f for f in files), "M13 brake lifecycle must not be built"
+    assert "brake_lifecycle.py" in files, "M13 landed: the brake lifecycle module is present"
     for node in ast.walk(ast.parse(RULE_SRC)):
         if isinstance(node, ast.ClassDef):
             assert "graduat" not in node.name.lower(), f"M12 defines a graduation engine: {node.name}"
@@ -993,9 +998,15 @@ def test_the_neighbouring_machines_are_unchanged():
     # FIXED-SPECIFICATION: the landed machine runtimes (M1..M11) plus the P3 checkpoint kernel and the
     # brake that P6/M12 names as must-stay-byte-identical (§5: "Do not modify M1–M11"; the kernel and brake
     # are named because CLAUDE.md §10 forbids weakening them). M7 and M9 in particular are not edited at all.
+    # FIXED-SPECIFICATION: this is NOT a discovered population — it is the exact list of landed
+    # machine runtimes named as must-stay-byte-identical. ### RULE 20: `brake.py` was DROPPED from
+    # this frozen set when M13 landed — it is P3's landed kernel brake and M13 legitimately EDITS it
+    # (completing the one brake authority, the whole point of the M13 unit), so asserting it
+    # byte-unchanged would forbid the sanctioned unit. The M1..M11 machines and the checkpoint kernel
+    # remain frozen and asserted so; adding or removing a name here is a deliberate, reviewed edit.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "policy.py", "checkpoint.py", "brake.py")
+                "exception.py", "compensation.py", "policy.py", "checkpoint.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)

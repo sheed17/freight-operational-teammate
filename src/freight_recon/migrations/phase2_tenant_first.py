@@ -1176,6 +1176,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6ru:{step}")
         conn.commit()
 
+        # M13's Brake HARDENS the P3-created `brakes`/`platform_brake` tables (released_by FK into
+        # tenant_humans, released_by_kind, signal_count, append-only DELETE triggers) — it creates no
+        # new table. Applied after M1 (tenant_humans, the FK referent). A fresh database is built with
+        # the hardened shape directly; this brings a P3-shaped database to the same shape. Idempotent.
+        from .phase6_brakes import create_phase6_brakes_schema
+
+        for step in create_phase6_brakes_schema(conn, now=_now()):
+            _mark(conn, f"phase6br:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.
@@ -1201,6 +1211,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             from .phase6_expectations import stamp_phase6_expectations_version
             from .phase6_observations import stamp_phase6_observations_version
             from .phase6_pipeline_instances import stamp_phase6_pipeline_version
+            from .phase6_brakes import stamp_phase6_brakes_version
             from .phase6_policies import stamp_phase6_policies_version
             from .phase6_work_items import stamp_phase6_version
 
@@ -1217,6 +1228,7 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             stamp_phase6_exceptions_version(conn, now=_now())
             stamp_phase6_compensations_version(conn, now=_now())
             stamp_phase6_policies_version(conn, now=_now())
+            stamp_phase6_brakes_version(conn, now=_now())
             conn.commit()
         return rep
     finally:

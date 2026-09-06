@@ -33,6 +33,26 @@ from freight_recon.brake import (  # noqa: E402
 from freight_recon.checkpoint import claim_grant_cas, run_checkpoint  # noqa: E402
 
 
+def _record_human(store, human_id: str, *, tenant: str = T_A) -> str:
+    """Seed a recorded ACTIVE human of the tenant so a brake RELEASE can name them.
+
+    ### M13 delta (entity 16-brake.md point 18): `brakes.released_by` is now a tenant-consistent
+    FOREIGN KEY into `tenant_humans`, so a release by an unrecorded string is refused by the
+    database. These P3 anchors predate that FK and released with bare strings; their INTENT — that
+    release requires a human and a decision_ref — is unchanged, and this only gives that human a
+    real record to point at. (Rule 20: the unrecorded-human release they incidentally relied on is
+    now a forbidden behaviour.)
+    """
+    store.conn.execute(
+        "INSERT OR IGNORE INTO tenant_humans (tenant, human_id, display_name, authority_role, "
+        "state, recorded_at, recorded_by, recorded_by_kind) "
+        "VALUES (?, ?, ?, 'POLICY_OWNER', 'ACTIVE', 'seed', 'seed', 'human')",
+        (tenant, human_id, human_id),
+    )
+    store.conn.commit()
+    return human_id
+
+
 # ------------------------------------------------------------------ engagement (BR-1)
 
 def test_any_human_engages_instantly_and_a_detector_may_too(tmp_path):
@@ -112,6 +132,7 @@ def test_automation_may_widen_but_never_narrow_or_release(tmp_path):
 def test_release_requires_a_human_and_a_decision_ref(tmp_path):
     store = make_store(tmp_path)
     brakes = BrakeStore(store.conn)
+    _record_human(store, "owner:rasheed")
     status = brakes.engage(tenant=T_A, actor="owner:rasheed", actor_kind="HUMAN", reason="incident")
     with pytest.raises(BrakeError, match="decision_ref"):
         brakes.release(tenant=T_A, brake_id=status.brake_id, actor="owner:rasheed",
@@ -168,6 +189,7 @@ def test_no_code_path_expires_a_brake(tmp_path):
 def test_brake_versions_are_monotonic_across_all_operations(tmp_path):
     store = make_store(tmp_path)
     brakes = BrakeStore(store.conn)
+    _record_human(store, "h:1")
     seen: list[int] = []
     s1 = brakes.engage(tenant=T_A, action_class="raise_invoice", actor="h:1",
                        actor_kind="HUMAN", reason="one")
@@ -207,7 +229,11 @@ def test_an_unreadable_brake_store_refuses_the_checkpoint(tmp_path):
         green_scenario(tmp_path))
     ok = run_checkpoint(kernel, request, inputs)
     assert ok.authorized
-    store.conn.execute("DELETE FROM platform_brake")
+    # M13 makes the platform row undeletable (C-9, the no-DELETE trigger), so an UNREADABLE store is
+    # simulated by dropping the table itself rather than the row — the read then fails and the
+    # checkpoint/claim must refuse. The intent — "cannot read the brake" NEVER means "off" — is
+    # unchanged; only the way the store is made unreadable is (a DELETE is now correctly refused).
+    store.conn.execute("DROP TABLE platform_brake")
     store.conn.commit()
     refused_claim = claim_grant_cas(kernel, ok.handle, params_for(effect))
     assert refused_claim.claimed is False and refused_claim.cause == "BRAKE_UNREADABLE"
@@ -256,6 +282,7 @@ def test_interleaved_brake_and_claim_never_both_never_neither(tmp_path):
     store = make_store(tmp_path)
     kernel, clock = make_kernel(store)
     brakes = BrakeStore(store.conn)
+    _record_human(store, "owner:rasheed")
     outcomes = []
     for i in range(40):
         resource = f"load:il-{i}"
@@ -389,7 +416,9 @@ def test_an_absent_platform_row_refuses_rather_than_reading_as_released(tmp_path
     """Preserved requirement: fail-closed on absence. 'Cannot read the brake' never means 'off'."""
     store = make_store(tmp_path, T_A)
     brakes = BrakeStore(store.conn)
-    store.conn.execute("DELETE FROM platform_brake")
+    # M13's no-DELETE trigger makes the row itself undeletable (C-9); an ABSENT/unreadable platform
+    # store is simulated by dropping the table. The refusal path is the same: BrakeStoreUnreachable.
+    store.conn.execute("DROP TABLE platform_brake")
     store.conn.commit()
     with pytest.raises(BrakeStoreUnreachable):
         brakes.admission_denied(tenant=T_A, action_class="raise_invoice")

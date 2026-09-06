@@ -227,6 +227,15 @@ def test_brake_engage_and_release_both_invalidate_in_flight_grants(tmp_path):
     bumps it again — a grant minted before either event stays dead after both."""
     store, kernel, clock, effect, outcome = _authorized(tmp_path)
     brakes = BrakeStore(store.conn)
+    # M13 delta: brakes.released_by is a FOREIGN KEY into tenant_humans, so the releaser must be a
+    # recorded human of the tenant. Seed the one this anchor releases with; the test's intent (a
+    # release does not resurrect a stale grant) is unchanged.
+    store.conn.execute(
+        "INSERT OR IGNORE INTO tenant_humans (tenant, human_id, display_name, authority_role, "
+        "state, recorded_at, recorded_by, recorded_by_kind) "
+        "VALUES (?, 'owner:rasheed', 'owner:rasheed', 'POLICY_OWNER', 'ACTIVE', 'seed', 'seed', 'human')",
+        (T_A,))
+    store.conn.commit()
     status = brakes.engage(tenant=T_A, actor="owner:rasheed", actor_kind="HUMAN", reason="incident")
     brakes.release(tenant=T_A, brake_id=status.brake_id, actor="owner:rasheed",
                    actor_kind="HUMAN", decision_ref="decision:incident-42-closed")

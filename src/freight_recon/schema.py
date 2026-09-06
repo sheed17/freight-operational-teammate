@@ -72,6 +72,14 @@ from .migrations.phase6_approvals import (
     phase6_approvals_readiness_problems,
     stamp_phase6_approvals_version,
 )
+from .migrations.phase6_brakes import (
+    P6BR_INDEXES,
+    P6BR_REPLACED_INDEXES,
+    P6BR_TARGET_SCHEMA,
+    create_phase6_brakes_schema,
+    phase6_brakes_readiness_problems,
+    stamp_phase6_brakes_version,
+)
 from .migrations.phase6_compensations import (
     P6CM_EXEMPT_TABLES,
     P6CM_INDEXES,
@@ -251,6 +259,12 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # exists. It carries NO gate vocabulary (a GATE_PRECONDITION rule's gate lives inside its compiled
     # predicate), so it is not a gate-runtime carrier and mints nothing.
     **P6RU_TARGET_SCHEMA,
+    # M13's Brake HARDENS the P3-created `brakes` and `platform_brake` tables — it creates no new
+    # table. Merged LAST, AFTER P3_TARGET_SCHEMA, so the hardened DDL (the released_by FK into
+    # tenant_humans, released_by_kind, signal_count) is what a fresh database is built from; the
+    # migrated path rebuilds `brakes` to this exact text. `brakes`/`platform_brake` keep their P3
+    # membership in CANONICAL_TABLES and ALL_TENANT_TABLES (this only overrides their DDL).
+    **P6BR_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -352,14 +366,16 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                                         **P6PI_INDEXES, **P6EF_INDEXES, **P6AP_INDEXES,
                                         **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES,
                                         **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES,
-                                        **P6PO_INDEXES, **P6RU_INDEXES}.items()
+                                        **P6PO_INDEXES, **P6RU_INDEXES,
+                                        **P6BR_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
                       and n not in P6OB_REPLACED_INDEXES and n not in P6IBC_REPLACED_INDEXES
                       and n not in P6CF_REPLACED_INDEXES and n not in P6EX_REPLACED_INDEXES
                       and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES
-                      and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES}
+                      and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES
+                      and n not in P6BR_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -475,6 +491,14 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_rules_schema(conn, now=_now())
     if not phase6_rules_readiness_problems(conn):
         stamp_phase6_rules_version(conn, now=_now())
+    # P6's M13, the Brake. HARDENS the P3-created `brakes`/`platform_brake` tables — it creates no
+    # new table. Built LAST because `brakes` now holds a foreign key into tenant_humans (M1), so M1
+    # must have built that table first; and because a migrated database's `brakes` rebuild requires
+    # tenant_humans to exist for the FK. On a fresh database the merged DDL already built the
+    # hardened shape, so this only adds the DELETE triggers. Marker-last, like every phase.
+    create_phase6_brakes_schema(conn, now=_now())
+    if not phase6_brakes_readiness_problems(conn):
+        stamp_phase6_brakes_version(conn, now=_now())
     conn.commit()
 
 
@@ -559,6 +583,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_compensations_readiness_problems(conn))
     problems.extend(phase6_policies_readiness_problems(conn))
     problems.extend(phase6_rules_readiness_problems(conn))
+    problems.extend(phase6_brakes_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

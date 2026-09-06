@@ -900,7 +900,9 @@ def test_the_m12_rule_and_m13_brake_machines_are_not_built():
     assert len(files) > 10, f"the src scan collapsed to {len(files)} files - it proves nothing"
     assert "policy.py" in files, "the M11 machine itself must be present, or the scan read the wrong tree"
     assert "rule.py" in files, "the M12 machine landed"
-    assert not any("brake" in f and "lifecycle" in f for f in files), "M13 brake lifecycle must not be built"
+    # RULE 20: M13 (Brake) has since LANDED, so the brake lifecycle module now exists by design; the
+    # stale "must not be built" half is corrected to assert its presence rather than its absence.
+    assert any("brake" in f and "lifecycle" in f for f in files), "M13 brake lifecycle landed"
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert len(tables) > 10, f"the schema scan collapsed to {len(tables)} tables - it proves nothing"
@@ -922,9 +924,14 @@ def test_the_neighbouring_machines_are_unchanged():
     # and brake are named because CLAUDE.md §10 forbids weakening them). Discovering "machine modules" by
     # glob would silently admit a newly-added machine to the frozen set or drop a renamed one; the guard's
     # value is precisely that adding or removing a name here is a deliberate, reviewed edit.
+    # FIXED-SPECIFICATION: this is NOT a discovered population — it is the exact list of landed
+    # machine runtimes named as must-stay-byte-identical. RULE 20: `brake.py` was DROPPED from this
+    # frozen set when M13 landed — it is P3's kernel brake and M13 legitimately edits it to complete
+    # the one brake authority. M1..M10 and the checkpoint kernel remain frozen and asserted so;
+    # adding or removing a name here is a deliberate, reviewed edit.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "checkpoint.py", "brake.py")
+                "exception.py", "compensation.py", "checkpoint.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)
