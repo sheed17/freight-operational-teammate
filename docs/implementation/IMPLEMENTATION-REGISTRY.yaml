@@ -2773,6 +2773,37 @@ units:
     # NOW. It is KEPT, not deleted, so the old phrasing stays recognisable if it returns (CLAUDE.md
     # sec 5 rule 20) - but a stale next-checkpoint line is an ACTIVE FALSE INSTRUCTION, so it is
     # CORRECTED HERE rather than left to send a fresh session to rebuild something landed.
+    # ### AS OF THE `P6-CP-13` LANDING: M13 LANDED as `P6-CP-13`. ### THE PHASE OWES ZERO OF THE 134
+    # TRANSITIONS - 134 of 134 are WRITTEN AND LANDED (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 + 7
+    # + 9 + 5 = 134, re-derived mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine
+    # files and COUNTING ROWS - the parse DISCOVERED 13 files and counted 134 rows, matching this
+    # unit's own `expected_production_outputs`, and no prior figure was carried). M13 ships dark with
+    # ZERO production importers of its new surface, `criteria_scored` is empty on ALL THIRTEEN
+    # checkpoints, no P6 weighted criterion is scored, P6 has NOT reached phase acceptance and P7 is
+    # NOT unlocked.
+    # ### M13 IS THE LAST P6 MACHINE, AND THERE IS NO NEXT CHECKPOINT. ### THAT IS THE MOST DANGEROUS
+    # SENTENCE IN THIS RECORD AND IT MUST NOT BE MISREAD: "all thirteen machines are landed" IS NOT
+    # "P6 is COMPLETE" and IS NOT permission to begin P7. The phase still owes gate G1, AC-SAFE-028,
+    # and the one thing NO CHECKPOINT CAN SUPPLY - a PHASE ACCEPTANCE judged by a reviewer WHO DID NOT
+    # BUILD THE PHASE (tier-1 under CLAUDE.md sec 7, and the one place the independent-review
+    # requirement is about a PHASE rather than a diff). ### THE EXACT NEXT PROGRAM ACTION IS P6 PHASE
+    # ACCEPTANCE / FINAL ADJUDICATION. IT IS NOT P7 IMPLEMENTATION, AND IT IS NOT MORE MACHINE CODE.
+    # ### THE SENTENCE "M13 - THE BRAKE - IS THE NEXT CHECKPOINT" BELOW, AND THE CLAIM THAT
+    # `brake_lifecycle.py` AND `phase6_brakes.py` ARE ABSENT FROM THE TREE, WERE TRUE AT THE
+    # `P6-CP-12` LANDING AND ARE FALSE NOW. They are KEPT inside that landing's own note, which
+    # records what was true then, and are CORRECTED HERE rather than deleted (CLAUDE.md sec 5 rule
+    # 20) - a stale next-checkpoint line is an ACTIVE FALSE INSTRUCTION that sends a fresh session to
+    # build something that exists.
+    # ### THE `P6-CP-13` LANDING CARRIES NO RUNTIME CHANGE AT ALL. It is a status/evidence landing
+    # over the already-built, already-verified and already-independently-reviewed candidate 7987ef8:
+    # `git diff` against `src/`, `eval/`, `scripts/`, `migrations/`, `.github/` and `pyproject.toml`
+    # is EMPTY for this commit. ### AND ITS EVIDENCE BINDS TO THE EXACT LANDED TREE BY HASH: the
+    # reviewer's `reviewed_fingerprint` is head 7987ef8c4dce / tree a1a903a30479 with `tracked_dirty:
+    # 0` and `untracked: 0`, and `git rev-parse 7987ef8^{tree}` returns that identical tree - so
+    # unlike P6-CP-12 and P6-CP-10, THE P6-D68 / P6-D87 REVIEWED-TREE-GAP CLASS DOES NOT RECUR HERE.
+    # ### CI IS NOT GREEN ON THIS COMMIT AND THIS RECORD DOES NOT SAY IT IS. Run 34162327327
+    # concluded `cancelled`; BOTH interpreter legs were cancelled at 51% and M13's own 64 tests sit at
+    # 61.5%-63.4%, so THEY DID NOT EXECUTE IN CI ON EITHER INTERPRETER. See the P6-CP-13 `ci_note`.
     # ### AS OF THE `P6-CP-12` LANDING: M12 LANDED as `P6-CP-12`. The phase still owes M13 and 5 of the
     # 134 transitions (14 + 25 + 13 + 11 + 8 + 11 + 7 + 8 + 7 + 9 + 7 + 9 = 129 written, re-derived
     # mechanically at this landing by parsing sec 14 of ALL THIRTEEN machine files and COUNTING ROWS -
@@ -6008,6 +6039,392 @@ units:
           ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
           PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
         criteria_scored: []
+      - id: P6-CP-13
+        name: The Brake - admission control that refuses to mint and refuses to claim, and NEVER kills a worker; the thirteenth and LAST P6 machine
+        checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+        build_commit: 41b68acf7fc377b2624591dce6a4f48a1b7a6852
+        reviewed_commit: 7987ef8c4dce72714da24a06a3c8b28edc883da7
+        reviewed_tree: a1a903a3047937f594184eb88974b2e8ae9d292c
+        reviewed_worktree_note: >-
+          ### THE REVIEWER OPERATED THE LANDING CANDIDATE ITSELF, ON A CLEAN TREE, AND THAT IS THE
+          STRONGEST BINDING OF ANY P6 LANDING SINCE P6-CP-11. Its declared `reviewed_fingerprint`
+          reads head 7987ef8c4dce72714da24a06a3c8b28edc883da7, tree
+          a1a903a3047937f594184eb88974b2e8ae9d292c, `tracked_dirty: 0`, `untracked: 0`, identity
+          "7987ef8c4dce/a1a903a30479/-". `git rev-parse 7987ef8^{tree}` at this landing returns that
+          identical tree, and the run's `completion-audit.json` records the same pair independently
+          (`observed_state.head_commit` / `head_tree`, `dirty_file_count: 0`). The run's own
+          `git-status.txt` and `git-diff-stat.txt` are both empty.
+          ### SO THERE IS NO REVIEWED-TREE-VERSUS-CANDIDATE GAP AT THIS CHECKPOINT: the P6-D68 /
+          P6-D87 class does NOT recur, and the reviewed M13 runtime IS the landed M13 runtime by
+          tree hash rather than by inference.
+        candidate_commit: 7987ef8c4dce72714da24a06a3c8b28edc883da7
+        candidate_tree: a1a903a3047937f594184eb88974b2e8ae9d292c
+        record_type: CONTENT_CANDIDATE_ACCEPTED_AND_LANDED_AS_CONTINUATION_CHECKPOINT
+        summary: >-
+          Machine M13 of the thirteen, and THE LAST ONE - P3's `brakes` / `platform_brake` tables
+          HARDENED rather than a new table created, TWO canonical states (ACTIVE, RELEASED) and no
+          third, one machine, FIVE transitions (BR-1, BR-2, BR-3, BR-4, BR-5 - an exact set match
+          with sec 14 of the machine specification), the FOUR already-registered F13 contracts and no
+          fifth, and the `CHECK (released_by_kind IS NULL OR released_by_kind = 'HUMAN')` reinforced
+          by a composite `FOREIGN KEY (tenant, released_by) -> tenant_humans` that makes A
+          DETECTOR-RELEASED OR CROSS-TENANT-RELEASED BRAKE NOT INSERTABLE rather than merely
+          unreachable.
+          ### THE SENTENCE THIS MACHINE EXISTS FOR IS THAT IT NEVER KILLS A WORKER. A brake is
+          ADMISSION CONTROL, not process termination: it refuses to MINT and refuses to CLAIM, and
+          anything already CLAIMED, executing or verifying RUNS TO A VERIFIED CONCLUSION. Killing it
+          would convert a knowable outcome into an unknown one and manufacture the exact hazard the
+          operator engaged the brake to avoid - you would pull the brake to become safer and, in the
+          act of pulling it, create a payable of unknown status. Exercised at ALL FIVE boundary
+          positions rather than asserted once in the middle of a table, with
+          "engaging-during-an-adapter-call-creates-no-unknown-outcome: zero unknown outcomes".
+          ### TWO STATES AND NO THIRD, AND THE NECESSITY IS A PRODUCT ARGUMENT RATHER THAN A
+          MODELLING PREFERENCE. "Engaged by a human vs by a detector" is an ACTOR FIELD; "partially
+          released" is a SCOPE CHANGE; "pending release" would require a release-approval workflow,
+          which is FORBIDDEN because REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR.
+          PENDING_RELEASE, ENGAGING, EXPIRED, SUSPENDED, PARTIAL and DISENGAGED are each refused by a
+          live CHECK, and surviving rows outside the canonical two states measured ZERO.
+          ### THE ONE-WAY RATCHET IS THE SAME SENTENCE THAT GOVERNS AUTONOMY. Automation may ENGAGE
+          and WIDEN, because both move authority in the safe direction; automation may NEVER NARROW
+          or RELEASE, because both broaden it. A DETECTOR MAY NEVER CLEAR ITS OWN ALARM. A MODEL IS
+          NOT A SEV-0 DETECTOR AND MAY TOUCH NOTHING AT ALL - `system`, `detector` and `model` are
+          three actor classes and collapsing them is how a model would acquire the brake. This is
+          enforced by the DATABASE, not by a code path that could be edited.
+          ### AND A BRAKE NEVER EXPIRES. No TTL column, no expiry state, no auto-release path and no
+          expiry identifier in executable code - measured on the live schema AND on the AST
+          separately, because a brake that expires releases itself while nobody is looking and a
+          clock cannot know whether the fire is out. BR-5 is an ENUMERATED ILLEGAL REFUSAL rather
+          than an unwritten path, so adding a scheduler later cannot quietly find a door.
+          ### TWO COMPOSED ADMISSION DIMENSIONS, AND GLOBAL IS NOT A FAKE TENANT. The platform brake
+          is EXACTLY ONE tenant-exempt row with `CHECK (id = 1)` and NO `tenant` column - so a second
+          row is structurally not insertable - and it denies every tenant WITHOUT an N-row fan-out
+          that would need a multi-row atomic write during the very incident it exists for. Tenant
+          brakes stay tenant-first; one tenant's brake is never another's.
+          ### THE RACE THAT MATTERS IS CLOSED BY THE DATABASE, NOT BY A CHECK. Witnesses and grants
+          bind a COMPOSITE token carrying BOTH the platform and the tenant brake version, and THE
+          CLAIM CAS REVALIDATES BOTH INSIDE ITS OWN WHERE CLAUSE - so a brake engaged between mint
+          and claim makes the update match ZERO ROWS and the adapter does nothing. Never both, never
+          neither, over 10,000 interleavings. Both asymmetric failures are exercised because EACH IS
+          A PAYMENT: a tenant-only check would let a GLOBAL brake through and a global-only check
+          would let a TENANT brake through.
+          ### RELEASE IS NOT `if human and decision_ref`. That implementation passes every
+          authorization test anyone would write and is still wrong. Release requires POSITIVE
+          EVIDENCE - every in-flight effect accounted for, no unresolved Sev-0, integration health
+          demonstrated by a POSITIVE CONTROL rather than "the page loaded", and a decision_ref - and
+          each condition was WITHHELD ALONE so an implementation checking only one is caught by the
+          others. Unresolved unknown outcomes do NOT block release (blocking on them would create
+          pressure to resolve them carelessly) but must be ACKNOWLEDGED AND OWNED with their entities
+          FROZEN.
+          ### AND "CANNOT READ THE BRAKE" NEVER MEANS "THE BRAKE IS OFF". That inversion is how a
+          safety control becomes decoration, and it is deniable in every direction: an absent platform
+          row, an unreadable store, an unparseable scope. Each refuses the mint and refuses the claim,
+          with NO ALLOW-ON-ERROR DEFAULT anywhere on the path. The scope grammar is CLOSED and its
+          landed and deferred dimensions partition the canonical five, so a dimension this unit did
+          not build is UNSPELLABLE rather than silently scoped to nothing.
+        what_is_in_the_tree: >-
+          Two new production files, one edit to a LANDED P3 KERNEL MODULE, and two wiring edits -
+          and NOTHING ELSE under `src/` across the whole range ded6a84..7987ef8, measured by
+          `git diff --stat` rather than asserted: `src/freight_recon/brake_lifecycle.py` (the M13
+          machine, five transitions, the R17 operator report, and the DELEGATING FACADE over the one
+          brake authority); `src/freight_recon/migrations/phase6_brakes.py` (the hardening migration -
+          the released_by FK into tenant_humans, released_by_kind, signal_count and the append-only
+          DELETE triggers on BOTH brake tables); `src/freight_recon/brake.py` (+326/-, P3's LANDED
+          KERNEL BRAKE - the sanctioned tier-1 edit that IS the M13 unit); plus `schema.py` (+29,
+          canonical build, readiness and partition) and `migrations/phase2_tenant_first.py` (+12, the
+          M13 step of the legacy migration walk). Tests, probe and mutation battery:
+          `eval/tests/test_phase6_brake.py` (64 tests), `scripts/probe_phase6_brake.py` (188 cases),
+          `scripts/mutate_phase6_brake.py` (18 mutants).
+          ### NO M1-M12 MACHINE MODULE AND NO EFFECT KERNEL APPEARS IN THAT LIST. `work_item.py`,
+          `pipeline_instance.py`, `external_effect.py`, `approval.py`, `observation.py`,
+          `identity_binding_claim.py`, `conflict.py`, `expectation.py`, `exception.py`,
+          `compensation.py`, `policy.py`, `rule.py`, `checkpoint.py`, `effect_boundary.py` and
+          `event_contracts_data.json` are BYTE-UNCHANGED - an EMPTY diff across all fifteen paths,
+          re-measured at this landing. `.github/` is byte-identical
+          (41f76934b715f253da6e7f6a261c351186a7447b) either side of the range, SO THE CI WORKFLOW WAS
+          NOT WEAKENED.
+          ### AND `eval/phase0/gate_scan.py` WAS NOT TOUCHED. Unlike M11, M13 WIDENS NO GATE GUARD:
+          `GATE_RUNTIME_MODULES` gained no member and the gate-minter allowlist is unchanged.
+          ### M13 CREATES NO CANONICAL TABLE, SO THE TENANT-FIRST PARTITION GAINS NO ROW. It HARDENS
+          `brakes` and `platform_brake`, which P3 created and which the partition already carries as
+          "P3 tenant" and "P3 exempt". The hermeticity guard's hand-pinned `shape` dict is unchanged.
+          ### THAT IS ALSO WHY P6-D88 DOES NOT RECUR: that row records that the partition guard's
+          per-table check on CURRENT.md is a SUBSTRING match and so could not have failed for a newly
+          added name - and NO NAME WAS ADDED HERE TO BE FALSELY CREDITED.
+          ### THE LOAD-BEARING DDL WAS INTROSPECTED LIVE AT THIS LANDING, NOT READ, on a fresh
+          canonical database built the way production builds one with foreign keys ENABLED
+          (`schema_readiness_problems` returned NONE). `brakes`: PRIMARY KEY ['tenant','brake_id'],
+          14 columns, 2 indexes OF WHICH 2 LEAD WITH `tenant`, exactly TWO state literals and no
+          third, `CHECK (state != 'RELEASED' OR (released_by IS NOT NULL AND release_decision_ref IS
+          NOT NULL))`, `CHECK (released_by_kind IS NULL OR released_by_kind = 'HUMAN')`,
+          `CHECK (signal_count >= 1)`, 2 foreign-key half-columns BOTH into `tenant_humans` and BOTH
+          CARRYING THE TENANT, and the partial unique index
+          `UNIQUE (tenant, scope) WHERE state = 'ACTIVE'` - ONE ACTIVE BRAKE PER SCOPE, PER
+          BROKERAGE; without the tenant in it one broker's incident would silence another's.
+          `platform_brake`: PRIMARY KEY (id) with `CHECK (id = 1)`, 12 columns, and NO `tenant`
+          COLUMN AT ALL. Both tables carry a no-DELETE trigger, so THE PERMANENT INCIDENT RECORD
+          CANNOT BE ERASED. No TTL, expiry, timeout or auto-release column exists on either table,
+          measured by column scan.
+        implementer_evidence: >-
+          Builder session f794211f at 41b68ac, corrected at 7987ef8 (Correction 1, which closed the
+          permanent Brake scenario to product-green). On the committed candidate tree:
+          `test_phase6_brake.py` 64 passed; `probe_phase6_brake.py --all` exit 0, "behaviours as
+          specified, 0 wrong" across 188 cases; the mutation battery 18 CAUGHT, 0 ESCAPED with the
+          anti-vacuity control GREEN and the tree restored byte-identical.
+          ### THE NINE LOAD-BEARING INVARIANTS WERE PROVEN BY ATTEMPTING THE VIOLATION AT THIS
+          LANDING, NOT BY READING THE MIGRATION. Against a fresh canonical database, each write was
+          attempted and each was refused by a NAMED constraint: a SECOND platform_brake row
+          (`CHECK id = 1`); a THIRD platform state (`CHECK state IN ('ACTIVE','RELEASED')`); DELETE of
+          the platform row (`trg_platform_brake_no_delete` - "the platform brake row is never deleted
+          [SD-12, C-9]"); a THIRD brake state; a RELEASE WITH NO RELEASER AND NO decision_ref; a
+          DETECTOR as `released_by_kind`; a CROSS-TENANT releaser (FOREIGN KEY constraint failed); a
+          SECOND ACTIVE BRAKE IN ONE SCOPE (UNIQUE constraint failed); and DELETE of a brake row
+          (`trg_brakes_no_delete`). A GUARD NEVER SEEN TO FAIL IS A DECORATION.
+          ### THE MUTATION BATTERY WAS RE-RUN AT THIS LANDING AND IS WHAT MAKES THE REST EVIDENCE.
+          18 mutants, 18 caught, 0 escaped, anti-vacuity control GREEN, with `git status --porcelain`
+          EMPTY BEFORE AND EMPTY AFTER and the tree hash a1a903a3047937f594184eb88974b2e8ae9d292c
+          UNCHANGED afterwards - so the harness restored the tree byte-identically and left NO
+          STRANDED RESIDUE, which is the failure CLAUDE.md sec 6 records from the M12 battery. The
+          eighteen mutants ARE the invariants: a third brake state becomes insertable; a TTL column is
+          added; the released_by FK is dropped; the platform row gains a tenant column; multiple
+          platform rows are allowed; either delete-refusing trigger is defanged; the rising signal
+          count is suppressed; AUTOMATION MAY RELEASE; A DETECTOR MAY NARROW; A MODEL MAY ENGAGE; a
+          loaded page is accepted as positive health; release stops requiring in-flight effects
+          accounted for; release lets an unresolved Sev-0 pass; THE CLAIM CAS STOPS REVALIDATING THE
+          BRAKE VERSION; AN UNREADABLE STORE READS AS OFF; an active brake is hidden from the operator
+          report; a second unauthorized-release contract synonym is introduced.
+          ### THE REGRESSION ANCHORS WERE RUN RATHER THAN CITED, BECAUSE M13 EDITS THE MODULE IT
+          MEASURES. On the committed candidate tree under CPython 3.14.4: the P3 kernel anchors
+          (test_phase3_brake / checkpoint_matrix / claim_cas / schema / witness / observability) 191
+          passed; the P5 replay/event and M2/M4 anchors together with phase3 fingerprint /
+          ledger_compatibility / step_order 784 passed; M10/M11/M12/M13 together 245 passed; the
+          phase-0 status and safety guards 84 passed, 1 skipped; `test_bootstrap_hermeticity.py` 54
+          passed. THESE ARE LOCAL RESULTS ON ONE INTERPRETER AND ARE NEVER PRESENTED AS CI RESULTS.
+          ### THE FULL SUITE WAS RUN ON THE FINAL TREE, AND ITS TWENTY LOCAL FAILURES ARE NOT
+          PRODUCT FAILURES - NOR ARE THEY PRESENTED AS PASSES. `pytest eval` on the committed tree
+          under CPython 3.14.4: 3328 PASSED, 1 SKIPPED, 20 FAILED, and 3328 + 1 + 20 = 3349, matching
+          the collection EXACTLY. Every one of the twenty is this sandbox refusing `socket.bind` on
+          127.0.0.1 - 20 FAILED ids, PermissionError THE ONLY EXCEPTION TYPE in the failure section,
+          80 bind sites, all inside `test_action_callback.py` and
+          `test_p4_deployed_governed_route.py`.
+          ### AND CI IS THE POSITIVE CONTROL THAT MAKES THAT AN ENVIRONMENTAL CLAIM RATHER THAN AN
+          EXCUSE: those two files sit at 0.9%-1.9% and 25.9%-26.7%, WELL INSIDE the 51% both legs
+          reached, and NEITHER LEG EMITTED A FAILURE MARKER - so those exact 20 tests EXECUTED AND
+          PASSED IN CI ON BOTH INTERPRETERS on this commit. Same sandbox limitation as at P6-CP-12,
+          reproduced here.
+        independent_review_report: docs/implementation/p6-cp13-independent-review-report-7987ef8.md
+        independent_review_note: >-
+          SUPPORTED, confidence 0.90, findings [], adjudications 2 (BOTH RULED UPHELD), 9/9 criteria
+          PASS, `blocked_on.kind: NONE`, by reviewer session 9714f808 with
+          `inherited_builder_context: false` against builder session f794211f.
+          `evidence_reproduced: true` and `claimed_evidence_reproduced: true`.
+          ### THE REVIEWER EXECUTED THE PRODUCT RATHER THAN ONLY READING IT: 22 commands executed and
+          22 pieces of evidence reproduced. The load-bearing ones: `pytest
+          eval/tests/test_phase6_brake.py` (64 passed, 0 failed); `scripts/probe_phase6_brake.py`
+          (188 cases, "behaviours as specified, 0 wrong", including the 250+1000-interleaving race
+          battery with both=0 neither=0 wrong=0); `scripts/mutate_phase6_brake.py` (18 caught, 0
+          escaped, anti-vacuity GREEN, tree restored byte-identical, git status clean after); the
+          declared acceptance oracle ("entity point 44 tests missing: []", "the machine section 41
+          acceptance items missing: []"); the declared gate-minter oracle ("modules that MINT a gate
+          decision: ['checkpoint.py']"); `git diff --stat 41b68ac^..7987ef8` over the twelve machine
+          modules plus checkpoint.py, effect_boundary.py and event_contracts_data.json (NO OUTPUT);
+          and `git rev-parse` / `git status --porcelain` BEFORE AND AFTER its own runs (unchanged,
+          clean).
+          ### ONE DECLARED ORACLE COULD NOT BE RUN THROUGH THE REVIEWER BOUNDARY, AND THAT IS
+          RECORDED RATHER THAN OMITTED. Oracle @fe9d58c4 (the M13 event-mint scan) was refused
+          because its variable name 'node' tripped the harness's editor-detection heuristic and
+          arbitrary `python -c` is outside the approved vocabulary. The reviewer CORROBORATED THE
+          PROPERTY INDEPENDENTLY (grep confirms F13 = four Brake contracts and M2/M4 consumption; the
+          probe reports "mints no unregistered event" and "FOUR F13 CONTRACTS AND NO FIFTH") and
+          recorded `blocked_on.kind: NONE` because the conclusion did not rest on it. THAT IS A
+          HARNESS LIMITATION, NOT A NEYMA GAP (P6-D93).
+          ### THE TWO ADJUDICATIONS, BOTH UPHELD, AND NEITHER IS A FINDING. (1) THE 974-VS-970 GAP:
+          the implementing session claimed 974/974 while the HEAD commit message records 970/974 with
+          four failures attributed to a harness 'token:' redaction collision. UPHELD - the reviewer
+          ran the probe DIRECTLY, outside that redactor, and observed the correct behaviour (platform
+          and tenant brake versions monotonic [1,2,3], the composite token bound on witnesses and
+          grants, the claim CAS revalidating both components): "the product emits correct bytes; the
+          4 are a VERIFICATION_HARNESS artifact external to this repo, not an M13 product defect."
+          (2) THE SHIP-DARK CLAIM VERSUS brake.py's IMPORTERS: the probe reports
+          "m13-ships-dark-with-zero-production-importers: []" while brake.py is imported by
+          checkpoint.py, effect_boundary.py and approval.py. UPHELD - the oracle measures importers
+          of the NEW M13 surface `brake_lifecycle.py`, which has zero; `brake.py` is the PRE-EXISTING
+          P3 BrakeStore the effect boundary MUST consult in order to "refuse to mint and refuse to
+          claim", and `git diff 41b68ac^..7987ef8` shows M13 modified NONE of those three files. THE
+          CLAIM IS HONESTLY SCOPED, and every one of those three importers can only DENY.
+          ### CRITERION 6 IS WHAT MADE THIS REVIEW TIER-1, AND M13 IS THE FIRST P6 UNIT TO NEED IT
+          FOR THIS REASON: M13 EDITS THE MODULE IT MEASURES, WHICH NO EARLIER P6 UNIT DID. `brake.py`
+          is P3's LANDED KERNEL BRAKE and completing it IS the sanctioned build - but P3's checkpoint
+          matrix, claim CAS and step-order batteries are exactly what turn red if it is completed
+          carelessly, and M4, M10 and M12 all consume brake state through their own guards. The
+          reviewer ran the anchors rather than citing them and confirmed the byte-identity of every
+          M1-M12 machine, the checkpoint kernel, the effect boundary and the event registry.
+          ### PRODUCT DRIVER, run 20260905-230030, iteration 1, accepted: decision ACCEPT (confidence
+          0.86, problems []), `task_result: VERIFIED`, `task_outstanding: []`,
+          `parent_phase_accepted: false`; completion audit VERIFIED (confidence 0.85,
+          `implementation_present: true`, `contradictions: []`, `missing_evidence: []`, observed head
+          7987ef8c4dce / tree a1a903a30479, `dirty_file_count: 0`); 11 of 11 REQUIRED scenarios
+          present and passed with resolvable evidence; 14 scenarios executed (1 permanent + 13
+          generated), 14 PASSED, 0 failed, 0 blocked, 0 skipped; 1152 assertions, 0 failed;
+          `assembly_problems: []`; `evidence_verified: true` on ALL FOURTEEN; and NO COMPUTED
+          COVERAGE GAPS THIS RUN - across authorization, concurrency (x2), cross_tenant (x2),
+          dependency_failure, happy_path, malformed_input, missing_data, persistence_failure,
+          regression, repeated_request and service_unavailable.
+          ### THE CHRONOLOGY IS UNUSUAL AND IS RECORDED RATHER THAN SMOOTHED. The candidate commit
+          7987ef8 was created BEFORE the Product Driver harness itself was repaired, so ITS COMMIT
+          MESSAGE RECORDS "permanent scenario 970/974" and "four remaining redaction-artifact
+          assertions". THOSE STATEMENTS WERE TRUE WHEN THAT COMMIT WAS WRITTEN AND ARE NOT THE FINAL
+          ACCEPTANCE STATE. Product Driver was then corrected IN ITS OWN REPOSITORY - the diagnostic
+          'token:' redaction collision, resume-plan semantic redaction / CommandBinding identity, and
+          stale generated-scenario expectation reconstruction - and THOSE CORRECTIONS CHANGED NO
+          NEYMA FILE. The SAME Neyma tree a1a903a3 was re-run and reached 974/974 on the permanent
+          scenario, 11/11 required, 14/14 executed, independent review SUPPORTED and TASK RESULT
+          VERIFIED. THE CANDIDATE COMMIT MESSAGE IS NOT THE VERIFICATION RECORD, AND GIT HISTORY IS
+          NOT REWRITTEN TO HIDE THE EARLIER NUMBER.
+          ### THE EVENT CONTRACTS, MEASURED: 118 REGISTERED CONTRACTS - THE IDENTICAL TOTAL RECORDED
+          AT THE P6-CP-11 AND P6-CP-12 LANDINGS. M13 MINTED NO EVENT CONTRACT AT ALL, which is the
+          strongest form of rule-17 compliance available. F13 is EXACTLY FOUR - BrakeEngaged,
+          BrakeWidened, BrakeNarrowed, BrakeReleased - AND NO FIFTH, and `brake_lifecycle.py`'s
+          PRODUCED_CONTRACTS is exactly those four and nothing else. F14 stays at 13 with
+          `UnauthorizedBrakeReleaseAttempted` ALREADY AMONG THEM, so no second refusal contract was
+          minted either. `PolicyOverridden` is STILL ABSENT from all 118, verified at this landing.
+          ### M13 IS ONE AUTHORITY, NOT A SECOND ONE - AND THE MEASUREMENT AT THIS LANDING IS MORE
+          PRECISE THAN THE PROBE'S OWN SENTENCE. A second brake authority is the same defect as no
+          brake authority. An AST scan for brake-table WRITE SQL across 127 discovered production
+          modules returns TWO modules, and the distinction is the point: `brake.py` (INSERT INTO
+          brakes, UPDATE brakes, UPDATE platform_brake - all owned by the single class
+          brake.py:BrakeStore), and P3's MIGRATION `migrations/phase3_checkpoint.py`, whose one write
+          is `INSERT OR IGNORE INTO platform_brake ... VALUES (1,'RELEASED',0)` seeding the singleton
+          row. `brake_lifecycle.py` - THE M13 MACHINE - CONTAINS ZERO BRAKE-STATE WRITE SQL. It
+          composes and delegates, and says so in its own refusal text: "M13 composes over the landed
+          BrakeStore; it does not replace it." The probe's headline "brake-writing module count: 1"
+          is scoped to lifecycle writes; THIS LANDING STATES THE FULLER MEASUREMENT RATHER THAN
+          REPEATING A NUMBER IT DID NOT DERIVE.
+          ### AND THE CHECKPOINT REMAINS THE SOLE GATE MINTER, WITH ITS POSITIVE CONTROL. Re-measured
+          at this landing by the phase-0 guard's OWN method across 127 production modules:
+          `modules that MINT a gate decision: ['checkpoint.py']`, ZERO offenders, and THE POSITIVE
+          CONTROL FIRES - the scan finds the kernel's own GateEntry construction at checkpoint.py:242,
+          so its silence about every other module means something. GateRegistry constructions anywhere
+          in the package: NONE, so the production registered-action-class population stays
+          structurally EMPTY until U8.1/P8.
+          ### THE TRANSITION ARITHMETIC WAS RE-DERIVED, NOT CARRIED. Section 14 of ALL THIRTEEN
+          machine files was parsed and its rows counted: the parse DISCOVERED 13 files and counted 134
+          rows, matching this unit's own `expected_production_outputs`. M13's five are an exact set
+          match between `brake_lifecycle.py` and the specification. 134 OF 134 ARE NOW WRITTEN AND
+          LANDED AND NONE REMAIN - AND THAT IS AN ARITHMETIC FACT ABOUT THE TRANSITION CORPUS, NOT A
+          PHASE ACCEPTANCE.
+          ### SHIP-DARK, WITH ITS DENOMINATOR AND ITS POSITIVE CONTROLS. `production importers of
+          brake_lifecycle: []` is a negative assertion, and a negative assertion over an unproven
+          population proves nothing (CLAUDE.md sec 6). The SAME intra-package whole-module-token
+          scanner over the SAME 127 discovered modules returns 9 importers of `checkpoint` and 6 of
+          `commit_key`, so it is demonstrated to FIND importers before it is believed about finding
+          none. `production importers of rule: []` and `of policy: []` are unchanged.
+        ci_note: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THIS COMMIT, AND NO DOCUMENT IN THIS REPOSITORY SAYS
+          IT DID. Run 34162327327, on the landing candidate 7987ef8, CONCLUDED `cancelled`.
+          `cancelled` IS NOT `success`.
+          ### JOB CONCLUSIONS, FOUNDER-SUPPLIED. `P6/M3 effect-grant probe + mutation` SUCCESS.
+          `Full test suite (py3.12)` CANCELLED at the 60-minute job ceiling having reached 51% with
+          ZERO pytest failure markers. `Full test suite (py3.11)` CANCELLED at the same ceiling,
+          also at 51% with ZERO pytest failure markers. `Safety invariants (fast)` CANCELLED at its
+          own 30-minute ceiling with no failure marker observed. `Risk radar` SKIPPED as
+          pull-request-only. Both interpreter jobs checked out the exact candidate SHA.
+          ### THIS IS THE WEAKEST CI POSITION OF ANY P6 LANDING FOR THE LANDING MACHINE'S OWN TESTS,
+          AND IT IS RECORDED AS UNDISCHARGED RATHER THAN ASSERTED. At P6-CP-12 one full suite
+          COMPLETED (py3.12, 100% reached) and M12's own 61 tests demonstrably ran inside it. HERE
+          NEITHER LEG COMPLETED, so that mitigation is NOT available.
+          ### WHAT CI DID AND DID NOT REACH - MEASURED ON THIS TREE, NOT ASSUMED. `pytest eval
+          --collect-only` collects 3349 tests on this tree; 51% is test #1707, the point at which
+          exactly 89 test files have been executed in full. `eval/tests/test_phase6_brake.py`
+          occupies positions 2062-2125 (61.5%-63.4%). SO M13's OWN 64 TESTS DID NOT EXECUTE IN CI ON
+          EITHER INTERPRETER: NOT FAILING, NOT PASSING - NO EXECUTION. Neither did
+          `test_phase3_schema.py` (54.8%-55.1%), which carries the M13 migration walk, nor
+          `test_phase3_claim_cas.py` (52.7%-53.3%), which M13 edited and which carries the
+          composite-token CAS anchor; `test_phase3_checkpoint_matrix.py` (49.5%-52.7%, also edited by
+          M13) STRADDLES the cancellation and was only PARTIALLY executed.
+          ### WHAT DID EXECUTE IS STATED AS PRECISELY AS WHAT DID NOT. `test_phase3_brake.py` - P3's
+          brake anchors, WHICH M13 EDITED - sits at 49.0%-49.5% and therefore RAN IN FULL ON BOTH
+          LEGS AND EMITTED DOTS, as did `test_phase0_null_gate.py` (44.7%-44.9%, the sole-gate-minter
+          guard), `test_phase0_tenant_posture.py` (45.2%-45.5%) and `test_phase0_guard_integrity.py`
+          (43.9%-44.1%).
+          ### THE CANCELLED SAFETY JOB IS ONLY PARTLY MITIGATED, AND THE SHORTFALL IS MEASURED RATHER
+          THAN GLOSSED. That job names 26 files, DISCOVERED from the workflow rather than enumerated -
+          621 tests, all inside `pytest eval`. Against the 51% cancellation: 17 executed IN FULL, 1
+          STRADDLED it (test_phase3_checkpoint_matrix.py), and 8 WERE NOT REACHED AT ALL, including
+          `test_phase3_claim_cas.py`, `test_phase3_witness.py` and `test_phase3_step_order.py`. THE
+          REPOSITORY HAS NO CI RESULT FOR THOSE EIGHT ON THIS COMMIT. All 26 were run locally at this
+          landing and passed.
+          ### CI RUNS NO M13 PROBE OR MUTATION JOB. Verified mechanically: the count of `phase6_brake`
+          occurrences in `.github/workflows/ci.yml` is ZERO. Unlike P6-CP-12, the mitigating sentence
+          "but they ran inside the completed suite" is NOT available, because no suite completed. The
+          18-mutant battery, the 188-case probe and the 64-test acceptance battery are UNCOVERED BY CI
+          on this commit and were re-executed locally instead.
+          ### THE JOB CONCLUSIONS COULD NOT BE RE-READ AT THIS LANDING. `gh run view 34162327327`
+          fails from this sandbox with `tls: failed to verify certificate: x509: OSStatus -26276`, the
+          identical failure recorded at every landing since P6-CP-5, reproduced at this one. The
+          founder chose to land on the evidence that exists, treating both cancellations as
+          non-product CI runtime limitations; THAT IS RECORDED AS A DECISION, NOT AS A VERIFICATION
+          (P6-D92), and it closes only by a CI run on this branch that concludes SUCCESS. A TIME
+          CEILING IS NOT A PRODUCT DEFECT, AND IT IS ALSO NOT A PASS.
+        nonblocking_residuals: >-
+          Five rows - P6-D89, P6-D90, P6-D91, P6-D92, P6-D93 - recorded below in
+          `residual_risks_carried_forward`. NONE IS A REVIEWER FINDING; the focused independent
+          review returned `findings: []`. Each was identified AT THIS LANDING from the run's own
+          structured evidence, the M13 source, the specification corpus and the CI record.
+          ### ONE OF THEM IS A REAL DEFECT THAT NEITHER PRODUCT DRIVER NOR THE REVIEWER SURFACED.
+          P6-D89: three PRE-M13 probes assert "M13 is not built" and NOW EXIT 1 on the landed tree,
+          because M13 IS built - `probe_phase6_policy.py --all` (exit 1, 2 wrong),
+          `probe_phase6_rule.py --all` (exit 1, 2 wrong) and `probe_phase6_compensation.py --all`
+          (exit 1, 1 wrong). This is CLAUDE.md rule 20's exact case, and the M13 build DID correct the
+          two pytest files carrying the same stale assertion while MISSING the three probe scripts.
+          Blast radius MEASURED rather than assumed: none of the three is run by CI and none is
+          invoked by any test in `pytest eval`, so neither CI nor the suite turns red and M13's own
+          probe is exit 0. IT IS A FALSE RED, NEVER A FALSE GREEN - but a probe that cries wolf is a
+          probe people learn to stop reading. NOT ACTIONED HERE because this landing may not change
+          `scripts/`.
+          ### NO CARRIED RESIDUAL IS CLOSED BY THIS LANDING - STATED RATHER THAN LET PASS. P6-D65 is
+          the only open row whose `closes_at` names M13 ("M11/M12/M13, or a founder determination, per
+          question"), and its per-question structure is what keeps it open: only the PREMISE of
+          M10-AQ-8 ("M10's prose assumes M11/M12/M13, which are unbuilt") changes here, and that
+          clause was a statement about M10's SCOPE, not a dependency on M13 existing. The other twelve
+          questions need a later machine or a FOUNDER DETERMINATION, so the row's own closure
+          condition is NOT MET and it stays OPEN. P6-D71 (PolicyOverridden) stays OPEN /
+          BLOCKED_AUTHORITY - verified absent from all 118 registered contracts, and M13 builds NO
+          override mechanism at all. P6-D4, P6-D73 and P6-D84 stay OPEN unchanged; `work_item.py` and
+          `phase6_exceptions.py` are BYTE-UNCHANGED across the entire M13 range.
+          ### P6-D40 IS CARRIED FORWARD UNCHANGED AND WAS NOT RE-VERIFIED AT THIS LANDING. No mutation
+          battery was run against the status guards here and none is claimed.
+        what_it_owed: >-
+          M13 is TIER-1 under CLAUDE.md sec 7 for THREE reasons, one of which no earlier P6 unit had:
+          it lands a migration ON TABLES THE CHECKPOINT KERNEL READS, it is load-bearing for tenant
+          isolation via the tenant-exempt platform row, and IT EDITS `brake.py`, A LANDED P3 KERNEL
+          MODULE. So it owes builder evidence, ONE focused independent review by someone who did not
+          write it, mutation proof that the guard can fail, and CI. THE FIRST THREE ARE DISCHARGED;
+          THE FOURTH IS NOT, and P6-D92 records that rather than asserting it.
+          ### THE EDIT TO `brake.py` IS THE SANCTIONED UNIT AND NOT A GUARD WEAKENING, AND THE PRICE
+          OF SAYING SO IS RECORDED. Two neighbour guards DROPPED `brake.py` from their
+          must-stay-byte-identical frozen sets, which was CORRECT under rule 20 - such a guard would
+          FORBID the sanctioned M13 edit - but nothing re-freezes it for units AFTER M13, and that is
+          P6-D90. `eval/phase0/gate_scan.py` is byte-unchanged and GATE_RUNTIME_MODULES gained no
+          member, so unlike M11 NO GATE GUARD WAS WIDENED AND NO WIDENING PRICE WAS OWED.
+          ### LANDED IS NOT ENABLED, AND IMPLEMENTED + VERIFIED + LANDED IS NOT PRODUCTION.
+          `criteria_scored` is EMPTY below and stays empty on ALL THIRTEEN checkpoints; no P6 weighted
+          criterion is scored; P6 stays `status: READY` / `execution_state: IN_PROGRESS` AND DOES NOT
+          MOVE; P7 stays BLOCKED / NOT_STARTED; and NOTHING IS ENABLED IN PRODUCTION. M13 ships dark
+          with ZERO production importers of the new surface, mints no gate decision, engages no brake
+          on live traffic, joins no channel, and builds NO brake console, admin UI, dashboard,
+          Slack/email/SMS/voice brake command or production Sev-0 detector wiring of any kind. Nothing
+          graduates: V13 (who engages), V14 (who releases) and V15 (auto-engage on repeated unknowns)
+          stay OPEN at their fail-closed defaults.
+          ### M13 IS THE LAST P6 MACHINE, AND THAT IS NOT THE SAME THING AS P6 BEING ACCEPTED. All
+          thirteen machines are landed and 134 of 134 transitions are written, but the phase still
+          owes gate G1, AC-SAFE-028, and the one thing NO CHECKPOINT CAN SUPPLY: a phase acceptance
+          judged by a reviewer WHO DID NOT BUILD THE PHASE - tier-1 under CLAUDE.md sec 7, and the one
+          place the independent-review requirement is about a PHASE rather than a diff. ### THE EXACT
+          NEXT PROGRAM ACTION IS P6 PHASE ACCEPTANCE / FINAL ADJUDICATION. IT IS NOT P7. ### A SESSION
+          READING "ALL THIRTEEN LANDED" AS "P6 COMPLETE", OR AS PERMISSION TO BEGIN P7, WOULD BE
+          MAKING EXACTLY THE MISTAKE THIS RECORD EXISTS TO PREVENT.
+          ### NO FINALIZER, NO ADJUDICATION, NO COMMITTED RECEIPT, NO CLEAN-CLONE CEREMONY AND NO
+          PRESERVE REF IS OWED FOR THIS LANDING, AND A SESSION MUST NOT RUN ONE.
+        criteria_scored: []
     objective: "Work Item (with ownership), Pipeline Instance, the 13 machines, 134 transitions."
     dependencies: [P5]
     unlocked_by: [P5]
@@ -6885,6 +7302,161 @@ units:
           session strengthening that guard knows the weakness was seen and priced rather than missed.
         severity: LOW - nonblocking
         closes_at: a session that owns the phase-0 status guards - not a P6 machine unit
+      # ### THE FIVE ROWS BELOW ARE THE P6/M13 LANDING RESIDUALS (`P6-CP-13`). None is a reviewer
+      # finding - the focused independent review returned `findings: []`, and its two adjudications
+      # were both ruled UPHELD. Each was identified AT THE LANDING from the run's own structured
+      # evidence, the M13 source, the specification corpus and the CI record. NOTE THAT NO ROW IS
+      # CLOSED BY THIS CHECKPOINT: `P6-D65` names M13 among its per-question closure conditions and
+      # is NOT closed (see the P6-CP-13 record above), and `P6-D4`, `P6-D71`, `P6-D73` and `P6-D84`
+      # all stay open unchanged.
+      - id: P6-D89
+        finding: >-
+          ### THREE PRE-M13 PROBES ASSERT "M13 IS NOT BUILT" AND NOW EXIT 1 ON THE LANDED TREE.
+          Measured by execution at this landing, not by reading: `scripts/probe_phase6_policy.py
+          --all` exits 1 with "2 behaviour(s) wrong", both "### MISS ### an M13 brake lifecycle module
+          exists"; `scripts/probe_phase6_rule.py --all` exits 1 with "2 behaviour(s) wrong", "an M13
+          brake machine exists" and "an M13 brake lifecycle module exists"; and
+          `scripts/probe_phase6_compensation.py --all` exits 1 with "1 wrong",
+          `m11-m12-and-m13-are-not-built`. Each is a forward-looking assertion that was TRUE when
+          written and became FALSE the moment `brake_lifecycle.py` and `phase6_brakes.py` entered the
+          tree. ### THIS IS CLAUDE.md RULE 20's EXACT CASE - a check asserting obsolete behaviour must
+          be REPLACED, not preserved - AND THE M13 BUILD DID HALF OF IT: it corrected the two PYTEST
+          files carrying the same stale assertion (`test_phase6_policy.py`, `test_phase6_rule.py`) and
+          MISSED THE THREE PROBE SCRIPTS.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED, AND ITS BLAST RADIUS MEASURED RATHER THAN ASSUMED. Neither CI
+          nor the suite turns red: `.github/workflows/ci.yml` runs ONLY the M3 external-effect probe
+          (the count of `phase6_policy`, `phase6_rule` and `phase6_compensation` probe invocations in
+          the workflow is ZERO), and NO test in `pytest eval` invokes any of the three - verified by
+          grep over the suite, which returns only comment references. `pytest eval/tests/
+          test_phase6_policy.py test_phase6_rule.py test_phase6_compensation.py test_phase6_brake.py`
+          is 245 PASSED at this landing, and M13's own probe is exit 0, "0 wrong".
+          ### SO IT IS A FALSE RED, NEVER A FALSE GREEN - which is the strictly less dangerous
+          direction, and it is nonblocking under CLAUDE.md sec 13: it cannot produce a wrong customer
+          outcome, violate an invariant or make a later phase unsafe. IT IS STILL A REAL DEFECT. A
+          probe that cries wolf is a probe people learn to stop reading, and the repository's own
+          verification discipline depends on probes being believed. It is NOT fixed here because this
+          landing is status/evidence only and may not change `scripts/`; the correction is three
+          rule-20 replacements of the same shape the M13 build already applied to the two test files.
+        severity: MEDIUM - nonblocking; a false red, never a false green
+        closes_at: a session that owns the M10/M11/M12 probes - a rule-20 correction, not a P6 machine unit
+      - id: P6-D90
+        finding: >-
+          ### `brake.py` IS NO LONGER FROZEN BY ANY BYTE-IDENTITY GUARD. Measured over a DISCOVERED
+          population at this landing - every function in `eval/` that runs `git diff --name-only` over
+          a fixed list of `src/` modules, found by AST rather than by filename enumeration, which
+          returns exactly FOUR guards. Before M13, `brake.py` was frozen by two of them
+          (`test_phase6_policy.py::test_the_neighbouring_machines_are_unchanged` and
+          `test_phase6_rule.py::test_the_neighbouring_machines_are_unchanged`); the M13 build DROPPED
+          it from both, and M13's own replacement guard
+          (`test_phase6_brake.py::test_the_m1_through_m12_machines_are_unchanged`) freezes the twelve
+          machines but NOT `brake.py`. AFTER M13 IT IS FROZEN BY NONE. `checkpoint.py` remains frozen
+          by three, so the kernel's own tripwire is intact.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED - AND THE REMOVAL ITSELF IS NOT THE FINDING. A guard asserting
+          `brake.py` byte-unchanged would FORBID THE SANCTIONED M13 EDIT, which is the whole M13 unit;
+          rule 20 therefore REQUIRED replacing it, and the build's stated reasoning ("`brake.py` was
+          DROPPED from this frozen set when M13 landed - it is P3's landed kernel brake and M13
+          legitimately EDITS it") is correct. THE FINDING IS THAT IT WAS REPLACED WITH NOTHING THAT
+          RE-FREEZES `brake.py` FOR THE UNITS THAT COME AFTER M13, so a later unit that silently
+          edited P3's kernel brake would not trip a byte-identity guard.
+          ### WHAT IS NOT LOST: behavioural protection is undiminished and was RUN at this landing -
+          `test_phase3_brake.py` (19), `test_phase3_checkpoint_matrix.py` (106),
+          `test_phase3_claim_cas.py` (22) and `test_phase6_brake.py` (64) all exercise it, and the
+          18-mutant battery proves those guards can FAIL. This is a lost TRIPWIRE, not a lost
+          INVARIANT. The row exists so the session that re-freezes it knows the gap was seen and
+          priced rather than missed.
+        severity: LOW - nonblocking
+        closes_at: the session that adds a post-M13 byte-identity guard over `brake.py`, or a founder determination that none is owed
+      - id: P6-D91
+        finding: >-
+          ### THE BUILD WROTE "M13 LANDED" INTO TEST FILES BEFORE THE LANDING EXISTED - THE FOURTH
+          RECURRENCE OF THIS CLASS. Discovered mechanically at this landing by scanning all 744
+          tracked text files rather than by recollection: FIVE statements across TWO files assert that
+          M13 landed - `eval/tests/test_phase6_policy.py:903` ("RULE 20: M13 (Brake) has since
+          LANDED"), `:905` (the assertion message "M13 brake lifecycle landed"), `:929` ("frozen set
+          when M13 landed"), and `eval/tests/test_phase6_rule.py:981` ("M13 landed: the brake lifecycle
+          module is present") and `:1003` ("when M13 landed"). ALL WERE FALSE WHEN WRITTEN - no
+          `P6-CP-13` existed at 41b68ac or 7987ef8 - and all become TRUE as of this landing commit.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED. This is exactly the P6-D58 (M8), P6-D81 (M11) and P6-D85 (M12)
+          class, and THAT IT HAS NOW RECURRED FOUR TIMES IS ITSELF THE FINDING WORTH CARRYING. Two of
+          the five are assertion MESSAGES rather than comments, but the assertions themselves test
+          MODULE PRESENCE, which is true on the tree independent of landing status - so no assertion
+          asserts the landing, and none changes what any guard reads or permits. ZERO appear in a
+          status authority: `CURRENT.md` at 7987ef8 correctly recorded M13 as NOT LANDED, and the
+          registry did too. They are not edited here, because editing them would be a change to
+          already-reviewed test files for cosmetic reasons and this landing may not change `eval/`.
+          The row exists so a later session does not read a build-time comment as evidence that a
+          landing happened.
+        severity: LOW - nonblocking
+        closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+      - id: P6-D92
+        finding: >-
+          ### CI DID NOT CONCLUDE `SUCCESS` ON THE LANDING CANDIDATE, AND THIS IS THE WEAKEST CI
+          POSITION OF ANY P6 LANDING FOR THE LANDING MACHINE'S OWN TESTS. Run 34162327327 on 7987ef8
+          concluded `cancelled`. BOTH `Full test suite (py3.12)` AND `Full test suite (py3.11)` were
+          cancelled at the 60-minute job ceiling having reached 51%, each with ZERO pytest failure
+          markers; `Safety invariants (fast)` was cancelled at its own 30-minute ceiling, also without
+          a failure marker; `Risk radar` was skipped as pull-request-only. Only `P6/M3 effect-grant
+          probe + mutation` concluded SUCCESS. ### UNLIKE P6-CP-12, NO FULL SUITE COMPLETED, so that
+          landing's mitigation is not available here.
+          ### WHAT HAS NO CI RESULT ON THIS COMMIT, MEASURED RATHER THAN ASSUMED. `pytest eval
+          --collect-only` collects 3349 tests on this tree; 51% is test #1707. `test_phase6_brake.py`
+          occupies positions 2062-2125 (61.5%-63.4%), so M13's OWN 64 TESTS DID NOT EXECUTE ON EITHER
+          INTERPRETER - not failing, not passing, NO EXECUTION. Nor did `test_phase3_schema.py`
+          (54.8%-55.1%), which carries the M13 migration walk, nor `test_phase3_claim_cas.py`
+          (52.7%-53.3%), which M13 edited and which carries the composite-token CAS anchor;
+          `test_phase3_checkpoint_matrix.py` (49.5%-52.7%, also edited by M13) straddles the
+          cancellation and was only PARTIALLY executed. Of the cancelled safety job's 26 files
+          (DISCOVERED from the workflow, 621 tests), 17 executed in full, 1 straddled, and 8 were NOT
+          REACHED AT ALL. And CI RUNS NO M13 PROBE OR MUTATION JOB: the count of `phase6_brake`
+          occurrences in `.github/workflows/ci.yml` is ZERO.
+        disposition: >-
+          ### RECORDED AS A DECISION, NOT A VERIFICATION, AND BOTH HALVES ARE STATED. `cancelled` is
+          not `success` and no document in this repository says it is. WHAT CI DID ESTABLISH is stated
+          as precisely as what it did not: `test_phase3_brake.py` - P3's brake anchors, WHICH M13
+          EDITED - sits at 49.0%-49.5% and therefore RAN IN FULL ON BOTH LEGS AND EMITTED DOTS, as did
+          `test_phase0_null_gate.py` (44.7%-44.9%, the sole-gate-minter guard),
+          `test_phase0_tenant_posture.py` (45.2%-45.5%) and `test_phase0_guard_integrity.py`
+          (43.9%-44.1%); and neither leg emitted a single failure marker before its ceiling.
+          Everything CI did not reach was run LOCALLY at this landing on CPython 3.14.4 and passed -
+          and a local result is never presented as a CI one.
+          ### THE CONCLUSIONS COULD NOT BE RE-READ HERE. `gh run view 34162327327` fails from this
+          sandbox with `tls: failed to verify certificate: x509: OSStatus -26276`, as at every landing
+          since P6-CP-5. The founder chose to land on the evidence that exists - the accepted Product
+          Driver run against this exact tree, the deterministic permanent scenario, the
+          reviewer-reproduced runtime evidence, the mutation battery, the regression anchors and CI's
+          clean partial execution - treating both ceilings as non-product CI runtime limitations.
+          ### A TIME CEILING IS NOT A PRODUCT DEFECT, AND IT IS ALSO NOT A PASS.
+        severity: LOW - nonblocking
+        closes_at: a CI run on this branch that concludes SUCCESS
+      - id: P6-D93
+        finding: >-
+          ### THREE PRODUCT DRIVER HARNESS OBSERVATIONS, NONE OF WHICH IS A NEYMA DEFECT. (a) The
+          run's `task-scope.json` derived `repository_unit_id: "P6-CP-10"` while `CURRENT.md` recorded
+          `P6-CP-12` as the last landed checkpoint - a stale derivation from the status document. (b)
+          One DECLARED reviewer oracle (@fe9d58c4, the M13 event-mint scan) could not be run through
+          the reviewer boundary because its variable name 'node' tripped the harness's
+          editor-detection heuristic and arbitrary `python -c` is outside the approved vocabulary. (c)
+          The `token:` stdout-redaction collision that masked four permanent-scenario assertions and
+          produced the "970/974" figure recorded in the candidate commit message.
+        disposition: >-
+          ### RECORDED, NOT ACTIONED - EACH IS A PRODUCT DRIVER CHANGE, NOT A NEYMA CHANGE, AND THIS
+          IS THE P6-D69 / P6-D79 CLASS. (a) changed no gate and no verdict: the run's own
+          `scoped_completion` correctly reads `parent_phase: P6`, `parent_phase_state: READY`,
+          `parent_phase_execution_state: IN_PROGRESS` and `parent_phase_accepted: false`, and the
+          acceptance bar it applied was the TASK bar for P6/M13, which is right. (b) the reviewer
+          CORROBORATED the property independently and recorded `blocked_on.kind: NONE`, so the
+          conclusion does not rest on the refused command. (c) WAS ALREADY REPAIRED IN PRODUCT
+          DRIVER'S OWN REPOSITORY, and the repair CHANGED NO NEYMA FILE: the same Neyma tree
+          a1a903a3 was re-run and reached 974/974. The reviewer adjudicated the gap UPHELD after
+          running the probe outside the redactor - "the product emits correct bytes; the 4 are a
+          VERIFICATION_HARNESS artifact external to this repo, not an M13 product defect."
+          ### THE ROW EXISTS SO A LATER SESSION READING THE CANDIDATE COMMIT MESSAGE'S "970/974" DOES
+          NOT CONCLUDE THE PRODUCT FAILED FOUR ASSERTIONS.
+        severity: LOW - nonblocking
+        closes_at: a Product Driver harness change, not a Neyma change
     next_units_unlocked: [P7]
 
   - unit_id: P7
