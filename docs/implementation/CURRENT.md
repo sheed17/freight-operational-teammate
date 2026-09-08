@@ -10,12 +10,21 @@
 > simplification. The pre-simplification version of this document, with its full narrative history,
 > is in git history at `cff82d5`.
 
-**Last updated:** 2026-09-07, recording **`P6-CP-13` — M13, the Brake — as LANDED**. *(Until this
-commit this line recorded `P6-CP-12` as the last landed checkpoint, and this document said in four
+**Last updated:** 2026-09-07, recording the **P6 PHASE-ACCEPTANCE AUTHORITY CORRECTION.** P6 now
+carries an explicit phase `acceptance_criteria` block — **seventeen required criteria, every one
+derived from an authority that is current at this commit** — so P6's acceptance can, for the first
+time, be *evaluated*. ### **UNTIL THIS COMMIT IT COULD NOT BE GRANTED AND COULD NOT BE REFUSED:**
+P6 had no acceptance criteria at all while the registry's `PHASE_ACCEPTANCE_COMPLETE` required them,
+which an independent P6 adjudication found and named. ### **THE CORRECTION SCORES NOTHING, COMPLETES
+NOTHING AND MAKES NOTHING EASIER** — every criterion is `required` and every result is `PENDING`.
+See [**P6 phase acceptance — the contract that now exists**](#p6-phase-acceptance--the-contract-that-now-exists).
+
+**The last landed checkpoint is `P6-CP-13` — M13, the Brake.** *(Until the `P6-CP-13` landing commit
+the line above recorded `P6-CP-12` as the last landed checkpoint, and this document said in four
 places that M13 "remains unbuilt and unlanded" and that `brake_lifecycle.py` and `phase6_brakes.py`
 were "absent from the tree". All of that was TRUE WHEN WRITTEN and is FALSE NOW: both files are in
 the tree, M13 has been verified by Product Driver against this exact tree and reviewed by a session
-that did not build it, and it LANDS here. Each phrasing is REPLACED rather than deleted —
+that did not build it, and it LANDED there. Each phrasing is REPLACED rather than deleted —
 [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.)*
 **M13 is the LAST P6 machine, and 134 of the 134 transitions are now written and landed.**
 ### **THAT IS NOT PHASE ACCEPTANCE.** P6 stays `status: READY` / `execution_state: IN_PROGRESS`,
@@ -41,7 +50,7 @@ leg emitted a failure marker.
 | **P3** — the checkpoint kernel: seven-step atomic checkpoint, unconstructable witness, grant mint + claim CAS, brake admission | **COMPLETE** — 14/14 | [`p3-final-adjudication-review.md`](p3-final-adjudication-review.md) |
 | **P4** — adapter containment: the governed write route, the two-key rule at the effect boundary, the CI import gate | **COMPLETE** — 13/14 | [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) |
 | **P5** — canonical events, outbox/inbox, replay isolation, durable timers, production PostgreSQL | **COMPLETE** — 14/14 | [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) |
-| **P6** — foundational entities and state machines | **IN PROGRESS** | thirteen landed checkpoints — all 13 machines; see below |
+| **P6** — foundational entities and state machines | **IN PROGRESS** — **0/17 scored** | thirteen landed checkpoints — all 13 machines; the phase acceptance contract is now instantiated and every criterion is `PENDING`; see [below](#p6-phase-acceptance--the-contract-that-now-exists) |
 | **P7–P14** | **BLOCKED** behind P6 | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 Gates **G0** and **G1**… **G2 is adjudicated** and its seven event obligations are discharged; the
@@ -1166,11 +1175,98 @@ fail-closed defaults**.
 
 Landing M13 scores no P6 criterion. ### **M13 IS THE LAST P6 MACHINE, AND THAT IS NOT THE SAME THING AS
 P6 BEING ACCEPTED.** All thirteen machines are landed and 134 of 134 transitions are written, but the
-phase still owes gate **`G1`**, **`AC-SAFE-028`**, and the one thing no checkpoint can supply: **a
-phase acceptance judged by a reviewer who did not build the phase** — tier-1 under
-[`CLAUDE.md`](../../CLAUDE.md) §7, and the one place the independent-review requirement is about a
-**phase** rather than a diff. ### **THE EXACT NEXT PROGRAM ACTION IS P6 PHASE ACCEPTANCE / FINAL
-ADJUDICATION. IT IS NOT P7.**
+phase still owes the **`AC-MACH-*` half of gate `G1`**, **`AC-SAFE-028`**, and the one thing no
+checkpoint can supply: **a phase acceptance judged by a reviewer who did not build the phase** —
+tier-1 under [`CLAUDE.md`](../../CLAUDE.md) §7, and the one place the independent-review requirement
+is about a **phase** rather than a diff. ### **THE EXACT NEXT PROGRAM ACTION IS P6 PHASE ACCEPTANCE
+BY A REVIEWER WHO DID NOT BUILD THE PHASE. IT IS NOT P7.**
+
+*(This paragraph read "the phase still owes gate **`G1`**" until the P6 acceptance-authority
+correction, and it is REPLACED rather than deleted — [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.
+**It was too broad, in the direction that would have held P6 hostage to three later phases.**
+`release-gates.md`'s G1 row requires `AC-MACH-*` **(134/134)** *and* `AC-DOM-*` **(40/40)**, and the
+40 domain entities are **P9's** — the roadmap gives P9 "the 40 entities" at G1 and
+[`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md)'s P9 block names `domain-model-acceptance.md` under G1. **P6
+owes its half in full and owes it exactly**; the gate itself qualifies only once P9 has discharged
+the other half.)*
+
+## P6 phase acceptance — the contract that now exists
+
+### **P6's ACCEPTANCE WAS UNINSTANTIABLE, AND THAT IS A CONTROL-SYSTEM HOLE RATHER THAN A STRICT BAR.**
+Until this commit P6 carried **no `acceptance_criteria` block at all**, while the registry's
+`PHASE_ACCEPTANCE_COMPLETE` state required one. A phase with nothing to evaluate cannot be accepted
+— and equally **cannot be refused**, which is the half that actually costs something: a reviewer had
+no contract to score P6 *against*, so a refusal would have rested on judgment alone. An independent
+P6 adjudication found this and named it. It is corrected in
+[`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — the machine authority — and restated
+here.
+
+### **THE RETIRED CEREMONY IS NOT REVIVED TO CLOSE IT.** The founder decision that authorised this
+correction is explicit: the **current** phase-review and phase-acceptance model is the operating
+model. `canonical_finalizer`, `clean_clone_execution`, `PROGRAM-WEIGHTS.yaml`'s acceptance template,
+`BUILD-STATUS.yaml`, `PROGRESS-PROTOCOL.md`, the committed suite and clean-clone receipts, the
+two-commit content+metadata convention and the chain of adjudicating sessions were **all deleted at
+`d1d2e39` and stay deleted**. ### **A HISTORICAL ARTIFACT REFERENCING DELETED MACHINERY IS HISTORY,
+NOT A PREREQUISITE.** P3, P4 and P5 carry the fourteen-criterion weighted block because it was the
+mechanism in force when they were accepted; **their records are untouched and stay valid**, and
+copying that block onto P6 would have made two deleted scripts a precondition for a phase that never
+used them. The one review requirement that survived is [`CLAUDE.md`](../../CLAUDE.md) §7's: **one**
+focused independent review by someone who did not write it.
+
+### **SEVENTEEN CRITERIA, EVERY ONE REQUIRED, EVERY ONE CITING A CURRENT AUTHORITY.** Nothing was
+invented: a candidate criterion with no current authority behind it was **dropped rather than
+justified**. Weights are retained and sum to 100 only because a landed guard
+(`test_bootstrap_hermeticity.py::test_the_implementation_graph_is_consistent_and_protects_the_safety_wall`)
+reads them over the READY selector's dependencies; **under the current model the weighted sum is a
+derived view and never a partial-credit route** — because every criterion is required, an accepted
+phase always computes to 100/100.
+
+| # | Criterion | Derived from |
+|---|---|---|
+| **`P6-AC-1`** | scope conformance | this unit's `allowed_scope` / `prohibited_scope`; PHASE-OUTPUTS.md P6; P3's adjudicated F-2 (production `GateRegistry` stays EMPTY until U8.1/P8) |
+| **`P6-AC-2`** | all **13 machines** and the **17 platform primitives** landed | `expected_production_outputs`; `foundational-machine-acceptance.md`'s per-machine table; `traceability.md` ("17 foundational + 40 domain") |
+| **`P6-AC-3`** | the **134/134** transition population, every omitted `(state,trigger)` pair proved ILLEGAL | `foundational-machine-acceptance.md` Coverage requirement + assertion 2 |
+| **`P6-AC-4`** | machine / entity / event **bijection** — `AC-MACH-000` by EXACT SET EQUALITY, and `AC-EVT-003` | `foundational-machine-acceptance.md`'s mechanical coverage table; `event-and-replay-acceptance.md`; the P5 final adjudication, which records `AC-EVT-003` as **"P6's first acceptance obligation"** |
+| **`P6-AC-5`** | the **ten per-machine mandatory assertions** and the seven merge-gating anchors | `foundational-machine-acceptance.md` |
+| **`P6-AC-6`** | **`AC-SAFE-028`** — every open Work Item has exactly ONE accountable human owner | this unit's `acceptance_contract`; `platform-safety-acceptance.md`; `CLAUDE.md` §4 rule 13 |
+| **`P6-AC-7`** | authenticated-human authority — a `decision_ref` must **resolve**; automation may narrow, never broaden or release | `AC-MACH-903`; `AC-SAFE-024`/`AC-SAFE-027`; this unit's `security_requirements` |
+| **`P6-AC-8`** | tenant isolation and tenant-first persistence, across `T_A`/`T_B` | `acceptance/registry.md` contract defaults; assertion 10; `migration_requirements` |
+| **`P6-AC-9`** | **sole checkpoint / gate minter** — no second minter, no second effect authority | `CLAUDE.md` §10 and §4 rules 16–17; this unit's prohibited-scope reconciliation |
+| **`P6-AC-10`** | **replay manufactures no authority** — zero witnesses, zero grants, zero calls | `acceptance/registry.md` replay default (applies to *every* case); `AC-SAFE-019`; `CLAUDE.md` §4 rules 10–11 |
+| **`P6-AC-11`** | the **claim CAS keeps every authority predicate** | `CLAUDE.md` §10 (explicit); `AC-MACH-209`. ### **P6 EDITED THE KERNEL IT MUST NOT WEAKEN** — M13 modified `brake.py` and two P3 test files, which no earlier P6 unit did |
+| **`P6-AC-12`** | **fail closed** on unknown or unavailable authority — a timeout is never `FAILED`, no timer releases a brake, an unreadable brake store never reads as "off" | `AC-MACH-210u`/`215x`/`1305`; `AC-SAFE-021`/`022`; `CLAUDE.md` §4 rule 12 |
+| **`P6-AC-13`** | **mutation and anti-vacuity evidence** — guards seen to FAIL, populations proven, denominators printed | `mutation_requirements: required`; assertion 1; `CLAUDE.md` §6 |
+| **`P6-AC-14`** | **ships dark** — landed, enabled nowhere | `rollback_posture`; the roadmap's per-phase deployment shape; `CLAUDE.md` §10 |
+| **`P6-AC-15`** | carried residuals recorded with IDs, dispositions and closure conditions, none blocking | `CLAUDE.md` §13 |
+| **`P6-AC-16`** | **CI concludes SUCCESS on the accepted tree** | `CLAUDE.md` §0 and §8; this document's own header; `.github/workflows/ci.yml` |
+| **`P6-AC-17`** | **an independent phase review by a session that did not build P6** | `CLAUDE.md` §7 tier 1 and §10 — structurally un-self-suppliable |
+
+### **`G1` IS DELIBERATELY NOT A CRITERION, AND THE REASON IS AUTHORITY RATHER THAN CONVENIENCE.**
+See the correction note above: the gate spans P6, P7 and P9, so P6 owes the `AC-MACH-*` half and is
+not held to `AC-DOM-*`, which the roadmap assigns to P9. **Requiring the whole gate would have made
+P6 permanently unacceptable** — and an unacceptable phase is not a strict one, it is a stuck one.
+
+### **TWO CRITERIA ARE KNOWN NOT TO BE PASSABLE TODAY, AND THAT IS STATED RATHER THAN HIDDEN.**
+**`P6-AC-16` cannot pass while `P6-D92` is open** — no CI run on this branch has concluded `SUCCESS`,
+and **this correction does not change that in any way.** **`P6-AC-17` has not happened.** Recording a
+contract two of whose criteria are currently blocked is the *correct* outcome: **P6 can now be
+honestly refused, which it could not be before.**
+
+### **ONE RESIDUAL IS ALREADY DISCHARGEABLE AND WAS STILL LEFT OPEN — SAID PLAINLY RATHER THAN LEFT
+TO BE FOUND.** **`P6-D91`**'s closure condition reads *"not a defect once this landing exists"*, and
+the landing exists: `P6-CP-13` is the thirteenth landed checkpoint, and all five statements the row
+names are true on this tree. **It was not closed here** — this correction discharged nothing about
+it (the `P6-CP-13` landing commit did), and the instruction governing this session was to preserve
+every residual it did not itself resolve. Closing it is a one-line status act for whoever scores
+**`P6-AC-15`**, and nothing turns on it: `P6-D91` is `LOW` / nonblocking either way.
+
+### **WHAT DID NOT MOVE, AND WAS NOT ALLOWED TO.** **P6 stays `status: READY` /
+`execution_state: IN_PROGRESS` / `checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION`**;
+`criteria_scored` stays `[]` on **all thirteen** checkpoints; **every one of the seventeen results is
+`PENDING`**; **P7 stays `BLOCKED` / `NOT_STARTED`**; `P6-D92` stays open and now records that it
+**gates `P6-AC-16`**; and no runtime, test, migration or CI file was touched. ### **THE SESSION THAT
+WROTE THIS CONTRACT MAY NOT SCORE IT**, and did not: instantiating a contract and satisfying it are
+different acts, and only the second needs a reviewer from outside the build lineage.
 
 ## Risks and standing constraints
 
@@ -1228,8 +1324,9 @@ brokerage, an approval scoped to no brokerage is a consent nobody gave.
 |---|---|
 | **Enabling any external effect on live traffic** | The capability ships dark. Enabling it is a separate, founder-authorized decision, and live supervised writes are P12 behind the undischarged **RR-01**. |
 | **Weakening the checkpoint kernel** | `CheckpointPassed` stays unconstructable, the witness table append-only, and the claim CAS's WHERE-clause revalidation may never lose a predicate. |
+| **Reviving the retired acceptance ceremony** | The founder decision of 2026-09-07 is explicit: **do not restore `canonical_finalizer`, `clean_clone_execution`, `PROGRAM-WEIGHTS.yaml`, `BUILD-STATUS.yaml`, `PROGRESS-PROTOCOL.md`, the committed receipts or the adjudication chain**, and do not make any of them a prerequisite for P6. They were deleted at `d1d2e39`. **A historical artifact referencing deleted machinery is history, not authority.** |
 | **Rebuilding or polishing M1 through M13** | **All thirteen are landed and no further code is owed.** ### **"M13 IS THE LAST MACHINE" IS AN INVITATION TO REBUILD SOMETHING, AND IT MUST BE REFUSED:** the phase's remaining work is its **acceptance**, not more machine code. Their residuals are debt rows. **The P3/P4 per-thread-connection concurrency correction at `d70a4e7` is landed too and must not be reworked.** |
-| **Declaring P6's phase acceptance, or scoring a P6 criterion, from a build lineage** | A phase acceptance needs a reviewer who did not build it. That is the one place the independent-review requirement is about a phase rather than a diff — and P6 has not reached it. |
+| **Declaring P6's phase acceptance, or scoring a P6 criterion, from a build lineage** | A phase acceptance needs a reviewer who did not build it. That is the one place the independent-review requirement is about a phase rather than a diff — and P6 has not reached it. ### **THE CONTRACT NOW EXISTING IS NOT PERMISSION TO SCORE IT:** `P6-AC-1`…`P6-AC-17` are all `PENDING`, `P6-AC-17` is structurally un-self-suppliable by the build lineage, and `P6-AC-16` cannot pass while `P6-D92` is open. |
 | **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | Requires P6's phase acceptance first. P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands there, not earlier. |
 | **Freight workflow implementation** | Requires the P6–P9 foundations. |
 | **Deleting legacy production code** | Only under the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md). |
