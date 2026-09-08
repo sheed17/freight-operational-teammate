@@ -6,6 +6,14 @@ name: CI
 # no shell state, no preserve refs, no finalizer receipts, no committed status artifacts. If a
 # change is green here it is green, and if it is red here it is red - there is nothing else to
 # consult and no ceremony to perform.
+#
+# THE BLOCKING TIERS ARE SHARDED, NOT SHRUNK. Two monolithic jobs - one 30-minute safety job and a
+# 60-minute full suite per interpreter - had grown past their ceilings and were being CANCELLED,
+# and a cancelled run is not a green run: the last landing reached 51% of 3349 tests on both
+# interpreters and therefore had NO CI RESULT for the other 49%. The population did not change to
+# fix that. It is partitioned by `partition` below into disjoint shards whose union is proven, per
+# interpreter, to be exactly the tests `pytest eval` collects. Nothing is deselected, skipped,
+# marked, excluded or allowed to fail; there is no continue-on-error anywhere in this file.
 
 on:
   # Every branch push runs CI. Restricting `push` to main would mean a feature branch got no
@@ -23,17 +31,25 @@ env:
   PYTHONDONTWRITEBYTECODE: "1"
   # The suite must never be silently reshaped by ambient pytest configuration.
   PYTEST_ADDOPTS: ""
+  # Shard counts are read ONLY by the plan job; every matrix below is built from what the plan
+  # actually produced, so the matrix and the partition cannot drift apart and leave a shard
+  # manifest that no job ever runs.
+  SUITE_SHARD_COUNT: "10"
+  SAFETY_SHARD_COUNT: "4"
 
 jobs:
-  safety:
-    # Fast feedback on the invariants that protect real Neyma behaviour. This is a SUBSET chosen
-    # for speed, not a completeness claim: `suite` below runs everything, so a safety test that is
-    # not named here is still executed on every run. Nothing depends on this list being exhaustive.
-    name: Safety invariants (fast)
+  partition:
+    # Derives the canonical population from pytest's OWN collection and splits it. It publishes a
+    # partition only if that partition is provably total and disjoint, so the failure mode of a
+    # sharded suite - a file that quietly belongs to no shard - cannot reach a green run.
+    name: Test partition plan (fail-closed)
     if: github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    outputs:
+      suite_shards: ${{ steps.plan.outputs.suite_shards }}
+      safety_shards: ${{ steps.plan.outputs.safety_shards }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,47 +67,401 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: Effect boundary, checkpoint kernel, authority, tenancy, idempotency
+      - name: Partition the canonical population
+        id: plan
+        env:
+          PARTITION_DIR: ${{ runner.temp }}/partition
         run: |
-          python -m pytest -q -p no:cacheprovider \
-            eval/tests/test_import_gate.py \
-            eval/tests/test_adapter_boundary_acceptance.py \
-            eval/tests/test_p4_governed_write_route.py \
-            eval/tests/test_p4_governed_invoice_write.py \
-            eval/tests/test_p4_deployed_governed_route.py \
-            eval/tests/test_governed_approval_binding.py \
-            eval/tests/test_no_mock_effect_in_production.py \
-            eval/tests/test_consequential_read_boundary.py \
-            eval/tests/test_phase3_witness.py \
-            eval/tests/test_phase3_claim_cas.py \
-            eval/tests/test_phase3_step_order.py \
-            eval/tests/test_phase3_checkpoint_matrix.py \
-            eval/tests/test_phase3_brake.py \
-            eval/tests/test_phase1_commit_key.py \
-            eval/tests/test_phase1_occurrence_identity.py \
-            eval/tests/test_u26a_tenant_construction.py \
-            eval/tests/test_u26bc_tenant_scope.py \
-            eval/tests/test_u26bc_migration_matrix.py \
-            eval/tests/test_u26bc_migration_tenant_validation.py \
-            eval/tests/test_phase0_tenant_posture.py \
-            eval/tests/test_phase0_entry_points.py \
-            eval/tests/test_phase0_null_gate.py \
-            eval/tests/test_phase0_guard_integrity.py \
-            eval/tests/test_ac_sec_001_registry.py \
-            eval/tests/test_p5_replay_and_audit.py \
-            eval/tests/test_tool_permissions.py
+          python - <<'PY'
+          """Derive the canonical pytest population and split it into deterministic shards.
 
-  suite:
-    name: Full test suite (py${{ matrix.python-version }})
+          Fails closed: a malformed collection, an unassigned test, a doubly-assigned file, an
+          empty shard, or a safety file that `pytest eval` does not actually collect all abort
+          BEFORE a partition is published - so a shard set can never silently cover less than the
+          population it claims to.
+          """
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          SUITE_SHARDS = int(os.environ["SUITE_SHARD_COUNT"])
+          SAFETY_SHARDS = int(os.environ["SAFETY_SHARD_COUNT"])
+          OUT = Path(os.environ["PARTITION_DIR"])
+
+          # The safety tier: the invariants that protect real Neyma behaviour, kept as a fast
+          # blocking tier with its own short feedback loop. This is the SAME population the single
+          # 30-minute `safety` job named before it was sharded - 26 files, none dropped - and the
+          # plan proves below that every one of them is genuinely inside `pytest eval`, which the
+          # old job's comment only asserted.
+          SAFETY_POPULATION = [
+              "eval/tests/test_import_gate.py",
+              "eval/tests/test_adapter_boundary_acceptance.py",
+              "eval/tests/test_p4_governed_write_route.py",
+              "eval/tests/test_p4_governed_invoice_write.py",
+              "eval/tests/test_p4_deployed_governed_route.py",
+              "eval/tests/test_governed_approval_binding.py",
+              "eval/tests/test_no_mock_effect_in_production.py",
+              "eval/tests/test_consequential_read_boundary.py",
+              "eval/tests/test_phase3_witness.py",
+              "eval/tests/test_phase3_claim_cas.py",
+              "eval/tests/test_phase3_step_order.py",
+              "eval/tests/test_phase3_checkpoint_matrix.py",
+              "eval/tests/test_phase3_brake.py",
+              "eval/tests/test_phase1_commit_key.py",
+              "eval/tests/test_phase1_occurrence_identity.py",
+              "eval/tests/test_u26a_tenant_construction.py",
+              "eval/tests/test_u26bc_tenant_scope.py",
+              "eval/tests/test_u26bc_migration_matrix.py",
+              "eval/tests/test_u26bc_migration_tenant_validation.py",
+              "eval/tests/test_phase0_tenant_posture.py",
+              "eval/tests/test_phase0_entry_points.py",
+              "eval/tests/test_phase0_null_gate.py",
+              "eval/tests/test_phase0_guard_integrity.py",
+              "eval/tests/test_ac_sec_001_registry.py",
+              "eval/tests/test_p5_replay_and_audit.py",
+              "eval/tests/test_tool_permissions.py",
+          ]
+
+
+          def collect(targets):
+              """The node ids pytest reports for `targets`, cross-checked against its own count."""
+              proc = subprocess.run(
+                  [sys.executable, "-m", "pytest", *targets,
+                   "--collect-only", "-q", "-p", "no:cacheprovider"],
+                  capture_output=True, text=True, env={**os.environ, "PYTEST_ADDOPTS": ""},
+              )
+              if proc.returncode != 0:
+                  sys.exit("FAIL-CLOSED: collection exited %d for %r\n%s\n%s"
+                           % (proc.returncode, targets, proc.stdout[-4000:], proc.stderr[-2000:]))
+              # The node listing is the block BEFORE the first blank line. Everything after it is
+              # the warnings summary and the count line - and pytest prints warning group headers
+              # unindented and node-id-shaped, which is exactly how a grep over the whole stdout
+              # invents phantom node ids and inflates its own denominator.
+              ids = []
+              for line in proc.stdout.splitlines():
+                  if not line.strip():
+                      break
+                  ids.append(line)
+              m = re.search(r"^(\d+) tests? collected", proc.stdout, re.M)
+              if not m:
+                  sys.exit("FAIL-CLOSED: pytest printed no 'N tests collected' line for %r"
+                           % (targets,))
+              declared = int(m.group(1))
+              bad = [i for i in ids if i[:1].isspace() or ".py::" not in i]
+              if bad:
+                  sys.exit("FAIL-CLOSED: %d parsed line(s) are not node ids, e.g. %r"
+                           % (len(bad), bad[:3]))
+              if len(ids) != declared:
+                  sys.exit("FAIL-CLOSED: parsed %d node ids but pytest declared %d"
+                           % (len(ids), declared))
+              if len(set(ids)) != len(ids):
+                  sys.exit("FAIL-CLOSED: pytest emitted duplicate node ids")
+              return ids
+
+
+          def partition(counts, shards, kind):
+              """Longest-processing-time-first over each file's collected test count.
+
+              Heaviest file first (ties by path) into the least loaded shard (ties by lowest
+              index): a pure function of pytest's own collection, so it is deterministic across
+              jobs and interpreters, and a test file that is added or renamed under the ordinary
+              discovery rules simply lands in a shard instead of disappearing.
+              """
+              buckets = [[] for _ in range(shards)]
+              loads = [0] * shards
+              for f in sorted(counts, key=lambda f: (-counts[f], f)):
+                  i = min(range(shards), key=lambda k: (loads[k], k))
+                  buckets[i].append(f)
+                  loads[i] += counts[f]
+
+              flat = [f for b in buckets for f in b]
+              if len(set(flat)) != len(flat):
+                  sys.exit("FAIL-CLOSED [%s]: a file was assigned to more than one shard" % kind)
+              if sorted(flat) != sorted(counts):
+                  sys.exit("FAIL-CLOSED [%s]: the partition is not a permutation of the collected "
+                           "files" % kind)
+              if sum(loads) != sum(counts.values()):
+                  sys.exit("FAIL-CLOSED [%s]: assigned %d tests but collected %d"
+                           % (kind, sum(loads), sum(counts.values())))
+              empty = [i + 1 for i, b in enumerate(buckets) if not b]
+              if empty:
+                  sys.exit("FAIL-CLOSED [%s]: shard(s) %r would run nothing" % (kind, empty))
+              return buckets, loads
+
+
+          def by_file(nodes):
+              counts = {}
+              for nid in nodes:
+                  f = nid.split("::", 1)[0]
+                  counts[f] = counts.get(f, 0) + 1
+              return counts
+
+
+          def write(kind, buckets, loads, counts):
+              d = OUT / kind
+              d.mkdir(parents=True, exist_ok=True)
+              names = []
+              for i, b in enumerate(buckets, start=1):
+                  name = "%02d" % i
+                  names.append(name)
+                  (d / ("shard-%s.txt" % name)).write_text("\n".join(sorted(b)) + "\n",
+                                                           encoding="utf-8")
+                  print("  %s shard %s: %3d files, %4d tests" % (kind, name, len(b), loads[i - 1]))
+              print("  %s TOTAL: %d files, %d tests assigned, 0 unassigned, 0 duplicated"
+                    % (kind, len(counts), sum(loads)))
+              return names
+
+
+          canonical = collect(["eval"])
+          suite_counts = by_file(canonical)
+          print("canonical `pytest eval` population: %d tests across %d files"
+                % (len(canonical), len(suite_counts)))
+          suite_buckets, suite_loads = partition(suite_counts, SUITE_SHARDS, "suite")
+          suite_names = write("suite", suite_buckets, suite_loads, suite_counts)
+          (OUT / "suite" / "canonical-nodes.txt").write_text("\n".join(canonical) + "\n",
+                                                            encoding="utf-8")
+
+          # A safety file that pytest does not collect would be a hole in a BLOCKING tier that no
+          # amount of green tells you about, so prove membership instead of assuming it.
+          if len(set(SAFETY_POPULATION)) != len(SAFETY_POPULATION):
+              sys.exit("FAIL-CLOSED [safety]: the declared safety population repeats a file")
+          orphans = [f for f in SAFETY_POPULATION if f not in suite_counts]
+          if orphans:
+              sys.exit("FAIL-CLOSED [safety]: %r collect no tests under `pytest eval`" % orphans)
+          safety_counts = {f: suite_counts[f] for f in SAFETY_POPULATION}
+          print("safety tier population: %d tests across %d files"
+                % (sum(safety_counts.values()), len(safety_counts)))
+          safety_buckets, safety_loads = partition(safety_counts, SAFETY_SHARDS, "safety")
+          safety_names = write("safety", safety_buckets, safety_loads, safety_counts)
+          (OUT / "safety" / "population.txt").write_text(
+              "\n".join(sorted(SAFETY_POPULATION)) + "\n", encoding="utf-8")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("suite_shards=%s\n" % json.dumps(suite_names))
+              fh.write("safety_shards=%s\n" % json.dumps(safety_names))
+          PY
+
+      - name: Publish the partition
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-partition
+          path: ${{ runner.temp }}/partition
+          if-no-files-found: error
+
+  suite-completeness:
+    # THE ANTI-FALSE-GREEN GATE. Sharding is only honest if the shards still run everything, and
+    # "everything" is interpreter-specific, so this proof is re-derived on EACH interpreter against
+    # the very manifests the shard jobs consume. It re-collects `pytest eval`, re-collects each
+    # shard, and requires set equality: zero unassigned, zero duplicated, zero foreign. It prints
+    # its denominators, because a completeness check that parsed nothing is worse than none.
+    name: Suite + safety completeness proof (py${{ matrix.python-version }})
+    needs: partition
     if: github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 is pyproject's declared floor; 3.12 is what we develop against.
         python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-partition
+          path: ${{ runner.temp }}/partition
+
+      - name: The shards are disjoint and their union IS the canonical population
+        env:
+          PARTITION_DIR: ${{ runner.temp }}/partition
+        run: |
+          python - <<'PY'
+          """Prove, on THIS interpreter, that the published partition runs the whole population."""
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          PART = Path(os.environ["PARTITION_DIR"])
+
+
+          def collect(targets):
+              proc = subprocess.run(
+                  [sys.executable, "-m", "pytest", *targets,
+                   "--collect-only", "-q", "-p", "no:cacheprovider"],
+                  capture_output=True, text=True, env={**os.environ, "PYTEST_ADDOPTS": ""},
+              )
+              if proc.returncode != 0:
+                  sys.exit("FAIL-CLOSED: collection exited %d for %r\n%s\n%s"
+                           % (proc.returncode, targets, proc.stdout[-4000:], proc.stderr[-2000:]))
+              ids = []
+              for line in proc.stdout.splitlines():
+                  if not line.strip():
+                      break
+                  ids.append(line)
+              m = re.search(r"^(\d+) tests? collected", proc.stdout, re.M)
+              if not m:
+                  sys.exit("FAIL-CLOSED: pytest printed no 'N tests collected' line for %r"
+                           % (targets,))
+              declared = int(m.group(1))
+              bad = [i for i in ids if i[:1].isspace() or ".py::" not in i]
+              if bad:
+                  sys.exit("FAIL-CLOSED: %d parsed line(s) are not node ids, e.g. %r"
+                           % (len(bad), bad[:3]))
+              if len(ids) != declared:
+                  sys.exit("FAIL-CLOSED: parsed %d node ids but pytest declared %d"
+                           % (len(ids), declared))
+              return ids
+
+
+          def read_manifest(path):
+              files = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()
+                       if ln.strip()]
+              if not files:
+                  sys.exit("FAIL-CLOSED: %s selects no files" % path)
+              missing = [f for f in files if not Path(f).is_file()]
+              if missing:
+                  sys.exit("FAIL-CLOSED: %s names files that do not exist: %r" % (path, missing))
+              return files
+
+
+          def prove(kind, canonical, manifests):
+              canon = set(canonical)
+              if len(canon) != len(canonical):
+                  sys.exit("FAIL-CLOSED: the %s population contains duplicate node ids" % kind)
+              owner, duplicates, union = {}, [], set()
+              for path in manifests:
+                  files = read_manifest(path)
+                  ids = collect(files)
+                  print("  %-20s %3d files  %4d tests" % (path.name, len(files), len(ids)))
+                  for nid in ids:
+                      if nid in owner:
+                          duplicates.append("%s in both %s and %s" % (nid, owner[nid], path.name))
+                      owner[nid] = path.name
+                  union |= set(ids)
+              unassigned = sorted(canon - union)
+              foreign = sorted(union - canon)
+              print("%s: canonical=%d assigned=%d unassigned=%d duplicate=%d foreign=%d"
+                    % (kind, len(canon), len(union), len(unassigned), len(duplicates),
+                       len(foreign)))
+              problems = []
+              if unassigned:
+                  problems.append("%d canonical test(s) belong to no shard, e.g. %r"
+                                  % (len(unassigned), unassigned[:5]))
+              if duplicates:
+                  problems.append("%d test(s) assigned to more than one shard, e.g. %r"
+                                  % (len(duplicates), duplicates[:5]))
+              if foreign:
+                  problems.append("%d shard test(s) are outside the canonical population, e.g. %r"
+                                  % (len(foreign), foreign[:5]))
+              if problems:
+                  sys.exit("FAIL-CLOSED: " + "; ".join(problems))
+              print("%s: the shards are pairwise disjoint and their union IS the population" % kind)
+
+
+          # Manifests are DISCOVERED, never enumerated - an enumeration in a completeness guard is
+          # the exact blind spot this repository has produced four separate times.
+          suite_manifests = sorted((PART / "suite").glob("shard-*.txt"))
+          safety_manifests = sorted((PART / "safety").glob("shard-*.txt"))
+          if not suite_manifests or not safety_manifests:
+              sys.exit("FAIL-CLOSED: the partition artifact carries no shard manifests")
+
+          print("FULL SUITE on python %s" % ".".join(map(str, sys.version_info[:3])))
+          prove("full suite", collect(["eval"]), suite_manifests)
+
+          population = read_manifest(PART / "safety" / "population.txt")
+          print("SAFETY TIER (%d files)" % len(population))
+          prove("safety tier", collect(population), safety_manifests)
+          PY
+
+  safety:
+    # Fast feedback on the invariants that protect real Neyma behaviour. This is a SUBSET chosen
+    # for speed, not a completeness claim: the `suite` shards below run everything, so a safety
+    # test that is not in this population is still executed on every run. What changed is that the
+    # tier now CONCLUDES: the same 26 files are split across shards that each finish in minutes,
+    # instead of one job that was cancelled at 30 minutes having run 17 of the 26.
+    name: Safety invariants (fast) shard ${{ matrix.shard }}
+    needs: partition
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.partition.outputs.safety_shards) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-partition
+          path: ${{ runner.temp }}/partition
+
+      - name: Effect boundary, checkpoint kernel, authority, tenancy, idempotency
+        env:
+          MANIFEST: ${{ runner.temp }}/partition/safety/shard-${{ matrix.shard }}.txt
+        run: |
+          test -s "$MANIFEST" || { echo "no manifest for safety shard $MANIFEST"; exit 1; }
+          FILES=()
+          while IFS= read -r f; do
+            if [ -n "$f" ]; then FILES+=("$f"); fi
+          done < "$MANIFEST"
+          if [ "${#FILES[@]}" -eq 0 ]; then echo "$MANIFEST selected no files"; exit 1; fi
+          echo "safety shard ${{ matrix.shard }} runs ${#FILES[@]} file(s):"
+          printf '  %s\n' "${FILES[@]}"
+          python -m pytest -q -p no:cacheprovider --durations=15 "${FILES[@]}"
+
+  suite:
+    # The whole population, on both supported interpreters, in shards that finish. The file list
+    # comes from the proven partition artifact rather than from anything written here, so this job
+    # cannot run a different set of tests from the one `suite-completeness` certified.
+    name: Full test suite (py${{ matrix.python-version }} shard ${{ matrix.shard }})
+    needs: partition
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is pyproject's declared floor; 3.12 is what we develop against. EVERY shard runs on
+        # BOTH: the union per interpreter is the entire canonical population, not a split of it.
+        python-version: ["3.11", "3.12"]
+        shard: ${{ fromJSON(needs.partition.outputs.suite_shards) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -112,12 +482,28 @@ jobs:
       - name: Prove the package imports from the installed distribution
         run: python -c "import freight_recon, sys; print('freight_recon ok on', sys.version)"
 
-      - name: Run the test suite
-        run: python -m pytest eval -q -p no:cacheprovider --durations=15
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-partition
+          path: ${{ runner.temp }}/partition
+
+      - name: Run this shard of the test suite
+        env:
+          MANIFEST: ${{ runner.temp }}/partition/suite/shard-${{ matrix.shard }}.txt
+        run: |
+          test -s "$MANIFEST" || { echo "no manifest for suite shard $MANIFEST"; exit 1; }
+          FILES=()
+          while IFS= read -r f; do
+            if [ -n "$f" ]; then FILES+=("$f"); fi
+          done < "$MANIFEST"
+          if [ "${#FILES[@]}" -eq 0 ]; then echo "$MANIFEST selected no files"; exit 1; fi
+          echo "suite shard ${{ matrix.shard }} runs ${#FILES[@]} file(s):"
+          printf '  %s\n' "${FILES[@]}"
+          python -m pytest -q -p no:cacheprovider --durations=15 "${FILES[@]}"
 
   effect-grant:
     # P6/M3 ships dark, so its behavioural guarantees live in a probe and a mutation battery that the
-    # `suite` job's `pytest eval` does NOT invoke: the deterministic probe's "0 wrong" and the
+    # `suite` shards' pytest run does NOT invoke: the deterministic probe's "0 wrong" and the
     # battery's "9/9 mutants caught" were, until now, evidence only a build session could produce.
     # Running them HERE makes them verified by the source-of-truth authority on every push - not a
     # committed receipt (CLAUDE.md sec 0 forbids those), but an executed check on a fresh checkout.
@@ -166,6 +552,94 @@ jobs:
 
       - name: The mutation battery catches every reintroduced defect (9/9)
         run: python scripts/mutate_phase6_external_effect.py
+
+  brake:
+    # P6/M13 (the Brake) is the last P6 machine, and at its landing NONE of its evidence had ever
+    # executed in CI: the 64-test acceptance battery sits at 61.5%-63.4% of the suite and the 51%
+    # cancellation never reached it, while the 188-case probe and the 18-mutant battery are - like
+    # M3's - outside `pytest eval` entirely. The shards below now reach all of it, but a P6 phase
+    # adjudicator should not have to locate M13's evidence inside a shard: this job executes it
+    # explicitly, together with the P3 kernel anchors M13 edited (brake.py is P3's kernel brake -
+    # the sanctioned tier-1 edit that IS the unit), so the closure is mechanically obvious.
+    name: P6/M13 Brake probe + mutation + P3 kernel anchors
+    # Same rationale as the M3 job: certification must be visible on the pull request itself.
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: M13's acceptance battery
+        run: python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_brake.py
+
+      - name: The P3 kernel surfaces M13 edited and depends on
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            eval/tests/test_phase3_schema.py \
+            eval/tests/test_phase3_claim_cas.py \
+            eval/tests/test_phase3_checkpoint_matrix.py \
+            eval/tests/test_phase3_brake.py \
+            eval/tests/test_phase3_witness.py \
+            eval/tests/test_phase3_observability.py
+
+      - name: The Brake probe behaves as specified, and its fault vocabulary is closed
+        run: |
+          CASE=an-active-brake-refuses-to-mint
+          python scripts/probe_phase6_brake.py --list-cases > /dev/null
+          python scripts/probe_phase6_brake.py --list-dimensions > /dev/null
+          # Bare invocation IS the permanent scenario run: every case in canonical order, then the
+          # measurements and narrative headlines, exiting 0 only on "0 wrong".
+          python scripts/probe_phase6_brake.py
+          # The negative control below is only meaningful against a case that exists - otherwise an
+          # unknown CASE would produce the same exit 2 and the control would prove nothing.
+          python scripts/probe_phase6_brake.py --list-cases | grep -qx "$CASE" || {
+            echo "probe case $CASE no longer exists; the negative control would refuse for the wrong reason"
+            exit 1
+          }
+          rc=0
+          python scripts/probe_phase6_brake.py --case "$CASE" --inject not-a-real-fault \
+            > /dev/null 2>&1 || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "closed-vocabulary negative control expected exit 2, got $rc"; exit 1
+          fi
+          # ...and a DECLARED fault on that same case is accepted, so the refusal is about the
+          # fault vocabulary rather than about the invocation shape.
+          rc=0
+          python scripts/probe_phase6_brake.py --case "$CASE" --inject brake-store-unreadable \
+            > /dev/null 2>&1 || rc=$?
+          if [ "$rc" -eq 2 ]; then
+            echo "a declared fault was refused as unknown; the vocabulary check is vacuous"; exit 1
+          fi
+          echo "unknown fault refused with exit 2; declared fault accepted"
+
+      - name: The mutation battery catches every reintroduced defect (18/18)
+        run: |
+          set -o pipefail
+          python scripts/mutate_phase6_brake.py 2>&1 | tee mutation.log
+          grep -qx "anti-vacuity control (unmutated guard stays GREEN): GREEN" mutation.log \
+            || { echo "the anti-vacuity control did not stay GREEN"; exit 1; }
+          grep -qE "^[0-9]+ mutations caught, 0 escaped$" mutation.log \
+            || { echo "a mutant escaped"; exit 1; }
+          rm -f mutation.log
+          # The battery restores every file from memory rather than from git; if it ever did not,
+          # this job would be running mutated source from here on.
+          test -z "$(git status --porcelain -- src eval scripts)" \
+            || { echo "the mutation battery left the tree dirty:"; git status --porcelain; exit 1; }
 
   risk-radar:
     # Advisory, never blocking. It tells the reviewer WHICH safety surface a pull request touches,
@@ -218,3 +692,35 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           printf "$flags\n"
+
+  verdict:
+    # The single check that says whether THIS run is green. With the blocking work spread over
+    # ~30 jobs, "did CI pass" should not be a job-by-job reading exercise for whoever certifies a
+    # phase. `skipped` is accepted because the fork/same-repo conditions above deliberately skip
+    # tiers that the antecedent event already covered; `cancelled` is NOT accepted, which is the
+    # exact thing that made the last landing's run unusable as evidence.
+    name: CI verdict
+    if: always()
+    needs: [partition, suite-completeness, safety, suite, effect-grant, brake]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every blocking job concluded successfully
+        env:
+          BLOCKING: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          results = {k: v["result"] for k, v in json.loads(os.environ["BLOCKING"]).items()}
+          for name, result in sorted(results.items()):
+              print("%-20s %s" % (name, result))
+          bad = {k: v for k, v in results.items() if v not in ("success", "skipped")}
+          if bad:
+              sys.exit("BLOCKING: %s did not conclude successfully" % bad)
+          if not any(v == "success" for v in results.values()):
+              sys.exit("BLOCKING: every blocking job was skipped - this run proves nothing")
+          print("CI verdict: SUCCESS")
+          PY
