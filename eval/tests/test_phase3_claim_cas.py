@@ -345,8 +345,29 @@ def test_two_concurrent_checkpoints_for_one_effect_produce_exactly_one_grant(tmp
     results: list = [None, None]
     barrier = threading.Barrier(2)
 
+    # The database is created and fully migrated HERE, in the main thread, BEFORE any racer
+    # thread exists. Both racers open the same `p3.db`, and they did so from inside the threads:
+    # both found an empty file, both entered `create_canonical_schema`, and the DDL is not
+    # idempotent under concurrency - one worker died on `table workflow_runs already exists`, or
+    # observed the half-built schema and raised SchemaNotReady. Measured at 6 failures in 36 runs.
+    # That is a SETUP race on schema creation, not the race this test exists to prove, and it made
+    # a tier-1 concurrency guard fail for a reason that has nothing to do with the guard.
+    #
+    # With the file already canonical, each racer's own `make_store` takes `_migrate`'s
+    # already-canonical branch, which reads `sqlite_master`, finds no readiness problems and
+    # returns without writing anything. So the racers still get their OWN WorkflowStore and their
+    # OWN SQLite connection, they still meet at the barrier, and the collision under test - two
+    # full checkpoints contending for one commit key through the live-hold index - is untouched.
+    # This is the same shape as the eight-contender CAS race above, which pre-creates its store
+    # through `green_scenario` in the main thread and does not flake.
+    checker = make_store(tmp_path)
+    assert {"effect_grants", "checkpoint_witnesses"} <= {
+        r[0] for r in checker.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    }, "the race was released against a database whose schema was not fully built"
+
     def racer(i: int) -> None:
-        store_i = make_store(tmp_path)
+        store_i = make_store(tmp_path)  # same file, own connection
         kernel_i, clock_i = make_kernel(store_i)
         effect = make_effect(resource="load:race")
         facts = make_facts(entity_ref="load:race")
@@ -371,7 +392,6 @@ def test_two_concurrent_checkpoints_for_one_effect_produce_exactly_one_grant(tmp
     refused = [r for r in results if r is not None and not r.authorized]
     assert len(authorized) == 1, f"expected exactly one authorization, got {len(authorized)}"
     assert len(refused) == 1 and refused[0].reason == "COMMIT_KEY_HELD"
-    checker = make_store(tmp_path)
     effect_key = make_effect(resource="load:race").key()
     grants = checker.conn.execute(
         "SELECT COUNT(*) FROM effect_grants WHERE commit_key = ?", (effect_key,)).fetchone()[0]
