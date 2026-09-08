@@ -58,6 +58,7 @@ from freight_recon.governed_write_registry import (  # noqa: E402
     record_proposed_governed_write,
 )
 from freight_recon.workflow import WorkflowStore  # noqa: E402
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from phase3_kit import default_registry  # noqa: E402 — the gate registry PRODUCTION may not yet build
 
 TENANT = "tenant-alpha"
@@ -595,20 +596,23 @@ def test_concurrent_deployed_callbacks_produce_at_most_one_adapter_attempt(tmp_p
         writer = RecordingWriter(approved_fp=_expected_fp(store, op))
         token = _token(op)
         barrier = threading.Barrier(3)
+        # A refusal is a RESULT here, not a lost thread: record it. "at most one attempt" passes
+        # trivially if the taps never reached the handler, so the population is proved below.
+        outcomes: list = []
 
         def tap():
-            barrier.wait()
+            barrier.wait(timeout=BARRIER_TIMEOUT)
             try:
                 provider, kernel = _deployed_seams(db, writer=writer)
                 _post_to_handler(_config(db, provider=provider, kernel=kernel), _slack_body(token))
-            except Exception:  # noqa: BLE001 — a race loser is still "did nothing"
-                pass
+                outcomes.append("reached the handler")
+            except Exception as exc:  # noqa: BLE001 — a race loser is still "did nothing"
+                outcomes.append(f"refused: {type(exc).__name__}: {exc}")
 
-        threads = [threading.Thread(target=tap) for _ in range(3)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        run_race(tap, [(), (), ()], barrier=barrier)
+        assert len(outcomes) == 3, (
+            f"only {len(outcomes)} of 3 concurrent taps ran, so 'at most one attempt' would hold "
+            f"without any race having happened — {outcomes}")
         assert len(writer.writes) <= 1, (
             f"concurrent deployed callbacks produced {len(writer.writes)} adapter attempts")
         grants = store.conn.execute(

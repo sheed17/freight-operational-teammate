@@ -54,6 +54,7 @@ from freight_recon.compensation import (  # noqa: E402
 )
 
 import phase6_compensation_kit as ck  # noqa: E402
+from concurrency_kit import run_race  # noqa: E402
 
 TENANT = ck.T_A
 HUMAN = "owner:sam"
@@ -772,13 +773,12 @@ def test_state_and_event_co_commit(tmp_path):
 
 def test_concurrent_creation_yields_exactly_one_compensation(tmp_path):
     """Two raises against one invalidated effect — the partial unique index serializes to one row."""
-    import threading
     store, clk = _store(tmp_path)
     gid = ck.a_verified_original_effect(store, tenant=TENANT, grant_id="g-conc", clock=clk)
     dref = ck.a_human_decision(store, tenant=TENANT, actor_id=HUMAN, seed="conc", clock=clk)
     # each thread its own connection on the same file (P3/P4 per-thread-connection discipline)
     dbpath = [r[2] for r in store.conn.execute("PRAGMA database_list")][0]
-    results = []
+    results, refusals = [], []
     def worker(i):
         conn = sqlite3.connect(dbpath)
         conn.row_factory = sqlite3.Row
@@ -788,14 +788,16 @@ def test_concurrent_creation_yields_exactly_one_compensation(tmp_path):
             rr = mm.raise_from_correction(original_effect_id=gid, owner_id=HUMAN, exposure=Money(1, "GBP"),
                                           reason="race", decision_ref=dref, compensation_id=f"cmp-{i}")
             results.append(rr.compensation.compensation_id)
-        except Exception:
-            pass
-        conn.close()
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+        except Exception as exc:  # noqa: BLE001 — the serialized loser is a RESULT, not a lost thread
+            refusals.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            conn.close()
+    run_race(worker, [(i,) for i in range(8)])
+    # Prove all eight actually contended: one row is not evidence of serialization if seven
+    # raisers never ran.
+    assert len(results) + len(refusals) == 8, (
+        f"only {len(results) + len(refusals)} of 8 raisers reached the index; "
+        f"wins={results} refusals={refusals}")
     assert store.conn.execute("SELECT COUNT(*) FROM compensations WHERE tenant=? AND original_effect_id=?",
                               (TENANT, gid)).fetchone()[0] == 1
 

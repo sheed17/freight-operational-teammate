@@ -42,6 +42,7 @@ from freight_recon.governed_approval import (  # noqa: E402
     governed_approval_for,
     sign_governed_approval,
 )
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from phase3_kit import EPOCH, T_A, T_B, make_facts, make_kernel, make_store  # noqa: E402
 
 HANDLE_KEY = b"p4-invoice-write-shared-handle-key"
@@ -404,7 +405,7 @@ def test_two_simultaneous_consumers_produce_exactly_one_external_attempt(tmp_pat
     barrier = threading.Barrier(2)
 
     def worker(i, k):
-        barrier.wait()
+        barrier.wait(timeout=BARRIER_TIMEOUT)
         try:
             results[i] = gwr.consume_governed_write_intent(
                 k, approval, op, facts=facts, accountable_owner=OWNER, now=EPOCH,
@@ -412,12 +413,7 @@ def test_two_simultaneous_consumers_produce_exactly_one_external_attempt(tmp_pat
         except Exception as exc:  # noqa: BLE001 — a raised race loser is still "did nothing"
             results[i] = exc
 
-    threads = [threading.Thread(target=worker, args=(i, k))
-               for i, k in enumerate((kernel, kernel_b))]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    run_race(worker, list(enumerate((kernel, kernel_b))), barrier=barrier)
 
     total = sum(len(w.writes) for w in writers)
     assert total == 1, f"two simultaneous consumers produced {total} external attempts"

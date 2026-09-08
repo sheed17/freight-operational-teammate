@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from freight_recon.lane_graduation import LaneGraduation  # noqa: E402
 from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
@@ -150,11 +151,7 @@ def test_sqlite_autonomous_daily_cap_claim_is_atomic(tmp_path):
         finally:
             store.close()
 
-    threads = [threading.Thread(target=claim_once) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    run_race(claim_once, [(), ()])
 
     store = WorkflowStore(db_path, tenant="acme")
     try:
@@ -183,17 +180,13 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
                 tenant="acme",
                 commit_store=store,
             )
-            barrier.wait(timeout=5)
+            barrier.wait(timeout=BARRIER_TIMEOUT)
             result = router.run(_operate("invoice the load", {"customer": "Acme Corp", "load_ref": "LD-1"}))
             results.append(result.status)
         finally:
             store.close()
 
-    threads = [threading.Thread(target=run_once) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    run_race(run_once, [(), ()], barrier=barrier)
 
     store = WorkflowStore(db_path, tenant="acme")
     try:

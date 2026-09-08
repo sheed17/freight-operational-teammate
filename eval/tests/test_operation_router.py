@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from freight_recon.operation_router import (  # noqa: E402
     OperationLane,
     OperationRouter,
@@ -242,16 +243,12 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
                 "invoice the delivered load for Acme",
                 {"customer": "Acme", "load_ref": "LD-9001", "commit": True},
             )
-            start.wait(timeout=5)
+            start.wait(timeout=BARRIER_TIMEOUT)
             results.append(router.run(intent, approve=lambda a: True).status)
         finally:
             store.close()
 
-    threads = [threading.Thread(target=run_once) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    run_race(run_once, [(), ()], barrier=start)
 
     # Exactly one save happens (no double-write). The winner commits -> DONE; the loser can't tell a
     # live-concurrent winner from a crashed one (both look RESERVED), so it fails SAFE -> ESCALATED

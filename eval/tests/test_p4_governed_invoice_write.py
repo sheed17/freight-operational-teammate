@@ -47,6 +47,7 @@ from phase3_kit import (  # noqa: E402
     make_kernel,
     make_store,
 )
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from phase4_kit import approved_fingerprint  # noqa: E402
 
 HANDLE_KEY = b"p4-invoice-write-shared-handle-key"
@@ -230,17 +231,13 @@ def test_two_workers_cannot_both_claim_the_same_effect(tmp_path):
     barrier = threading.Barrier(2)
 
     def worker(i, k):
-        barrier.wait()
+        barrier.wait(timeout=BARRIER_TIMEOUT)
         try:
             results[i] = eb.execute_invoice_write(k, handle, op, writer=writers[i])
         except Exception as exc:  # noqa: BLE001 — a raised race loser is still "did nothing"
             results[i] = exc
 
-    threads = [threading.Thread(target=worker, args=(i, k)) for i, k in enumerate((kernel, kernel_b))]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    run_race(worker, list(enumerate((kernel, kernel_b))), barrier=barrier)
 
     total_writes = sum(len(w.writes) for w in writers)
     assert total_writes == 1, f"exactly one worker may write, got {total_writes}"

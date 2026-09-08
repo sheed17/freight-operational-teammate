@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from phase3_kit import (  # noqa: E402
     Clock,
     T_A,
@@ -316,15 +317,14 @@ def test_n_racing_claimers_on_separate_connections_produce_exactly_one_claim(tmp
     def contender(i: int) -> None:
         contender_store = make_store(tmp_path)  # same file, own connection
         contender_kernel, _ = make_kernel(contender_store, handle_key=shared_key, clock=clock)
-        barrier.wait()
+        barrier.wait(timeout=BARRIER_TIMEOUT)
         results[i] = claim_grant_cas(contender_kernel, outcome.handle, params_for(effect))
         contender_store.close()
 
-    threads = [threading.Thread(target=contender, args=(i,)) for i in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    run_race(contender, [(i,) for i in range(8)], barrier=barrier)
+    # Prove the population before judging it: the win/loss counts below filter out contenders that
+    # produced nothing, so a silently-dead contender would shrink the field rather than fail it.
+    assert all(r is not None for r in results), "a contender produced no claim verdict to judge"
     wins = [r for r in results if r is not None and r.claimed]
     losses = [r for r in results if r is not None and not r.claimed]
     assert len(wins) == 1, f"expected exactly one winner, got {len(wins)}"
@@ -361,15 +361,12 @@ def test_two_concurrent_checkpoints_for_one_effect_produce_exactly_one_grant(tmp
         request = CheckpointRequest(effect=effect, actor="pipeline",
                                     accountable_owner="owner:rasheed",
                                     target_entity_ref="load:race")
-        barrier.wait()
+        barrier.wait(timeout=BARRIER_TIMEOUT)
         results[i] = run_checkpoint(kernel_i, request, inputs)
         store_i.close()
 
-    threads = [threading.Thread(target=racer, args=(i,)) for i in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    run_race(racer, [(i,) for i in range(2)], barrier=barrier)
+    assert all(r is not None for r in results), "a racer produced no checkpoint outcome to judge"
     authorized = [r for r in results if r is not None and r.authorized]
     refused = [r for r in results if r is not None and not r.authorized]
     assert len(authorized) == 1, f"expected exactly one authorization, got {len(authorized)}"

@@ -21,6 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from concurrency_kit import BARRIER_TIMEOUT, run_race
 from freight_recon.commit_key import (
     KEY_VERSION,
     CanonicalOccurrence,
@@ -332,14 +333,12 @@ def test_race_two_workers_two_amounts_one_logical_effect(tmp_path):
             try:
                 res = _commit_reservation("acme", "tms", _lane("raise_invoice"), intent, amount)
                 keys.append(res["commit_key"])
-                barrier.wait()
+                barrier.wait(timeout=BARRIER_TIMEOUT)
                 results.append(own.claim_operation_commit(**res, payload={"status": "RESERVED"}))
             finally:
                 own.close()
 
-        threads = [threading.Thread(target=worker, args=(a,)) for a in ("2850.00", "3100.00")]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        run_race(worker, [("2850.00",), ("3100.00",)], barrier=barrier)
 
         assert len(set(keys)) == 1, "the two workers minted DIFFERENT identities for one invoice"
         assert sorted(results) == [False, True], f"exactly one reservation must win; got {results}"
@@ -366,14 +365,12 @@ def test_race_same_non_money_effect_from_two_entry_points(tmp_path):
         def worker():
             own = WorkflowStore(tmp_path / "w.sqlite3", tenant="acme")
             try:
-                barrier.wait()
+                barrier.wait(timeout=BARRIER_TIMEOUT)
                 out.append(own.claim_operation_commit(**res, payload={"status": "RESERVED"}))
             finally:
                 own.close()
 
-        threads = [threading.Thread(target=worker) for _ in range(2)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        run_race(worker, [(), ()], barrier=barrier)
         assert sorted(out) == [False, True]
     finally:
         store.close()

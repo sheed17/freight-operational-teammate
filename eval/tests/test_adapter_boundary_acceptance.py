@@ -30,6 +30,7 @@ from freight_recon.checkpoint import (  # noqa: E402
     expire_unclaimed,
     revoke_unclaimed,
 )
+from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from phase3_kit import make_kernel, make_store, params_for  # noqa: E402
 from phase4_kit import (  # noqa: E402
     OP_ID,
@@ -578,7 +579,7 @@ def test_concurrent_execute_yields_exactly_one_effect(tmp_path):
         barrier = threading.Barrier(2)
 
         def run(index, a):
-            barrier.wait()
+            barrier.wait(timeout=BARRIER_TIMEOUT)
             try:
                 outcome = eb.execute_effect(kernel, handle, params_for(effect), a.operation())
                 results[index] = (f"returned claimed={outcome.claimed} state={outcome.state} "
@@ -586,11 +587,7 @@ def test_concurrent_execute_yields_exactly_one_effect(tmp_path):
             except BaseException as exc:  # noqa: BLE001 — SQLite may serialize with a lock error
                 results[index] = f"raised {type(exc).__name__}: {exc}"
 
-        threads = [threading.Thread(target=run, args=(i, a)) for i, a in enumerate(adapters)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        run_race(run, list(enumerate(adapters)), barrier=barrier, label=f"race{race}")
         # Report what BOTH racers did. The assertion used to print only the total, so the CI red
         # read "saw 0" and said nothing about which thread died or why; the whole diagnosis had to
         # be rebuilt from scratch. A concurrency assertion that cannot name the losing thread's
