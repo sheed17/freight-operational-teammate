@@ -542,8 +542,8 @@ def test_gr1_every_omitted_pair_is_illegal_persists_nothing_and_is_recorded(tmp_
 
 
 def test_ac_mach_215x_no_timer_moves_needs_verification(tmp_path):
-    """### THE NAMED MERGE-GATING ANCHOR. §14 PL-15x, GR-6: an `UNKNOWN_OUTCOME` never silently
-    becomes success or failure, and NO timer transition may move it."""
+    """`AC-MACH-215x` — ### THE NAMED MERGE-GATING ANCHOR. §14 PL-15x, GR-6: an `UNKNOWN_OUTCOME`
+    never silently becomes success or failure, and NO timer transition may move it."""
     store, m, *_ = _attempt_in(tmp_path, PipelineState.NEEDS_VERIFICATION, name="215x.db")
     before = state_digest(store)
     with pytest.raises(IllegalTransition):
@@ -794,7 +794,9 @@ def test_pl_7b_is_an_H_transition_and_refuses_a_system_actor(tmp_path):
 # ======================================================= G. PL-8 — the checkpoint, atomically
 
 def test_pl_8_co_commits_the_witness_the_grant_and_this_row(tmp_path):
-    """### §4 AND §41(a). One transaction: seven checks, witness insert, grant mint, state row,
+    """`AC-MACH-208` — the checkpoint transition, all seven, atomic.
+
+    ### §4 AND §41(a). One transaction: seven checks, witness insert, grant mint, state row,
     `CheckpointPassed`. And the pipeline points at BOTH, by foreign key."""
     store, m, clk, kernel, effect, world, _ = _green(tmp_path)
     assert witnesses(store) == [] and ledger(store) == []
@@ -823,6 +825,8 @@ def test_pl_8_co_commits_the_witness_the_grant_and_this_row(tmp_path):
 
 
 def test_pl_8_rolls_the_witness_and_the_grant_back_when_its_own_row_write_fails(tmp_path):
+    """`AC-MACH-208` — the checkpoint transition is atomic in the FAILING direction too: if this
+    row's own write fails, the witness and the grant go back with it."""
     """### THE CO-COMMIT, PROVED BY BREAKING IT RATHER THAN BY READING THE CODE.
 
     §4 requires the seven checks, the witness insert, the grant mint AND the pipeline's own
@@ -1301,8 +1305,8 @@ def test_failed_without_a_proof_is_unwritable_at_the_database(tmp_path):
 
 
 def test_ac_mach_210u_a_crash_after_the_claim_is_unknown_never_failed(tmp_path):
-    """### THE NAMED MERGE-GATING ANCHOR. §36: `CLAIMED`/`EXECUTED` + crash ⇒ UNKNOWN OUTCOME,
-    never re-execute, never FAILED."""
+    """`AC-MACH-210u` — ### THE NAMED MERGE-GATING ANCHOR. §36: `CLAIMED`/`EXECUTED` + crash ⇒
+    UNKNOWN OUTCOME, never re-execute, never FAILED."""
     store, m, *_ = _attempt_in(tmp_path, PipelineState.CLAIMED, name="crash.db")
     result = m.apply(PIPELINE, Trigger.ADAPTER_TIMED_OUT, **SYS,
                      unknown_reason="UNKNOWN_OUTCOME", unknown_outcome_ref="obs-timeout-1")

@@ -26,6 +26,7 @@ ILLEGAL, non-producing refusal: no destination, no write, no event.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Mapping, Sequence
 
 from .brake import DETECTOR, HUMAN, BrakeError, BrakeStatus, BrakeStore
@@ -83,6 +84,19 @@ ACTOR_CLASSES: tuple[str, ...] = (
 GR1_ILLEGAL_REFUSAL = "GR1_ILLEGAL_REFUSAL"
 
 
+class Trigger(str, Enum):
+    """### THE FIVE DRIVING FACTS OF §14, AS A CLOSED VOCABULARY. M13 had no trigger enum, so the
+    phase-wide (state × trigger) sweep had nothing to sweep this machine over. `TIMER_FIRED` is in the
+    enum and has NO legal row at either state, which is how `AC-MACH-1305` — *"no timer releases a
+    brake"* — becomes a fact about the TABLE rather than a special case at one state."""
+
+    ENGAGED = "Engaged"                # BR-1
+    WIDENED = "Widened"                # BR-2
+    NARROWED = "Narrowed"              # BR-3
+    RELEASED = "Released"              # BR-4
+    TIMER_FIRED = "TimerFired"         # BR-5 — ILLEGAL, no legal row anywhere
+
+
 @dataclass(frozen=True)
 class Transition:
     """One BR-* row. BR-5 alone carries `to_state=None`, empty `writes`, `event=None` and a
@@ -91,6 +105,7 @@ class Transition:
     id: str
     from_state: str | None
     to_state: str | None
+    trigger: Trigger
     actors: frozenset[str]              # the actor CLASSES that may perform it
     event: str | None
     writes: tuple[str, ...]
@@ -103,18 +118,21 @@ class Transition:
 TRANSITIONS: tuple[Transition, ...] = (
     Transition(
         id="BR-1", from_state=None, to_state="ACTIVE",
+        trigger=Trigger.ENGAGED,
         actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS}),
         event="BrakeEngaged",
         writes=("scope", "actor", "reason", "brake_version"),
     ),
     Transition(
         id="BR-2", from_state="ACTIVE", to_state="ACTIVE",   # wider scope (narrows authority)
+        trigger=Trigger.WIDENED,
         actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS}),
         event="BrakeWidened",
         writes=("scope", "brake_version"),
     ),
     Transition(
         id="BR-3", from_state="ACTIVE", to_state="ACTIVE",   # narrower scope (broadens authority)
+        trigger=Trigger.NARROWED,
         actors=frozenset({HUMAN_CLASS}),
         event="BrakeNarrowed",
         writes=("scope", "brake_version"),
@@ -122,6 +140,7 @@ TRANSITIONS: tuple[Transition, ...] = (
     ),
     Transition(
         id="BR-4", from_state="ACTIVE", to_state="RELEASED",
+        trigger=Trigger.RELEASED,
         actors=frozenset({HUMAN_CLASS}),
         event="BrakeReleased",
         writes=("released_by", "release_decision_ref", "brake_version"),
@@ -131,6 +150,7 @@ TRANSITIONS: tuple[Transition, ...] = (
     # event. Declared so the table proves the timer path leads nowhere.
     Transition(
         id="BR-5", from_state="ACTIVE", to_state=None,
+        trigger=Trigger.TIMER_FIRED,
         actors=frozenset(),
         event=None,
         writes=(),
@@ -139,6 +159,19 @@ TRANSITIONS: tuple[Transition, ...] = (
 )
 
 _BY_ID = {t.id: t for t in TRANSITIONS}
+
+
+def legal_transitions(state: str, trigger: Trigger) -> tuple[Transition, ...]:
+    """Every fireable row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    BR-1 is the creation row and is excluded — it has no from-state — exactly as M1 excludes WI-1.
+    BR-5 is excluded by its `non_producing_reason`, so `TimerFired` matches NOTHING at ACTIVE or at
+    RELEASED. Nothing in the machine calls this; it exists so the phase-wide (state × trigger) sweep
+    asks THIS machine what it considers legal instead of re-deriving it."""
+    return tuple(
+        t for t in TRANSITIONS
+        if t.from_state is not None and t.non_producing_reason is None
+        and t.trigger is trigger and t.from_state == state)
 
 
 def _norm_class(actor_class: str) -> str:

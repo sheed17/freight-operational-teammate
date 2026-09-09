@@ -40,7 +40,9 @@ from freight_recon.identity_binding_claim import (  # noqa: E402
     OrdinalTarget,
     OwnerAssertedOverwrite,
     StateConflict,
+    Trigger,
     UnknownClaim,
+    legal_transitions,
 )
 from freight_recon.migrations.phase6_identity_binding_claims import (  # noqa: E402
     CLAIM_STATES,
@@ -125,9 +127,26 @@ def test_no_eighth_state_exists_anywhere():
 
 
 def test_the_transition_ids_are_the_canonical_ib_set():
+    """### ELEVEN ROWS, NOT TEN. §14 enumerates IB-5x — the `OWNER_ASSERTED` relinker refusal — as a
+    row of the table, and `AC-MACH-000` compares the table with §14. Declaring only the ten fireable
+    rows made the machine look one short of its specification."""
     assert set(TRANSITIONS_BY_ID) == {"IB-1", "IB-2", "IB-2r", "IB-2h", "IB-3", "IB-4", "IB-5",
-                                      "IB-6", "IB-7", "IB-8"}
-    assert len(TRANSITIONS) == 10
+                                      "IB-5x", "IB-6", "IB-7", "IB-8"}
+    assert len(TRANSITIONS) == 11
+
+
+def test_ib5x_is_declared_illegal_and_changes_no_legality():
+    """`AC-MACH-605x`, as a fact about the table rather than about one run.
+
+    ### THE ROW IS REPRESENTATION, NOT BEHAVIOUR. IB-5x is the one canonical row separated from
+    its neighbour by PROVENANCE rather than by (state, trigger), so declaring it must NOT make the
+    pair it shares with IB-5 illegal — the refusal stays inside IB-5's provenance guard."""
+    row = TRANSITIONS_BY_ID["IB-5x"]
+    assert row.illegal and row.to_state is None and row.event == ""
+    assert row.provenance == ("OWNER_ASSERTED",)
+    assert not row.independently_fireable
+    legal = legal_transitions(BindingState.CONFIRMED, Trigger.RECOMPUTED_BY_INFERRER)
+    assert [r.id for r in legal] == ["IB-5"], "IB-5x leaked into the legality lookup"
 
 
 def test_the_six_f6_contracts_are_produced_and_no_seventh():
@@ -387,9 +406,11 @@ def test_content_cannot_set_its_own_provenance(m6, conn):
 # ---- the relinker (IB-5 / IB-5x) — the B3 regression -------------------------------------------
 
 def test_owner_binding_survives_relinker(m6, conn):
-    """§44 / B3 / GR-9 / R-P3: an OWNER_ASSERTED binding + an inferrer re-run is an ILLEGAL
+    """`AC-MACH-605x` — `OWNER_ASSERTED` + `RecomputedByInferrer` ⇒ ILLEGAL (the B3 regression).
+
+    §44 / B3 / GR-9 / R-P3: an OWNER_ASSERTED binding + an inferrer re-run is an ILLEGAL
     TRANSITION — state unchanged, TWO F14 security events emitted, and a retry storm changes
-    nothing."""
+    nothing. §14 declares this refusal as row IB-5x."""
     h = _human(conn)
     r = m6.assert_human(subject_ref=_subject(conn), entity_ref="load:4471", decision_ref="d",
                         decision_human_id=h, actor_id=h)

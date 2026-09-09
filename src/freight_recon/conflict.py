@@ -207,6 +207,121 @@ OPEN_STATES: frozenset[CfState] = frozenset(CfState(s) for s in OPEN_CONFLICT_ST
 TERMINAL_STATES: frozenset[CfState] = frozenset(
     CfState(s) for s in TERMINAL_CONFLICT_STATES)
 
+# --------------------------------------------------------------------------- the transition table
+# ### §14 AS DATA, SO `AC-MACH-000` CAN ENUMERATE IT. A transition table written only as if/elif is a
+# table nobody can compare with its specification, and M7 shipped without one — which is why the
+# phase-wide bijection guard read this machine as ZERO rows against §14's seven. The rows below are
+# REPRESENTATION of guards that already exist and are unchanged by their being written down; the
+# guards remain the authority, and `test_phase6_machine_population.py` proves every id here is a
+# transition id this module actually emits, in both directions.
+
+@dataclass(frozen=True)
+class TransitionRow:
+    """One row of `07-conflict.machine.md` §14."""
+
+    id: str
+    from_states: tuple[CfState, ...]
+    to_state: CfState | None            # None only for the creation row, whose from is "—"
+    triggers: tuple[Trigger, ...]
+    trigger_types: tuple[str, ...]      # H|S|X|T — the registry §1 codes
+    event: str | None                   # None only for the DELEGATES_TO row
+    delegates_to: tuple[str, ...] = ()
+    creates: bool = False
+    # CF-7 attaches a party: it writes `parties[]` and emits, and the conflict does not move. §14
+    # spells its destination "*(more parties)*" for exactly that reason.
+    field_write: bool = False
+
+    @property
+    def is_delegation(self) -> bool:
+        return bool(self.delegates_to)
+
+    @property
+    def independently_fireable(self) -> bool:
+        return not (self.is_delegation or self.creates)
+
+
+TRANSITIONS: tuple[TransitionRow, ...] = (
+    TransitionRow(
+        id="CF-1", from_states=(), to_state=CfState.RAISED,
+        triggers=(Trigger.CONFLICT_DETECTED,), trigger_types=("S", "X"),
+        event="ConflictRaised", creates=True),
+    TransitionRow(
+        id="CF-2", from_states=(CfState.RAISED,), to_state=CfState.OPEN,
+        triggers=(Trigger.ACKNOWLEDGED,), trigger_types=("H", "S"), event="ConflictOpened"),
+    TransitionRow(
+        id="CF-3", from_states=(CfState.OPEN,), to_state=CfState.RESOLVED_BY_RULE,
+        triggers=(Trigger.DETERMINISTIC_RULE_APPLIES,), trigger_types=("S",),
+        event="ConflictResolved"),
+    TransitionRow(
+        id="CF-4", from_states=(CfState.OPEN,), to_state=CfState.RESOLVED_BY_HUMAN,
+        triggers=(Trigger.HUMAN_RESOLVED,), trigger_types=("H",), event="ConflictResolved"),
+    TransitionRow(
+        id="CF-5", from_states=(CfState.OPEN,), to_state=CfState.ESCALATED,
+        triggers=(Trigger.AGE_THRESHOLD_CROSSED,), trigger_types=("T",),
+        event="ConflictEscalated"),
+    # ### CF-6 DELEGATES, RESOLVED BY TARGET STATE AND NEVER POSITIONALLY. `_resolve_by_rule` and
+    # `_resolve_by_human` already choose CF-3/CF-4 from the state they reach; the delegation widens
+    # those rows' from-sets to include ESCALATED, which is what `_apply_delegation` does for M1.
+    TransitionRow(
+        id="CF-6", from_states=(CfState.ESCALATED,), to_state=None,
+        triggers=(Trigger.DETERMINISTIC_RULE_APPLIES, Trigger.HUMAN_RESOLVED),
+        trigger_types=("S", "H"), event=None, delegates_to=("CF-3", "CF-4")),
+    # ### CF-7 — A SECOND DETECTION ATTACHES A PARTY, IT NEVER CREATES A SECOND CONFLICT. §14 names
+    # its from-set {RAISED, OPEN}; §17's dedup index spans the three OPEN states, so the guard reads
+    # `is_open` and a party detected while ESCALATED attaches too. The row records what the guard
+    # does, because the guard is the authority.
+    TransitionRow(
+        id="CF-7", from_states=tuple(sorted(OPEN_STATES, key=lambda s: s.value)), to_state=None,
+        triggers=(Trigger.CONFLICT_DETECTED,), trigger_types=("S", "X"),
+        event="ConflictPartyAttached", field_write=True),
+)
+
+
+def _apply_delegation(rows: tuple[TransitionRow, ...]) -> tuple[TransitionRow, ...]:
+    """Widen every delegation TARGET's from-set by its delegating row's from-set, exactly as M1 does.
+
+    CF-6 is not a state its own right: it is CF-3/CF-4 reached from ESCALATED. Widening keeps the
+    legality lookup honest — `(ESCALATED, DeterministicRuleApplies)` resolves to CF-3 — without a
+    hand-written exception for the one machine that delegates."""
+    by_id = {row.id: row for row in rows}
+    widened: dict[str, TransitionRow] = {}
+    for row in rows:
+        for target_id in row.delegates_to:
+            target = by_id.get(target_id)
+            if target is None:
+                raise RuntimeError(
+                    f"{row.id} delegates to {target_id!r}, which is not a declared transition.")
+            base = widened.get(target_id, target)
+            missing = tuple(s for s in row.from_states if s not in base.from_states)
+            if not missing:
+                widened[target_id] = base
+                continue
+            widened[target_id] = TransitionRow(
+                id=base.id, from_states=tuple(base.from_states) + missing,
+                to_state=base.to_state, triggers=base.triggers,
+                trigger_types=base.trigger_types, event=base.event,
+                delegates_to=base.delegates_to, creates=base.creates,
+                field_write=base.field_write)
+    return tuple(widened.get(row.id, row) for row in rows)
+
+
+TRANSITIONS = _apply_delegation(TRANSITIONS)
+TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSITIONS}
+
+
+def legal_transitions(state: CfState, trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every independently-fireable row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    Creation rows are excluded — CF-1 has no from-state — exactly as M1 excludes WI-1. The
+    delegation row CF-6 is subtracted too — its
+    from-set has already widened CF-3/CF-4 — so no (state, trigger) pair resolves to a row that is
+    not itself a destination. Nothing in the machine calls this; it exists so the phase-wide (state × trigger)
+    sweep asks THIS machine what it considers legal instead of re-deriving it."""
+    return tuple(
+        row for row in TRANSITIONS
+        if row.independently_fireable and trigger in row.triggers and state in row.from_states)
+
+
 # The five F7 contracts this machine MINTS — exactly the registered set, no sixth `Conflict*` name.
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(
     ("ConflictRaised", "ConflictOpened", "ConflictPartyAttached", "ConflictEscalated",

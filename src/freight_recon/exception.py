@@ -229,6 +229,84 @@ EC4_FROM: frozenset[EcState] = frozenset((EcState.OPEN, EcState.ACKNOWLEDGED))
 EC7_FROM: frozenset[EcState] = frozenset((EcState.OPEN, EcState.ACKNOWLEDGED, EcState.ESCALATED))
 
 
+# --------------------------------------------------------------------------- the transition table
+# ### §14 AS DATA, SO `AC-MACH-000` CAN ENUMERATE IT. M9 shipped its seven rows as guards only, so the
+# phase-wide bijection guard read this machine as ZERO rows against §14's seven. ### THE FROM-SETS
+# BELOW ARE THE CONSTANTS THE GUARDS THEMSELVES READ — `EC3_FROM`, `EC4_FROM`, `EC6_FROM`, `EC7_FROM`
+# are the same objects `resolve`, `age`, `escalate` and `reassess_severity` branch on, so the table
+# cannot drift from the behaviour it describes: changing a guard's from-set changes this table in the
+# same edit. Nothing about the machine's behaviour moves; only its §14 becomes enumerable.
+
+def _ordered(states: frozenset[EcState]) -> tuple[EcState, ...]:
+    """The from-set in state-declaration order, so a frozenset never makes the table non-deterministic."""
+    return tuple(s for s in EcState if s in states)
+
+
+@dataclass(frozen=True)
+class TransitionRow:
+    """One row of `09-exception.machine.md` §14."""
+
+    id: str
+    from_states: tuple[EcState, ...]
+    to_state: EcState
+    triggers: tuple[Trigger, ...]
+    trigger_types: tuple[str, ...]      # H|S|X|T|R — the registry §1 codes
+    event: str
+    creates: bool = False
+    # EC-7 changes the severity FIELD and the exception does not move. §14 spells its destination
+    # "*(severity change)*" for exactly that reason.
+    field_write: bool = False
+
+
+TRANSITIONS: tuple[TransitionRow, ...] = (
+    # ### EC-1 CARRIES NO TRIGGER, AND THAT IS THE HONEST SPELLING. §14's Trig column reads "S|R", and
+    # the enum holds only CONSUMED facts; raising is an entry point (`raise_exception`), not a fact
+    # this machine consumes. An empty `triggers` keeps it out of the (state × trigger) sweep — where a
+    # row with no from-state proves nothing — while `AC-MACH-000` still counts it as one of the seven.
+    TransitionRow(
+        id="EC-1", from_states=(), to_state=EcState.OPEN, triggers=(), trigger_types=("S", "R"),
+        event="ExceptionRaised", creates=True),
+    TransitionRow(
+        id="EC-2", from_states=(EcState.OPEN,), to_state=EcState.ACKNOWLEDGED,
+        triggers=(Trigger.ACKNOWLEDGED,), trigger_types=("H",), event="ExceptionAcknowledged"),
+    # ### EC-3 AND EC-6 SHARE THE `Resolved` TRIGGER AND HAVE DISJOINT FROM-SETS — AGEING IS IN
+    # NEITHER, so resolving an AGEING exception directly is ILLEGAL and the sweep reads that off the
+    # table rather than from a hand-kept exception.
+    TransitionRow(
+        id="EC-3", from_states=_ordered(EC3_FROM), to_state=EcState.RESOLVED,
+        triggers=(Trigger.RESOLVED,), trigger_types=("H",), event="ExceptionResolved"),
+    TransitionRow(
+        id="EC-4", from_states=_ordered(EC4_FROM), to_state=EcState.AGEING,
+        triggers=(Trigger.TIMER_FIRED,), trigger_types=("T",), event="ExceptionAgeing"),
+    TransitionRow(
+        id="EC-5", from_states=(EcState.AGEING,), to_state=EcState.ESCALATED,
+        triggers=(Trigger.TIMER_FIRED,), trigger_types=("T",), event="ExceptionEscalated"),
+    TransitionRow(
+        id="EC-6", from_states=_ordered(EC6_FROM), to_state=EcState.RESOLVED,
+        triggers=(Trigger.RESOLVED,), trigger_types=("H",), event="ExceptionResolved"),
+    TransitionRow(
+        id="EC-7", from_states=_ordered(EC7_FROM), to_state=EcState.OPEN,
+        triggers=(Trigger.SEVERITY_CHANGE,), trigger_types=("S", "H"),
+        event="ExceptionSeverityChanged", field_write=True),
+)
+
+TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSITIONS}
+
+
+def legal_transitions(state: EcState, trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    Creation rows are excluded — EC-1 has no from-state — exactly as M1 excludes WI-1. The three
+    illegal triggers the enum carries (`AutoClose`, `Inactivity`, `TimerFiredToResolved`) match no row
+    at any state, which is how "silence closes nothing, a clock never resolves" is STRUCTURAL rather
+    than three special cases. Nothing in the machine calls this; it exists so the phase-wide
+    (state × trigger) sweep asks THIS machine what it considers legal instead of re-deriving it."""
+    return tuple(
+        row for row in TRANSITIONS
+        if not row.creates and trigger in row.triggers and state in row.from_states)
+
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 

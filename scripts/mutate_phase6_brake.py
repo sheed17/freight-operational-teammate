@@ -70,18 +70,18 @@ CASES = [
      f"{T}::test_the_signal_count_rises_on_repeated_engagement_by_row"),
 
     ("automation may release a brake",
-     [(BL, 'id="BR-4", from_state="ACTIVE", to_state="RELEASED",\n        actors=frozenset({HUMAN_CLASS}),',
-       'id="BR-4", from_state="ACTIVE", to_state="RELEASED",\n        actors=frozenset({HUMAN_CLASS, AUTOMATION_CLASS}),  # MUTANT')],
+     [(BL, 'id="BR-4", from_state="ACTIVE", to_state="RELEASED",\n        trigger=Trigger.RELEASED,\n        actors=frozenset({HUMAN_CLASS}),',
+       'id="BR-4", from_state="ACTIVE", to_state="RELEASED",\n        trigger=Trigger.RELEASED,\n        actors=frozenset({HUMAN_CLASS, AUTOMATION_CLASS}),  # MUTANT')],
      f"{T}::test_automation_can_engage_but_never_release"),
 
     ("a detector may narrow a brake",
-     [(BL, 'id="BR-3", from_state="ACTIVE", to_state="ACTIVE",   # narrower scope (broadens authority)\n        actors=frozenset({HUMAN_CLASS}),',
-       'id="BR-3", from_state="ACTIVE", to_state="ACTIVE",   # narrower scope (broadens authority)\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS}),  # MUTANT')],
+     [(BL, 'id="BR-3", from_state="ACTIVE", to_state="ACTIVE",   # narrower scope (broadens authority)\n        trigger=Trigger.NARROWED,\n        actors=frozenset({HUMAN_CLASS}),',
+       'id="BR-3", from_state="ACTIVE", to_state="ACTIVE",   # narrower scope (broadens authority)\n        trigger=Trigger.NARROWED,\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS}),  # MUTANT')],
      f"{T}::test_only_a_human_may_narrow"),
 
     ("a model may engage a brake",
-     [(BL, 'id="BR-1", from_state=None, to_state="ACTIVE",\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS}),',
-       'id="BR-1", from_state=None, to_state="ACTIVE",\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS, MODEL_CLASS}),  # MUTANT')],
+     [(BL, 'id="BR-1", from_state=None, to_state="ACTIVE",\n        trigger=Trigger.ENGAGED,\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS}),',
+       'id="BR-1", from_state=None, to_state="ACTIVE",\n        trigger=Trigger.ENGAGED,\n        actors=frozenset({HUMAN_CLASS, DETECTOR_CLASS, AUTOMATION_CLASS, MODEL_CLASS}),  # MUTANT')],
      f"{T}::test_a_model_may_never_engage_narrow_or_release"),
 
     ("a loaded page is accepted as positive health",

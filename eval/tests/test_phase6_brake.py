@@ -373,6 +373,7 @@ def test_stale_grant_after_release_is_refused(tmp_path):
 
 
 def test_no_timer_can_move_a_brake():
+    """`AC-MACH-1305` — no timer releases a brake."""
     # BR-5 is enumerated illegal and non-producing; no timer path exists on the store.
     br5 = bl._BY_ID["BR-5"]
     assert br5.to_state is None and br5.writes == () and br5.event is None
@@ -382,6 +383,7 @@ def test_no_timer_can_move_a_brake():
 
 
 def test_a_brake_never_auto_expires():
+    """`AC-MACH-1305` — a brake has no TTL, so there is no clock that could release it."""
     # ADR-011 §4: a brake has NO TTL and no wall-clock expiry. Once ACTIVE it stays ACTIVE until a
     # human releases it, however far the clock advances — a brake that quietly auto-expired would
     # re-admit effects nobody re-authorised (the fail-DANGEROUS inverse of "cannot read == off").

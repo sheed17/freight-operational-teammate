@@ -225,16 +225,27 @@ class TransitionRow:
 
     id: str
     from_states: tuple[BindingState, ...]
-    to_state: BindingState
+    to_state: BindingState | None
     trigger: Trigger
     trigger_types: tuple[str, ...]     # S|H|X — registry §1
     event: str                         # the canonical event this transition emits (or the F14 one)
     provenance: tuple[str, ...] = ()   # the provenance(s) this transition's result may carry
+    creates: bool = False              # IB-1 only: the row whose "from" is "—"
+    # ### IB-5x ONLY — THE ROW §14 DECLARES ILLEGAL. `to_state=None`, no event, and the provenance
+    # that makes it illegal named on the row. It is enumerated so `AC-MACH-000` can compare the
+    # table with §14's ELEVEN rows rather than ten, and so `AC-MACH-605x` has a row to point at.
+    # `legal_transitions` subtracts it, so (CONFIRMED, RecomputedByInferrer) still resolves to IB-5
+    # alone and nothing about the machine's behaviour moves.
+    illegal: bool = False
+
+    @property
+    def independently_fireable(self) -> bool:
+        return not (self.illegal or self.creates)
 
 
 TRANSITIONS: tuple[TransitionRow, ...] = (
     TransitionRow("IB-1", (), BindingState.PROPOSED, Trigger.DETERMINISTIC_MATCH, ("S", "X"),
-                  "ClaimProposed"),
+                  "ClaimProposed", creates=True),
     TransitionRow("IB-2", (BindingState.PROPOSED,), BindingState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
                   ("S",), "ClaimConfirmed", ("LINKER_INFERRED",)),
     TransitionRow("IB-2r", (BindingState.PROPOSED,), BindingState.CONFIRMED, Trigger.DETERMINISTIC_MATCH,
@@ -248,6 +259,13 @@ TRANSITIONS: tuple[TransitionRow, ...] = (
     TransitionRow("IB-5", (BindingState.CONFIRMED,), BindingState.SUPERSEDED,
                   Trigger.RECOMPUTED_BY_INFERRER, ("S",), "ClaimSuperseded",
                   ("LINKER_INFERRED", "RECONCILED")),
+    # ### IB-5x — `CONFIRMED` + `RecomputedByInferrer` on an `OWNER_ASSERTED` binding. ILLEGAL
+    # (GR-9): a relinker may never overwrite what a human bound. This is the B3 regression the
+    # acceptance file names `AC-MACH-605x`. It shares its (from-state, trigger) with IB-5 and is
+    # separated by PROVENANCE, which is why it is the one canonical row that a (state × trigger)
+    # table cannot express — and exactly why it has to be declared rather than inferred.
+    TransitionRow("IB-5x", (BindingState.CONFIRMED,), None, Trigger.RECOMPUTED_BY_INFERRER,
+                  ("S",), "", ("OWNER_ASSERTED",), illegal=True),
     TransitionRow("IB-6", (BindingState.CONFIRMED,), BindingState.CONFLICTING,
                   Trigger.INFERRER_DISAGREES, ("S",), "ConflictRaised", ("OWNER_ASSERTED",)),
     TransitionRow("IB-7", (BindingState.CONFIRMED,), BindingState.CORRECTED, Trigger.HUMAN_CORRECTED,
@@ -257,6 +275,20 @@ TRANSITIONS: tuple[TransitionRow, ...] = (
 )
 
 TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSITIONS}
+
+
+def legal_transitions(state: BindingState, trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every independently-fireable row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    Creation rows are excluded — IB-1 has no from-state — exactly as M1 excludes WI-1. IB-5x is
+    subtracted by the same property,
+    so the (CONFIRMED, RecomputedByInferrer) pair stays LEGAL — its refusal is decided by provenance
+    inside IB-5, never by this lookup. Nothing in the machine calls this; it exists so the phase-wide
+    (state × trigger) sweep asks THIS machine what it considers legal instead of re-deriving it."""
+    return tuple(
+        row for row in TRANSITIONS
+        if row.independently_fireable and row.trigger is trigger and state in row.from_states)
+
 
 # The six F6 contracts this machine MINTS — exactly the registered set, no seventh `Claim*` name.
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(

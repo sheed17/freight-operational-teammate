@@ -217,6 +217,11 @@ class TransitionRow:
     event: str
     human_owned_result: bool = False   # OB-3u: the result state names an accountable human
 
+    @property
+    def creates(self) -> bool:
+        """OB-1 alone has no from-state: §14 spells its "from" as "—"."""
+        return not self.from_states
+
 
 TRANSITIONS: tuple[TransitionRow, ...] = (
     TransitionRow(
@@ -254,6 +259,18 @@ TRANSITIONS: tuple[TransitionRow, ...] = (
 )
 
 TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSITIONS}
+
+
+def legal_transitions(state: ProcessingState, trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    Creation rows are excluded — OB-1 has no from-state — exactly as M1 excludes WI-1. Nothing in the
+    machine calls this; it exists so the phase-wide (state × trigger) sweep asks THIS machine what it
+    considers legal instead of re-deriving it."""
+    return tuple(
+        row for row in TRANSITIONS
+        if not row.creates and trigger in row.triggers and state in row.from_states)
+
 
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(row.event for row in TRANSITIONS)
 

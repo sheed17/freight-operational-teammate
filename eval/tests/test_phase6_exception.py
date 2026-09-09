@@ -275,7 +275,9 @@ def test_ec_ack():
 
 
 def test_ec_close_requires_valid_decision_ref():
-    """EC-3 — resolution from OPEN/ACKNOWLEDGED requires a decision_ref that RESOLVES (GR-14)."""
+    """`AC-MACH-903` — an Exception close requires a resolving `decision_ref`.
+
+    EC-3 — resolution from OPEN/ACKNOWLEDGED requires a decision_ref that RESOLVES (GR-14)."""
     conn = _conn()
     m = _machine(conn)
     x = _raise(m).exception.exception_id

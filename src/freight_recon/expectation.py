@@ -195,6 +195,86 @@ TERMINAL_STATES: frozenset[ExState] = frozenset(
 HUMAN_OWNED_STATES: frozenset[ExState] = frozenset(
     ExState(s) for s in HUMAN_OWNED_EXPECTATION_STATES)
 
+# --------------------------------------------------------------------------- the transition table
+# ### §14 AS DATA, SO `AC-MACH-000` CAN ENUMERATE IT. M8 shipped its eight rows as guards only, so the
+# phase-wide bijection guard read this machine as ZERO rows against §14's eight. These rows are
+# REPRESENTATION of guards that already exist and are unchanged by their being written down; the
+# guards remain the authority, and `test_phase6_machine_population.py` proves every id here is a
+# transition id this module actually emits, in both directions.
+
+@dataclass(frozen=True)
+class TransitionRow:
+    """One row of `08-expectation.machine.md` §14."""
+
+    id: str
+    from_states: tuple[ExState, ...]
+    to_state: ExState
+    triggers: tuple[Trigger, ...]
+    trigger_types: tuple[str, ...]      # H|S|X|T — the registry §1 codes
+    event: str
+    creates: bool = False
+    # EX-5 re-versions a RAISED expectation in place: from == to, and the write is the deadline
+    # history. §14 spells its destination "`RAISED` *(v++)*" for exactly that reason.
+    re_versions: bool = False
+
+
+TRANSITIONS: tuple[TransitionRow, ...] = (
+    # ### EX-1 CARRIES NO TRIGGER, AND THAT IS THE HONEST SPELLING. §14's Trig column reads "S", and
+    # the enum holds only CONSUMED facts; raising is an entry point (`raise_expectation`), not a fact
+    # this machine consumes. An empty `triggers` keeps it out of the (state × trigger) sweep — where a
+    # row with no from-state proves nothing — while `AC-MACH-000` still counts it as one of the eight.
+    TransitionRow(
+        id="EX-1", from_states=(), to_state=ExState.RAISED,
+        triggers=(), trigger_types=("S",),
+        event="ExpectationRaised", creates=True),
+    TransitionRow(
+        id="EX-2", from_states=(ExState.RAISED,), to_state=ExState.DISCHARGED,
+        triggers=(Trigger.OBSERVATION_BOUND,), trigger_types=("X",),
+        event="ExpectationDischarged"),
+    # ### EX-3 AND EX-3i SHARE (RAISED, TimerFired) AND ARE SEPARATED BY PERSISTED COVERAGE, NEVER BY
+    # CONFIDENCE (GR-8). Both rows are declared so the honesty split is a table rather than a branch.
+    TransitionRow(
+        id="EX-3", from_states=(ExState.RAISED,), to_state=ExState.OVERDUE,
+        triggers=(Trigger.TIMER_FIRED,), trigger_types=("T",), event="ExpectationOverdue"),
+    TransitionRow(
+        id="EX-3i", from_states=(ExState.RAISED,), to_state=ExState.INDETERMINATE,
+        triggers=(Trigger.TIMER_FIRED,), trigger_types=("T",), event="ExpectationIndeterminate"),
+    TransitionRow(
+        id="EX-4", from_states=(ExState.OVERDUE, ExState.INDETERMINATE), to_state=ExState.DISCHARGED,
+        triggers=(Trigger.OBSERVATION_BOUND,), trigger_types=("X",),
+        event="ExpectationDischarged"),
+    TransitionRow(
+        id="EX-5", from_states=(ExState.RAISED,), to_state=ExState.RAISED,
+        triggers=(Trigger.DEADLINE_CHANGED,), trigger_types=("H", "S"),
+        event="ExpectationReVersioned", re_versions=True),
+    TransitionRow(
+        id="EX-6", from_states=(ExState.RAISED, ExState.OVERDUE), to_state=ExState.CANCELLED,
+        triggers=(Trigger.REASON_DISAPPEARED,), trigger_types=("S", "X"),
+        event="ExpectationCancelled"),
+    # ### EX-7's FROM-SET IS {OVERDUE, INDETERMINATE}: A RAISED EXPECTATION NEVER EXPIRES. Declared,
+    # so `AC-MACH-000` and the sweep read the from-set the guard enforces rather than a second one.
+    TransitionRow(
+        id="EX-7", from_states=(ExState.OVERDUE, ExState.INDETERMINATE), to_state=ExState.EXPIRED,
+        triggers=(Trigger.TIMER_FIRED,), trigger_types=("T",), event="ExpectationExpired"),
+)
+
+TRANSITIONS_BY_ID: Mapping[str, TransitionRow] = {row.id: row for row in TRANSITIONS}
+
+
+def legal_transitions(state: ExState, trigger: Trigger) -> tuple[TransitionRow, ...]:
+    """Every row whose (from-state, trigger) matches. Empty ⇒ GR-1 refuses it.
+
+    Creation rows are excluded — EX-1 has no from-state, so no (state, trigger) pair may resolve to
+    it — exactly as M1 excludes WI-1. The four illegal-shape triggers the enum carries
+    (`CancelIndeterminate`, `ExpireRaised`, `OverdueWithoutCoverage`, `WindowEvaluatedInUtc`) match no
+    row at any state, which is how §15's named shapes are refused UNIFORMLY rather than one at a time.
+    Nothing in the machine calls this; it exists so the phase-wide (state × trigger) sweep asks THIS
+    machine what it considers legal instead of re-deriving it."""
+    return tuple(
+        row for row in TRANSITIONS
+        if not row.creates and trigger in row.triggers and state in row.from_states)
+
+
 # The seven F8 contracts this machine MINTS — exactly the registered set, no eighth `Expectation*`
 # name. A TimedOut / Missed / Closed variant is what an invented eighth event would be called; none is
 # here, and the source contains no `Expectation`+capital token outside these seven registered names —
