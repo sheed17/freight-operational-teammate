@@ -2667,9 +2667,9 @@ units:
     # ### LANDED IS NOT ACCEPTED. A checkpoint is a landed increment, NEVER a phase acceptance:
     # `criteria_scored` is empty, all of P6's weighted acceptance criteria remain unscored, P6 is
     # NOT COMPLETE, and M2 (Pipeline Instance) has not begun.
-    status: READY
-    execution_state: IN_PROGRESS
-    checkpoint_state: CHECKPOINT_ACCEPTED_FOR_CONTINUATION
+    status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     # ### THE SECOND CANDIDATE HAS LANDED AS `P6-CP-2`, AND THIS RECORD NOW SAYS SO. Until this
     # landing content commit these lines read "### THIS TREE CARRIES A SECOND P6 CONTENT CANDIDATE,
     # AND THE REGISTRY DELIBERATELY DOES NOT YET RECORD IT AS LANDED. `test_status_reality.py`
@@ -6628,7 +6628,15 @@ units:
         criterion: scope_conformance
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Re-derived by the adjudicator on e6b1753. No P9 freight-domain projection module exists under
+          src/freight_recon/. No P7 provenance class was introduced by P6:
+          `ProvenanceClass`/`ProvenancedFact` enter at 0bf72b7 (2026-07-22, the P3 kernel), before P6's
+          first checkpoint ca8c070 (2026-08-15). M11/M12/M13 are three of this unit's own thirteen, per
+          this record's own reconciliation. The mechanically guarded half holds:
+          test_phase0_null_gate.py::test_the_production_gate_registration_population_is_still_empty
+          PASSES.
         authority: >-
           This unit record's own `allowed_scope`, `prohibited_scope` and `expected_production_outputs`;
           PHASE-OUTPUTS.md P6 "Still prohibited"; the P6/M11 authority reconciliation recorded in
@@ -6645,7 +6653,22 @@ units:
         criterion: thirteen_machines_and_seventeen_primitives_landed
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          13 specification files, 13 implementation modules declaring a module-level TRANSITIONS
+          (discovered by AST, not by filename), 13 joined, ZERO orphans on either side. Per-machine
+          transition counts 14/25/13/11/8/11/7/8/7/9/7/9/5 equal the counts parsed out of foundational-
+          machine-acceptance.md's own coverage table; total 134 = the parsed table total. All 17
+          foundational entity specifications exist (entities/01..17); 16 carry dedicated canonical tables
+          (work_items, pipeline_instances, effect_grants, checkpoint_witnesses, approvals, observations,
+          identity_binding_claims, conflicts, expectations, exceptions, compensations, policies, rules,
+          brakes, audit_events, with tenant_humans as M1's authority record). Evidence (08) is realised as
+          a canonical content-addressed entity rather than a standalone table - `evidence_id` + `span` are
+          REQUIRED and refused when absent on a MODEL_EXTRACTED claim (identity_binding_claim.py), and
+          `content_digest` is carried and immutable on Observation - which its own specification
+          prescribes: points 12 and 20 declare no state enum, no lifecycle and 'Not blocked'. Recorded as
+          a nonblocking verification observation, not a shortfall: no machine is absent and none is short
+          of its transitions, which is this criterion's stated failure condition.
         authority: >-
           `expected_production_outputs` ("17 platform primitives", "13 machines", "134 transitions");
           foundational-machine-acceptance.md's per-machine table (M1 Work Item .. M13 Brake);
@@ -6660,7 +6683,20 @@ units:
         criterion: canonical_transition_population_complete
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Re-derived independently, not read from the test's claim. The (state x trigger) universe
+          computed from the machines themselves totals 1092 pairs over 13 machines; each machine's own
+          `legal_transitions` proves 951 of them ILLEGAL and accepts the rest, the two sets are disjoint and their
+          union IS the product, and legal == exactly what the §14 tables declare. Anti-vacuity holds per
+          machine: every machine has a non-empty legal AND a non-empty illegal population, and the
+          denominators are printed. The 134 rows resolve as 107 swept + 27 excluded, and every exclusion
+          is a DECLARED ROW FIELD drawn from a closed six-member set (creation 15, delegation 2, illegal
+          5, kernel_path 3, no-declared-trigger 1, refusal_only 1) - there is no hand-maintained skip
+          list, and test_no_machine_carries_an_undeclared_exception proves one cannot be acquired. The
+          behavioural half of the oracle (an illegal pair raises, persists nothing, and records
+          IllegalTransitionAttempted on the audit AND security surfaces) is carried by the per-machine
+          batteries and proven present-and-collected by P6-AC-5's traceability guard.
         authority: >-
           foundational-machine-acceptance.md "Coverage requirement" - "100% of the 134 legal
           transitions. Every omitted (state,trigger) pair proved ILLEGAL. No exceptions."; the same
@@ -6678,7 +6714,18 @@ units:
         criterion: machine_entity_event_bijection
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          EXACT SET EQUALITY re-derived in both directions by the adjudicator: 134 specification ids, 134
+          implementation ids, spec-minus-impl = empty, impl-minus-spec = empty, and per-machine set
+          equality True for all 13 with zero unjoined prefixes. Counts alone were not accepted as evidence
+          - the identifier sets were compared. The producer/registry biconditional holds: 117 registered
+          producers, and the 17 non-producing rows each declare why. The structural mutation battery
+          (scripts/mutate_phase6_machine_population.py) was re-run on this tree: 9 caught, 0 escaped,
+          including a row leaving the specification, a row leaving the implementation, an implementation-
+          only row, a duplicated identifier, a machine module dropping out of the discovered population,
+          an illegal pair made legal, and three anchor-mapping corruptions - with an anti-vacuity control
+          confirming the unmutated guard stays GREEN.
         authority: >-
           foundational-machine-acceptance.md "The mechanical coverage table" - `AC-MACH-000`, a
           STRUCTURAL case that enumerates the transition tables FROM THE IMPLEMENTATION's
@@ -6697,7 +6744,20 @@ units:
         criterion: per_machine_mandatory_assertions
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          107 required cells re-derived: 13 machines x 10 assertions less the two restrictions the
+          authority's own wording imposes (assertion 6 -> M1, assertion 9 -> M1/M9), each restriction
+          carrying its recorded reason. Evidence reconciles exactly: 94 registered EVIDENCE cells + 13
+          assertion-1 mutation probes = 107; UNEVIDENCED is the empty frozenset; zero non-assertion-1
+          cells lack evidence; all 13 probe files exist on disk. All seven merge-gating anchors (AC-
+          MACH-208, 209, 210u, 215x, 605x, 903, 1305) are registered, are DERIVED from the canonical
+          transition each names, and their evidence both exists and is COLLECTED BY PYTEST - the fixture
+          asks pytest for its own collected node ids and asserts a floor of >500, so the check cannot pass
+          over an empty collection. The AC-5 mutation battery (scripts/mutate_phase6_ac5_evidence.py) was
+          re-run on this tree: 14 caught, 0 escaped, spanning append-only history, inbox idempotency,
+          terminal refusal and commit-before-durable ordering, with an anti-vacuity control GREEN. 158
+          traceability tests pass.
         authority: >-
           foundational-machine-acceptance.md "Per-machine mandatory assertions (every machine, every
           case)", points 1-10, and its "named anchors (merge-gating)" line.
@@ -6716,7 +6776,14 @@ units:
         criterion: accountable_human_ownership
         weight: 8
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Ownership is a FOREIGN KEY into `tenant_humans` that must be ACTIVE at assignment, never a
+          caller-supplied string. test_no_transition_leaves_a_work_item_ownerless drives every reachable
+          state; test_an_ownerless_row_is_unwritable_even_by_raw_sql closes the raw-SQL route. The
+          negative assertion is NOT vacuous: test_the_ownerless_detector_runs_over_a_proven_population
+          breaks three rows directly and asserts the detector names all three ('wi-0','wi-1','wi-2'), so
+          the scan is proven capable of reporting a violation before it is trusted to report none.
         authority: >-
           This unit's `acceptance_contract` ("foundational-machine-acceptance.md; gate G1;
           AC-SAFE-028"); platform-safety-acceptance.md `AC-SAFE-028` (source I1, risk
@@ -6732,7 +6799,12 @@ units:
         criterion: authenticated_human_authority_invariants
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          AC-MACH-903 is evidenced by test_phase6_exception.py::test_ec_close_requires_valid_decision_ref
+          - a bare string refuses and the ref must RESOLVE. The one-way ratchet holds in both machines
+          that carry it: M11/M12/M13 batteries green, and the sweep proves no automated trigger releases a
+          brake. All P6 machine suites pass in CI on both interpreters and locally on the final tree.
         authority: >-
           foundational-machine-acceptance.md named anchor `AC-MACH-903` (Exception close requires a
           resolving `decision_ref`) and mandatory assertion 5; platform-safety-acceptance.md
@@ -6750,7 +6822,13 @@ units:
         criterion: tenant_isolation_and_tenant_first_persistence
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          13 phase6 migrations, one per machine, all tenant-first; test_phase0_tenant_posture.py and the
+          P3/P0 posture guards pass; every machine battery runs isolated across T_A/T_B with the negative
+          assertion that a T_B trigger never moves a T_A machine. The single tenant-exempt row
+          (`platform_brake`) is DECLARED with its reason rather than omitted, and a guard proves a second
+          cannot be added silently.
         authority: >-
           acceptance/registry.md CONTRACT DEFAULTS ("`T_A` and `T_B` - every case runs
           tenant-isolated; cross-tenant assertions use both"); foundational-machine-acceptance.md
@@ -6767,7 +6845,16 @@ units:
         criterion: sole_checkpoint_and_gate_minter
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          test_only_the_checkpoint_kernel_may_MINT_a_gate_decision (AST-based) and
+          test_the_production_gate_registration_population_is_still_empty both PASS; the population is
+          DISCOVERED through gate_scan's executable-source scan, not an enumerated filename list. The
+          adjudicator mutation-proved this guard rather than trusting it: with the tree unmutated the
+          guard is GREEN, and against a REAL module-level executable gate leak injected into a non-kernel
+          module it goes RED. The mutation used in-memory save/restore with a sha256 check confirming
+          byte-identical restoration and a __pycache__ purge; no git checkout/restore/stash/clean was
+          used.
         authority: >-
           CLAUDE.md sec 10 ("Do not weaken the kernel: `CheckpointPassed` stays unconstructable, the
           witness table stays append-only") and its R-07 clause ("the production `GateRegistry`
@@ -6786,7 +6873,11 @@ units:
         criterion: replay_manufactures_no_authority
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          test_p5_replay_and_audit.py passes on the final tree; the contract default that every case's
+          history replays to the same projection digest producing ZERO effects applies to all of P6's
+          cases, and the simulator call log is empty over a proven, non-empty replay population.
         authority: >-
           acceptance/registry.md CONTRACT DEFAULTS - "every case's history replays to the same
           projection digest, producing ZERO effects" - which applies to EVERY acceptance case and
@@ -6803,7 +6894,14 @@ units:
         criterion: claim_cas_predicate_integrity
         weight: 4
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          This criterion's oracle is mutation, and it was executed on this tree.
+          scripts/mutate_phase3_guards.py drops each claim-CAS authority predicate in turn and every one
+          turns the guard RED: K3 brake_version CAUGHT, K4 policy_version CAUGHT, K5 tenant CAUGHT, K6
+          expires_at CAUGHT. The predicate set is derived from the implementation rather than read from a
+          comment. test_phase3_claim_cas.py, test_phase3_checkpoint_matrix.py and test_phase3_brake.py -
+          the P3 surfaces M13 edited - all pass (195 passed, 1 skipped).
         authority: >-
           CLAUDE.md sec 10 - "the claim CAS's WHERE-clause revalidation may never lose a predicate";
           foundational-machine-acceptance.md named anchor `AC-MACH-209` (the claim CAS, single-use);
@@ -6820,7 +6918,14 @@ units:
         criterion: fail_closed_on_unknown_or_unavailable_authority
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          AC-MACH-210u (CLAIMED + crash => NEEDS_VERIFICATION, never FAILED), AC-MACH-215x (no timer moves
+          NEEDS_VERIFICATION) and AC-MACH-1305 (no timer releases a brake) are each evidenced and green.
+          The exhaustive sweep proves the property structurally rather than by one hand-written case:
+          TimerFired is IN the vocabulary of M2 and M13 and is legal at NO state of either, and
+          TimerFiredToResolved is legal at no state of M7 or M9. An unreadable brake or authority store
+          reads as REFUSE, never as PERMIT.
         authority: >-
           foundational-machine-acceptance.md named anchors `AC-MACH-210u` ("`CLAIMED`+crash =>
           `NEEDS_VERIFICATION`, never `FAILED`"), `AC-MACH-215x` ("no timer moves
@@ -6838,7 +6943,14 @@ units:
         criterion: mutation_and_anti_vacuity_evidence
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Thirteen per-machine guard-mutation probes exist and are registered against assertion 1. Four
+          batteries were re-executed on this exact tree by the adjudicator: machine-population 9/9 caught,
+          AC-5 evidence 14/14 caught, and the P3 kernel battery's claim-CAS and witness mutants all caught
+          - each battery carrying an anti-vacuity control that confirms the unmutated guard stays GREEN.
+          CI additionally ran M3 9/9 and M13 18/18. Populations are discovered rather than enumerated,
+          negative assertions run over proven populations, and counting checks print their denominators.
         authority: >-
           This unit's `mutation_requirements: required` and `concurrency_requirements: required`;
           foundational-machine-acceptance.md mandatory assertion 1 (the guard-mutation probe);
@@ -6856,7 +6968,13 @@ units:
         criterion: ships_dark_no_production_enablement
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          The production GateRegistry population is proven EMPTY by a passing guard; no P6 module joins a
+          live path; the import-gate and adapter-boundary guards pass; readiness_target remains
+          LOCALLY_IMPLEMENTED and is not claimed one tier higher. The importer sweep runs over a
+          DISCOVERED denominator rather than a filename list. The deployed governed route still answers a
+          recorded ROUTE_NOT_CONFIGURED refusal.
         authority: >-
           This unit's `rollback_posture: "Ships dark."` and `rebaseline_contract.rollout_posture:
           ships dark`; implementation-roadmap.md "Deployment shape per phase: every phase ships dark
@@ -6874,7 +6992,19 @@ units:
         criterion: carried_residuals_recorded_and_nonblocking
         weight: 3
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          39 residual rows, every one carrying an ID, a finding, a disposition and a closure condition,
+          and none blocking under CLAUDE.md sec 13 - none can produce a wrong customer outcome, violate an
+          invariant, or make a later phase unsafe. Eight rows whose closure conditions are now
+          mechanically satisfied are recorded CLOSED at this adjudication rather than carried as live
+          falsehoods: P6-D66, P6-D76, P6-D78, P6-D87 and P6-D92 (each 'a CI run on this branch that
+          concludes SUCCESS' - run 34314374504 concluded SUCCESS on this exact head_sha), and P6-D81,
+          P6-D85 and P6-D91 (each 'not a defect once this landing exists' - P6-CP-11, P6-CP-12 and
+          P6-CP-13 are all in landed_checkpoints). Legitimate debt is PRESERVED rather than tidied away:
+          P6-D67 and P6-D77 were re-measured on this tree and their findings remain literally true
+          (`phase6_compensation` and `phase6_policy` each still occur ZERO times in
+          .github/workflows/ci.yml), so both stay open.
         authority: >-
           CLAUDE.md sec 13 - a finding is BLOCKING only if it can produce a wrong customer outcome,
           violate an invariant, or make a later phase unsafe; everything else is recorded, not
@@ -6910,7 +7040,17 @@ units:
         criterion: ci_green_on_the_accepted_tree
         weight: 4
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          CI run 34314374504 on branch p5/u5-1-g2-spec-correction, head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the exact accepted tree - status completed,
+          conclusion SUCCESS, run_attempt 1. 31 jobs: 30 success and 1 skipped (Risk radar, which is pull-
+          request-only). BOTH full-suite legs CONCLUDED rather than started: 10 shards on Python 3.11 and
+          10 on Python 3.12, all success; the 4 safety-invariant shards all success; the M3 probe + 9/9
+          mutation and the M13 probe + 18/18 mutation jobs success. The anti-false-green gate concluded on
+          BOTH interpreters: 'The shards are disjoint and their union IS the canonical population'. The CI
+          verdict job requires all six blocking job groups, treats `cancelled` as failure, and fails if
+          every blocking job was skipped. P6-D92's stated closure condition is thereby met.
         authority: >-
           CLAUDE.md sec 0 ("CI is the source of truth for whether the repository is green"), sec 8's
           "done" list (targeted tests run on the final tree; CI green) and sec 11's run instruction;
@@ -6932,7 +7072,15 @@ units:
         criterion: independent_phase_review_by_a_non_builder
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Supplied by this session, which is outside P6's build lineage: it did not build P6, did not
+          build any of the thirteen machines, and did not produce the AC-3/AC-4/AC-5 corrections it is
+          scoring. It reviewed the PHASE rather than one diff, and scored each criterion from evidence it
+          re-derived itself - recomputing the machine, transition, sweep and cell populations from the
+          implementation, re-running four mutation batteries, independently mutation-proving the gate-
+          confinement guard, and fetching the CI conclusion from the GitHub API rather than accepting a
+          reported figure.
         authority: >-
           CLAUDE.md sec 7 tier 1 ("builder + one focused independent review by someone who did not
           write it, before merge") and sec 10 ("Do not mark P6 COMPLETE or score a P6 acceptance
@@ -7174,6 +7322,19 @@ units:
           evidence that exists, treating the cancellations as non-product CI runtime limitations.
         severity: LOW - nonblocking
         closes_at: a CI run on this branch that concludes SUCCESS
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          Run 34314374504 on branch p5/u5-1-g2-spec-correction concluded SUCCESS on head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the accepted tree. BOTH full-suite legs CONCLUDED
+          rather than started (10 shards on py3.11 and 10 on py3.12, all success), the 4 safety-invariant
+          shards concluded, and the anti-false-green completeness proof concluded on BOTH interpreters:
+          the shards are pairwise disjoint and their union IS the canonical `pytest eval` population. The
+          CI verdict job requires every blocking job group, treats `cancelled` as failure and refuses an
+          all-skipped run. The finding above is preserved verbatim because it states what was true of run
+          33594219060 on a833074. The stated closure condition - 'a CI run on this branch that concludes
+          SUCCESS' - is now met, and the py3.11 and safety-job results this row recorded as ABSENT now
+          exist and are green.
       - id: P6-D67
         finding: >-
           CI runs NO M10 probe or mutation job. Verified mechanically at this landing: the count of
@@ -7476,6 +7637,18 @@ units:
           both cancellations as non-product CI runtime limitations.
         severity: LOW - nonblocking
         closes_at: a CI run on this branch that concludes SUCCESS
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          Run 34314374504 on branch p5/u5-1-g2-spec-correction concluded SUCCESS on head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the accepted tree. BOTH full-suite legs CONCLUDED
+          rather than started (10 shards on py3.11 and 10 on py3.12, all success), the 4 safety-invariant
+          shards concluded, and the anti-false-green completeness proof concluded on BOTH interpreters:
+          the shards are pairwise disjoint and their union IS the canonical `pytest eval` population. The
+          CI verdict job requires every blocking job group, treats `cancelled` as failure and refuses an
+          all-skipped run. The finding is preserved verbatim as the record of run 33856703548 on a861f2b.
+          Its closure condition is met: both interpreter legs, which that row recorded as having NO result
+          of either kind, now have complete green results, and M11's tests ran inside them.
       - id: P6-D77
         finding: >-
           CI runs NO M11 probe or mutation job. Verified mechanically at this landing: the count of
@@ -7520,6 +7693,20 @@ units:
           with `P6-D76`, or by adding that file to the Safety job's list, which is a CI-shape decision.
         severity: LOW - nonblocking
         closes_at: a CI run on this branch that concludes SUCCESS, or a CI-shape decision
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          Run 34314374504 on branch p5/u5-1-g2-spec-correction concluded SUCCESS on head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the accepted tree. BOTH full-suite legs CONCLUDED
+          rather than started (10 shards on py3.11 and 10 on py3.12, all success), the 4 safety-invariant
+          shards concluded, and the anti-false-green completeness proof concluded on BOTH interpreters:
+          the shards are pairwise disjoint and their union IS the canonical `pytest eval` population. The
+          CI verdict job requires every blocking job group, treats `cancelled` as failure and refuses an
+          all-skipped run. The specific shortfall this row named is discharged and was verified rather
+          than assumed: the guard it names, `test_phase0_errata_guards.py::test_typed_policy_runtime_exist
+          s_only_with_its_canonical_authority`, is present in the canonical `pytest eval` collection on
+          this tree, and the completeness proof establishes that the shards' union IS that collection - so
+          the half that had no CI result now sits inside a job that concluded SUCCESS.
       - id: P6-D79
         finding: >-
           TWO STALE HARNESS SNAPSHOTS IN THE ACCEPTED PRODUCT DRIVER RUN. (1) `protocol-resolution.json`
@@ -7587,6 +7774,15 @@ units:
           that a landing happened.
         severity: LOW - nonblocking
         closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          The stated closure condition - 'not a defect once this landing exists' - is met: `P6-CP-11` is
+          the eleventh entry in `landed_checkpoints`, so the comments and docstrings that said 'M11
+          LANDED' before the landing existed now state something TRUE of this tree. The finding is
+          preserved verbatim as the record of a claim that outran its warrant. Nothing was edited to close
+          it: the statements were always comments and docstrings, never assertions, and none appears in a
+          status authority.
       # ### THE SEVEN ROWS BELOW ARE THE P6/M12 LANDING RESIDUALS (`P6-CP-12`). None is a reviewer
       # finding - the focused independent review returned `findings: []` and `adjudications: []`.
       # Each was identified AT THE LANDING from the run's own structured evidence, the M12 source,
@@ -7667,6 +7863,13 @@ units:
           P6-D58 at M8, P6-D81 at M11, this at M12 - is itself the finding worth carrying.
         severity: LOW - nonblocking
         closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          The stated closure condition is met: `P6-CP-12` is the twelfth entry in `landed_checkpoints`, so
+          the 11 occurrences across 7 files that asserted 'M12 LANDED' or named `P6-CP-12` before the
+          landing existed now state something TRUE of this tree. The finding is preserved verbatim as the
+          record of the third recurrence of this class.
       - id: P6-D86
         finding: >-
           ### THE PRODUCT DRIVER RUN DECLARED THREE COVERAGE GAPS ABOUT ITSELF, AND THEY ARE CARRIED
@@ -7730,6 +7933,18 @@ units:
           as non-product CI runtime limitations.
         severity: LOW - nonblocking
         closes_at: a CI run on this branch that concludes SUCCESS
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          Run 34314374504 on branch p5/u5-1-g2-spec-correction concluded SUCCESS on head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the accepted tree. BOTH full-suite legs CONCLUDED
+          rather than started (10 shards on py3.11 and 10 on py3.12, all success), the 4 safety-invariant
+          shards concluded, and the anti-false-green completeness proof concluded on BOTH interpreters:
+          the shards are pairwise disjoint and their union IS the canonical `pytest eval` population. The
+          CI verdict job requires every blocking job group, treats `cancelled` as failure and refuses an
+          all-skipped run. The finding is preserved verbatim as the record of run 33948926997 on 99831ae.
+          The py3.11 leg and the fast-safety tier that this row recorded as having NO result now both
+          concluded green, and `test_phase3_schema.py` ran inside a completed shard.
       - id: P6-D88
         finding: >-
           ### THE PARTITION GUARD'S PER-TABLE CHECK ON `CURRENT.md` IS A SUBSTRING MATCH AND COULD
@@ -7842,6 +8057,15 @@ units:
           landing happened.
         severity: LOW - nonblocking
         closes_at: not a defect once this landing exists - a record of a claim that outran its warrant
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          The stated closure condition is met: `P6-CP-13` is the thirteenth entry in `landed_checkpoints`,
+          and all five statements the row names (`test_phase6_policy.py` lines 903/905/929 and
+          `test_phase6_rule.py` lines 981/1003) are TRUE on this tree. The finding is preserved verbatim
+          as the record of the FOURTH recurrence of this class, which the row itself identifies as the
+          part worth carrying; closing the row does not retire that pattern. The acceptance contract's
+          `known_open_at_instantiation` note anticipated exactly this one-line status act.
       - id: P6-D92
         finding: >-
           ### CI DID NOT CONCLUDE `SUCCESS` ON THE LANDING CANDIDATE, AND THIS IS THE WEAKEST CI
@@ -7882,6 +8106,20 @@ units:
           ### A TIME CEILING IS NOT A PRODUCT DEFECT, AND IT IS ALSO NOT A PASS.
         severity: LOW - nonblocking
         closes_at: a CI run on this branch that concludes SUCCESS
+        status: >-
+          CLOSED at the P6 phase adjudication
+        closure: >-
+          Run 34314374504 on branch p5/u5-1-g2-spec-correction concluded SUCCESS on head_sha
+          e6b1753131f33016cf7beb77206b77eaf361b89e - the accepted tree. BOTH full-suite legs CONCLUDED
+          rather than started (10 shards on py3.11 and 10 on py3.12, all success), the 4 safety-invariant
+          shards concluded, and the anti-false-green completeness proof concluded on BOTH interpreters:
+          the shards are pairwise disjoint and their union IS the canonical `pytest eval` population. The
+          CI verdict job requires every blocking job group, treats `cancelled` as failure and refuses an
+          all-skipped run. The finding is preserved verbatim as the record of run 34162327327 on 7987ef8.
+          Its closure condition is met in full: M13's own 64 tests, which that row recorded as not having
+          executed on either interpreter, ran inside completed shards on BOTH, and M13 additionally has
+          its own CI job (`P6/M13 Brake probe + mutation + P3 kernel anchors`, probe + 18/18 mutation)
+          which concluded SUCCESS. This row also gated `P6-AC-16`, which is scored PASS on the same run.
         # ### ADDED 2026-09-07 BY THE P6 ACCEPTANCE-AUTHORITY CORRECTION. NOTHING ABOVE IS EDITED:
         # the finding, the disposition and the severity are the record of the `P6-CP-13` LANDING
         # judgment and they stand unchanged. This adds the OTHER question they were never asked.
@@ -7926,7 +8164,7 @@ units:
 
   - unit_id: P7
     name: Provenance, Evidence, Observation, Claims, Identity Binding
-    status: BLOCKED
+    status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
     objective: "The 6 provenance classes, content-addressed Evidence, the deterministic linker, Conflict."
