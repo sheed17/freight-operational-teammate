@@ -690,3 +690,53 @@ def p3_human_decision(scn) -> str:
     TransactionalOutbox(scn.store.conn, tenant=scn.store.tenant).emit(env)
     scn.store.conn.commit()
     return env.event_id
+
+
+# ============================================ P6-AC-5 mandatory assertion 7 — the missing behaviour
+# `foundational-machine-acceptance.md`'s assertion 7 — "historical transitions are NEVER rewritten —
+# an append-only probe (no UPDATE/DELETE on the event/closure rows)" — had no M3 case. Shown red
+# under mutation by `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m3_a7_the_recorded_grant_history_is_append_only(tmp_path):
+    """### ASSERTION 7 — HISTORICAL TRANSITIONS ARE NEVER REWRITTEN. A grant is driven through a real
+    lifecycle so there is a history to attack, and then the history is attacked: every envelope column
+    of every emitted F3 event is UPDATEd and the rows are DELETEd, by raw SQL, going around the
+    machine entirely. Each must be refused, and the recorded stream must be byte-identical afterwards.
+
+    ### THE HISTORY OF AN EFFECT IS ITS EVENT STREAM, NOT THE GRANT ROW. `effect_grants` carries the
+    CURRENT state of a grant; what a transition RECORDED is the F3 envelope, and that is what an audit
+    reads back. A rewritable `EffectAttempted` is an external effect the ledger can be made to forget."""
+    import sqlite3
+
+    scn = kit.Scenario(tmp_path)
+    claim = scn.claimed()
+    grant_id = claim.grant_id if hasattr(claim, "grant_id") else claim
+    conn = scn.store.conn
+    rows = conn.execute(
+        "SELECT event_id, event_name, envelope_json, envelope_digest FROM event_outbox "
+        "WHERE tenant = ? AND aggregate_type = 'effect_grant' ORDER BY sequence", (T_A,)).fetchall()
+    assert len(rows) >= 2, (
+        f"the grant recorded {[r['event_name'] for r in rows]}; too little history to prove this")
+    before = [tuple(r) for r in rows]
+
+    for row in rows:
+        for column, value in (("event_name", "EffectForgotten"),
+                              ("aggregate_id", "some-other-grant"),
+                              ("producer_transition_id", "EF-9"),
+                              ("envelope_json", "{}"),
+                              ("envelope_digest", "0" * 64)):
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    f"UPDATE event_outbox SET {column} = ? WHERE tenant = ? AND event_id = ?",
+                    (value, T_A, row["event_id"]))
+            conn.rollback()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM event_outbox WHERE tenant = ? AND event_id = ?",
+                         (T_A, row["event_id"]))
+        conn.rollback()
+
+    after = [tuple(r) for r in conn.execute(
+        "SELECT event_id, event_name, envelope_json, envelope_digest FROM event_outbox "
+        "WHERE tenant = ? AND aggregate_type = 'effect_grant' ORDER BY sequence", (T_A,))]
+    assert after == before, "the recorded F3 history changed under an attempted rewrite"
+    assert grant_id

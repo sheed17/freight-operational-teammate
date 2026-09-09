@@ -265,10 +265,8 @@ def test_the_cell_population_is_proven():
         f"{len(CELLS)} cells; {expected} expected from 13 machines x 10 assertions less the "
         f"restrictions.")
     evidenced = [c for c in CELLS if c not in UNEVIDENCED]
-    assert len(evidenced) == len(CELLS) - len(UNEVIDENCED)
-    assert len(UNEVIDENCED) * 4 < len(CELLS), (
-        f"{len(UNEVIDENCED)} of {len(CELLS)} cells are unevidenced; at that share the register "
-        f"describes a gap rather than a discharge.")
+    assert len(evidenced) == len(CELLS) == 107, (
+        f"{len(evidenced)} of {len(CELLS)} cells are evidenced; every required cell must be.")
 
 
 @pytest.mark.parametrize("cell", CELLS, ids=[f"{m}:A{n}" for m, n in CELLS])
@@ -282,13 +280,14 @@ def test_every_required_cell_is_evidenced_or_a_recorded_gap(cell):
     if number == 2:
         # Served for every machine at once by the phase-wide sweep, plus the machine's own case.
         assert (TESTS_DIR / SWEEP_FILE).exists()
-    if cell in UNEVIDENCED:
-        pytest.skip(f"{machine} assertion {number}: recorded gap, see phase6_anchor_manifest."
-                    f"UNEVIDENCED")
+    # ### THERE IS NO SKIP PATH HERE ANY MORE, AND ITS ABSENCE IS THE POINT. While eleven cells were
+    # recorded gaps this branch skipped them, and a skip is silence — `test_false_green_defenses`
+    # rightly refuses an unapproved one. Every required cell now has evidence, so a cell with none is
+    # a FAILURE rather than a note.
     nodes = EVIDENCE.get(cell)
     assert nodes, (
-        f"{machine} assertion {number} has neither evidence nor a recorded gap. Every cell must be "
-        f"one or the other — silence is what P6-AC-5 failed on.")
+        f"{machine} assertion {number} has no evidence. Every required cell must name a test that "
+        f"proves it — silence is what P6-AC-5 failed on.")
     functions = _functions_in(MACHINE_FILES[machine])
     for func in nodes:
         assert func in functions, (
@@ -314,16 +313,26 @@ def test_the_phase_wide_sweep_covers_assertion_two_for_every_machine(collected_n
     assert f"{POPULATION_FILE}::test_ac_mach_000_exact_set_equality_per_machine" in collected_nodes
 
 
-def test_the_unevidenced_set_never_grows():
-    """### THE RATCHET. A cell may LEAVE `UNEVIDENCED` when real evidence lands; nothing may join it
-    without editing this number, which is a decision somebody has to make on purpose."""
-    assert len(UNEVIDENCED) <= 13, (
-        f"{len(UNEVIDENCED)} cells are recorded as unevidenced. This set is a ratchet: it shrinks as "
-        f"evidence lands and never grows.")
-    assert UNEVIDENCED <= set(CELLS), (
-        f"the gap register names cells that are not required: {sorted(UNEVIDENCED - set(CELLS))}")
-    assert not (UNEVIDENCED & set(EVIDENCE)), (
-        f"cells are both evidenced and recorded as gaps: {sorted(UNEVIDENCED & set(EVIDENCE))}")
+def test_the_unevidenced_set_is_empty_and_may_never_refill():
+    """### THE RATCHET, NOW BINDING AT ZERO. Eleven cells were once recorded as gaps; all eleven are
+    discharged by real behaviour tests. The set is asserted EMPTY rather than merely small, so a
+    future gap cannot be recorded away — it has to be closed."""
+    assert UNEVIDENCED == frozenset(), (
+        f"{sorted(UNEVIDENCED)} are recorded as unevidenced. Every required cell now has behavioural "
+        f"evidence; a new gap must be discharged, not registered.")
+    assert not (UNEVIDENCED & set(EVIDENCE))
+
+
+def test_every_required_cell_is_reachable_from_the_register():
+    """### THE GUARD MUST FAIL IF ONE OF THE NEW EVIDENCE TARGETS DISAPPEARS. Each of the 107 cells
+    resolves to something concrete: assertion 1 to its machine's guard-mutation probe, everything else
+    to named test functions in that machine's own acceptance file."""
+    unreachable = [
+        (machine, number) for machine, number in CELLS
+        if number != 1 and not EVIDENCE.get((machine, number))
+    ]
+    assert not unreachable, (
+        f"these required cells resolve to no evidence at all: {unreachable}")
 
 
 def test_no_registered_evidence_points_at_a_machine_that_is_not_its_own():

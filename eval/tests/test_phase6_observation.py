@@ -32,7 +32,9 @@ from freight_recon.observation import (  # noqa: E402
     M5Machine,
     ProcessingState,
     StateConflict,
+    Trigger,
     UnknownObservation,
+    legal_transitions,
 )
 from freight_recon.migrations.phase6_observations import (  # noqa: E402
     OBSERVATION_STATES,
@@ -757,3 +759,53 @@ def test_no_expire_or_delete_or_archive_state_exists_anywhere_in_m5():
     member of the observation state vocabulary."""
     for forbidden in ("EXPIRED", "ARCHIVED", "CORRECTED", "DELETED"):
         assert forbidden not in OBSERVATION_STATES
+
+
+# ============================================ P6-AC-5 mandatory assertion 8 — the missing behaviour
+# `foundational-machine-acceptance.md`'s assertion 8 had no M5 case: the battery proved replay
+# idempotency, which is a different property from surviving an interrupted transition. Shown red
+# under mutation by `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m5_a8_a_crash_during_a_transition_leaves_the_canonical_state(conn):
+    """### ASSERTION 8 — CRASH RECOVERY REACHES THE CANONICAL STATE. OB-2 is interrupted after its
+    row write and before `ObservationParsed` is durable (see `phase6_crash_kit`). The observation must
+    still be RECEIVED at its old version — a half-parsed observation is a fact the system believes it
+    read and never did — a fresh machine must read that, and the parse must still complete exactly
+    once, measured on a clean twin because `event_outbox` is append-only."""
+    from phase6_crash_kit import outbox_count, plant_colliding_emission
+
+    m = M5Machine(conn, tenant=TENANT)
+    observation_id = _ingest(m).observation_id
+    before = m.require(observation_id)
+    assert before.state is ProcessingState.RECEIVED
+
+    plant_colliding_emission(
+        conn, TENANT, aggregate_type="observation", aggregate_id=observation_id,
+        transition_id="OB-2", event_name="ObservationParsed")
+    outbox_before = outbox_count(conn, TENANT)
+
+    with pytest.raises(Exception) as crash:
+        m.parse(observation_id, parsed_value={"rate": 2850, "currency": "GBP"})
+    assert "already emitted" in str(crash.value), str(crash.value)
+
+    after = m.require(observation_id)
+    assert (after.state, after.version) == (before.state, before.version), (
+        f"the interrupted transition left the observation at {after.state.value} v{after.version}; "
+        f"the row was written and its event was not, which is exactly what GR-2 forbids")
+    assert outbox_count(conn, TENANT) == outbox_before, "a half-transition emitted an event"
+
+    recovered = M5Machine(conn, tenant=TENANT)
+    reread = recovered.require(observation_id)
+    assert (reread.state, reread.version) == (before.state, before.version), (
+        "a fresh machine over the same database did not read the canonical pre-crash state")
+    assert legal_transitions(reread.state, Trigger.PARSED), (
+        "the crash left the observation in a state from which parsing is no longer legal")
+
+    twin_conn = _conn()
+    twin = M5Machine(twin_conn, tenant=TENANT)
+    twin_id = _ingest(twin).observation_id
+    twin_outbox = outbox_count(twin_conn, TENANT)
+    twin.parse(twin_id, parsed_value={"rate": 2850, "currency": "GBP"})
+    assert twin.require(twin_id).state is ProcessingState.PARSED
+    assert twin.require(twin_id).version == before.version + 1
+    assert outbox_count(twin_conn, TENANT) > twin_outbox

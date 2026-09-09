@@ -939,3 +939,53 @@ def test_ddl_cross_tenant_owner_effect_and_approval_fail_closed():
 def _security(store) -> list[str]:
     return [r[0] for r in store.conn.execute(
         "SELECT event_type FROM security_events WHERE tenant=?", (TENANT,))]
+
+
+# ============================================ P6-AC-5 mandatory assertion 4 — the missing behaviour
+# `foundational-machine-acceptance.md`'s assertion 4 had no M10 case: the battery proved the commit
+# key's uniqueness, which is a different property from the INBOX key making a redelivery a no-op.
+# Shown red under mutation by `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m10_a4_a_redelivered_compensation_event_is_a_no_op_on_the_inbox_key(tmp_path):
+    """### ASSERTION 4 — DUPLICATE TRIGGERS ARE IDEMPOTENT. The F10 stream of a compensation driven
+    to VERIFIED is consumed in order, then an already-applied event is DELIVERED AGAIN. The inbox key
+    must make the second delivery a no-op: no second inbox row, no second transition, and a state and
+    version byte-identical to before it arrived. A redelivered `CompensationCompleted` that applied
+    twice would be a second compensation for one wrong effect."""
+    from freight_recon.event_envelope import EventEnvelope
+    from freight_recon.event_inbox import ConsumeOutcome, DedupInbox
+
+    store, clk = _store(tmp_path)
+    m, r, gid = _required(store, clk)
+    m = _drive_to(store, clk, m, r, gid, target="VERIFIED")
+    cid = r.compensation.compensation_id
+    conn = store.conn
+
+    stream = [EventEnvelope.from_json(x["envelope_json"]) for x in conn.execute(
+        "SELECT envelope_json FROM event_outbox WHERE tenant = ? AND aggregate_type = 'compensation' "
+        "AND aggregate_id = ? ORDER BY aggregate_version, sequence", (TENANT, cid))]
+    assert len(stream) >= 2, f"the stream is {[e.event_name for e in stream]}; too short to prove this"
+
+    inbox = DedupInbox(conn, tenant=TENANT, consumer_id="m10-compensation-a4", clock=clk,
+                       reference_resolver=m.reference_resolver)
+    for envelope in stream:
+        first = m.consume_event(envelope, inbox=inbox)
+        assert first.consume.outcome is ConsumeOutcome.APPLIED, (
+            f"{envelope.event_name} v{envelope.aggregate_version} was not applied on first delivery: "
+            f"{first.consume.outcome.name} ({first.consume.detail})")
+
+    rows_before = conn.execute("SELECT COUNT(*) FROM event_inbox").fetchone()[0]
+    before = m.require(cid)
+
+    replayed = stream[-1]
+    again = m.consume_event(replayed, inbox=inbox)
+
+    assert again.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP, (
+        f"redelivering {replayed.event_name} produced {again.consume.outcome.name}, not a no-op. The "
+        f"inbox key is what makes a redelivery harmless; without it this is a second transition.")
+    assert again.transition is None, f"a redelivery performed a transition: {again.transition}"
+    assert conn.execute("SELECT COUNT(*) FROM event_inbox").fetchone()[0] == rows_before
+    after = m.require(cid)
+    assert (after.state, after.version) == (before.state, before.version), (
+        f"a redelivered event moved the compensation {before.state.value}v{before.version} -> "
+        f"{after.state.value}v{after.version}")

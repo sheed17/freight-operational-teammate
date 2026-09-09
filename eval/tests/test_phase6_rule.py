@@ -60,14 +60,17 @@ from freight_recon.rule import (  # noqa: E402
     RuleEngineUnavailable,
     RuleState,
     RuleWillNotCompile,
+    Trigger,
     assert_reply_is_honest,
     assert_within_precedence,
     compile_candidate,
     compile_predicate_field,
     evaluate_rule,
     honest_refusal,
+    legal_transitions,
     reply_claims_enforcement,
 )
+from phase6_crash_kit import outbox_count, plant_colliding_emission  # noqa: E402
 from freight_recon.schema import (  # noqa: E402
     CANONICAL_TABLES,
     create_canonical_schema,
@@ -1011,3 +1014,90 @@ def test_the_neighbouring_machines_are_unchanged():
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "", f"a landed machine changed: {r.stdout}"
+
+
+# ==================================== P6-AC-5 mandatory assertions 5 and 8 — the missing behaviour
+# `foundational-machine-acceptance.md`'s per-machine assertions had no M12 case for terminal refusal
+# (5) or crash recovery (8). Both prove the behaviour; both are shown red under mutation by
+# `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m12_a5_a_terminal_rule_refuses_every_trigger_in_the_vocabulary():
+    """### ASSERTION 5 — TERMINAL STATES HAVE NO PROHIBITED OUTGOING TRANSITION. M12 has no reopen,
+    so a REVOKED rule must refuse the WHOLE trigger vocabulary — offered exhaustively, so a trigger
+    added tomorrow is offered too. The row may not move and no F12 contract may be emitted."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, rule_id="r1")
+    m = _m12(conn)
+    m.revoke("r1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    terminal = m.require("r1")
+    assert terminal.state is RuleState.REVOKED and terminal.is_terminal
+
+    triggers = list(Trigger)
+    assert len(triggers) >= 5, f"the vocabulary is {triggers}; the sweep would prove little"
+    emitted_before = [r[0] for r in conn.execute(
+        "SELECT event_name FROM event_outbox WHERE tenant = ? ORDER BY sequence", (TENANT,))]
+    security_before = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()[0]
+
+    for trigger in triggers:
+        with pytest.raises(IllegalTransition):
+            m.apply("r1", trigger, actor_id="po")
+        row = m.require("r1")
+        assert (row.state, row.version) == (terminal.state, terminal.version), (
+            f"{trigger.value} moved a REVOKED rule to {row.state.value} v{row.version}")
+
+    emitted_after = [r[0] for r in conn.execute(
+        "SELECT event_name FROM event_outbox WHERE tenant = ? ORDER BY sequence", (TENANT,))]
+    assert set(emitted_after[len(emitted_before):]) == {"IllegalTransitionAttempted"}, (
+        f"a refused trigger on a terminal rule emitted "
+        f"{set(emitted_after[len(emitted_before):])}")
+    security_after = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()[0]
+    assert security_after == security_before + len(triggers), (
+        f"{security_after - security_before} security records for {len(triggers)} refusals — GR-1 "
+        f"requires every illegal attempt on the audit AND security surface")
+
+
+def test_m12_a8_a_crash_during_a_transition_leaves_the_canonical_state():
+    """### ASSERTION 8 — CRASH RECOVERY REACHES THE CANONICAL STATE. RU-7 is interrupted after its
+    row write and before its event is durable. The rule must still be ACTIVE at its old version, a
+    fresh machine must read that, and the transition must still complete exactly once — measured on a
+    clean twin, because `event_outbox` is append-only and the planted row cannot be lifted."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, rule_id="r1")
+    m = _m12(conn)
+    before = m.require("r1")
+    assert before.state is RuleState.ACTIVE
+
+    plant_colliding_emission(
+        conn, TENANT, aggregate_type="rule", aggregate_id="r1",
+        transition_id="RU-7", event_name="RuleRevoked")
+    outbox_before = outbox_count(conn, TENANT)
+
+    with pytest.raises(Exception) as crash:
+        m.revoke("r1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    assert "already emitted" in str(crash.value), str(crash.value)
+
+    after = m.require("r1")
+    assert (after.state, after.version) == (before.state, before.version), (
+        f"the interrupted transition left the rule at {after.state.value} v{after.version}; the row "
+        f"was written and its event was not, which is exactly what GR-2 forbids")
+    assert outbox_count(conn, TENANT) == outbox_before, "a half-transition emitted an event"
+
+    recovered = M12Machine(conn, tenant=TENANT, clock=CLOCK)
+    reread = recovered.require("r1")
+    assert (reread.state, reread.version) == (before.state, before.version), (
+        "a fresh machine over the same database did not read the canonical pre-crash state")
+    assert legal_transitions(reread.state, Trigger.HUMAN_REVOKED), (
+        "the crash left the rule in a state from which the transition is no longer legal")
+
+    twin_conn = _conn()
+    _human(twin_conn, "po")
+    _activate(twin_conn, rule_id="r1")
+    twin = _m12(twin_conn)
+    twin_outbox = outbox_count(twin_conn, TENANT)
+    result = twin.revoke("r1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    assert result.to_state is RuleState.REVOKED
+    assert twin.require("r1").version == before.version + 1, (
+        "the uninterrupted transition did not advance the version by exactly one")
+    assert outbox_count(twin_conn, TENANT) > twin_outbox

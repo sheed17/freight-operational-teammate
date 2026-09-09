@@ -34,6 +34,7 @@ from freight_recon.brake import (  # noqa: E402
     BrakeStoreUnreachable,
 )
 from freight_recon.brake_lifecycle import BrakeMachine, BrakeRefused  # noqa: E402
+from phase6_crash_kit import outbox_count, plant_colliding_emission  # noqa: E402
 from freight_recon.event_contracts import CONTRACTS  # noqa: E402
 from freight_recon.migrations.phase6_brakes import (  # noqa: E402
     P6BR_EXEMPT_TABLES,
@@ -807,3 +808,101 @@ def test_section_41_acceptance_items_are_covered():
     }
     missing = [item for item, fn in coverage.items() if not hasattr(module, fn)]
     assert missing == [], f"machine §41 acceptance items missing a test: {missing}"
+
+
+# ==================================== P6-AC-5 mandatory assertions 5 and 8 — the missing behaviour
+# `foundational-machine-acceptance.md`'s per-machine assertions had no M13 case for terminal refusal
+# (5) or crash recovery (8). Both prove the behaviour; both are shown red under mutation by
+# `scripts/mutate_phase6_ac5_evidence.py`.
+
+def _engaged(conn):
+    """One ACTIVE tenant brake, engaged by a recorded human. Returns (machine, brake_id)."""
+    _human(conn, "human-hank")
+    machine = _machine(conn)
+    status = machine.engage_brake(tenant=TENANT, actor="human-hank", actor_class="human",
+                                  reason="tms drifting", action_class=None)
+    return machine, status.brake_id
+
+
+def _brake_row(conn, brake_id):
+    return dict(conn.execute(
+        "SELECT state, brake_version, released_by, release_decision_ref FROM brakes "
+        "WHERE tenant = ? AND brake_id = ?", (TENANT, brake_id)).fetchone())
+
+
+def test_m13_a5_a_released_brake_refuses_every_lifecycle_transition():
+    """### ASSERTION 5 — TERMINAL STATES HAVE NO PROHIBITED OUTGOING TRANSITION. `RELEASED` is M13's
+    only terminal state and a brake has no reopen: BR-2 widen, BR-3 narrow and BR-4 release must each
+    be refused on it, the row must not move, and nothing may be emitted. A released brake that could
+    be re-released or re-widened would be a second brake_version for a brake nobody engaged."""
+    conn = _conn()
+    machine, brake_id = _engaged(conn)
+    machine.release_brake(tenant=TENANT, brake_id=brake_id, actor="human-hank",
+                          actor_class="human", decision_ref="decision:closed",
+                          evidence=_evidence())
+    terminal = _brake_row(conn, brake_id)
+    assert terminal["state"] == "RELEASED"
+    outbox_before = outbox_count(conn, TENANT)
+
+    attempts = {
+        "BR-2 widen": lambda: machine.widen_brake(
+            tenant=TENANT, brake_id=brake_id, actor="human-hank", actor_class="human"),
+        "BR-3 narrow": lambda: machine.narrow_brake(
+            tenant=TENANT, brake_id=brake_id, actor="human-hank", actor_class="human",
+            to_action_class="raise_invoice", decision_ref="decision:narrow"),
+        "BR-4 release": lambda: machine.release_brake(
+            tenant=TENANT, brake_id=brake_id, actor="human-hank", actor_class="human",
+            decision_ref="decision:again", evidence=_evidence()),
+    }
+    for label, attempt in attempts.items():
+        with pytest.raises(BrakeError) as refused:
+            attempt()
+        assert "RELEASED" in str(refused.value), f"{label}: {refused.value}"
+        assert _brake_row(conn, brake_id) == terminal, f"{label} moved a RELEASED brake"
+
+    assert outbox_count(conn, TENANT) == outbox_before, (
+        "a refused transition on a RELEASED brake emitted an event")
+
+
+def test_m13_a8_a_crash_during_release_leaves_the_brake_engaged():
+    """### ASSERTION 8 — CRASH RECOVERY REACHES THE CANONICAL STATE, AND FOR A BRAKE THE CANONICAL
+    STATE IS THE SAFE ONE. BR-4 is interrupted after its row write and before `BrakeReleased` is
+    durable. A brake that a crash could clear is the most dangerous defect this phase can ship: the
+    row must still read ACTIVE at its old `brake_version`, a fresh `BrakeStore` over the same
+    database must see an ACTIVE brake, and the release must still be performable exactly once
+    afterwards — measured on a clean twin, because `event_outbox` is append-only."""
+    conn = _conn()
+    machine, brake_id = _engaged(conn)
+    before = _brake_row(conn, brake_id)
+    assert before["state"] == "ACTIVE"
+
+    plant_colliding_emission(
+        conn, TENANT, aggregate_type="brake", aggregate_id=brake_id,
+        transition_id="BR-4", event_name="BrakeReleased")
+    outbox_before = outbox_count(conn, TENANT)
+
+    with pytest.raises(Exception) as crash:
+        machine.release_brake(tenant=TENANT, brake_id=brake_id, actor="human-hank",
+                              actor_class="human", decision_ref="decision:closed",
+                              evidence=_evidence())
+    assert "already emitted" in str(crash.value), str(crash.value)
+
+    assert _brake_row(conn, brake_id) == before, (
+        "an interrupted release moved the brake row. A brake whose release is half-applied is a "
+        "brake that a crash can clear.")
+    assert outbox_count(conn, TENANT) == outbox_before, "a half-release emitted BrakeReleased"
+
+    recovered = BrakeStore(conn, clock=lambda: FIXED)
+    status = recovered.status(tenant=TENANT, brake_id=brake_id)
+    assert status.state == "ACTIVE" and status.brake_version == before["brake_version"], (
+        f"a fresh store read {status.state} v{status.brake_version} after the crash, not the "
+        f"canonical ACTIVE v{before['brake_version']}")
+
+    twin_conn = _conn()
+    twin, twin_id = _engaged(twin_conn)
+    twin_outbox = outbox_count(twin_conn, TENANT)
+    released = twin.release_brake(tenant=TENANT, brake_id=twin_id, actor="human-hank",
+                                  actor_class="human", decision_ref="decision:closed",
+                                  evidence=_evidence())
+    assert released.state == "RELEASED"
+    assert outbox_count(twin_conn, TENANT) > twin_outbox

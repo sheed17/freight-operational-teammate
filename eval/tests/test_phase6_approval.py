@@ -695,3 +695,100 @@ def test_terminal_states_are_final_by_trigger(tmp_path, state):
         "'t','t')")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("UPDATE approvals SET state='REQUESTED', version=2 WHERE approval_id='a'")
+
+
+# ============================================ P6-AC-5 mandatory assertion 7 — the missing behaviour
+# `foundational-machine-acceptance.md`'s assertion 7 — "historical transitions are NEVER rewritten —
+# an append-only probe (no UPDATE/DELETE on the event/closure rows)" — had no M4 case. Shown red
+# under mutation by `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m4_a7_a_consumed_approval_and_its_history_are_append_only(tmp_path):
+    """### ASSERTION 7 — HISTORICAL TRANSITIONS ARE NEVER REWRITTEN, ON BOTH ROWS THE ASSERTION NAMES.
+
+    An approval is driven to CONSUMED so there is a closure to attack, and then both halves are
+    attacked by raw SQL, around the machine:
+
+      * the CLOSURE row — `approvals` — may not be re-decided out of its terminal state, may not have
+        its identity (the commit key, the action class, the gate decision) rewritten, and may not be
+        deleted. A consumed approval whose commit key could be edited is a human consent retargeted
+        onto an effect nobody agreed to.
+      * the EVENT rows — the F4 envelopes this approval emitted — may not be rewritten or deleted.
+
+    Every attempt must be refused and both must be byte-identical afterwards."""
+    scn = Scn(tmp_path)
+    scn.request_and_grant()
+    conn = scn.store.conn
+
+    # ### THE IDENTITY IS PROBED WHILE THE APPROVAL IS STILL LIVE, AND THAT IS DELIBERATE. On a
+    # terminal approval `trg_approvals_terminal_is_final` refuses EVERY update, so it would mask the
+    # identity trigger and a probe there would pass even with identity immutability removed. GRANTED
+    # is non-terminal, so what refuses these writes is identity immutability itself — a consent whose
+    # commit key could be edited is a consent retargeted onto an effect nobody agreed to.
+    assert scn.m4.require("ap-1").state is ApprovalState.GRANTED
+    live_before = tuple(conn.execute(
+        "SELECT * FROM approvals WHERE tenant = ? AND approval_id = ?", (p3.T_A, "ap-1")).fetchone())
+    for column, value in (("commit_key", "some-other-effect"), ("action_class", "cancel_load"),
+                          ("gate_decision", "AUTONOMOUS_WITHIN_CAPS")):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                f"UPDATE approvals SET {column} = ?, version = version + 1 "
+                f"WHERE tenant = ? AND approval_id = ?", (value, p3.T_A, "ap-1"))
+        conn.rollback()
+    assert tuple(conn.execute(
+        "SELECT * FROM approvals WHERE tenant = ? AND approval_id = ?",
+        (p3.T_A, "ap-1")).fetchone()) == live_before, "a live approval's identity was rewritten"
+
+    outcome = scn.mint("ap-1")
+    scn.m4.consume(outcome.handle, scn.params(), approval_id="ap-1")
+    assert scn.m4.require("ap-1").state is ApprovalState.CONSUMED
+
+    closure_before = tuple(conn.execute(
+        "SELECT * FROM approvals WHERE tenant = ? AND approval_id = ?", (p3.T_A, "ap-1")).fetchone())
+
+    # ### THE REWRITE ADVANCES THE VERSION, AND THAT IS THE POINT. `trg_approvals_version_advances_
+    # by_one` refuses ANY update that leaves the version standing still, so a naive probe is refused
+    # by the OCC trigger and never reaches the question assertion 7 asks. Advancing the version
+    # satisfies that trigger, so what refuses these writes is terminal-finality and identity
+    # immutability — the properties actually under test.
+    for column, value in (("state", "REQUESTED"), ("commit_key", "some-other-effect"),
+                          ("action_class", "cancel_load"),
+                          ("gate_decision", "AUTONOMOUS_WITHIN_CAPS"),
+                          ("granted_by", "someone-else")):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                f"UPDATE approvals SET {column} = ?, version = version + 1 "
+                f"WHERE tenant = ? AND approval_id = ?", (value, p3.T_A, "ap-1"))
+        conn.rollback()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM approvals WHERE tenant = ? AND approval_id = ?", (p3.T_A, "ap-1"))
+    conn.rollback()
+
+    assert tuple(conn.execute(
+        "SELECT * FROM approvals WHERE tenant = ? AND approval_id = ?",
+        (p3.T_A, "ap-1")).fetchone()) == closure_before, "the closure row changed under a rewrite"
+
+    # The event rows: this approval's recorded history.
+    events = conn.execute(
+        "SELECT event_id, event_name, envelope_json, envelope_digest FROM event_outbox "
+        "WHERE tenant = ? AND aggregate_type = 'approval' ORDER BY sequence", (p3.T_A,)).fetchall()
+    assert len(events) >= 2, (
+        f"the approval recorded {[e['event_name'] for e in events]}; too little history to prove this")
+    history_before = [tuple(e) for e in events]
+
+    for event in events:
+        for column, value in (("event_name", "ApprovalForgotten"), ("producer_transition_id", "AP-9"),
+                              ("envelope_json", "{}"), ("envelope_digest", "0" * 64)):
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    f"UPDATE event_outbox SET {column} = ? WHERE tenant = ? AND event_id = ?",
+                    (value, p3.T_A, event["event_id"]))
+            conn.rollback()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM event_outbox WHERE tenant = ? AND event_id = ?",
+                         (p3.T_A, event["event_id"]))
+        conn.rollback()
+
+    assert [tuple(e) for e in conn.execute(
+        "SELECT event_id, event_name, envelope_json, envelope_digest FROM event_outbox "
+        "WHERE tenant = ? AND aggregate_type = 'approval' ORDER BY sequence",
+        (p3.T_A,))] == history_before, "the recorded F4 history changed under an attempted rewrite"

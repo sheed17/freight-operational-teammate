@@ -198,6 +198,7 @@ EVIDENCE: dict[tuple[str, int], tuple[str, ...]] = {
     ("M3", 3): ("test_a_replayed_handle_second_claim_matches_zero_rows",),
     ("M3", 4): ("test_redelivery_of_a_consumed_event_is_idempotent",),
     ("M3", 5): ("test_the_terminal_set_is_exactly_the_four_and_unknown_is_not_among_them",),
+    ("M3", 7): ("test_m3_a7_the_recorded_grant_history_is_append_only",),
     ("M3", 8): ("test_a_restart_after_the_claim_re_executes_nothing_exactly_one_EffectAttempted",
                 "test_a_timeout_crash_or_lost_response_is_UNKNOWN_never_FAILED"),
     ("M3", 10): ("test_a_claim_never_transitions_another_tenants_grant",
@@ -207,6 +208,7 @@ EVIDENCE: dict[tuple[str, int], tuple[str, ...]] = {
     ("M4", 3): ("test_replayed_transport_token_is_refused",),
     ("M4", 4): ("test_double_tap_is_idempotent_not_an_error",),
     ("M4", 5): ("test_a_terminal_approval_stays_terminal",),
+    ("M4", 7): ("test_m4_a7_a_consumed_approval_and_its_history_are_append_only",),
     ("M4", 8): ("test_approval_after_unknown_attempt_is_not_reusable",
                 "test_frozen_reconstructed_from_positive_evidence"),
     ("M4", 10): ("test_tenant_isolation_no_cross_tenant_read",),
@@ -218,6 +220,7 @@ EVIDENCE: dict[tuple[str, int], tuple[str, ...]] = {
     ("M5", 5): ("test_bound_can_be_superseded_but_supersession_is_terminal",),
     ("M5", 7): ("test_raw_value_is_immutable", "test_no_deletion_of_an_observation",
                 "test_superseded_observation_is_retained"),
+    ("M5", 8): ("test_m5_a8_a_crash_during_a_transition_leaves_the_canonical_state",),
     ("M5", 10): ("test_cross_tenant_same_external_id_no_collision",
                  "test_a_natural_key_is_scoped_to_its_tenant"),
     # ---- M6 Identity Binding Claim
@@ -266,6 +269,7 @@ EVIDENCE: dict[tuple[str, int], tuple[str, ...]] = {
     # ---- M10 Compensation
     ("M10", 2): ("test_ac_mach_1007_cm_failed_non_terminal",),
     ("M10", 3): ("test_a_stale_or_wrong_commit_key_approval_is_refused",),
+    ("M10", 4): ("test_m10_a4_a_redelivered_compensation_event_is_a_no_op_on_the_inbox_key",),
     ("M10", 5): ("test_completed_is_the_only_terminal_state",),
     ("M10", 7): ("test_a_compensation_row_cannot_be_deleted",
                  "test_exposure_survives_into_compensation_failed_and_not_possible"),
@@ -275,41 +279,48 @@ EVIDENCE: dict[tuple[str, int], tuple[str, ...]] = {
     ("M11", 2): ("test_automation_and_retry_and_timer_cannot_activate_a_policy",),
     ("M11", 3): ("test_occ_version_advances_by_one_per_transition",
                  "test_a_stale_policy_version_grant_claim_is_refused"),
+    ("M11", 4): ("test_m11_a4_a_redelivered_policy_event_is_a_no_op_on_the_inbox_key",),
+    ("M11", 5): ("test_m11_a5_a_terminal_policy_refuses_every_trigger_in_the_vocabulary",),
     ("M11", 7): ("test_retention_supersession_is_permanent_and_immutable_and_undeletable",
                  "test_a_policy_is_never_retroactive_the_old_version_keeps_its_own_version"),
+    ("M11", 8): ("test_m11_a8_a_crash_during_a_transition_leaves_the_canonical_state",),
     ("M11", 10): ("test_the_same_scope_is_active_in_two_tenants_without_collision",
                   "test_a_cross_tenant_activator_or_author_fails_closed"),
     # ---- M12 Rule
     ("M12", 2): ("test_model_cannot_activate_a_rule", "test_a_model_cannot_confirm_a_rule"),
     ("M12", 3): ("test_occ_version_advances_by_one_per_transition",),
     ("M12", 4): ("test_re_activating_an_active_version_is_a_no_op",),
+    ("M12", 5): ("test_m12_a5_a_terminal_rule_refuses_every_trigger_in_the_vocabulary",),
     ("M12", 7): ("test_retention_is_permanent_and_immutable_and_undeletable",
                  "test_a_compiled_predicate_is_frozen_after_it_leaves_proposed"),
+    ("M12", 8): ("test_m12_a8_a_crash_during_a_transition_leaves_the_canonical_state",),
     ("M12", 10): ("test_the_same_scope_and_kind_is_active_in_two_tenants_without_collision",
                   "test_a_cross_tenant_activator_or_author_fails_closed"),
     # ---- M13 Brake
     ("M13", 2): ("test_no_timer_can_move_a_brake", "test_a_model_may_never_engage_narrow_or_release"),
     ("M13", 3): ("test_stale_grant_after_release_is_refused",),
     ("M13", 4): ("test_the_signal_count_rises_on_repeated_engagement_by_row",),
+    ("M13", 5): ("test_m13_a5_a_released_brake_refuses_every_lifecycle_transition",),
     ("M13", 7): ("test_a_brake_row_is_never_deleted", "test_the_platform_brake_row_is_never_deleted"),
+    ("M13", 8): ("test_m13_a8_a_crash_during_release_leaves_the_brake_engaged",),
     ("M13", 10): ("test_a_releaser_from_another_tenant_is_refused", "test_brakes_is_tenant_first"),
 }
 
-# ### THE GAP, NAMED RATHER THAN HIDDEN. These `(machine, assertion)` cells are required by the
-# authority and have NO existing evidence this register could honestly point at. Writing a test to
-# make the id appear is exactly what the acceptance review forbids, so they are recorded instead, and
-# `test_the_unevidenced_set_never_grows` makes this a RATCHET: a cell may leave this set when real
-# evidence lands, and nothing may join it.
-UNEVIDENCED: frozenset[tuple[str, int]] = frozenset({
-    ("M3", 7),    # no append-only probe on the grant ledger's history rows.
-    ("M4", 7),    # no append-only probe on the approval/closure rows.
-    ("M5", 8),    # M5 has replay idempotency but no crash-recovery case.
-    ("M10", 4),   # no inbox-key redelivery no-op case for M10.
-    ("M11", 4),   # no inbox-key redelivery no-op case for M11.
-    ("M11", 5),   # no "terminal policy version refuses every trigger" case.
-    ("M11", 8),   # replay is covered; crash recovery to the canonical state is not.
-    ("M12", 5),   # no "terminal rule version refuses every trigger" case.
-    ("M12", 8),   # replay is covered; crash recovery to the canonical state is not.
-    ("M13", 5),   # no "RELEASED refuses every trigger" case.
-    ("M13", 8),   # no crash-recovery case for the brake row.
-})
+# ### THE GAP IS CLOSED. Eleven `(machine, assertion)` cells were required by the authority and had
+# no evidence this register could honestly point at. They are now discharged by REAL BEHAVIOUR TESTS
+# — four families, eleven cases — and this set is EMPTY:
+#
+#   append-only history   M3 assertion 7, M4 assertion 7
+#   inbox idempotency     M10 assertion 4, M11 assertion 4
+#   terminal refusal      M11 assertion 5, M12 assertion 5, M13 assertion 5
+#   crash recovery        M5 assertion 8, M11 assertion 8, M12 assertion 8, M13 assertion 8
+#
+# Not one of them was closed by adding an anchor id to a docstring, by pointing at an unrelated test,
+# or by asserting implementation data against itself: each drives its machine and asserts the
+# behaviour the acceptance file names, and `scripts/mutate_phase6_ac5_evidence.py` shows each family
+# going red when the behaviour it protects is removed.
+#
+# ### THE RATCHET STILL BINDS, AND IT NOW BINDS AT ZERO. A cell may never join this set:
+# `test_the_unevidenced_set_never_grows` requires it to stay empty, so a future gap has to be
+# discharged rather than recorded.
+UNEVIDENCED: frozenset[tuple[str, int]] = frozenset()

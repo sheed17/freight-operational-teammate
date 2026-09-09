@@ -41,15 +41,19 @@ from freight_recon.migrations.phase6_policies import (  # noqa: E402
 )
 from freight_recon.policy import (  # noqa: E402
     TRANSITIONS,
+    IllegalTransition,
     M11Machine,
     PolicyEngineUnavailable,
     PolicyEvaluationInputs,
     PolicyState,
     PredicateWillNotCompile,
+    Trigger,
     compile_predicate,
+    legal_transitions,
     gate_rank,
     narrows_or_holds,
 )
+from phase6_crash_kit import outbox_count, plant_colliding_emission  # noqa: E402
 from freight_recon.schema import (  # noqa: E402
     CANONICAL_TABLES,
     create_canonical_schema,
@@ -936,3 +940,144 @@ def test_the_neighbouring_machines_are_unchanged():
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == "", f"a landed machine changed: {r.stdout}"
+
+
+# ================================ P6-AC-5 mandatory assertions 4, 5 and 8 — the missing behaviour
+# `foundational-machine-acceptance.md`'s per-machine assertions had no M11 case for the inbox key
+# (4), for terminal refusal (5) or for crash recovery (8). These three prove the behaviour itself;
+# none of them asserts a constant, and each is shown red under mutation by
+# `scripts/mutate_phase6_ac5_evidence.py`.
+
+def test_m11_a4_a_redelivered_policy_event_is_a_no_op_on_the_inbox_key():
+    """### ASSERTION 4 — DUPLICATE TRIGGERS ARE IDEMPOTENT. The whole F11 stream is consumed in
+    order, then one already-applied event is DELIVERED AGAIN. The inbox key must make the second
+    delivery a no-op: no second inbox row, no second transition, and a state and version that are
+    byte-identical to before it arrived."""
+    from freight_recon.event_inbox import ConsumeOutcome, DedupInbox
+
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="p1")
+    m = _m11(conn)
+    stream = [EventEnvelope.from_json(r["envelope_json"]) for r in conn.execute(
+        "SELECT envelope_json FROM event_outbox WHERE tenant = ? AND aggregate_type = 'policy' "
+        "AND aggregate_id = 'p1' ORDER BY aggregate_version, sequence", (TENANT,))]
+    assert len(stream) >= 4, f"the stream is {[e.event_name for e in stream]}; too short to prove this"
+
+    inbox = DedupInbox(conn, tenant=TENANT, consumer_id="m11-policy-a4", clock=CLOCK,
+                       reference_resolver=m.reference_resolver)
+    for envelope in stream:
+        first = m.consume_event(envelope, inbox=inbox)
+        assert first.consume.outcome is ConsumeOutcome.APPLIED, (
+            f"{envelope.event_name} v{envelope.aggregate_version} was not applied on first delivery: "
+            f"{first.consume.outcome.name} ({first.consume.detail})")
+
+    rows_before = conn.execute("SELECT COUNT(*) FROM event_inbox").fetchone()[0]
+    before = m.require("p1")
+    assert rows_before == len(stream)
+
+    replayed = stream[-2]
+    again = m.consume_event(replayed, inbox=inbox)
+
+    assert again.consume.outcome is ConsumeOutcome.DUPLICATE_NOOP, (
+        f"redelivering {replayed.event_name} produced {again.consume.outcome.name}, not a no-op. The "
+        f"inbox key is what makes a redelivery harmless; without it this is a second transition.")
+    assert again.transition is None, f"a redelivery performed a transition: {again.transition}"
+    assert conn.execute("SELECT COUNT(*) FROM event_inbox").fetchone()[0] == rows_before
+    after = m.require("p1")
+    assert (after.state, after.version) == (before.state, before.version), (
+        f"a redelivered event moved the policy {before.state.value}v{before.version} -> "
+        f"{after.state.value}v{after.version}")
+
+
+def test_m11_a5_a_terminal_policy_refuses_every_trigger_in_the_vocabulary():
+    """### ASSERTION 5 — TERMINAL STATES HAVE NO PROHIBITED OUTGOING TRANSITION. M11 has no reopen
+    (that is WI-13, M1's alone), so a REVOKED policy must refuse the WHOLE trigger vocabulary. Every
+    trigger is offered, not a chosen few, so a new trigger added tomorrow is offered too."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="p1")
+    m = _m11(conn)
+    m.revoke("p1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    terminal = m.require("p1")
+    assert terminal.state is PolicyState.REVOKED and terminal.is_terminal
+
+    triggers = list(Trigger)
+    assert len(triggers) >= 5, f"the vocabulary is {triggers}; the sweep would prove little"
+    events_before = conn.execute(
+        "SELECT COUNT(*) FROM event_outbox WHERE tenant = ?", (TENANT,)).fetchone()[0]
+    security_before = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()[0]
+
+    for trigger in triggers:
+        with pytest.raises(IllegalTransition):
+            m.apply("p1", trigger, actor_id="po")
+        row = m.require("p1")
+        assert (row.state, row.version) == (terminal.state, terminal.version), (
+            f"{trigger.value} moved a REVOKED policy to {row.state.value} v{row.version}")
+
+    # ### THE ONLY EVENTS A REFUSAL MAY EMIT ARE THE F14 REFUSALS THEMSELVES. GR-1 requires the
+    # attempt on the audit surface, so the outbox DOES grow — by `IllegalTransitionAttempted` and
+    # nothing else. A terminal policy that emitted an F11 contract would be a state change.
+    emitted = [r[0] for r in conn.execute(
+        "SELECT event_name FROM event_outbox WHERE tenant = ? ORDER BY sequence", (TENANT,))]
+    assert set(emitted[events_before:]) == {"IllegalTransitionAttempted"}, (
+        f"a refused trigger on a terminal policy emitted {set(emitted[events_before:])}")
+    assert len(emitted) - events_before == len(triggers)
+    security_after = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()[0]
+    assert security_after == security_before + len(triggers), (
+        f"{security_after - security_before} security records for {len(triggers)} refusals — GR-1 "
+        f"requires every illegal attempt on the audit AND security surface")
+
+
+def test_m11_a8_a_crash_during_a_transition_leaves_the_canonical_state():
+    """### ASSERTION 8 — CRASH RECOVERY REACHES THE CANONICAL STATE. PO-6 is interrupted after its
+    row write and before its event is durable (see `phase6_crash_kit`). Neither half may survive: the
+    policy must still be ACTIVE at its old version, and a FRESH machine over the same database must
+    read that state rather than a half-applied one.
+
+    ### THE RETRY IS PROVED ON A CLEAN TWIN, AND THAT IS FORCED RATHER THAN CHOSEN. `event_outbox` is
+    append-only — no DELETE, and `idempotency_identity` is immutable — so the planted row cannot be
+    lifted afterwards, and a retry on this database would collide with the scaffolding rather than
+    with anything real. The twin is the same fixture built the same way, so "the transition still
+    completes exactly once" is measured against a machine in the same state."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="p1")
+    m = _m11(conn)
+    before = m.require("p1")
+    assert before.state is PolicyState.ACTIVE
+
+    plant_colliding_emission(
+        conn, TENANT, aggregate_type="policy", aggregate_id="p1",
+        transition_id="PO-6", event_name="PolicyRevoked")
+    outbox_before = outbox_count(conn, TENANT)
+
+    with pytest.raises(Exception) as crash:
+        m.revoke("p1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    assert "already emitted" in str(crash.value), str(crash.value)
+
+    after = m.require("p1")
+    assert (after.state, after.version) == (before.state, before.version), (
+        f"the interrupted transition left the policy at {after.state.value} v{after.version}; the row "
+        f"was written and its event was not, which is exactly what GR-2 forbids")
+    assert outbox_count(conn, TENANT) == outbox_before, "a half-transition emitted an event"
+
+    recovered = M11Machine(conn, tenant=TENANT, clock=CLOCK,
+                           product_ceiling=GateDecision.HUMAN_APPROVAL_REQUIRED)
+    reread = recovered.require("p1")
+    assert (reread.state, reread.version) == (before.state, before.version), (
+        "a fresh machine over the same database did not read the canonical pre-crash state")
+    assert legal_transitions(reread.state, Trigger.REVOKED), (
+        "the crash left the policy in a state from which the transition is no longer legal")
+
+    twin_conn = _conn()
+    _human(twin_conn, "po")
+    _activate(twin_conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED,
+              policy_id="p1")
+    twin = _m11(twin_conn)
+    twin_outbox = outbox_count(twin_conn, TENANT)
+    result = twin.revoke("p1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    assert result.to_state is PolicyState.REVOKED
+    assert twin.require("p1").version == before.version + 1, (
+        "the uninterrupted transition did not advance the version by exactly one")
+    assert outbox_count(twin_conn, TENANT) > twin_outbox
