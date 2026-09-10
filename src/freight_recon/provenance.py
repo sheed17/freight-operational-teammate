@@ -41,7 +41,7 @@ Phase-7 tests reach it.
 from __future__ import annotations
 
 import enum
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 # ### THE ONE CLASS AUTHORITY AND THE ONE GATE-READ EXCEPTION — the kernel's, reused.
@@ -209,16 +209,40 @@ def derive_through(source: object, path: str) -> ProvenanceClass:
     return carry(source)
 
 
-def reassign(old: object, new: object, *, authenticated_human_act: bool = False) -> ProvenanceClass:
+# The registered F14 audit/security contract for a refused strengthening (events/registry.md sec F14).
+# Its EMISSION half was scoped to P7; the REFUSAL below is the safety, and this is its audit trail.
+# A NAME already in the frozen 105-event registry — this mints no new contract.
+F14_PROVENANCE_STRENGTHENING = "ProvenanceStrengtheningAttempted"
+
+
+def provenance_strengthening_event(old: object, new: object) -> dict:
+    """The registered F14 `ProvenanceStrengtheningAttempted` record for a refused laundering attempt.
+    A dict, not a minted contract — the caller's security-event sink routes it (log + alert)."""
+    return {
+        "event": F14_PROVENANCE_STRENGTHENING,
+        "family": "F14",
+        "from_class": as_class(old).value,
+        "to_class": as_class(new).value,
+    }
+
+
+def reassign(old: object, new: object, *, authenticated_human_act: bool = False,
+             on_strengthening_attempt: "Callable[[dict], None] | None" = None) -> ProvenanceClass:
     """R-P2: return the reassigned provenance class, or REFUSE. Weakening (to an equal or lower-trust
     class) is always allowed. STRENGTHENING is refused as laundering — the ONE exception is a new
     authenticated human act, which creates an `OWNER_ASSERTED` claim (superseding and retaining the
-    old). No mechanical route ever strengthens, and no human act produces a machine class."""
+    old). No mechanical route ever strengthens, and no human act produces a machine class.
+
+    When a strengthening is refused, the registered F14 `ProvenanceStrengtheningAttempted` event is
+    handed to `on_strengthening_attempt` if one is supplied — the audit trail of the refusal, emitted
+    through the caller's security-event sink (this module mints no gate and opens no transport)."""
     old_c, new_c = as_class(old), as_class(new)
     if not is_stronger(new_c, old_c):
         return new_c  # weakening or unchanged — provenance may always be weakened
     if authenticated_human_act and new_c is ProvenanceClass.OWNER_ASSERTED:
         return new_c  # the sole strengthening route: a NEW human assertion
+    if on_strengthening_attempt is not None:
+        on_strengthening_attempt(provenance_strengthening_event(old_c, new_c))
     raise ProvenanceLaundering(
         f"refusing to strengthen provenance {old_c.value} -> {new_c.value}: the only strengthening "
         f"route is a new authenticated human act creating an OWNER_ASSERTED claim (R-P2). A guess "
