@@ -8198,6 +8198,596 @@ units:
       observability_requirements: [provenance-violation detection, conflict queue depth]
       security_requirements: ["the knowledge-base tenant='default' finding closes here", evidence content-addressed and tenant-scoped]
       readiness_target: LOCALLY_IMPLEMENTED
+    # ------------------------------------------------------------- P7 phase acceptance contract
+    # ### INSTANTIATED UNDER THE CURRENT ACCEPTANCE MODEL, BY FOUNDER/ARCHITECT DECISION.
+    # ### WHAT THIS RECORD FIXES. Until this commit P7 carried an `acceptance_contract` string
+    # ("AC-SAFE-015, AC-SAFE-016; gate G1") and NO explicit `acceptance_criteria` block, while
+    # meta.status_model.phase_acceptance.instantiability requires one before a phase may be
+    # proposed for acceptance. A hardened Product Driver run detected exactly that AUTHORITY_GAP.
+    # A phase with nothing to evaluate cannot be accepted AND cannot be REFUSED - the half that
+    # actually costs something - so this is a control-system hole rather than a strict bar, and it
+    # is the same class of defect as a guard that passes over an empty population (CLAUDE.md sec 6).
+    # It is resolved BEFORE P7 is built, so the bar exists before the work that must clear it.
+    # ### THIS INSTANTIATES A BAR FROM EXISTING AUTHORITY. IT AUTHORISES NO NEW PRODUCT
+    # REQUIREMENT. Every criterion below is DERIVED from an authority that is current at this
+    # commit, and every one cites it. A candidate criterion with no current authority behind it was
+    # DROPPED rather than justified. Where current authority records a freight rule as unresolved -
+    # ADR-007 sec 15 Q1 (which deterministic identity rules are registered) and Q2 (which conflict-
+    # resolution rules are registered) are both `NEEDS VALIDATION` - the criterion accepts the
+    # MECHANISM and explicitly may not invent the rule set (CLAUDE.md sec 4 rule 18, sec 5).
+    # ### THE RETIRED CEREMONY IS NOT REVIVED. `canonical_finalizer`, `clean_clone_execution`,
+    # PROGRAM-WEIGHTS.yaml's acceptance_template, BUILD-STATUS.yaml, PROGRESS-PROTOCOL.md, the
+    # committed suite/clean-clone receipts, the two-commit content+metadata convention and the chain
+    # of adjudicating sessions were deleted at d1d2e39 and STAY deleted. No criterion here requires
+    # any of them, and their absence is deliberate rather than an omission. The one review
+    # requirement that survived is CLAUDE.md sec 7's: ONE focused independent review by someone who
+    # did not write it, and a PHASE acceptance is the one place that requirement is about a phase
+    # rather than a diff (CLAUDE.md sec 10). `P7-AC-16` (CI) and `P7-AC-17` (the independent phase
+    # review) are TWO CRITERIA WITH TWO DIFFERENT ORACLES - a run conclusion and a human review -
+    # and they are NOT the retired two-step ceremony; P6's accepted record is the precedent.
+    # ### G1 SCOPING - AUTHORITY, NOT CONVENIENCE. release-gates.md's G1 row requires `AC-MACH-*`
+    # (134/134) AND `AC-DOM-*` (40/40). ### P6 ALREADY DISCHARGED THE `AC-MACH-*` HALF IN FULL and
+    # was accepted 17/17 on it; ### THE 40 DOMAIN ENTITIES ARE P9's - implementation-roadmap.md
+    # gives P9 "the 40 entities" at G1 and PHASE-OUTPUTS.md's P9 block names `domain-model-
+    # acceptance.md` under G1. meta.status_model.phase_acceptance.gate_scoping is explicit that a
+    # gate spanning several phases is not any one phase's completion criterion and that a phase may
+    # not be held hostage to work assigned to a later phase. ### THEREFORE: re-accepting P6's 134
+    # transitions is NOT a P7 product criterion, and `AC-DOM-*` is NOT required here. What P7 owes
+    # of G1 is NON-REGRESSION of the half P6 discharged - P7 may RE-RUN P6's machine and transition
+    # guards to prove it broke nothing - and that obligation is scored inside `P7-AC-1`.
+    # ### A SEARCH FOR A P7-SPECIFIC G1 OBLIGATION BEYOND THAT FOUND NONE, AND NONE IS INFERRED.
+    # foundational-machine-acceptance.md's G1 rows for M5 Observation, M6 Identity Binding
+    # (`AC-MACH-605x`, the B3 regression) and M7 Conflict are P6's landed, accepted machines. P7's
+    # obligations at those surfaces are the PROVENANCE-LAYER ones its own acceptance_contract and
+    # canonical_references name - `AC-SAFE-015`, `AC-SAFE-016`, ADR-002 and ADR-007 - and they are
+    # scored as `P7-AC-4` and `P7-AC-5`, which do not re-accept M6.
+    # ### THIS BLOCK MAKES ACCEPTANCE INSTANTIABLE, NOT EASIER. Every criterion is `required: true`,
+    # so every one must be PASS before P7 may be COMPLETE. Weights are retained and sum to exactly
+    # 100 for compatibility with the landed safety-wall guard (meta.status_model.phase_acceptance.
+    # weights; eval/tests/test_bootstrap_hermeticity.py::
+    # test_the_implementation_graph_is_consistent_and_protects_the_safety_wall); they are a DERIVED
+    # VIEW and never a partial-credit route.
+    # ### NOTHING BELOW IS SCORED BY THIS SESSION, AND NOTHING MAY BE. Every result is PENDING.
+    # This session wrote no P7 code, ran no P7 test and reviewed no P7 diff - there is none to
+    # review: P7 is `NOT_STARTED` / `NO_CHECKPOINT`. Scoring is for a session outside P7's build and
+    # remediation lineage (CLAUDE.md sec 7 tier 1, sec 10), and `P7-AC-17` is structurally
+    # un-self-suppliable by anyone in that lineage.
+    # ### THIS BLOCK IS NOT YET MECHANICALLY GUARDED, AND THAT IS STATED RATHER THAN LEFT TO BE
+    # DISCOVERED. The landed safety-wall guard (eval/tests/test_bootstrap_hermeticity.py::
+    # test_the_implementation_graph_is_consistent_and_protects_the_safety_wall) reads the weighted,
+    # fully-PASS contract of the READY SELECTOR'S DEPENDENCIES - today P6 - plus P3/P4/P5. It does
+    # NOT read the selector's OWN block, so nothing in the suite currently reads THIS one. A
+    # five-mutant anti-vacuity battery run at instantiation confirms it: the guards turn RED when P7
+    # vacates READY with no successor and when P6 stops being COMPLETE (2 CAUGHT), and stay GREEN
+    # when a P7 criterion is flipped to PASS, when a weight is changed so the block no longer totals
+    # 100, and when a `required: true` is flipped to false (3 MISSED, denominator 5). ### THE BLOCK
+    # BECOMES GUARDED THE MOMENT P8 TAKES THE SELECTOR, because P7 is then a dependency of the
+    # selector and the same guard reads it - which is exactly when an unscored or partially-scored
+    # P7 would otherwise unlock P8. Until then the protection is `P7-AC-17` and CLAUDE.md sec 7,
+    # not a test. A session scoring this block must not cite a green suite as evidence that the
+    # block itself was checked.
+    acceptance_criteria:
+      - id: P7-AC-1
+        criterion: scope_conformance_and_p6_non_regression
+        weight: 5
+        required: true
+        result: PENDING
+        requirement: >-
+          Everything landed in P7 falls inside `allowed_scope` (provenance, evidence, observations,
+          identity binding, conflict) and nothing from `prohibited_scope` is implemented: no typed
+          policy engine, no compile-or-refuse rule compiler, no production policy REGISTRATION,
+          EVALUATION RUNTIME or ENABLEMENT, no autonomy admission, no P9 freight-domain projection
+          or External Entity Mapping, and no live external effect. P6's landed guarantees remain
+          INTACT - the thirteen machines and their 134 transitions still hold on the candidate tree.
+        oracle: >-
+          The prohibited surfaces are proved absent over a DISCOVERED population (AST / import
+          sweep) with its denominator printed, never a hand-enumerated filename list; the production
+          `GateRegistry` emptiness guard still passes; and P6's machine-population and
+          transition-bijection guards are RE-RUN GREEN on the candidate tree as a NON-REGRESSION
+          check. ### RE-RUNNING THEM IS NOT RE-ACCEPTING THEM: P6's `AC-MACH-*` half of G1 is
+          already discharged and accepted 17/17, and this criterion fails only if P7 BROKE it.
+        authority: >-
+          This unit record's own `allowed_scope`, `prohibited_scope` and
+          `expected_production_outputs`; PHASE-OUTPUTS.md P7 "Still prohibited - Policy and autonomy
+          (P8)" and its P8/P9 blocks; implementation-roadmap.md's P7, P8 and P9 rows;
+          meta.status_model.phase_acceptance.gate_scoping; CLAUDE.md sec 10 (do not enable an
+          external effect on live traffic; the R-07 CONTAINED record is not enablement; the
+          production `GateRegistry` stays EMPTY until U8.1/P8) and sec 6 (never enumerate filenames
+          in a guard - this repository produced that blind spot four separate times); P3's
+          adjudicated finding F-2.
+      - id: P7-AC-2
+        criterion: six_provenance_classes_and_runtime_assignment
+        weight: 8
+        required: true
+        result: PENDING
+        requirement: >-
+          Exactly the six authoritative provenance classes exist and there is no seventh -
+          `SYSTEM_IMPORTED`, `OWNER_ASSERTED`, `LINKER_INFERRED`, `MODEL_EXTRACTED`,
+          `MODEL_INFERRED`, `RECONCILED`. Every provenance / lineage record carries
+          `provenance_class`, and the value is assigned BY THE RUNTIME at the moment of creation
+          from HOW the information was actually obtained. It is never chosen by a model, never
+          carried in inbound content, and never settable through any API that untrusted data can
+          reach. The load-bearing distinction is preserved: `MODEL_EXTRACTED` means a model READ a
+          value off an artifact retained as Evidence and the claim is human-checkable against that
+          artifact; `MODEL_INFERRED` means a model GUESSED and no artifact says it.
+        oracle: >-
+          EXACT SET EQUALITY over the six class identifiers, in both directions - a count match with
+          different members MUST fail (acceptance/registry.md; the corpus-wide identifier rule).
+          Assignment (R-P1) is proved by an ADVERSARIAL INPUT population: a crafted inbound payload,
+          document or event carrying `provenance_class` is IGNORED and the runtime-derived class is
+          what persists - a durable DB-state assertion (oracle (b)) plus the recorded security
+          event. The population of untrusted inbound paths swept is DISCOVERED and its denominator
+          printed; an empty sweep is the anti-vacuity failure CLAUDE.md sec 6 names, not a pass.
+        authority: >-
+          ADR-002 sec 2.3 (the six-value table - "there is no seventh") and sec 2.3.1 R-P1
+          ("assigned by the runtime, at the moment of creation, from how the value was actually
+          obtained ... never chosen by a model, never carried in inbound content, and never settable
+          through an API that untrusted data can reach"); ADR-002 sec 5 amendment A2; ADR-007 sec 11
+          ("`provenance_class` is runtime-assigned (R-P1) and never settable from inbound content");
+          this unit's `expected_production_outputs` ("6 provenance classes");
+          implementation-roadmap.md P7 ("the 6 provenance classes, R-P1/2/3");
+          event-and-replay-acceptance.md `AC-EVT-013` ("a payload with `provenance_class:
+          OWNER_ASSERTED` ⇒ ignored + `ProvenanceStrengtheningAttempted`"), whose emission half P5's
+          `IR-R9` assigns to P7; CLAUDE.md sec 4 rules 1 and 4.
+      - id: P7-AC-3
+        criterion: no_provenance_laundering_r_p2
+        weight: 9
+        required: true
+        result: PENDING
+        requirement: >-
+          Provenance may be WEAKENED and may never be silently STRENGTHENED. `MODEL_INFERRED` cannot
+          become `LINKER_INFERRED` - or anything stronger - by being copied, cached, re-read,
+          re-observed, reconciled, serialized, crossed over a process boundary, passed through
+          another function or another model, or carrying a higher confidence score. The ONLY
+          strengthening route is a NEW authenticated human act, which creates a new `OWNER_ASSERTED`
+          claim that SUPERSEDES the old one and RETAINS it in history. A counterparty assertion is
+          `MODEL_EXTRACTED` at best and can never be promoted, at any confidence, ever.
+        oracle: >-
+          The six-path sweep - copy / cache / re-observe / reconcile / serialize / process-boundary
+          - over a PROVEN NON-EMPTY path population with its denominator printed, each path
+          asserting the value emerges `MODEL_INFERRED`, together with the
+          `ProvenanceStrengtheningAttempted` security event on the refusal. A negative assertion run
+          over an empty path set passes vacuously and is exactly the anti-vacuity failure CLAUDE.md
+          sec 6 names. The human-act exception is proved POSITIVELY: the superseding
+          `OWNER_ASSERTED` claim exists AND the superseded claim is retained and byte-identical.
+        authority: >-
+          ADR-002 sec 2.3.1 R-P2 ("provenance laundering - a guess acquiring the authority of a fact
+          by moving through enough layers - is the single most likely way this architecture gets
+          quietly defeated"); ADR-007 sec 11 ("the most adversarially-tested rule in the system"),
+          sec 4.2 ("confidence may PRIORITIZE; it may never AUTHORIZE") and sec 4.4 (counterparty
+          assertions, ADR-003 permanent); event-and-replay-acceptance.md `AC-EVT-011` and the
+          `ProvenanceStrengtheningAttempted` (F14) emission half of `AC-EVT-013` - both assigned to
+          P7 by P5's `IR-R9`, restated in this registry's P6 `prohibited_scope` note and in
+          CURRENT.md; security-and-tenancy-acceptance.md `AC-SEC-009` ("the six-path sweep ...
+          `MODEL_INFERRED` survives"), which states the same rule with the same oracle; this unit's
+          `hostile_cases` ("provenance stripped in transit"); CLAUDE.md sec 4 rules 1-4.
+      - id: P7-AC-4
+        criterion: model_inferred_cannot_be_read_by_a_consequential_gate
+        weight: 9
+        required: true
+        result: PENDING
+        requirement: >-
+          A `MODEL_INFERRED` fact cannot be READ by a consequential gate, and no confidence score
+          changes that - not 0.95, not 0.99, and not 1.0. Confidence is not a material fact and is
+          STRUCTURALLY ABSENT from the pre-effect checkpoint's inputs, so a guard cannot read it.
+          The refusal is structural, not a runtime policy decision that happened to take the safe
+          branch.
+        oracle: >-
+          `AC-SAFE-015`'s own stated oracle: the checkpoint input type RAISES on read, and at
+          confidence 1.0 it STILL refuses - a construction/type failure rather than a runtime pass,
+          the same standard `AC-CKPT-3-stale` sets. The NEGATIVE ASSERTION is that NO WITNESS IS
+          MINTED: zero witness rows, zero grants, zero adapter calls, over a PROVEN NON-EMPTY
+          population of consequential-gate entry points with its denominator printed.
+        authority: >-
+          This unit's `acceptance_contract` ("AC-SAFE-015, AC-SAFE-016");
+          platform-safety-acceptance.md `AC-SAFE-015` (SAFETY_CRITICAL, merge-gating, no individual
+          waiver) and Part B `AC-CKPT-4-*` ("a `MODEL_INFERRED` material fact ⇒ (b)"); ADR-002
+          sec 2.3 ("`MODEL_INFERRED` ... may it gate a consequential action? NEVER. Under any
+          confidence score. Ever."); ADR-007 sec 4.2 and sec 8; acceptance/traceability.md's P2
+          trace (`AC-SAFE-015`, `AC-CKPT-6-*`); this unit's `expected_capability` and
+          `hostile_cases` ("MODEL_INFERRED authorizing a consequential action"); CLAUDE.md sec 4
+          rules 2, 5 and 6.
+      - id: P7-AC-5
+        criterion: owner_asserted_is_never_machine_recomputed_r_p3
+        weight: 9
+        required: true
+        result: PENDING
+        requirement: >-
+          Machine recomputation may NEVER overwrite an `OWNER_ASSERTED` value - not on a better
+          model, not on a better linker, not on a later cycle. The attempt is an ILLEGAL TRANSITION:
+          it raises, PERSISTS NOTHING, and emits a security event. Where a machine-derived value
+          merely DISAGREES with an `OWNER_ASSERTED` one, a Conflict is raised and Neyma picks no
+          winner. This is P7's PROVENANCE-LAYER obligation over every `OWNER_ASSERTED` lineage
+          record; it does not re-accept P6/M6's `AC-MACH-605x`, which is landed and already PASS.
+        oracle: >-
+          `AC-SAFE-016`'s own stated oracle: ILLEGAL TRANSITION, state UNCHANGED,
+          `IllegalTransitionAttempted` recorded, and the negative assertion that ### THE OWNER'S
+          BINDING IS BYTE-IDENTICAL AFTER the attempt - a durable DB-state assertion (oracle (b)),
+          never a code read, over a proven non-empty population of `OWNER_ASSERTED` records. The
+          disagreement path is proved separately and positively: a Conflict row EXISTS and the
+          owner's value is unchanged.
+        authority: >-
+          This unit's `acceptance_contract`; platform-safety-acceptance.md `AC-SAFE-016`
+          (DATA_INTEGRITY, merge-gating, variants P N RP); ADR-002 sec 2.3.1 R-P3 and sec 5
+          amendment A2 ("`OWNER_ASSERTED` + machine recompute is an ILLEGAL TRANSITION - a check you
+          cannot write without this field"); ADR-007 sec 4.3, sec 4.5 and sec 13 (the B3
+          regression); acceptance/traceability.md's L-A trace (R-P3 → M6 IB-5x → `AC-SAFE-016`,
+          `AC-MACH-605x`); stream-b-architectural-lessons.md L-A, the real defect this repository
+          shipped; this unit's `hostile_cases` ("OWNER_ASSERTED silently overwritten"); CLAUDE.md
+          sec 4 rule 3.
+      - id: P7-AC-6
+        criterion: content_addressed_immutable_evidence
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Evidence is an IMMUTABLE, CONTENT-ADDRESSED retained artifact linked to the observation
+          that brought it in: `content_digest` and `content_ref` are NOT NULL and immutable, the
+          digest is verified against the stored bytes on write, identical bytes DEDUPLICATE to one
+          Evidence, and a span identifies the supporting region where the artifact has one. A
+          `MODEL_EXTRACTED` claim MUST reference an Evidence span and is REFUSED without one. ### A
+          CLAIM DOES NOT BECOME "EVIDENCED" BECAUSE A MODEL SAYS IT IS: evidence is DATA - it may
+          SUPPORT a claim and may never MAKE one, authorize an effect, or set provenance. Evidence
+          that is lost or illegible BLOCKS consequential action rather than degrading to "best
+          available". (Evidence tenant-scoping is required and is scored under `P7-AC-12`.)
+        oracle: >-
+          Durable DB-state assertions over proven non-empty populations: storing identical bytes
+          twice yields ONE row (`UNIQUE (tenant_id, content_digest)`); a digest/bytes mismatch is
+          REJECTED ON WRITE; an UPDATE or DELETE of content is refused by an append-only probe; a
+          `MODEL_EXTRACTED` claim with no span is refused; a claim whose evidence is `absent`
+          blocks the consequential action and raises an Exception, with the simulator's call log
+          EMPTY.
+        authority: >-
+          docs/specifications/entities/08-evidence.md points 6, 8, 9, 10, 13, 16, 17, 21, 22, 33,
+          35, 36, 37 and its acceptance criteria (43) and adversarial tests (44); ADR-007 sec 3
+          (Evidence is a retained artifact and the span within it - and is NOT a claim); ADR-002
+          sec 2.1 concern 1 (immutable source observations) and sec 2.3 (`MODEL_EXTRACTED` requires
+          the document and the span); this unit's `expected_production_outputs` ("content-addressed
+          evidence") and `security_requirements` ("evidence content-addressed and tenant-scoped");
+          acceptance/registry.md ORACLE RULE (b) and (e).
+      - id: P7-AC-7
+        criterion: evidence_and_claim_lineage_is_traversable
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          A canonical material fact used by downstream logic can be traced BACKWARD to the complete
+          chain that justifies it: observation or claim → provenance record → evidence, registered
+          rule, or authenticated human act. An escalation carries that chain rather than a pointer
+          telling a human to go and look. The five ADR-002 concerns stay distinctly modelled, so
+          business logic reads typed values while lineage stays complete and traversable. ### THIS
+          CRITERION PROVES P7'S OWN GENERIC LINEAGE MECHANISM AND MAY NOT REQUIRE P9 DOMAIN ENTITIES
+          THAT DO NOT EXIST YET.
+        oracle: >-
+          ADR-007 sec 13's evidence-traversal test - from any canonical field, walk to the complete
+          evidence chain in one query - run over a DISCOVERED, proven non-empty population of
+          canonical fields with its denominator printed, plus an AUDIT-RECONSTRUCTION assertion
+          (acceptance/registry.md oracle (d)) that for EVERY member the returned chain terminates in
+          evidence, a rule id, or a `decision_ref`. A traversal returning an empty chain for any
+          member FAILS; a sweep over an empty field population is vacuous and is not a pass.
+        authority: >-
+          ADR-002 sec 2.1 (the five distinctly-modelled concerns; concern 5 "evidence traversal - a
+          consequential action MUST be able to walk from any canonical field back to the complete
+          evidence chain") and sec 2.2 (I3, I5); ADR-007 sec 13 ("Evidence traversal"); this unit's
+          `rebaseline_contract.user_visible_capability` ("escalations arrive with evidence attached,
+          traceably"); PHASE-OUTPUTS.md P7 "User-visible capability"; PRODUCT.md sec 9 ("Escalation
+          carries the evidence. A request for judgement that makes the human go and gather context
+          has moved the work, not done it"); acceptance/registry.md ORACLE RULE (d);
+          meta.status_model.phase_acceptance.gate_scoping (no P9-assigned work may be required
+          here).
+      - id: P7-AC-8
+        criterion: deterministic_linker_binding_order
+        weight: 7
+        required: true
+        result: PENDING
+        requirement: >-
+          Binding is attempted in ADR-007 sec 4.1's fixed order and the first that succeeds wins.
+          An EXACT UNIQUE IDENTIFIER MATCH may confirm deterministically (`LINKER_INFERRED`); a
+          REGISTERED DETERMINISTIC RULE with an id may confirm (`LINKER_INFERRED`); RECONCILIATION
+          across >= 2 agreeing sources may confirm when its rule allows it (`RECONCILED`), carrying
+          every input observation. ### `MODEL_EXTRACTED` DOES NOT ITSELF CONFIRM - it extracts the
+          identifier, which RE-ENTERS at step 1 so the deterministic linker decides.
+          `MODEL_INFERRED` NEVER auto-confirms: it routes to `AMBIGUOUS` and gets a human. Ambiguous,
+          multiple or weak candidates FAIL CLOSED to human handling. `OWNER_ASSERTED` requires an
+          authenticated, authorized human inside Neyma's trust boundary. ### THE MODEL READS; THE
+          LINKER DECIDES. Confidence orders a human's queue and authorizes nothing.
+        oracle: >-
+          A per-method sweep over ALL SIX ordered methods - the population is exactly the six,
+          asserted by SET EQUALITY rather than a count - proving for each whether it may
+          auto-confirm. The `MODEL_EXTRACTED` case asserts the extracted identifier is re-matched
+          deterministically and that NO confirmation occurs on the extraction alone. The
+          `MODEL_INFERRED` case asserts `AMBIGUOUS` AT CONFIDENCE 1.0, still blocked and still
+          human-owned. The ambiguity case asserts a human-owned queue item, ZERO binding, and the
+          negative assertion that no consequential action proceeded. ### THE MECHANISM IS WHAT IS
+          ACCEPTED, NOT A RULE SET: ADR-007 sec 15 Q1 records the registered freight identity rules
+          as `NEEDS VALIDATION`, discovered per customer at onboarding, so this criterion may not be
+          satisfied by - or failed for the absence of - any invented freight rule.
+        authority: >-
+          ADR-007 sec 4.1 (the six-row binding-order table with its "may it auto-confirm?" column),
+          sec 4.2 (confidence PRIORITIZES, never AUTHORIZES; structurally absent from the
+          checkpoint's inputs), sec 4.3 (`OWNER_ASSERTED` requires an authenticated human), sec 8
+          (alternatives rejected: confidence thresholds, letting the model bind) and sec 13
+          ("Confidence cannot gate"); ADR-002 sec 2.3 (which classes may gate a consequential
+          action); this unit's `expected_production_outputs` ("deterministic linker") and
+          `hostile_cases` ("identity bound on one weak candidate"); ADR-007 sec 15 Q1 with CLAUDE.md
+          sec 4 rule 18 and sec 5 (an unresolved freight rule is marked, never guessed).
+      - id: P7-AC-9
+        criterion: identity_binding_safety_and_persistence
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          A human binding is bound to an IMMUTABLE IDENTIFIER, never an ordinal or a position: the
+          displayed choice resolves at render time to a durable id, that id is carried in the
+          interaction, and the action binds to THAT id. ### IF THE REFERENCED IDENTITY IS GONE OR HAS
+          CHANGED STATE, THE ACTION FAILS CLOSED AND SAYS SO - it never falls back to position. A
+          `CONFIRMED` `OWNER_ASSERTED` binding SURVIVES unchanged across re-ingestion, re-observation
+          of the same document, a linker improvement, a model upgrade, a full projection rebuild and
+          a replay of the entire event corpus. Where a machine later disagrees, a Conflict is raised
+          rather than the binding being overwritten.
+        oracle: >-
+          ADR-007 sec 13's ordinal-binding (L-B) test: render an unlinked list, insert a new member,
+          then act on "slot 2" ⇒ it binds the ORIGINALLY-RENDERED id or FAILS CLOSED, and never the
+          new occupant of that slot. And the rebuild test: replay the full corpus and assert every
+          `OWNER_ASSERTED` binding survives BYTE-IDENTICAL - over a population of such bindings
+          PROVED NON-EMPTY and printed, because a corpus containing zero `OWNER_ASSERTED` bindings
+          satisfies the assertion vacuously and is not a pass.
+        authority: >-
+          ADR-007 sec 4.3 ("bound to an immutable identifier - never an ordinal", Stream B L-B),
+          sec 7 ("a projection rebuild rebuilds projections; it does not rebuild the owner's mind"),
+          sec 10 and sec 13 ("Ordinal binding (L-B)", "Rebuild preserves owner"); ADR-002 sec 1.2
+          (native state) and C2 (native state is replayable from Neyma's own history);
+          stream-b-architectural-lessons.md L-A and L-B; CLAUDE.md sec 4 rules 3 and 10.
+      - id: P7-AC-10
+        criterion: conflict_is_first_class_blocking_and_closes_two_ways_only
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Two or more mutually exclusive claims or observations on the same field become a
+          FIRST-CLASS Conflict. ### WHILE A CONFLICT IS OPEN the affected field's evidence condition
+          is `conflicting` - which is NOT `unknown`, `absent`, `stale` or `consistent`; the five
+          conditions stay distinct - and it BLOCKS every dependent consequential action on that
+          entity. A Conflict closes EXACTLY TWO WAYS: a registered, versioned, deterministic rule
+          WITH AN ID, or a human `decision_ref`. ### THERE IS NO THIRD WAY: not a model, not a
+          confidence threshold, not recency, not source priority as an ambient default, not a
+          timeout, not last-write-wins. `AutoResolve` is an ILLEGAL TRANSITION. A Conflict never
+          expires; it ages and escalates.
+        oracle: >-
+          With an open Conflict on a material field, every consequential action on that entity is
+          REFUSED - a durable-state assertion plus the negative assertion that the simulator's call
+          log is EMPTY. Advancing the CONTROLLABLE CLOCK over an open Conflict moves NOTHING (no
+          sleeping; acceptance/registry.md's wall-clock-independence default). An attempted
+          `AutoResolve` raises, persists nothing, and records the illegal attempt. Each assertion
+          runs over a proven, non-empty conflict population with its denominator printed.
+        authority: >-
+          ADR-007 sec 3 (Conflict, Resolution - "resolved, never deleted"), sec 5.1 (the five ways a
+          Conflict is raised, including inferrer-vs-owner), sec 5.2 (the blocking invariant),
+          sec 5.3 ("Closure - two ways, and no others ... a Conflict that times out is a Conflict
+          resolved by a clock, and the clock knows nothing about freight") and sec 13 ("Conflict
+          blocks money", "No auto-resolve"); ADR-002 C5 and C6; platform-safety-acceptance.md
+          `AC-SAFE-017`, which is the acceptance-registry statement of ADR-002 C6 (cited for its
+          ORACLE - "field `conflicting` ⇒ checkpoint step-4 fail; no call" - and NOT as a claim that
+          P7 qualifies gate G4, which qualifies at P8); this unit's `expected_production_outputs`
+          and `rebaseline_contract.platform_capability` ("first-class Conflict");
+          acceptance/registry.md contract default "Timing: wall-clock independent"; ADR-007 sec 15
+          Q2, which records the registered conflict-resolution rule set as `NEEDS VALIDATION` with a
+          fail-closed default of routing to a human - so no rule set may be invented here.
+      - id: P7-AC-11
+        criterion: correction_supersession_and_retained_history
+        weight: 5
+        required: true
+        result: PENDING
+        requirement: >-
+          ### SUPERSESSION AND CORRECTION STAY DISTINCT, BECAUSE CONFLATING THEM LOSES MONEY.
+          Supersession: a newer claim replaces an older one; the older was TRUE WHEN MADE, is
+          RETAINED rather than deleted, and nothing downstream is invalidated. Correction: an
+          existing `CONFIRMED` claim is declared WRONG; the prior claim is retained and remains
+          ATTRIBUTABLE, `ClaimCorrected{prior, new, decision_ref, provenance_class}` is emitted, the
+          lineage is walked FORWARD to identify every canonical field derived from it, and those
+          fields are re-derived so downstream lineage is DISCOVERABLE.
+        oracle: >-
+          A supersession case produces NO downstream-remediation obligation; a correction case DOES
+          produce a DISCOVERABLE one, identified by walking the lineage rather than asserted. Prior
+          claim and evidence retention is a durable DB-state assertion - the row EXISTS and is
+          unchanged - never an inference from absence; `AC-EVT-010`'s oracle applies: the original
+          event is BYTE-IDENTICAL after a `ClaimCorrected`.
+        boundary: >-
+          ### THIS CRITERION VERIFIES THE HANDOFF AND THE LINEAGE THAT LATER HANDLING NEEDS, AND
+          DEMANDS NO FUTURE-PHASE CAPABILITY. It does NOT require P8 policy or autonomy, does NOT
+          activate P8 compensation behaviour, and does NOT require ADR-007 sec 6 steps 4-5 (raising
+          and executing a gated Compensation) to run - M10 Compensation is a P6-landed machine whose
+          policy-gated operation belongs to P8. Requiring it here would hold P7 hostage to a later
+          phase, which meta.status_model.phase_acceptance.gate_scoping forbids.
+        authority: >-
+          ADR-007 sec 3 (the Supersession / Correction rows and the "not the same, and conflating
+          them loses money" rule), sec 4.5 (claim invalidation), sec 6 (correction and propagation -
+          "a correction that does not propagate is a lie with a timestamp") and sec 13
+          ("Supersession != correction"); event-and-replay-acceptance.md `AC-EVT-010`; ADR-002
+          sec 2.1 concern 2 (claims retain correction history); this unit's
+          `rebaseline_contract.hostile_cases`; meta.status_model.phase_acceptance.gate_scoping.
+      - id: P7-AC-12
+        criterion: tenant_safety_and_knowledge_base_closure
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Every P7 surface is TENANT-SCOPED: Evidence, provenance / lineage records, observations,
+          identity-binding claims and Conflicts carry `tenant_id` NOT NULL and FIRST in the key, and
+          the same external identifier in `T_A` and `T_B` yields two independent entities with no
+          collision. ### CROSS-TENANT EVIDENCE OR IDENTITY LINKAGE IS REJECTED BEFORE ANY BUSINESS
+          HANDLING. And ### THE SPECIFICALLY ASSIGNED KNOWLEDGE-BASE `tenant="default"` DEFECT CLOSES
+          HERE: a canonical tenant reaches `KnowledgeBase` and no hardcoded `"default"` remains at
+          the recorded sites - `ops_control.py` (x5) and `action_callback.py::_learn_correction`.
+        oracle: >-
+          `AC-SEC-001`'s schema+API sweep applied to P7's new surfaces (`tenant_id` NOT NULL, first
+          in the key); `AC-SEC-002` run across `T_A`/`T_B`; a cross-tenant attempt REJECTED AT THE
+          BOUNDARY BEFORE ANY HANDLER with the negative assertion that ZERO `T_A` rows changed
+          (`AC-SEC-003`); and, for the knowledge-base closure, a guard that DISCOVERS the sites BY
+          SYMBOL - never by line number and never from an enumerated filename list - and asserts no
+          hardcoded tenant reaches any knowledge write, with the denominator printed. ### THE
+          EXISTING GUARD IS THE ANTI-VACUITY CONTROL AND MUST BE REPLACED RATHER THAN DELETED:
+          eval/tests/test_bootstrap_hermeticity.py::
+          test_the_recorded_default_tenant_sites_still_exist_where_the_finding_says currently
+          asserts those sites STILL EXIST, so it becomes a green test asserting an obsolete state
+          the moment P7 closes the defect - CLAUDE.md sec 4 rule 20's exact case. Its replacement
+          must be seen to FAIL against a reintroduced hardcoded site.
+        authority: >-
+          This unit's `migration_requirements` ("provenance columns; THE KNOWLEDGE-BASE
+          tenant='default' FINDING CLOSES HERE"), `security_requirements` ("the knowledge-base
+          tenant='default' finding closes here", "evidence content-addressed and tenant-scoped") and
+          `legacy_dispositions_affected` [knowledge_base, extraction, ops_control];
+          PHASE-OUTPUTS.md P7 "Legacy contained - the knowledge-base `tenant="default"` finding
+          CLOSES HERE"; LEGACY-DISPOSITION.md S10 (REWRITE, target phase P7, deletion condition "a
+          canonical tenant reaches `KnowledgeBase` and no `"default"` remains", evidence "a guard
+          proving no hardcoded tenant in any knowledge write") and S9 (ADAPT, "P7 (the tenant
+          finding)"); security-and-tenancy-acceptance.md `AC-SEC-001`, `AC-SEC-002`, `AC-SEC-003`;
+          entities/08-evidence.md points 7, 9, 17, 35 and `test_cross_tenant_evidence_isolation`
+          (44); acceptance/registry.md contract default ("`T_A` and `T_B` - every case runs
+          tenant-isolated"); CURRENT.md's "Knowledge base" risk row ("tracked by symbol, never by
+          line number; verified by guard"); CLAUDE.md sec 3 (Tenant - "never `default`, never
+          inferred") and sec 6.
+      - id: P7-AC-13
+        criterion: concurrency_duplicate_replay_and_fault_coverage
+        weight: 4
+        required: true
+        result: PENDING
+        requirement: >-
+          P7's new surfaces carry MEANINGFUL concurrent, duplicate-delivery, replay and fault
+          coverage. Concurrent claim proposals and concurrent conflict raises on the same field
+          resolve deterministically - no silent overwrite, no lost claim, no last-write-wins.
+          Duplicate delivery is a no-op with the state digest unchanged. ### REPLAY OF P7'S HISTORY
+          RECONSTRUCTS STATE AND NOTHING ELSE: zero witnesses, zero grants, zero adapter calls, zero
+          external effects, the same projection digest every time - and replay mints no provenance
+          strengthening. Crash at each P7 transition recovers to the canonical state without
+          re-execution.
+        oracle: >-
+          Race cases give EXACT INTERLEAVINGS and a controllable clock, never sleeps
+          (acceptance/registry.md defaults: Concurrency, Timing). Duplicate delivery asserts the
+          inbox key makes redelivery a no-op with an UNCHANGED digest. The replay oracle is the
+          simulator's call log EMPTY over a PROVEN NON-EMPTY replay population, plus digest
+          equality across repeated rebuilds. ### EVERY NEGATIVE ASSERTION RUNS OVER A PROVEN
+          NON-EMPTY POPULATION and every counting check prints its denominator - a replay sweep over
+          an empty corpus satisfies "zero effects" vacuously.
+        authority: >-
+          This unit's `concurrency_requirements: required`; acceptance/registry.md CONTRACT DEFAULTS
+          (Concurrency, Forbidden adapter calls, Idempotent rerun, Replay behavior, Timing);
+          platform-safety-acceptance.md `AC-SAFE-019` ("replay cannot create a witness, grant,
+          adapter call, or effect"); event-and-replay-acceptance.md `AC-EVT-004`, `AC-EVT-007` and
+          `AC-EVT-008`; CLAUDE.md sec 4 rules 10 and 11, sec 3 (Replay - "structurally inert") and
+          sec 6 ("a negative assertion needs a proven population").
+      - id: P7-AC-14
+        criterion: mutation_and_anti_vacuity_evidence
+        weight: 4
+        required: true
+        result: PENDING
+        requirement: >-
+          Every guard protecting a P7 tier-1 invariant has been SEEN TO FAIL against a mutant that
+          reintroduces the REAL defect - at minimum the R-P1 assignment refusal, the R-P2 laundering
+          refusal, the `AC-SAFE-015` gate refusal, the `AC-SAFE-016` illegal-overwrite refusal, the
+          Evidence content-digest check, the deterministic-linker auto-confirm boundary, the
+          conflict block, and the tenant predicate. ### A MUTATION THAT DOES NOT REINTRODUCE THE
+          REAL DEFECT PROVES NOTHING: the mutant must be independently verified to misbehave.
+          Mutation uses the in-memory save/restore harness (`scripts/mutate_*.py`), with a
+          byte-identical restore verified and `__pycache__` purged, and ### NEVER `git checkout`,
+          `git restore`, `git stash` or `git clean`. Negative assertions run over proven non-empty
+          populations, counting checks print their denominators, matching is whole-token or AST
+          rather than substring, and no guard enumerates filenames where it could discover them.
+        oracle: >-
+          For each named guard: GREEN unmutated (the anti-vacuity control) and RED against the
+          mutant, with the mutant independently confirmed to misbehave, and the caught/escaped tally
+          printed with its denominator.
+        authority: >-
+          This unit's `mutation_requirements: required`; CLAUDE.md sec 6 in full (mutate to prove a
+          guard works; a guard never seen to fail is a decoration; a mutation that does not
+          reintroduce the real defect proves nothing; never `git checkout`/`restore`/`stash`/`clean`
+          - doing so once destroyed unrecoverable uncommitted work here; restoring a `.py` is not
+          restoring behaviour, purge `__pycache__`; whole-token or AST matching, not substrings;
+          never enumerate filenames in a guard; a negative assertion needs a proven population);
+          CLAUDE.md sec 7 tier 1 ("mutation proof that the guard can fail") and sec 4 rule 20.
+      - id: P7-AC-15
+        criterion: ships_dark_no_enablement_and_no_second_authority
+        weight: 3
+        required: true
+        result: PENDING
+        requirement: >-
+          P7 is landed and ENABLED NOWHERE. It does not populate or enable a P8 policy runtime, does
+          not register an action-class gate, does not widen the production `GateRegistry` (which
+          stays EMPTY until U8.1/P8), does not enable autonomy, does not enable any external effect
+          on live traffic, and implements no P9 domain projection. `checkpoint.py` remains the SOLE
+          minter of a gate decision and of a Checkpoint Witness; P7 introduces no second effect
+          authority and no second orchestration system. The readiness tier recorded for P7 is
+          `LOCALLY_IMPLEMENTED` and not one tier higher.
+        oracle: >-
+          An AST importer sweep over a DISCOVERED denominator - never a filename list - proving no
+          production importer joins a P7 surface to a live path; the production `GateRegistry`
+          emptiness guard passes; the deployed governed route still answers a recorded
+          `ROUTE_NOT_CONFIGURED` refusal; and the recorded readiness tier matches
+          `readiness_target`.
+        authority: >-
+          This unit's `rollback_posture: "Ships dark."`, `rebaseline_contract.rollout_posture: ships
+          dark` and `readiness_target: LOCALLY_IMPLEMENTED`; implementation-roadmap.md "Deployment
+          shape per phase: every phase ships dark - code deployed, capability flag OFF - so that
+          deploy and enable are two separate, separately-reviewed decisions"; PHASE-OUTPUTS.md's
+          readiness note (ADR-016 sec 3 - "code exists" = `LOCALLY_IMPLEMENTED` only); CLAUDE.md
+          sec 10 (no external effect on live traffic; the CONTAINED record is not enablement; the
+          production `GateRegistry` stays EMPTY until U8.1/P8) and sec 4 rules 9, 14, 16 and 17.
+      - id: P7-AC-16
+        criterion: ci_success_on_the_candidate_tree
+        weight: 3
+        required: true
+        result: PENDING
+        requirement: >-
+          A required CI run on the EXACT candidate tree CONCLUDES SUCCESS - the full-suite legs and
+          the safety-invariant jobs COMPLETE rather than merely start. A `cancelled` conclusion is
+          not a success, a partial execution that emitted no failure marker is not a pass, and a
+          local run on the builder's host is never presented as a CI result.
+        oracle: >-
+          The run's `head_sha` equals the accepted tree's commit, `status: completed`, `conclusion:
+          SUCCESS`, read from the CI provider rather than from a reported figure; the
+          anti-false-green completeness proof concludes and establishes that the shards' union IS
+          the canonical `pytest eval` population.
+        authority: >-
+          CLAUDE.md sec 0 ("CI is the source of truth for whether the repository is green"), sec 8's
+          "done" list (the targeted tests run on the final tree; CI green) and sec 11's run
+          instruction; CURRENT.md's standing header; .github/workflows/ci.yml, which installs the
+          declared dependencies from a fresh checkout and runs the suite; the founder/architect
+          decision recorded in this block's header.
+        not_a_revival: >-
+          No committed suite receipt, no clean-clone execution and no finalizer is required by this
+          criterion - CLAUDE.md sec 0 forbids all three, and they were deleted at d1d2e39.
+      - id: P7-AC-17
+        criterion: independent_phase_review_by_a_non_builder
+        weight: 4
+        required: true
+        result: PENDING
+        requirement: >-
+          A session OUTSIDE P7's build and remediation lineage has reviewed the PHASE - not one diff
+          - and scored the criteria above from evidence it RE-DERIVED ITSELF rather than accepting a
+          figure a test or a build session reported. ### THIS CRITERION IS STRUCTURALLY
+          UN-SELF-SUPPLIABLE by anyone in P7's build lineage, which is exactly why it gates
+          completion.
+        oracle: >-
+          Structural, and checkable rather than asserted: the record names the reviewing session and
+          establishes that it produced NONE of the P7 artifacts it scores - no P7 module, no P7
+          migration, no P7 guard and no P7 remediation - and every criterion above carries the
+          evidence that session re-derived for it. ### A SESSION IN THE BUILD OR REMEDIATION LINEAGE
+          CANNOT SUPPLY THIS CRITERION AT ALL, and a scored result whose evidence is a build
+          session's own report is not a PASS.
+        authority: >-
+          CLAUDE.md sec 7 tier 1 ("builder + one focused independent review by someone who did not
+          write it, before merge") and sec 10 (a phase acceptance needs a reviewer who did not build
+          it - "that is tier 1, and it is the one place the independent-review requirement is about
+          a phase rather than a diff"); meta.status_model.checkpoint_state.meaning and
+          meta.status_model.phase_acceptance.definition ("a session's own report on its own work
+          does not accept a phase"); the founder/architect decision recorded in this block's header.
+        not_a_revival: >-
+          ONE review, by ONE session that did not build it. This criterion and `P7-AC-16` are two
+          criteria with two DIFFERENT ORACLES - a human phase review and a CI run conclusion - and
+          they are NOT the retired chain of independent-review-then-separate-adjudication-then-
+          finalizer sessions. P6's accepted record is the precedent: it carried the same two
+          criteria under this same model. No finalizer, clean-clone gate or committed receipt is
+          required by this criterion or by any other in this block.
     next_units_unlocked: [P8]
 
   - unit_id: P8

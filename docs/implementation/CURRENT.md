@@ -10,7 +10,7 @@
 > simplification. The pre-simplification version of this document, with its full narrative history,
 > is in git history at `cff82d5`.
 
-**Last updated:** 2026-09-09, recording **P6 PHASE ACCEPTANCE.** ### **P6 IS ACCEPTED: 17/17
+**Last updated:** 2026-09-09, recording **P6 PHASE ACCEPTANCE** and, in this commit, the **P7 ACCEPTANCE-AUTHORITY BOOTSTRAP** — P7's seventeen-criterion acceptance bar now EXISTS and **not one criterion is scored** ([below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored)). ### **P6 IS ACCEPTED: 17/17
 required criteria PASS, and P6 is `status: COMPLETE` / `execution_state: COMPLETE` /
 `checkpoint_state: PHASE_ACCEPTANCE_COMPLETE`.** **P7 takes the selector and is now the sole `READY`
 unit — `NOT_STARTED` / `NO_CHECKPOINT`, and NOT implemented.** *(Until this commit this paragraph
@@ -62,7 +62,7 @@ suite.
 | **P4** — adapter containment: the governed write route, the two-key rule at the effect boundary, the CI import gate | **COMPLETE** — 13/14 | [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) |
 | **P5** — canonical events, outbox/inbox, replay isolation, durable timers, production PostgreSQL | **COMPLETE** — 14/14 | [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) |
 | **P6** — foundational entities and state machines | **COMPLETE** — **17/17** | thirteen landed checkpoints — all 13 machines, 134/134 transitions; accepted by an independent phase review on CI run `34314374504`; see [below](#p6-phase-acceptance--the-contract-that-now-exists) |
-| **P7** — provenance | **READY** — the sole selected unit; **NOT STARTED**, nothing implemented | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
+| **P7** — provenance | **READY** — the sole selected unit; **NOT STARTED**, nothing implemented. Its acceptance bar now EXISTS: seventeen criteria, every one required, **every one `PENDING`** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored) |
 | **P8–P14** | **BLOCKED** behind P7 | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 Gates **G0** and **G1**… **G2 is adjudicated** and its seven event obligations are discharged; the
@@ -1324,6 +1324,46 @@ and the registry. ### **AND THE SESSION THAT WROTE THE CONTRACT DID NOT SCORE IT
 instantiated on 2026-09-07 by one session and scored here by a different one, from outside P6's
 build lineage.
 
+## P7 — the acceptance bar now exists, and nothing is scored
+
+### **P7's ACCEPTANCE WAS UNINSTANTIABLE, EXACTLY AS P6's WAS, AND IT IS FIXED BEFORE P7 IS BUILT.**
+P7 carried an `acceptance_contract` string (*"AC-SAFE-015, AC-SAFE-016; gate G1"*) and **no explicit
+`acceptance_criteria` block**, while the registry's `PHASE_ACCEPTANCE_COMPLETE` state requires one. A
+hardened Product Driver run detected the `AUTHORITY_GAP`. A phase with nothing to evaluate cannot be
+accepted — and equally **cannot be refused**, which is the half that costs something. The correction
+is in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml), the machine authority, and is
+restated here. ### **IT WAS RESOLVED BEFORE THE BUILD, so the bar exists before the work that must
+clear it.**
+
+### **SEVENTEEN CRITERIA, `P7-AC-1`…`P7-AC-17`, EVERY ONE REQUIRED, EVERY ONE `PENDING`.** They cover
+scope conformance and P6 non-regression · the six provenance classes and runtime assignment (`R-P1`) ·
+no provenance laundering (`R-P2`) · `AC-SAFE-015` · `AC-SAFE-016`/`R-P3` · content-addressed Evidence ·
+lineage traversal · the deterministic linker's binding order · identity-binding safety and persistence ·
+first-class Conflict · correction vs supersession · tenant safety and the knowledge-base
+`tenant="default"` closure · concurrency/duplicate/replay/fault coverage · mutation and anti-vacuity
+evidence · ships dark · CI on the candidate tree · the independent phase review. **Nothing was
+invented:** a candidate criterion with no current authority behind it was dropped rather than
+justified, and where authority records a freight rule as unresolved — ADR-007 §15 `Q1` (registered
+identity rules) and `Q2` (registered conflict-resolution rules), both `NEEDS VALIDATION` — the
+criterion accepts the **mechanism** and forbids inventing the rule set.
+
+### **`G1` IS SCOPED, NOT IMPORTED WHOLESALE.** `release-gates.md`'s G1 row requires `AC-MACH-*`
+(134/134) **and** `AC-DOM-*` (40/40). **P6 already discharged the `AC-MACH-*` half in full**, and the
+**40 domain entities are P9's**. Per the registry's own `phase_acceptance.gate_scoping` rule, a gate
+spanning several phases is not any one phase's completion criterion. **So P7 does not re-accept P6's
+134 transitions and does not owe `AC-DOM-*`** — it owes **non-regression** of P6's half, scored inside
+`P7-AC-1`. A search for a P7-specific G1 obligation beyond that found none, and none is inferred.
+
+### **NOTHING IS SCORED AND NOTHING MOVED.** P7 stays `status: READY` / `execution_state: NOT_STARTED`
+/ `checkpoint_state: NO_CHECKPOINT`; **P8 stays `BLOCKED`**; no runtime, test, script, migration or CI
+file was touched. ### **AND THE BLOCK IS NOT YET MECHANICALLY GUARDED:** the landed safety-wall guard
+reads the **selector's dependencies** (today P6) and P3/P4/P5, never the selector's own block, so a
+five-mutant battery run at instantiation caught a vacated selector and an incomplete P6 but **stayed
+GREEN** against a P7 criterion flipped to `PASS`, a broken weight total, and a `required: true` flipped
+to false (2 caught / 3 missed, denominator 5). **It becomes guarded the moment P8 takes the selector.**
+Until then the protection is `P7-AC-17` and [`CLAUDE.md`](../../CLAUDE.md) §7 — **not a test**, and a
+green suite is not evidence this block was checked.
+
 ## Risks and standing constraints
 
 | | |
@@ -1383,7 +1423,7 @@ brokerage, an approval scoped to no brokerage is a consent nobody gave.
 | **Reviving the retired acceptance ceremony** | The founder decision of 2026-09-07 is explicit: **do not restore `canonical_finalizer`, `clean_clone_execution`, `PROGRAM-WEIGHTS.yaml`, `BUILD-STATUS.yaml`, `PROGRESS-PROTOCOL.md`, the committed receipts or the adjudication chain**, and do not make any of them a prerequisite for P6. They were deleted at `d1d2e39`. **A historical artifact referencing deleted machinery is history, not authority.** |
 | **Rebuilding or polishing M1 through M13** | **All thirteen are landed and no further code is owed.** ### **"M13 IS THE LAST MACHINE" IS AN INVITATION TO REBUILD SOMETHING, AND IT MUST BE REFUSED:** the phase's remaining work is its **acceptance**, not more machine code. Their residuals are debt rows. **The P3/P4 per-thread-connection concurrency correction at `d70a4e7` is landed too and must not be reworked.** |
 | **Re-scoring or re-opening P6's phase acceptance from a build lineage** | **P6's acceptance is DONE: `P6-AC-1`…`P6-AC-17` are all `PASS`**, scored by a session that built neither P6 nor the AC-3/4/5 corrections, on CI run `34314374504`. *(Until this commit this row read "…and P6 has not reached it … all `PENDING` … `P6-AC-16` cannot pass while `P6-D92` is open." All of that was TRUE WHEN WRITTEN and is FALSE NOW; REPLACED rather than deleted.)* The rule it protected is unchanged and still binds every later phase: **a phase acceptance needs a reviewer who did not build it**, and `P6-AC-17` is structurally un-self-suppliable by the build lineage. |
-| **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | ### **NO LONGER BLOCKED — P7 IS NOW THE SOLE `READY` UNIT**, because P6's phase acceptance (its only prerequisite) is complete. *(Until this commit this row read "Requires P6's phase acceptance first"; REPLACED rather than deleted.)* ### **`READY` IS A SELECTION AND NOTHING MORE:** P7 is `NOT_STARTED` / `NO_CHECKPOINT`, **no P7 code exists, and this adjudication implemented none of it.** P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands in P7, not earlier. |
+| **Implementation Phase 7** (provenance, evidence, observation, claims, identity binding) | ### **NO LONGER BLOCKED — P7 IS NOW THE SOLE `READY` UNIT**, because P6's phase acceptance (its only prerequisite) is complete. *(Until this commit this row read "Requires P6's phase acceptance first"; REPLACED rather than deleted.)* ### **`READY` IS A SELECTION AND NOTHING MORE:** P7 is `NOT_STARTED` / `NO_CHECKPOINT`, **no P7 code exists, and this adjudication implemented none of it.** P5's `IR-R9` (`AC-EVT-011` and the `ProvenanceStrengtheningAttempted` F14 emission half) lands in P7, not earlier. ### **AND P7's ACCEPTANCE BAR NOW EXISTS WITHOUT ANY OF IT BEING BUILT:** seventeen criteria, `P7-AC-1`…`P7-AC-17`, every one `required: true` and **every one `PENDING`** — instantiated from existing authority, scored by nobody. |
 | **Freight workflow implementation** | Requires the P6–P9 foundations. |
 | **Deleting legacy production code** | Only under the deletion conditions in [`LEGACY-DISPOSITION.md`](LEGACY-DISPOSITION.md). |
 | **Promoting the Delivered Load Closure wedge to validated** | It is `NEEDS VALIDATION` and requires design-partner evidence, never inference. |
