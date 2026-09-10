@@ -857,13 +857,12 @@ def test_failure_classification_is_supplied_never_inferred():
 def test_the_neighbouring_machines_are_not_built():
     conn = _conn()
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    # M10 (Compensation), M11 (Policy) and now M12 (Rule) LANDED after M9, so `compensations`, `policies`
-    # and `rules` are now canonical (rule 20 — each forward-looking assertion was true at the M9 landing
-    # and is corrected here rather than left to assert a table that now exists). The still-unbuilt
-    # neighbours stay asserted-absent: M13 (Brake) and Evidence (P7). M9's machine (exception.py) is
-    # byte-unchanged and M12 does not import it — RU-8 names its M9 human-confirmation escalation seam and
-    # leaves it unwired, so M9 keeps ZERO importers.
-    assert not ({"evidence"} & tables)
+    # M10..M12 LANDED after M9, and Evidence (P7) has now landed too, so `compensations`, `policies`,
+    # `rules` and `evidence` are all canonical (rule 20 — each forward-looking assertion was true at the
+    # M9 landing and is corrected here as the neighbour landed rather than left to assert a table that
+    # now exists). M9's machine (exception.py) is byte-unchanged and M12 does not import it — RU-8 names
+    # its M9 human-confirmation escalation seam and leaves it unwired, so M9 keeps ZERO importers.
+    assert {"evidence"} & tables                          # Evidence (P7) landed
     assert "rules" in tables                              # M12 landed
     src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
     import re

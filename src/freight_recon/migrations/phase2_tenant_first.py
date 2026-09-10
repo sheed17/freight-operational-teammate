@@ -1186,6 +1186,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase6br:{step}")
         conn.commit()
 
+        # P7's Evidence — TWO NEW tables. `evidence` holds an FK into observations (M5, the
+        # Observation that retained the artifact) and a self-FK for supersession; `evidence_spans`
+        # holds an FK into evidence. Created after M5. A fresh database is built with them directly;
+        # this brings a P2-shaped database to the same shape. Idempotent. Ships dark.
+        from .phase7_evidence import create_phase7_evidence_schema
+
+        for step in create_phase7_evidence_schema(conn, now=_now()):
+            _mark(conn, f"phase7ev:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.

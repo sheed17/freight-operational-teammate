@@ -3456,6 +3456,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase6_work_items import (
         P6_EXEMPT_TABLES, P6_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase7_evidence import (
+        P7EV_EXEMPT_TABLES, P7EV_TENANT_TABLES,
+    )
     from freight_recon.schema import CANONICAL_TABLES
 
     assert set(P5_EXEMPT_TABLES) == set(), (
@@ -3516,6 +3519,11 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"isolated rules. A rule scoped to no tenant would let one brokerage's rule decide another's "
         f"gate. Defend it here first."
     )
+    assert set(P7EV_EXEMPT_TABLES) == set(), (
+        f"P7 declared a tenant-exempt evidence table {sorted(P7EV_EXEMPT_TABLES)}: Evidence may hold "
+        f"a sensitive customer document, and the same bytes in two tenants are two isolated artifacts "
+        f"[C-1]. There is no honest cross-tenant reading of a retained document. Defend it here first."
+    )
     classes = {
         "migrated": set(CANONICAL_TENANT_TABLES),
         "already_tenant_first": {"autonomous_run_counters"},
@@ -3534,6 +3542,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_compensations_tenant": set(P6CM_TENANT_TABLES),
         "p6_policies_tenant": set(P6PO_TENANT_TABLES),
         "p6_rules_tenant": set(P6RU_TENANT_TABLES),
+        "p7_evidence_tenant": set(P7EV_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3558,7 +3567,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p6_exceptions_tenant": 1,
                      "p6_compensations_tenant": 1,
                      "p6_policies_tenant": 1,
-                     "p6_rules_tenant": 1}, (
+                     "p6_rules_tenant": 1,
+                     "p7_evidence_tenant": 2}, (
         f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")

@@ -190,6 +190,16 @@ from .migrations.phase6_work_items import (
     phase6_readiness_problems,
     stamp_phase6_version,
 )
+from .migrations.phase7_evidence import (
+    P7EV_EXEMPT_TABLES,
+    P7EV_INDEXES,
+    P7EV_REPLACED_INDEXES,
+    P7EV_TARGET_SCHEMA,
+    P7EV_TENANT_TABLES,
+    create_phase7_evidence_schema,
+    phase7_evidence_readiness_problems,
+    stamp_phase7_evidence_version,
+)
 
 TENANT_COLUMN = "tenant"
 
@@ -265,6 +275,12 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # migrated path rebuilds `brakes` to this exact text. `brakes`/`platform_brake` keep their P3
     # membership in CANONICAL_TABLES and ALL_TENANT_TABLES (this only overrides their DDL).
     **P6BR_TARGET_SCHEMA,
+    # P7's Evidence: two new tables. `evidence` holds an FK into observations (M5, the Observation
+    # that retained the artifact) and a self-FK for supersession; `evidence_spans` holds an FK into
+    # evidence (the artifact a span points into). New tables, no override — merged after M5 so the
+    # `source_observation_id` referent exists. Evidence is DATA: it carries no provenance_class and no
+    # state, so it is not a machine and not answerable to the effect ledger.
+    **P7EV_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -277,6 +293,7 @@ ALL_TENANT_TABLES: tuple[str, ...] = (
     *P6PI_TENANT_TABLES, *P6EF_TENANT_TABLES, *P6AP_TENANT_TABLES, *P6OB_TENANT_TABLES,
     *P6IBC_TENANT_TABLES, *P6CF_TENANT_TABLES, *P6EX_TENANT_TABLES, *P6XC_TENANT_TABLES,
     *P6CM_TENANT_TABLES, *P6PO_TENANT_TABLES, *P6RU_TENANT_TABLES,
+    *P7EV_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -313,6 +330,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6PO_EXEMPT_TABLES,
     *P6RU_TENANT_TABLES,
     *P6RU_EXEMPT_TABLES,
+    *P7EV_TENANT_TABLES,
+    *P7EV_EXEMPT_TABLES,
 )
 
 
@@ -367,7 +386,7 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                                         **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES,
                                         **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES,
                                         **P6PO_INDEXES, **P6RU_INDEXES,
-                                        **P6BR_INDEXES}.items()
+                                        **P6BR_INDEXES, **P7EV_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
@@ -375,7 +394,7 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                       and n not in P6CF_REPLACED_INDEXES and n not in P6EX_REPLACED_INDEXES
                       and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES
                       and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES
-                      and n not in P6BR_REPLACED_INDEXES}
+                      and n not in P6BR_REPLACED_INDEXES and n not in P7EV_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -499,6 +518,14 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase6_brakes_schema(conn, now=_now())
     if not phase6_brakes_readiness_problems(conn):
         stamp_phase6_brakes_version(conn, now=_now())
+    # P7's Evidence: the `evidence` and `evidence_spans` tables. Built AFTER M5 (`observations`)
+    # because `evidence.source_observation_id` holds a foreign key into it — the Observation that
+    # retained the artifact. On a fresh database the merged DDL already built the shape, so this only
+    # adds the immutability/no-delete triggers; on a migrated one it creates the two tables.
+    # Marker-last, like every phase. Evidence ships dark — nothing routes production traffic here.
+    create_phase7_evidence_schema(conn, now=_now())
+    if not phase7_evidence_readiness_problems(conn):
+        stamp_phase7_evidence_version(conn, now=_now())
     conn.commit()
 
 
@@ -584,6 +611,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_policies_readiness_problems(conn))
     problems.extend(phase6_rules_readiness_problems(conn))
     problems.extend(phase6_brakes_readiness_problems(conn))
+    problems.extend(phase7_evidence_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

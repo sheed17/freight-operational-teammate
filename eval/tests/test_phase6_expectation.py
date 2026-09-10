@@ -924,14 +924,14 @@ def test_no_foreign_contract_or_transition_names_in_the_source():
 
 
 def test_the_neighbouring_machines_are_not_built():
-    # M9 (Exception), M10 (Compensation), M11 (Policy) and now M12 (Rule) LANDED after M8, so `exceptions`,
-    # `compensations`, `policies` and `rules` are now canonical (rule 20 — each corrected from the
-    # pre-landing assertion). The still-unbuilt neighbours stay asserted-absent: M13 (Brake) and Evidence
-    # (P7). M8's machine (expectation.py) is byte-unchanged.
+    # M9..M12 LANDED after M8, and Evidence (P7) has now landed too, so `exceptions`, `compensations`,
+    # `policies`, `rules` and `evidence` are all canonical (rule 20 — each corrected from the pre-landing
+    # assertion as the neighbour landed; M13 the Brake hardened the P3 `brakes` table rather than adding
+    # one). M8's machine (expectation.py) is byte-unchanged.
     conn = _conn()
     tables = {t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "rules" in tables                      # M12 landed
-    assert "evidence" not in tables               # P7 not built
+    assert "evidence" in tables                   # Evidence (P7) landed
 
 
 def test_coverage_health_vocabulary_is_closed():

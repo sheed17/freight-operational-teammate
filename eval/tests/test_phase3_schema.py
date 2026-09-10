@@ -369,6 +369,28 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_platform_brake_no_delete"
                for step in p6br_performed), p6br_performed
     assert phase6_brakes_readiness_problems(conn) == []
+    # ### AND FINALLY, FOR P7 — EVIDENCE. Canonical moved once more: a database without `evidence`
+    # and `evidence_spans` cannot retain the content-addressed immutable artifact a claim points at,
+    # so a P2..M13 database is still refused, and refused by name. The migration that closes the gap
+    # creates both tenant-first tables, the content-addressing UNIQUE index that makes "identical
+    # bytes are one Evidence" a constraint, and the immutability/no-delete triggers. The property
+    # under test is the one this node has always asserted: a migrated database and a fresh one agree
+    # about what canonical means.
+    from freight_recon.migrations.phase7_evidence import (  # noqa: E402
+        create_phase7_evidence_schema,
+        phase7_evidence_readiness_problems,
+    )
+
+    assert any("phase7_evidence" in p or "evidence" in p
+               for p in schema_readiness_problems(conn)), schema_readiness_problems(conn)
+    p7ev_performed = create_phase7_evidence_schema(conn, now=utc_now())
+    assert any(step == "create-table:evidence" for step in p7ev_performed), p7ev_performed
+    assert any(step == "create-table:evidence_spans" for step in p7ev_performed), p7ev_performed
+    assert any(step == "create-index:ix_evidence_content_addressing"
+               for step in p7ev_performed), p7ev_performed
+    assert any(step == "create-trigger:trg_evidence_no_delete"
+               for step in p7ev_performed), p7ev_performed
+    assert phase7_evidence_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")
