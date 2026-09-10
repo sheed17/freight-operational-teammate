@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .atomic_io import atomic_write_json
+from .tenant import require_tenant
 
 
 def _now() -> str:
@@ -134,7 +135,7 @@ def handle_ops_command(
 
         return render_activity(build_activity(store))
     if cmd in ("know", "knowledge", "what do you know", "what have you learned") and store is not None:
-        return _knowledge_for(store).render(tenant="default")
+        return _knowledge_for(store).render(tenant=_kb_tenant(store))
     if store is not None and cmd.startswith("know ") and len(raw.split(None, 1)) == 2:
         q = raw.split(None, 1)[1].strip()
         ql = q.lower()
@@ -142,7 +143,7 @@ def handle_ops_command(
             q = ""
         elif ql.startswith("about "):
             q = q[6:].strip()
-        return _knowledge_for(store).render(tenant="default", query=q)
+        return _knowledge_for(store).render(tenant=_kb_tenant(store), query=q)
     if store is not None and raw.strip().lower().startswith("learn ") and len(raw.split(None, 1)) == 2:
         from .knowledge import FactKind, deep_content_rejection_reason as content_rejection_reason
 
@@ -150,7 +151,7 @@ def handle_ops_command(
         reason = content_rejection_reason(fact)
         if reason:
             return f":no_entry: I won't store that — {reason}."
-        _knowledge_for(store).learn(fact, tenant="default", kind=FactKind.BUSINESS, source="owner")
+        _knowledge_for(store).learn(fact, tenant=_kb_tenant(store), kind=FactKind.BUSINESS, source="owner")
         return f":brain: Got it — I'll remember that: {fact}"
     if store is not None and raw.strip().lower().startswith("sop ") and len(raw.split(None, 1)) == 2:
         from .knowledge import FactKind, deep_content_rejection_reason as content_rejection_reason
@@ -163,11 +164,11 @@ def handle_ops_command(
         reason = content_rejection_reason(body)
         if reason:
             return f":no_entry: I won't store that — {reason}."
-        _knowledge_for(store).learn(body, tenant="default", kind=FactKind.PROCEDURE, subject=subject, source="onboarding")
+        _knowledge_for(store).learn(body, tenant=_kb_tenant(store), kind=FactKind.PROCEDURE, subject=subject, source="onboarding")
         scope = f" for *{subject}*" if subject else ""
         return f":clipboard: Noted the procedure{scope}: {body}"
     if store is not None and raw.strip().lower().startswith("forget ") and len(raw.split(None, 1)) == 2:
-        n = _knowledge_for(store).forget(raw.split(None, 1)[1].strip(), tenant="default")
+        n = _knowledge_for(store).forget(raw.split(None, 1)[1].strip(), tenant=_kb_tenant(store))
         return f":wastebasket: Forgot {n} fact(s)." if n else "Nothing matched — try `know` to see what I've learned."
     if cmd in ("autonomy", "show autonomy", "graduations", "what is autonomous") and store is not None:
         return _render_autonomy(store)
@@ -194,6 +195,14 @@ def _knowledge_for(store):
 
     # Same file the driving agent writes SYSTEM facts to, so Slack + the agent share one memory.
     return KnowledgeBase(Path(store.db_path).parent / "agent_memory.json")
+
+
+def _kb_tenant(store) -> str:
+    """The tenant a knowledge read/write is scoped to — the store's OWN, canonical tenant, never a
+    hardcoded default (### P7-AC-12: the recorded knowledge-base default-tenant defect closes here).
+    `require_tenant` fails closed on a missing or sentinel tenant rather than letting one brokerage's
+    memory be read or written as another's — a default tenant is not a tenant, it is the absence of one."""
+    return require_tenant(store.tenant, context="knowledge base")
 
 
 def _known_lane_names() -> set[str]:

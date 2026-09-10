@@ -130,9 +130,12 @@ def test_correction_becomes_a_business_fact(tmp_path):
                            {"customer": "Northbound", "operator_guidance": "it's order #1002"})
 
     class _R: status = "DONE"
-    _learn_correction(str(db), intent, _R())
+    # P7-AC-12: a correction is scoped to the run's canonical tenant, never "default" (which now
+    # fails closed). The behaviour under test — an owner's reply becomes a recallable business fact —
+    # is unchanged; it is simply owned by a real brokerage.
+    _learn_correction(str(db), intent, _R(), tenant="tenant-fixture-a")
     kb = KnowledgeBase(tmp_path / "agent_memory.json")
-    facts = kb.recall(tenant="default", kind=FactKind.BUSINESS, subject="Northbound")
+    facts = kb.recall(tenant="tenant-fixture-a", kind=FactKind.BUSINESS, subject="Northbound")
     assert any("order #1002" in f for f in facts)
 
 
@@ -149,9 +152,12 @@ def test_correction_learning_redacts_currency_amounts(tmp_path):
     )
 
     class _R: status = "DONE"
-    _learn_correction(str(db), intent, _R())
+    # P7-AC-12: a correction is scoped to the run's canonical tenant, never "default" (which now
+    # fails closed). The behaviour under test — an owner's reply becomes a recallable business fact —
+    # is unchanged; it is simply owned by a real brokerage.
+    _learn_correction(str(db), intent, _R(), tenant="tenant-fixture-a")
     kb = KnowledgeBase(tmp_path / "agent_memory.json")
-    facts = kb.recall(tenant="default", kind=FactKind.BUSINESS, subject="Northbound")
+    facts = kb.recall(tenant="tenant-fixture-a", kind=FactKind.BUSINESS, subject="Northbound")
     assert any("order #1002" in f for f in facts)
     assert all("$" not in f and "4,500" not in f for f in facts)
     assert any("[amount redacted]" in f for f in facts)

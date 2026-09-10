@@ -1838,10 +1838,14 @@ def _start_operation_background_run(
     return thread
 
 
-def _learn_correction(db_path: str, intent, result) -> None:
+def _learn_correction(db_path: str, intent, result, *, tenant) -> None:
     """When an owner's thread reply gets the run unstuck, remember it — the reply becomes a BUSINESS
     fact (e.g. "it's order #1002") so next time Neyma knows it instead of asking again. Best-effort;
-    never a money value; only kept when the guidance actually helped (DONE/PREPARED)."""
+    never a money value; only kept when the guidance actually helped (DONE/PREPARED).
+
+    ### P7-AC-12: the correction is scoped to the RUN's canonical tenant, never `default`. A
+    brokerage's learned correction is that brokerage's memory; `require_tenant` fails closed rather
+    than filing it where another tenant would read it."""
     try:
         guidance = (intent.params or {}).get("operator_guidance")
         if not guidance or getattr(result, "status", "") not in ("DONE", "PREPARED"):
@@ -1856,7 +1860,8 @@ def _learn_correction(db_path: str, intent, result) -> None:
         if not scrubbed.strip():
             return
         KnowledgeBase(_Path(db_path).parent / "agent_memory.json").learn(
-            scrubbed, tenant="default", kind=FactKind.BUSINESS, subject=subject, source="correction",
+            scrubbed, tenant=require_tenant(tenant, context="_learn_correction"),
+            kind=FactKind.BUSINESS, subject=subject, source="correction",
         )
     except Exception:  # noqa: BLE001 - learning must never break the run
         pass
@@ -1896,7 +1901,7 @@ def _start_resume_background_run(
             }
             store.add_security_event(event_type, actor=actor, payload=payload)
             diag = _record_run_diagnosis(store, result, actor=actor, channel_id=channel_id, thread_ts=thread_ts)
-            _learn_correction(db_path, intent, result)
+            _learn_correction(db_path, intent, result, tenant=tenant)
         finally:
             store.close()
         if poster is not None:

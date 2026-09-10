@@ -3790,17 +3790,67 @@ def _frontmatter(p: Path) -> str:
 
 # ============================================================ M-4: no brittle line citations
 
-def test_the_recorded_default_tenant_sites_still_exist_where_the_finding_says():
-    """The known hardcoded `tenant="default"` leak is tracked by SYMBOL, never by line number - a
-    line number goes stale on any edit above it. This verifies the actual sites still exist, so
-    the recorded finding cannot dangle and cannot silently grow."""
-    src = read(ROOT / "src" / "freight_recon" / "action_callback.py")
-    assert 'tenant="default"' in src and "_learn_correction" in src, (
-        "the KB default-tenant site moved or closed - update the finding truthfully, do not "
-        "let the citation dangle"
+def _knowledge_write_tenant_sites(tree, forbidden):
+    """The AC-12 detector, shared by the guard and its anti-vacuity control so they cannot drift:
+    over an AST, return (count of knowledge-base call sites, [(line, literal), ...] for those passing
+    a forbidden tenant literal). Knowledge-base sites are calls to `.learn` / `.render` / `.forget`."""
+    kb_methods = {"learn", "render", "forget"}
+    inspected, hits = 0, []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in kb_methods):
+            continue
+        inspected += 1
+        for kw in node.keywords:
+            if (kw.arg == "tenant" and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, str)
+                    and kw.value.value.strip().lower() in forbidden):
+                hits.append((node.lineno, kw.value.value))
+    return inspected, hits
+
+
+def test_no_hardcoded_default_tenant_reaches_a_knowledge_write():
+    """### REPLACES `test_the_recorded_default_tenant_sites_still_exist_where_the_finding_says`
+    (CLAUDE.md sec 4 rule 20). P7-AC-12 CLOSED the knowledge-base `tenant="default"` defect, so a
+    guard asserting those sites STILL EXIST became a green test asserting an OBSOLETE state — the
+    exact case rule 20 names. This is its replacement, and it enforces the closure rather than the
+    finding: it discovers knowledge-base call sites BY SYMBOL across src (calls to `.learn` /
+    `.render` / `.forget`), prints the denominator, and FAILS if any passes a hardcoded FORBIDDEN
+    tenant literal (`"default"`, `"global"`, ...) as its `tenant=` argument. Never a line number,
+    never an enumerated filename list. It is SEEN TO FAIL against a reintroduced hardcoded site by
+    scripts/mutate_phase7_kb.py."""
+    from freight_recon.tenant import FORBIDDEN_TENANTS
+
+    src = ROOT / "src" / "freight_recon"
+    inspected, offenders = 0, []
+    for path in sorted(src.rglob("*.py")):
+        seen, hits = _knowledge_write_tenant_sites(ast.parse(read(path)), FORBIDDEN_TENANTS)
+        inspected += seen
+        offenders += [f"{path.relative_to(src)}:{line} tenant={lit!r}" for line, lit in hits]
+    print(f"P7-AC-12: inspected {inspected} knowledge-base (.learn/.render/.forget) call sites")
+    assert inspected >= 3, (
+        f"discovered only {inspected} knowledge-base call sites - the sweep proved too little; the "
+        "KB API must be reachable for this guard to mean anything (anti-vacuity)"
     )
-    ops = read(ROOT / "src" / "freight_recon" / "ops_control.py")
-    assert ops.count('tenant="default"') == 5, (
-        f"ops_control.py now has {ops.count(chr(39) + 'tenant=' + chr(39))} default-tenant sites, "
-        "not the recorded 5 - update the finding truthfully"
+    assert not offenders, (
+        "a hardcoded forbidden tenant reaches a knowledge write - the P7-AC-12 closure regressed. "
+        "The knowledge base must be scoped to the store's canonical tenant, never 'default':\n  "
+        + "\n  ".join(offenders)
     )
+
+
+def test_the_knowledge_write_guard_is_not_vacuous_and_catches_a_reintroduced_default():
+    """The AC-12 guard above is SEEN TO FAIL against a reintroduced hardcoded site (its oracle), here
+    over a SYNTHETIC in-memory source rather than by mutating a file: the shared detector flags a
+    knowledge-base call passing a forbidden tenant literal and does NOT fire on a call scoped to the
+    store's canonical tenant. A guard never seen to fail is a decoration (CLAUDE.md sec 6)."""
+    from freight_recon.tenant import FORBIDDEN_TENANTS
+
+    leak = 'kb.learn(fact, tenant="default")\nkb.render(tenant="global")\nkb.forget(x, tenant="all")\n'
+    clean = 'kb.learn(fact, tenant=_kb_tenant(store))\nkb.render(tenant=store.tenant)\n'
+    seen_leak, hits = _knowledge_write_tenant_sites(ast.parse(leak), FORBIDDEN_TENANTS)
+    assert seen_leak == 3 and [lit for _line, lit in hits] == ["default", "global", "all"], (
+        "the detector failed to flag reintroduced hardcoded tenants — the guard would pass vacuously"
+    )
+    seen_clean, clean_hits = _knowledge_write_tenant_sites(ast.parse(clean), FORBIDDEN_TENANTS)
+    assert seen_clean == 2 and clean_hits == [], "the detector false-fired on a real-tenant KB call"
