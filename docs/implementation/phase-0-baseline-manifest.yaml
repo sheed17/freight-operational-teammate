@@ -385,6 +385,41 @@ expected_noncanonical_schema:
     #   activator, supersession or conflict cannot be spelled. M12 adds NO table to any M1..M11 machine
     #   and invents no second authority system.
     - rules
+    # Phase 7 (Evidence) adds TWO canonical tables, `evidence` and `evidence_spans`, both tenant-first
+    # and NEITHER exempt. This entry is the accounting for the CI #38 REG-1 miss: the tables were built
+    # into the canonical schema but not yet recorded here, so `test_no_new_tenantless_table_appeared`
+    # correctly reported two unaccounted tables. They are classified tenant-first because that is what
+    # their live schema IS, MEASURED against a fresh canonical database via PRAGMA rather than inferred:
+    #   `evidence` holds one content-addressed, immutable retained artifact — a POD PDF, a rate
+    #   confirmation — that supports a claim WITHIN one brokerage. Evidence may contain sensitive
+    #   customer documents (entity 08-evidence §7/§35), so "whose artifact is this" has no honest answer
+    #   other than a tenant: the same bytes retained by two brokerages are TWO isolated artifacts, and
+    #   content addressing scoped to no brokerage would let one broker's document deduplicate onto — or
+    #   be read as — another's. Tenant is the first primary-key column — PRIMARY KEY (tenant,
+    #   evidence_id) — and the first column of the content-addressing UNIQUE index
+    #   UNIQUE (tenant, content_digest), which is load-bearing rather than tidy: without the tenant in
+    #   it, identical bytes in two brokerages would collide into one row across a tenant boundary.
+    #   Evidence carries NO provenance_class and NO state column (it is DATA, not a claim, M-66), so it
+    #   mints nothing and answers to no effect ledger.
+    #   `evidence_spans` holds the region within an artifact that a claim points at — the WHERE that
+    #   makes a MODEL_EXTRACTED reading checkable. A span belongs to the tenant's own evidence; one
+    #   scoped to no brokerage would point into the wrong broker's document. PRIMARY KEY (tenant,
+    #   span_id) and its lookup index (tenant, evidence_id) are tenant-first.
+    #   Every foreign key — evidence.source_observation_id -> observations (M5), evidence.superseded_by
+    #   -> evidence (self-FK), evidence_spans.evidence_id -> evidence — carries the tenant in the
+    #   reference itself, so a cross-tenant artifact, supersession or span cannot be spelled. The P7
+    #   readiness oracle (migrations/phase7_evidence.phase7_evidence_readiness_problems) refuses the
+    #   tables without the content-addressing UNIQUE index and the immutability/no-delete triggers, and
+    #   the same fresh database is what test_phase0_tenant_posture's live leg reads, so this
+    #   classification is checked against the schema a tenant's rows really live in, not the DDL string.
+    #   MECHANICAL PROOF, not assertion: PRAGMA table_info gave PK order ['tenant','evidence_id'] and
+    #   ['tenant','span_id']; PRAGMA index_info gave tenant as column 0 of the content-addressing and
+    #   span-lookup indexes; PRAGMA foreign_key_list gave `tenant` in the FROM columns of all three FKs.
+    #   Evidence ships dark: no production module imports the store, it enables nothing, and recording
+    #   it here moves no phase — P7 stays NOT_STARTED with every criterion PENDING (the machine
+    #   authority, IMPLEMENTATION-REGISTRY.yaml).
+    - evidence
+    - evidence_spans
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it
