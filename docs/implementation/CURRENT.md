@@ -62,7 +62,7 @@ suite.
 | **P4** — adapter containment: the governed write route, the two-key rule at the effect boundary, the CI import gate | **COMPLETE** — 13/14 | [`p4-final-adjudication-report-0891d1a.md`](p4-final-adjudication-report-0891d1a.md) |
 | **P5** — canonical events, outbox/inbox, replay isolation, durable timers, production PostgreSQL | **COMPLETE** — 14/14 | [`p5-final-adjudication-report-91ba4e6.md`](p5-final-adjudication-report-91ba4e6.md) |
 | **P6** — foundational entities and state machines | **COMPLETE** — **17/17** | thirteen landed checkpoints — all 13 machines, 134/134 transitions; accepted by an independent phase review on CI run `34314374504`; see [below](#p6-phase-acceptance--the-contract-that-now-exists) |
-| **P7** — provenance | **READY** — the sole selected unit; **NOT STARTED**, nothing implemented. Its acceptance bar now EXISTS: seventeen criteria, every one required, **every one `PENDING`** | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored) |
+| **P7** — provenance | **READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** — the sole selected unit; seventeen criteria, every one required, **every one still `PENDING`**. *(Until this working branch's P7/AC-1…AC-14 build, this cell read "**NOT STARTED**, nothing implemented"; that was TRUE at `2e2e7e9` and is STALE now — REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20. **P7 implementation code IS now present on this branch** and is locally verified by its probe/test/mutation batteries, but **NOTHING is scored**: no independent phase review (`P7-AC-17`) and no CI run (`P7-AC-16`) have occurred, it ships dark and enables nothing, and its presence does **not** move P7 — the machine authority [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) records P7 `NOT_STARTED` / `NO_CHECKPOINT` and every criterion `PENDING`, and that is the highest evidence-supported state.)* | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored) |
 | **P8–P14** | **BLOCKED** behind P7 | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 Gates **G0** and **G1**… **G2 is adjudicated** and its seven event obligations are discharged; the
@@ -1355,8 +1355,16 @@ spanning several phases is not any one phase's completion criterion. **So P7 doe
 `P7-AC-1`. A search for a P7-specific G1 obligation beyond that found none, and none is inferred.
 
 ### **NOTHING IS SCORED AND NOTHING MOVED.** P7 stays `status: READY` / `execution_state: NOT_STARTED`
-/ `checkpoint_state: NO_CHECKPOINT`; **P8 stays `BLOCKED`**; no runtime, test, script, migration or CI
-file was touched. ### **AND THE BLOCK IS NOT YET MECHANICALLY GUARDED:** the landed safety-wall guard
+/ `checkpoint_state: NO_CHECKPOINT`; **P8 stays `BLOCKED`**; and no P7 acceptance criterion is scored.
+*(This paragraph recorded the `2e2e7e9` acceptance-authority bootstrap, which touched "no runtime,
+test, script, migration or CI file" — TRUE of that commit. A later **P7/AC-1…AC-14 build on this
+working branch** DID add P7 runtime, tests, scripts and a migration; that sentence is therefore
+REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20. The implementation is locally verified and
+ships dark, but it is **unscored** — no independent phase review (`P7-AC-17`) and no CI run
+(`P7-AC-16`) have run — so it does not move P7's status enums above and scores no criterion. The
+`evidence`/`evidence_spans` row in the tenant-first partition table below is that landed-but-unscored
+implementation, present because the schema is canonical, not because P7 advanced.)* ### **AND THE
+BLOCK IS NOT YET MECHANICALLY GUARDED:** the landed safety-wall guard
 reads the **selector's dependencies** (today P6) and P3/P4/P5, never the selector's own block, so a
 five-mutant battery run at instantiation caught a vacated selector and an incomplete P6 but **stayed
 GREEN** against a P7 criterion flipped to `PASS`, a broken weight total, and a `required: true` flipped
