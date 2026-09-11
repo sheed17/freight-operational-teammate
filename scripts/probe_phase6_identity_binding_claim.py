@@ -327,7 +327,8 @@ _SIG: dict[str, str] = {
     "correction-of-correction-is-supported": "CORRECTION-OF-CORRECTION IS SUPPORTED",
     "correction-records-its-propagation-obligation":
         "THE CORRECTION RECORDED ITS PROPAGATION OBLIGATION",
-    "m10-compensation-machine-is-not-built": "THE M10 COMPENSATION MACHINE IS NOT BUILT",
+    "m10-compensation-machine-is-not-built":
+        "M6 BUILDS NO COMPENSATION TABLE AND MINTS NO M10 EVENT (IT NAMES EFFECTS, NEVER FABRICATES A COMPENSATION)",
     "proposed-or-ambiguous-may-be-rejected": "A DISPROVEN OR CANCELLED PROPOSAL IS REJECTED",
     "cancelled-entity-supersedes-the-confirmed-binding":
         "A CANCELLED ENTITY SUPERSEDES THE BINDING AND RETURNS THE SUBJECT TO A HUMAN",
@@ -1181,10 +1182,14 @@ def case_correction_records_its_propagation_obligation(w: World) -> CaseResult:
     old = m.get(r.claim.binding_claim_id)
     obligation = json.loads(old.propagation_obligation or "{}")
     named = "invoice#560010" in obligation.get("completed_effects_needing_compensation", [])
-    # NO compensations table, and no fabricated completed compensation.
-    tables = {row[0] for row in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    no_comp_table = "compensations" not in tables
-    ok = old.propagation_obligation is not None and named and no_comp_table
+    # ### RECONCILED AT THE M10 LANDING (CLAUDE.md sec 4 rule 20). The correction NAMES the completed
+    # effects that rested on the wrong binding and FABRICATES none as discharged. The M6-era spelling
+    # asserted the `compensations` table was absent from the tree; M10 has since LANDED and the table is
+    # canonical, so the durable property is now that the correction writes NO compensation ROW — it
+    # records the obligation and leaves the actual (policy-gated) Compensation to M10/P8.
+    comp_rows = w.conn.execute("SELECT COUNT(*) FROM compensations").fetchone()[0]
+    no_fabricated_compensation = comp_rows == 0
+    ok = old.propagation_obligation is not None and named and no_fabricated_compensation
     if not ok:
         return CaseResult(False, markers=["### CORRECTION WITHOUT ITS PROPAGATION OBLIGATION ###"])
     return CaseResult(True, lines=[_SIG["correction-records-its-propagation-obligation"],
@@ -1193,8 +1198,15 @@ def case_correction_records_its_propagation_obligation(w: World) -> CaseResult:
 
 
 def case_m10_compensation_machine_is_not_built(w: World) -> CaseResult:
-    tables = {r[0] for r in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    # ### RECONCILED AT THE M10 LANDING (CLAUDE.md sec 4 rule 20). M10 Compensation LANDED as a P6
+    # checkpoint after M6, so `compensations` is now canonical and PRESENT — asserting its absence from
+    # the whole tree is the obsolete M6-era spelling (the same reconciliation already made for the M7
+    # case above). The DURABLE property M6 protects: M6's OWN module and migration create no
+    # `compensations` table and mint none of M10's events — M6 NAMES the effects that need compensation,
+    # it never builds or completes a Compensation.
     src = (ROOT / "src" / "freight_recon" / "identity_binding_claim.py").read_text(encoding="utf-8")
+    mig = (ROOT / "src" / "freight_recon" / "migrations"
+           / "phase6_identity_binding_claims.py").read_text(encoding="utf-8")
     import ast
     minted = set()
     for node in ast.walk(ast.parse(src)):
@@ -1204,7 +1216,9 @@ def case_m10_compensation_machine_is_not_built(w: World) -> CaseResult:
                     minted.add(str(kw.value.value))
     forbidden = {"CompensationRequired", "CompensationCompleted", "CompensationApproved",
                  "CompensationStarted", "CorrectionInvalidatedAnEffect"}
-    ok = "compensations" not in tables and not (minted & forbidden)
+    m6_builds_no_compensations_table = all(
+        "CREATE TABLE compensations" not in t for t in (src, mig))
+    ok = m6_builds_no_compensations_table and not (minted & forbidden)
     if not ok:
         return CaseResult(False, markers=["### COMPENSATION FABRICATED ###"])
     return CaseResult(True, lines=[_SIG["m10-compensation-machine-is-not-built"],

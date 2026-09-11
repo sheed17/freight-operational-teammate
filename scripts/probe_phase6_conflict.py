@@ -382,7 +382,8 @@ _SIG: dict[str, str] = {
     "the-m3-unknown-outcome-semantics-are-unchanged": "THE M3 UNKNOWN_OUTCOME SEMANTICS ARE UNCHANGED",
     "the-cross-family-conflict-raised-producers-are-recorded":
         "THE CROSS-FAMILY ConflictRaised PRODUCERS ARE RECORDED (CF-1, IB-6, EF-4c)",
-    "m8-m9-m10-and-m12-are-not-built": "THE M8, M9, M10 AND M12 MACHINES ARE NOT BUILT",
+    "m8-m9-m10-and-m12-are-not-built":
+        "M7 BUILDS NONE OF THE M8/M9/M10/M11/M12 MACHINE TABLES (IT IS AN INPUT, NOT A SECOND MACHINE)",
 }
 
 # The whole-run headline plus the lines not primarily owned by one case, so a full battery cannot pass
@@ -1729,17 +1730,23 @@ def case_the_cross_family_conflict_raised_producers_are_recorded(w: World) -> Ca
 
 
 def case_m8_m9_m10_and_m12_are_not_built(w: World) -> CaseResult:
-    # M10 Compensation and M12 Rule are NOT built here — the canonical schema carries none of their
-    # tables, and M7 fabricated no Compensation. (M8 the Expectation and then M9 the Exception LANDED
-    # as the build checkpoints after M7, so `expectations`/`observation_coverage`/`exceptions` are now
-    # canonical and are no longer in the forbidden set — a prior unit's forward-looking "not built" is
-    # corrected the moment the unit lands, exactly as M7 was removed from M6's forbidden set at the M7
-    # landing.)
-    tables = {r[0] for r in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    forbidden = {"compensations", "policies", "rules"}
-    ok = not (tables & forbidden)
-    if not ok:
-        return CaseResult(False, markers=[f"### COMPENSATION FABRICATED ### {tables & forbidden}"])
+    # ### RECONCILED AT THE M10/M11/M12 LANDINGS (CLAUDE.md sec 4 rule 20). When this case was written
+    # at the M7 landing, M10 Compensation, M11 Policy and M12 Rule were unbuilt and their tables were
+    # absent from the whole tree. They have since LANDED as P6 checkpoints (CP-10/11/12), so
+    # `compensations`/`policies`/`rules` are now canonical and PRESENT — asserting their absence from
+    # the database is the obsolete M7-era spelling, and a prior unit's forward-looking "not built" is
+    # corrected the moment the later unit lands (exactly as M8/M9's tables were dropped from this set,
+    # and as the M6 probe reconciled its own M7 case). The DURABLE property M7 protects is unchanged:
+    # M7's OWN module and migration BUILD none of those machines' tables — M7 is an INPUT to the
+    # checkpoint, never a second machine, and it fabricates no Compensation/Policy/Rule.
+    src = (ROOT / "src" / "freight_recon" / "conflict.py").read_text(encoding="utf-8")
+    mig = (ROOT / "src" / "freight_recon" / "migrations" / "phase6_conflicts.py").read_text(encoding="utf-8")
+    foreign_tables = ("expectations", "observation_coverage", "exceptions",
+                      "compensations", "policies", "rules")
+    built_by_m7 = [t for t in foreign_tables
+                   if f"CREATE TABLE {t}" in src or f"CREATE TABLE {t}" in mig]
+    if built_by_m7:
+        return CaseResult(False, markers=[f"### COMPENSATION FABRICATED ### M7 builds {built_by_m7}"])
     return CaseResult(True, lines=[_SIG["m8-m9-m10-and-m12-are-not-built"]])
 
 
