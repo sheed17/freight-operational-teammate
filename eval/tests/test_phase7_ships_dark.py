@@ -20,9 +20,16 @@ each on the candidate tree:
      of the calibrated `test_p4_deployed_governed_route` blocked-route guard.
   4. "the recorded readiness tier matches `readiness_target`" (= `LOCALLY_IMPLEMENTED`). -> a
      non-over-promotion check: the registry records P7 at `LOCALLY_IMPLEMENTED` and at no higher
-     achieved tier. The BEHAVIOURAL proof of that tier is clauses 1-3 and the no-second-authority
-     scan below; a status line cannot prove itself, so this clause only pins that nothing promoted
-     P7 past the tier those behaviours establish.
+     achieved tier, and this holds across BOTH the pre-acceptance and the accepted-but-still-dark
+     lifecycle states. Phase acceptance legitimately moves `execution_state` NOT_STARTED ->
+     COMPLETE and `checkpoint_state` NO_CHECKPOINT -> PHASE_ACCEPTANCE_COMPLETE (P0-P6 already show
+     the accepted values) WITHOUT enabling anything or changing the readiness tier; darkness is the
+     readiness tier plus the behavioural checks in clauses 1-3/5, never a lifecycle field. The
+     earlier oracle pinned NOT_STARTED / NO_CHECKPOINT as if they proved darkness, so a legitimate
+     acceptance transition would have made AC-15 fail while the product was still dark - the
+     stale-oracle defect this correction removes. The BEHAVIOURAL proof of the tier is clauses 1-3
+     and the no-second-authority scan below; a status line cannot prove itself, so this clause only
+     pins that nothing promoted P7 past the tier those behaviours establish.
 
 Plus the requirement's structural half — "`checkpoint.py` remains the SOLE minter of a gate decision
 and of a Checkpoint Witness; P7 introduces no second effect authority and no second orchestration
@@ -38,6 +45,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -133,21 +141,97 @@ def _p7_unit_block(text: str) -> str:
     return block
 
 
+# The one readiness tier P7 is authorised to record, and the TWO legitimate values each phase
+# lifecycle field passes through. FIXED-SPECIFICATION: these are the registry's canonical
+# phase-lifecycle vocabulary and the single authorised tier (meta.status_model; rebaseline_contract
+# .readiness_target) — the specification this clause enforces, not a discovered file population.
+_AUTHORISED_READINESS_TARGET = "LOCALLY_IMPLEMENTED"
+_HIGHER_READINESS_TIERS = ("DEPLOYED", "PILOT_READY", "ENABLED", "PRODUCTION_READY", "PRODUCTION")
+_LEGIT_EXECUTION_STATES = ("NOT_STARTED", "COMPLETE")
+_LEGIT_CHECKPOINT_STATES = ("NO_CHECKPOINT", "PHASE_ACCEPTANCE_COMPLETE")
+
+
+def _unit_field(block: str, field: str) -> str | None:
+    """Value of a unit-level scalar field (4-space indent) inside a registry unit block."""
+    m = re.search(rf"(?m)^    {re.escape(field)}:\s*(\S+)\s*$", block)
+    return m.group(1) if m else None
+
+
+def _over_promotion_problems(block: str) -> list[str]:
+    """`P7-AC-15` clause 4 as a PURE predicate, so its discrimination is provable on synthetic
+    blocks. Returns the reasons a unit block would count as enabled / over-promoted past the
+    authorised readiness tier; an empty list means "recorded dark as specified". The lifecycle
+    fields are admitted at EITHER their pre-acceptance or their accepted value — both are dark,
+    because acceptance enables nothing — but any OTHER value (a readiness tier that leaked into a
+    lifecycle field, a live/graduated marker) is a defect."""
+    problems: list[str] = []
+    if f"readiness_target: {_AUTHORISED_READINESS_TARGET}" not in block:
+        problems.append(f"readiness_target is not {_AUTHORISED_READINESS_TARGET}")
+    for higher in _HIGHER_READINESS_TIERS:
+        if f"readiness_target: {higher}" in block:
+            problems.append(f"over-promoted past {_AUTHORISED_READINESS_TARGET}: {higher!r}")
+    exec_state = _unit_field(block, "execution_state")
+    if exec_state not in _LEGIT_EXECUTION_STATES:
+        problems.append(f"execution_state {exec_state!r} is neither pre-acceptance nor accepted-dark")
+    cp_state = _unit_field(block, "checkpoint_state")
+    if cp_state not in _LEGIT_CHECKPOINT_STATES:
+        problems.append(f"checkpoint_state {cp_state!r} is neither pre-acceptance nor accepted-dark")
+    return problems
+
+
 def test_the_recorded_p7_readiness_tier_is_locally_implemented_and_not_higher():
     """`P7-AC-15` clause 4: the recorded readiness tier matches `readiness_target` — P7 is at
-    `LOCALLY_IMPLEMENTED` and at NO higher achieved tier (execution `NOT_STARTED`, no checkpoint).
-    This pins non-over-promotion; the BEHAVIOURAL proof of the tier is clauses 1-3 and clause 5. A
-    status line cannot prove itself, so this asserts only that nothing promoted P7 past what those
-    behaviours establish."""
+    `LOCALLY_IMPLEMENTED` and at NO higher tier — across BOTH the pre-acceptance and the
+    accepted-but-still-dark lifecycle states. Phase acceptance legitimately moves `execution_state`
+    to COMPLETE and `checkpoint_state` to PHASE_ACCEPTANCE_COMPLETE without enabling anything, so
+    this clause no longer treats NOT_STARTED / NO_CHECKPOINT as the evidence of darkness (the stale
+    oracle this correction removes). It pins non-over-promotion; the BEHAVIOURAL proof of the tier
+    is clauses 1-3 and clause 5. A status line cannot prove itself, so this asserts only that
+    nothing promoted P7 past what those behaviours establish."""
     block = _p7_unit_block(REGISTRY.read_text(encoding="utf-8"))
-    assert "readiness_target: LOCALLY_IMPLEMENTED" in block, \
-        "P7 readiness_target is not LOCALLY_IMPLEMENTED"
-    assert "execution_state: NOT_STARTED" in block, "P7 is recorded as started"
-    assert "checkpoint_state: NO_CHECKPOINT" in block, "P7 is recorded with a checkpoint"
-    for higher in ("readiness_target: DEPLOYED", "readiness_target: PILOT_READY",
-                   "readiness_target: ENABLED", "readiness_target: PRODUCTION_READY",
-                   "readiness_target: PRODUCTION"):
-        assert higher not in block, f"P7 is over-promoted past LOCALLY_IMPLEMENTED: {higher!r}"
+    problems = _over_promotion_problems(block)
+    assert not problems, "P7 is over-promoted / not recorded dark: " + "; ".join(problems)
+
+
+def test_the_over_promotion_oracle_admits_an_accepted_but_dark_p7_and_catches_real_enablement():
+    """Regression for the stale-oracle defect. Clause 4's predicate must stay GREEN when P7 is
+    legitimately phase-accepted yet STILL DARK (execution `COMPLETE`, checkpoint
+    `PHASE_ACCEPTANCE_COMPLETE`, `readiness_target` unchanged), and must go RED the moment the
+    recorded readiness tier is promoted to a deployed/enabled tier — in EITHER lifecycle state.
+    Synthetic in-memory blocks; nothing on the tree is touched. This proves the oracle discriminates
+    enablement from an acceptance transition rather than passing on whatever it happens to read."""
+    def block(exec_state: str, cp_state: str, tier: str) -> str:
+        return (
+            "\n  - unit_id: P7\n"
+            "    status: READY\n"
+            f"    execution_state: {exec_state}\n"
+            f"    checkpoint_state: {cp_state}\n"
+            "    rebaseline_contract:\n"
+            f"      readiness_target: {tier}\n"
+            "    acceptance_criteria:\n"
+        )
+
+    # pre-acceptance, dark — the state on the current tree — is green
+    assert not _over_promotion_problems(
+        block("NOT_STARTED", "NO_CHECKPOINT", _AUTHORISED_READINESS_TARGET))
+    # accepted, STILL dark — the state a legitimate phase acceptance produces — MUST stay green
+    assert not _over_promotion_problems(
+        block("COMPLETE", "PHASE_ACCEPTANCE_COMPLETE", _AUTHORISED_READINESS_TARGET)), (
+        "an accepted-but-dark P7 was wrongly flagged as enabled — the stale oracle regressed")
+    # actual deployment / enablement (a promoted readiness tier) MUST fail, in either lifecycle state
+    for exec_state, cp_state in (("NOT_STARTED", "NO_CHECKPOINT"),
+                                 ("COMPLETE", "PHASE_ACCEPTANCE_COMPLETE")):
+        for tier in _HIGHER_READINESS_TIERS:
+            assert _over_promotion_problems(block(exec_state, cp_state, tier)), (
+                f"the oracle failed to catch over-promotion to {tier} in "
+                f"lifecycle ({exec_state}/{cp_state})")
+    # a lifecycle field carrying a live/graduated marker is caught even at the authorised tier
+    assert _over_promotion_problems(
+        block("ENABLED", "NO_CHECKPOINT", _AUTHORISED_READINESS_TARGET)), \
+        "an execution_state carrying an enablement marker was not caught"
+    assert _over_promotion_problems(
+        block("COMPLETE", "GRADUATED", _AUTHORISED_READINESS_TARGET)), \
+        "a checkpoint_state carrying a graduation marker was not caught"
 
 
 # ------------------------------------ clause 5 (structural): no second authority, checkpoint sole minter

@@ -65,6 +65,36 @@ suite.
 | **P7** — provenance | **READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** — the sole selected unit; seventeen criteria, every one required, **every one still `PENDING`**. *(Until this working branch's P7/AC-1…AC-14 build, this cell read "**NOT STARTED**, nothing implemented"; that was TRUE at `2e2e7e9` and is STALE now — REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20. **P7 implementation code IS now present on this branch** and is locally verified by its probe/test/mutation batteries, but **NOTHING is scored**: no independent phase review (`P7-AC-17`) and no CI run (`P7-AC-16`) have occurred, it ships dark and enables nothing, and its presence does **not** move P7 — the machine authority [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) records P7 `NOT_STARTED` / `NO_CHECKPOINT` and every criterion `PENDING`, and that is the highest evidence-supported state.)* | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored) |
 | **P8–P14** | **BLOCKED** behind P7 | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
+### Live status — machine-derived, reconciled against the registry
+
+> The narrative above and below is human orientation and history (CLAUDE.md §5 rule 20). The table
+> between the markers below is the ONE part of this file an acceptance materializer reconciles
+> **mechanically**: it is a deterministic projection of every phase unit's lifecycle fields in
+> [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) — the registry stays the machine
+> authority and this projection is **never authoritative over it**. **Do not hand-edit the rows;
+> regenerate them from the registry.** `eval/tests/test_current_status_reconciliation.py` fails if
+> they drift, so the live restatement cannot silently diverge from the authority.
+
+<!-- LIVE-STATUS:BEGIN — deterministic projection of IMPLEMENTATION-REGISTRY.yaml phase units (columns: status / execution_state / checkpoint_state). Regenerate from the registry; do not hand-edit. -->
+| Phase | status | execution_state | checkpoint_state |
+|---|---|---|---|
+| P0 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P1 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P2 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P3 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P4 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P5 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P6 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
+| P7 | READY | NOT_STARTED | NO_CHECKPOINT |
+| P8 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P9 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P10 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P11 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P12 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P13 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+| P14 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
+<!-- LIVE-STATUS:END -->
+
 Gates **G0** and **G1**… **G2 is adjudicated** and its seven event obligations are discharged; the
 G2 residuals `G2-D4`, `G2-D6`, `G2-D8`, `G2-D9`, `G2-D10` stay open and block nothing. Exact
 members and proofs: [`TRANSITION-EVENT-AUDIT.yaml`](TRANSITION-EVENT-AUDIT.yaml).
