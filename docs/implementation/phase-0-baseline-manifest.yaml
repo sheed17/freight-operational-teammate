@@ -416,8 +416,12 @@ expected_noncanonical_schema:
     #   ['tenant','span_id']; PRAGMA index_info gave tenant as column 0 of the content-addressing and
     #   span-lookup indexes; PRAGMA foreign_key_list gave `tenant` in the FROM columns of all three FKs.
     #   Evidence ships dark: no production module imports the store, it enables nothing, and recording
-    #   it here moves no phase — P7 stays NOT_STARTED with every criterion PENDING (the machine
-    #   authority, IMPLEMENTATION-REGISTRY.yaml).
+    #   it here moves no phase. The P7 lifecycle sentence that closed this note is RETAINED rather than
+    #   deleted, and is marked historical: it is not a live status claim and governs no phase state.
+    #   HISTORICAL — TRUE WHEN WRITTEN: "P7 stays NOT_STARTED with every criterion PENDING."
+    #   This manifest is NOT a phase-status authority. Current P7 lifecycle authority remains the
+    #   machine authority IMPLEMENTATION-REGISTRY.yaml, together with CURRENT.md's bounded
+    #   LIVE-STATUS projection of it; read P7's current state there, not here.
     - evidence
     - evidence_spans
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
