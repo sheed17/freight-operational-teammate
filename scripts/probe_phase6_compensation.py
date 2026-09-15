@@ -172,7 +172,7 @@ CASES: tuple[str, ...] = (
     "a-human-narrows-the-brake-through-the-landed-mechanism",
     "m10-engages-no-brake-and-narrows-none",
     "m10-mints-no-gate-decision",
-    "the-money-gate-defaults-to-human-approval-required",
+    "the-money-gate-is-explicitly-classified-human-approval-required",
     "m10-registers-no-gate",
     # CM-4 / CM-4f readback
     "completed-requires-a-verified-compensating-effect",
@@ -221,7 +221,7 @@ CASES: tuple[str, ...] = (
     "m10-ships-dark-with-zero-production-importers",
     "m10-joins-no-outbound-channel",
     "m10-builds-no-oversight-queue-or-notifier",
-    "m11-m12-and-m13-are-not-built",
+    "m11-m12-and-m13-have-landed-and-m10-still-does-not-touch-them",
     "the-m9-escalation-seam-is-named-and-left-unwired",
     "m1-through-m9-are-unchanged",
 )
@@ -352,7 +352,8 @@ _SIG: dict[str, str] = {
     "a-human-narrows-the-brake-through-the-landed-mechanism": "A HUMAN NARROWS THE BRAKE THROUGH THE LANDED MECHANISM",
     "m10-engages-no-brake-and-narrows-none": "M10 ENGAGES NO BRAKE AND NARROWS NONE",
     "m10-mints-no-gate-decision": "M10 MINTS NO GATE DECISION",
-    "the-money-gate-defaults-to-human-approval-required": "THE MONEY GATE DEFAULTS TO HUMAN_APPROVAL_REQUIRED",
+    "the-money-gate-is-explicitly-classified-human-approval-required":
+        "THE MONEY GATE IS EXPLICITLY CLASSIFIED HUMAN_APPROVAL_REQUIRED (U8.1; it no longer DEFAULTS)",
     "m10-registers-no-gate": "M10 REGISTERS NO GATE",
     "completed-requires-a-verified-compensating-effect": "COMPLETION REQUIRES READBACK, NOT AN ADAPTER RETURN CODE",
     "adapter-success-alone-does-not-complete-a-compensation":
@@ -400,7 +401,8 @@ _SIG: dict[str, str] = {
     "m10-ships-dark-with-zero-production-importers": "M10 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS",
     "m10-joins-no-outbound-channel": "M10 JOINS NO OUTBOUND CHANNEL",
     "m10-builds-no-oversight-queue-or-notifier": "M10 BUILDS NO OVERSIGHT QUEUE OR NOTIFIER",
-    "m11-m12-and-m13-are-not-built": "THE M11, M12 AND M13 MACHINES ARE NOT BUILT",
+    "m11-m12-and-m13-have-landed-and-m10-still-does-not-touch-them":
+        "M11, M12 AND M13 HAVE LANDED AND M10 STILL IMPORTS NONE OF THEM",
     "the-m9-escalation-seam-is-named-and-left-unwired": "THE M9 ESCALATION SEAM IS NAMED AND LEFT UNWIRED",
     "m1-through-m9-are-unchanged": "M1 THROUGH M9 ARE UNCHANGED",
 }
@@ -415,7 +417,7 @@ _EXTRA_REQUIRED: tuple[str, ...] = (
     "THE M3 EFFECT AUTHORITY IS UNCHANGED",
     "THE M4 APPROVAL MACHINE IS UNCHANGED",
     "THE M9 EXCEPTION MACHINE IS UNCHANGED",
-    "THE M11, M12 AND M13 MACHINES ARE NOT BUILT",
+    "M11, M12 AND M13 HAVE LANDED AND M10 IMPORTS NONE OF THEM",
 )
 
 _REQUIRED_ON_FULL_RUN: tuple[str, ...] = tuple(dict.fromkeys(
@@ -681,8 +683,14 @@ def _m10_imports_names() -> set[str]:
 
 
 def _landed_unchanged() -> list[str]:
+    # ### RULE 20 AT U8.1/P8: `checkpoint.py` LEFT this frozen set, by the same precedent that
+    # dropped `brake.py` from M13's. ADR-010 is titled as completing "atomic pre-effect checkpoint
+    # STEP 6", so a probe that froze the kernel would report the sanctioned unit as a defect. The
+    # three properties CLAUDE.md §10 actually protects are asserted directly by
+    # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`.
+    # M1..M9 and M2's pipeline remain frozen here and are asserted so.
     files = [f"src/freight_recon/{v}" for v in LANDED.values()] + [
-        "src/freight_recon/pipeline_instance.py", "src/freight_recon/checkpoint.py"]
+        "src/freight_recon/pipeline_instance.py"]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *sorted(set(files))],
                        cwd=ROOT, capture_output=True, text=True)
     return [x for x in r.stdout.strip().splitlines() if x]
@@ -994,9 +1002,33 @@ def evaluate(w: "World", ctx: Ctx, case: str) -> bool:  # noqa: C901 — a flat 
         return "brake" not in _m10_imports() and "BrakeStore" not in _m10_imports_names()
     if case in ("m10-mints-no-gate-decision", "m10-registers-no-gate"):
         return "checkpoint" not in _m10_imports() and _gate_minters() == ["checkpoint.py"]
-    if case == "the-money-gate-defaults-to-human-approval-required":
-        from freight_recon.checkpoint import GateRegistry, GateDecision
-        return GateRegistry({}, policy_version="pv1").gate_for("adjust_invoice").gate is GateDecision.HUMAN_APPROVAL_REQUIRED
+    if case == "the-money-gate-is-explicitly-classified-human-approval-required":
+        # ### REPLACED AT U8.1/P8 (CLAUDE.md §4 rule 20 — replaced, not deleted).
+        #
+        # This case used to read:
+        #     GateRegistry({}, policy_version="pv1").gate_for("adjust_invoice").gate
+        #         is GateDecision.HUMAN_APPROVAL_REQUIRED
+        # and it was GREEN — by asserting the `_DEFAULT` fallback that U8.1 REMOVED. It proved the
+        # compensating money action class was human-gated BECAUSE NOBODY HAD CLASSIFIED IT, which
+        # is the right answer for exactly the wrong reason and is F-20 itself. A green check
+        # asserting a forbidden behaviour is a defect with a passing status.
+        #
+        # The property it should always have been asserting is the one below: the class carries an
+        # EXPLICIT human gate, and an unclassified class REFUSES rather than defaulting.
+        from freight_recon.checkpoint import GateRegistry, UnclassifiedActionClass
+        from freight_recon.product_policy import PRODUCT_POLICY, product_gate_for
+        from freight_recon.checkpoint import GateDecision
+        explicit = (
+            "adjust_invoice" in PRODUCT_POLICY
+            and product_gate_for("adjust_invoice") is GateDecision.HUMAN_APPROVAL_REQUIRED
+            and bool(str(PRODUCT_POLICY["adjust_invoice"].authority).strip())
+        )
+        try:
+            GateRegistry({}, policy_version="pv1").gate_for("adjust_invoice")
+            refuses = False   # the default is back: forgetting is survivable again
+        except UnclassifiedActionClass:
+            refuses = True
+        return explicit and refuses
 
     # ---- CM-4 / CM-4f readback ----
     if case == "completed-requires-a-verified-compensating-effect":
@@ -1166,10 +1198,21 @@ def evaluate(w: "World", ctx: Ctx, case: str) -> bool:  # noqa: C901 — a flat 
         return not (_m10_imports() & _channel_capable_modules())
     if case == "m10-builds-no-oversight-queue-or-notifier":
         return not any(b in M10_SRC for b in ("class OversightQueue", "def dashboard", "mttr", "def enqueue_alert"))
-    if case == "m11-m12-and-m13-are-not-built":
+    if case == "m11-m12-and-m13-have-landed-and-m10-still-does-not-touch-them":
+        # ### REPLACED (CLAUDE.md §4 rule 20 — replaced, not deleted). PRE-EXISTING DEFECT, not
+        # introduced by U8.1: this case asserted that `policy.py`, `rule.py` and the `policies` /
+        # `rules` tables DO NOT EXIST. They have existed since P6-CP-11/12/13 landed M11, M12 and
+        # M13, so the case had been reporting WRONG on every run since — a probe asserting the
+        # absence of something the repository had already built.
+        #
+        # The property M10 actually owes is unchanged and is what is asserted now: those machines
+        # exist, and M10 still imports NONE of them. That is the seam this case was defending.
         tables = {r[0] for r in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        return not ({"policies", "rules"} & tables) and not any(
-            (ROOT / "src" / "freight_recon" / f).exists() for f in ("policy.py", "rule.py", "brake_machine.py"))
+        landed = {"policies", "rules"} <= tables and all(
+            (ROOT / "src" / "freight_recon" / f).exists() for f in ("policy.py", "rule.py"))
+        m10_clean = not ({"policy", "rule", "brake_lifecycle", "policy_admission", "product_policy"}
+                         & _m10_imports())
+        return landed and m10_clean
     if case == "the-m9-escalation-seam-is-named-and-left-unwired":
         # M10 names the M9 escalation seam (AQ-12) and does NOT import M9 or create an exceptions row.
         return ("exception" not in _m10_imports() and "AQ-12" in M10_SRC
@@ -1374,7 +1417,7 @@ def report_lines() -> list[str]:  # noqa: C901 — a flat report, deliberately
 
     for lit in ("THE M1 WORK ITEM MACHINE IS UNCHANGED", "THE M2 PIPELINE MACHINE IS UNCHANGED",
                 "THE M3 EFFECT AUTHORITY IS UNCHANGED", "THE M4 APPROVAL MACHINE IS UNCHANGED",
-                "THE M9 EXCEPTION MACHINE IS UNCHANGED", "THE M11, M12 AND M13 MACHINES ARE NOT BUILT"):
+                "THE M9 EXCEPTION MACHINE IS UNCHANGED", "M11, M12 AND M13 HAVE LANDED AND M10 IMPORTS NONE OF THEM"):
         P(lit)
     conn.close()
     return out

@@ -87,10 +87,20 @@ def make_store(tmp_path: Path, tenant: str = T_A, name: str = "p6m2.db") -> Work
 
 def registry(policy_version: str = "pv1") -> GateRegistry:
     """The gate ladder these cases route on. Built HERE, in a test, and never in production code:
-    `CURRENT.md` keeps the production `GateRegistry` population EMPTY until U8.1/P8."""
+    the production `GateRegistry` population stays EMPTY (U8.1 put the product ceiling in
+    `product_policy.py` instead — see that module and R-07 containment condition 3).
+
+    ### `adjust_invoice` IS NOW REGISTERED EXPLICITLY, AND THAT IS THE POINT OF U8.1.
+    Until U8.1 it was absent and resolved to `GateRegistry._DEFAULT` — the compensating money
+    action class was human-gated because nobody had classified it, which is precisely F-20: the
+    right answer for the wrong reason. The default is gone, so the class is classified, with the
+    same gate `product_policy.PRODUCT_POLICY` gives it (`HUMAN_APPROVAL_REQUIRED`, money-out).
+    The VALUE is unchanged; what changed is that it is now a decision rather than an omission.
+    """
     return GateRegistry(
         {
             "raise_invoice": GateEntry(gate=GateDecision.HUMAN_APPROVAL_REQUIRED),
+            "adjust_invoice": GateEntry(gate=GateDecision.HUMAN_APPROVAL_REQUIRED),
             "file_document": GateEntry(
                 gate=GateDecision.AUTONOMOUS_WITHIN_CAPS,
                 caps=Caps(max_per_day=20, max_amount_minor=None)),

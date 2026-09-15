@@ -80,6 +80,8 @@ from .checkpoint import (
     ProvenanceClass,
     ProvenancedFact,
 )
+from .checkpoint import _GATE_RANK as _CHECKPOINT_GATE_RANK
+from .checkpoint import gate_rank as _checkpoint_gate_rank
 from .event_contracts import CONTRACTS
 from .event_envelope import EventEnvelope, format_instant
 from .event_inbox import ConsumeResult, DedupInbox
@@ -119,28 +121,39 @@ HUMAN = "HUMAN"
 # ### THIS IS NOT A STRING COMPARE. `AUTONOMOUS_WITHIN_CAPS` sorts BEFORE `HUMAN_APPROVAL_REQUIRED`
 # alphabetically, so a string comparison would call the single most dangerous broadening in the system a
 # narrowing — silently, on the exact path where nobody is watching. The rank makes the order EXPLICIT.
-_GATE_RANK: dict[GateDecision, int] = {
-    GateDecision.AUTONOMOUS_WITHIN_CAPS: 3,
-    GateDecision.HUMAN_APPROVAL_REQUIRED: 2,
-    GateDecision.PERMANENT_HUMAN_ASSERTION_REQUIRED: 1,
-    GateDecision.FORBIDDEN: 0,
-}
+# ### THE DECLARATION MOVED TO `checkpoint.py` AT U8.1/P8 — ONE ORDER, NOT TWO.
+# It is re-exported here under both names so every M11 caller is unchanged. It moved because the
+# kernel's step 6 now needs the same comparison (to verify that the gate the policy layer returned
+# is no broader than the ceiling), and the kernel importing the policy layer above it would be a
+# dependency cycle — `policy.py` already imports `checkpoint.py` for `GateDecision`. The order
+# belongs with the enum it orders. The reasoning for why it is a RANK and not a string compare is
+# recorded beside the declaration, and this module's own guard still asserts it here.
+_GATE_RANK = _CHECKPOINT_GATE_RANK
 
-# The fail-closed product ceiling. Spec §20.2 enforces Product Policy in CONFIG, which does not exist yet;
-# until it does, the ceiling is the workflow default HUMAN_APPROVAL_REQUIRED (ADR-010 §8 layer 7, the
-# kernel's own `_DEFAULT`). Nothing graduates (V11), so a tenant policy can never reach AUTONOMOUS_WITHIN_
-# CAPS under this default — that is the safe direction, and it is deliberate.
+# The fail-closed product ceiling for a machine constructed WITHOUT one. Nothing graduates (V11), so a
+# tenant policy can never reach AUTONOMOUS_WITHIN_CAPS under this default — the safe direction, deliberate.
+#
+# ### [HISTORICAL AS WRITTEN — this comment read "Spec §20.2 enforces Product Policy in CONFIG, which does
+# not exist yet; until it does, the ceiling is the workflow default ... (the kernel's own `_DEFAULT`)".
+# Both halves are now false and are corrected rather than deleted (rule 20): Product Policy DOES exist as
+# of U8.1/P8 — `product_policy.py`, total over the discovered action-class population — and the kernel's
+# `_DEFAULT` was REMOVED there (F-20). This scalar is now only the fallback for an `M11Machine` built with
+# no explicit ceiling; the real per-action-class ceiling is `policy_admission.resolve_ceiling`.]
 DEFAULT_PRODUCT_CEILING = GateDecision.HUMAN_APPROVAL_REQUIRED
 
 
 def gate_rank(gate: GateDecision) -> int:
     """The rank of a gate member in the declared total order (broadest = highest). Raises on anything not
-    a `GateDecision`, so a raw string can never be ranked — the comparison is typed, never textual."""
+    a `GateDecision`, so a raw string can never be ranked — the comparison is typed, never textual.
+
+    Delegates to `checkpoint.gate_rank`, where the order is declared, so M11 and the kernel cannot
+    drift into two orders. `M11Error` is preserved as the raised type for M11's own callers — the
+    kernel raises `CheckpointError` for the same input, and both are refusals."""
     if not isinstance(gate, GateDecision):
         raise M11Error(
             f"a gate decision must be one of the four canonical members, got {gate!r}: the ceiling "
             f"comparison is over a declared total order, never a raw string compare (ADR-010 §3.1).")
-    return _GATE_RANK[gate]
+    return _checkpoint_gate_rank(gate)
 
 
 def narrows_or_holds(new: GateDecision, ceiling: GateDecision) -> bool:
@@ -485,6 +498,20 @@ class PolicyDecision:
     rules_evaluated: tuple[str, ...] = ()
     rules_matched: tuple[str, ...] = ()
     caps_applied: tuple[tuple[str, Any], ...] = ()
+    # ### THE THREE §5.3 FIELDS COMPLETED AT U8.1/P8. They were absent while M11 shipped dark and
+    # no composition existed to populate them; the P8 admission layer (`policy_admission.py`) is
+    # that composition, and it needs all three. Added with defaults, so M11's own seven
+    # transitions and every P6 caller are byte-unchanged in behaviour — an absent rejection, an
+    # absent signal and "no escalation" are exactly what a bare tenant-posture evaluation means.
+    #
+    #   `rules_rejected`      — (rule_id, why) for every rule considered and REFUSED. This is what
+    #                           makes a refused broadening ATTRIBUTABLE rather than merely denied.
+    #   `security_signals`    — ADR-010 §12: an attempt to broaden is a SECURITY event, because a
+    #                           rising rate of them is an attack signature as much as a UX signal.
+    #   `escalation_required` — whether this decision owes a human, rather than just a refusal.
+    rules_rejected: tuple[tuple[str, str], ...] = ()
+    security_signals: tuple[str, ...] = ()
+    escalation_required: bool = False
 
     def canonical(self) -> dict[str, Any]:
         return {
@@ -495,6 +522,9 @@ class PolicyDecision:
             "rules_evaluated": list(self.rules_evaluated),
             "rules_matched": list(self.rules_matched),
             "caps_applied": [list(c) for c in self.caps_applied],
+            "rules_rejected": [list(r) for r in self.rules_rejected],
+            "security_signals": list(self.security_signals),
+            "escalation_required": bool(self.escalation_required),
         }
 
     def to_bytes(self) -> bytes:

@@ -73,10 +73,22 @@ def _production_gate_registry_population() -> list[str]:
     resolves to `GateRegistry._DEFAULT`, which is `HUMAN_APPROVAL_REQUIRED`. Counting it reported
     the *absence* of registration as its presence.
 
-    That is not hypothetical. `scripts/probe_phase6_compensation.py` proves the money action class
-    `adjust_invoice` falls to human approval precisely BECAUSE nothing is registered — it builds an
-    empty registry and asserts the default comes back. On a43feae this guard read that proof as the
+    That is not hypothetical. `scripts/probe_phase6_compensation.py` used to prove the money action
+    class `adjust_invoice` fell to human approval precisely BECAUSE nothing was registered — it built
+    an empty registry and asserted the default came back. On a43feae this guard read that proof as the
     very population the proof disproves, and failed the R-07 record over it.
+
+    ### [THE PROBE'S CLAIM CHANGED AT U8.1/P8, AND THE DISCOUNT BELOW DID NOT.] There is no
+    `_DEFAULT` any more: an empty registry now REFUSES (`UnclassifiedActionClass`) instead of
+    answering `HUMAN_APPROVAL_REQUIRED`, and that probe case was replaced (rule 20) to assert the
+    explicit classification in `product_policy.py` plus the refusal. The reasoning for discounting
+    `GateRegistry({}, ...)` is UNCHANGED and if anything stronger: a registry over an empty literal
+    registers no action class, and now does not even answer for one. ### AND THE POPULATION THIS
+    GUARD MEASURES IS STILL EMPTY — U8.1 deliberately did NOT populate the kernel's registry; it put
+    the product ceiling in `product_policy.py`, which constructs no `GateRegistry` and no
+    `GateEntry`. So R-07 containment condition (3) holds as recorded, unweakened, and is NOT being
+    inherited on habit — it is re-measured on every run. ### What a reader must NOT infer from it is
+    that no action class has a gate: every one of them does, declared explicitly, elsewhere.
 
     ### NOTHING IS SUPPRESSED BY LOCATION. There is no probe exemption, no `scripts/` carve-out and
     no filename list: the sweep still walks every module under src/ and scripts/, that same probe

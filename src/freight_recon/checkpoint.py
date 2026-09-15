@@ -91,6 +91,41 @@ _HUMAN_GATES = frozenset({
 })
 
 
+# ### THE DECLARED TOTAL ORDER OVER THE FOUR MEMBERS, BROADEST FIRST (ADR-010 §3.1).
+#   AUTONOMOUS_WITHIN_CAPS > HUMAN_APPROVAL_REQUIRED > PERMANENT_HUMAN_ASSERTION_REQUIRED > FORBIDDEN
+#
+# ### THIS IS NOT A STRING COMPARE. `AUTONOMOUS_WITHIN_CAPS` sorts alphabetically BEFORE
+# `HUMAN_APPROVAL_REQUIRED`, so a textual comparison would call the single most dangerous
+# broadening in the system a narrowing — silently, on the exact path where nobody is watching.
+#
+# ### IT IS DECLARED HERE, WITH THE ENUM, AND NOWHERE ELSE. It moved here from `policy._GATE_RANK`
+# at U8.1/P8, because the kernel needs it too: step 6 verifies that the gate the policy layer
+# returned is no BROADER than the ceiling the seven steps started from. The alternative was the
+# kernel importing the policy layer that sits above it — `policy.py` already imports this module
+# for `GateDecision`, so that would be a dependency cycle, and a kernel that depends on the policy
+# engine is the shape ADR-011 §0 spends a section warning about. `policy.gate_rank` re-exports
+# this, so M11's callers are unchanged and there is still exactly ONE declaration of the order.
+_GATE_RANK: dict[GateDecision, int] = {
+    GateDecision.AUTONOMOUS_WITHIN_CAPS: 3,
+    GateDecision.HUMAN_APPROVAL_REQUIRED: 2,
+    GateDecision.PERMANENT_HUMAN_ASSERTION_REQUIRED: 1,
+    GateDecision.FORBIDDEN: 0,
+}
+
+
+def gate_rank(gate: GateDecision) -> int:
+    """The rank of a gate member in the declared total order (broadest = highest). Raises on
+    anything that is not a `GateDecision`, so a raw string can never be ranked — the comparison is
+    typed, never textual."""
+    if not isinstance(gate, GateDecision):
+        raise CheckpointError(
+            f"a gate decision must be one of the four canonical members, got {gate!r}: the "
+            f"ceiling comparison is over a declared total order, never a raw string compare "
+            f"(ADR-010 §3.1)."
+        )
+    return _GATE_RANK[gate]
+
+
 class ProvenanceClass(str, Enum):
     """C-7: the six canonical provenance classes. There is no seventh."""
 
@@ -114,6 +149,21 @@ class EvidenceCondition(str, Enum):
 
 class CheckpointError(RuntimeError):
     """A structural misuse of the kernel (not a checkpoint refusal). Fail closed."""
+
+
+class UnclassifiedActionClass(CheckpointError):
+    """### F-20, ENFORCED AT U8.1/P8: an action class with no explicit gate decision is REFUSED.
+
+    From P3 until U8.1 this condition did not raise — `GateRegistry._DEFAULT` answered
+    `HUMAN_APPROVAL_REQUIRED` instead. The value was safe and the mechanism was not: ADR-010 §2
+    names a gate that can be *"null, missing, DEFAULTED, or inherited by accident"* as F-20, and
+    the reason is that **forgetting was survivable** — a class nobody had classified looked exactly
+    like a class somebody had decided needed a human.
+
+    ADR-010 §3.1: *"An action class with no gate decision CANNOT BE REGISTERED — the system fails
+    to start."* `product_policy.verify_registration_complete()` is that startup failure; this is
+    the runtime half, for anything that reaches a registry lookup without one.
+    """
 
 
 class GateReadOfInferredFact(CheckpointError):
@@ -231,15 +281,31 @@ class GateEntry:
 
 
 class GateRegistry:
-    """action_class -> GateEntry, total by construction.
+    """action_class -> GateEntry, total over what it was GIVEN and refusing everything else.
 
     F-20: an action class with no gate decision CANNOT BE REGISTERED — construction raises, which
-    is this kernel's "the system fails to start". A class absent from the registry resolves to
-    the workflow default: HUMAN_APPROVAL_REQUIRED (ADR-010 §8 layer 7 — the fallback is never
-    autonomous), so forgetting to classify a class can only ever cost a human tap, never a gate.
-    """
+    is this kernel's "the system fails to start".
 
-    _DEFAULT = GateEntry(gate=GateDecision.HUMAN_APPROVAL_REQUIRED)
+    ### THE `_DEFAULT` FALLBACK WAS REMOVED AT U8.1/P8, AND THE VALUE IT RETURNED IS NOT THE POINT.
+    From P3 until U8.1 a class absent from the registry resolved to `HUMAN_APPROVAL_REQUIRED`,
+    justified as ADR-010 §8 layer 7's workflow default — *"forgetting to classify a class can only
+    ever cost a human tap, never a gate."* That reasoning is about the VALUE, and the value was
+    indeed safe. F-20 is about the MECHANISM: ADR-010 §2 lists a gate that can be *"null, missing,
+    **defaulted**, or inherited by accident"* as the defect, because **forgetting was survivable**
+    — an action class nobody had thought about was indistinguishable from one somebody had decided
+    needed a human. §8 layer 7 is a PRECEDENCE layer among postures that exist for a REGISTERED
+    class; it was never a licence for an unregistered one to resolve silently. §3.1 governs
+    registration and is unconditional: *"There is no default, no inheritance-by-accident, and no
+    implicit value."*
+
+    So `gate_for` now RAISES `UnclassifiedActionClass`. The production population of THIS registry
+    stays EMPTY (R-07 condition 3, unchanged): U8.1 puts the product ceiling in
+    `product_policy.py`, a declarative module with its own import-time completeness failure, and
+    `policy_admission.py` composes it with M11's tenant posture. That is where ADR-010 puts it —
+    *"a Permanent Product Truth is enforced in CODE. A Product Policy is enforced in CONFIG."*
+    An empty registry is therefore no longer a registry that answers `HUMAN_APPROVAL_REQUIRED` for
+    everything; it is a registry that answers nothing, which is the fail-closed direction.
+    """
 
     def __init__(self, entries: dict[str, GateEntry], *, policy_version: str) -> None:
         if not str(policy_version or "").strip():
@@ -259,7 +325,32 @@ class GateRegistry:
         self.policy_version = str(policy_version)
 
     def gate_for(self, action_class: str) -> GateEntry:
-        return self._entries.get(str(action_class or "").strip().lower(), self._DEFAULT)
+        """The gate for a class, or REFUSE. There is no fallback here, by design (F-20)."""
+        name = str(action_class or "").strip().lower()
+        entry = self._entries.get(name)
+        if entry is None:
+            raise UnclassifiedActionClass(
+                f"action class {name!r} carries no explicit gate decision in this registry. A "
+                f"missing gate is NOT equivalent to HUMAN_APPROVAL_REQUIRED — it is a refusal "
+                f"(F-20, ADR-010 §3.1: no default, no inheritance-by-accident, no implicit "
+                f"value). Classify it in product_policy.PRODUCT_POLICY, or register it explicitly."
+            )
+        return entry
+
+    def trimmings_for(self, action_class: str) -> GateEntry | None:
+        """The registry's entry for a class if it holds one, or `None` — WITHOUT refusing.
+
+        With a P8 authority bound, the authority owns the gate and the registry contributes only
+        caps and a required authority. Those are optional, so their absence is not a refusal, and
+        this is the one lookup that may legitimately return nothing. `gate_for` remains the
+        refusing accessor, and nothing reads `_entries` directly.
+        """
+        return self._entries.get(str(action_class or "").strip().lower())
+
+    def classified_action_classes(self) -> frozenset[str]:
+        """What this registry actually registers. Exposed so a guard can assert a NON-ZERO
+        denominator instead of concluding anything from an empty scan (M-9)."""
+        return frozenset(self._entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -525,6 +616,7 @@ class CheckpointKernel:
         grant_ttl: timedelta = timedelta(seconds=60),
         observer: Callable[[dict[str, Any]], None] | None = None,
         handle_key: bytes | None = None,
+        policy_authority: Any | None = None,
     ) -> None:
         if not isinstance(store, WorkflowStore):
             raise CheckpointError("the kernel requires a tenant-bound WorkflowStore")
@@ -543,6 +635,36 @@ class CheckpointKernel:
         self.store = store
         self.brakes = BrakeStore(store.conn)
         self.gates = gate_registry
+        # ### THE P8 POLICY AUTHORITY (U8.1), OPTIONAL AT THIS SLICE AND FAIL-CLOSED WHEN BOUND.
+        #
+        # When bound it is a `policy_admission.PolicyAdmissionAuthority`, and STEP 6 delegates the
+        # whole of the policy question to it: the gate (product ceiling narrowed by the tenant's
+        # durable M11 posture) and the `policy_version` that the witness pins and the claim CAS
+        # revalidates. It is typed as `Any` deliberately — importing `policy_admission` here would
+        # be a cycle (that module imports this one for `GateDecision`), and the kernel must not
+        # depend on the policy layer that sits above it. The protocol is two methods, checked on
+        # use, not a class the kernel names.
+        #
+        # ### WHEN IT IS NOT BOUND, STEP 6 IS EXACTLY WHAT P3 BUILT, MINUS THE DEFAULT. That is
+        # the ships-dark and test path, and it is NOT a second policy authority: the registry is
+        # the kernel's own typed lookup, and with `_DEFAULT` gone an unclassified class REFUSES
+        # there too. Nothing in production binds an authority yet — this slice builds the
+        # capability and enables no route (`CURRENT.md` §10).
+        if policy_authority is not None:
+            for required in ("resolve_for", "current_policy_version", "gate_for"):
+                if not callable(getattr(policy_authority, required, None)):
+                    raise CheckpointError(
+                        f"a policy authority must expose {required}(); the object supplied "
+                        f"({policy_authority!r}) cannot answer step 6, and a policy authority "
+                        f"that cannot be interrogated must never be treated as one that permits."
+                    )
+            authority_tenant = getattr(policy_authority, "tenant", None)
+            if authority_tenant is not None and authority_tenant != store.tenant:
+                raise CheckpointError(
+                    f"the policy authority is bound to tenant {authority_tenant!r} and the store "
+                    f"to {store.tenant!r}. The tenant is first in every key and is never inferred."
+                )
+        self.policy_authority = policy_authority
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self.witness_window = witness_window
         self.grant_ttl = grant_ttl
@@ -557,6 +679,31 @@ class CheckpointKernel:
         if value.tzinfo is None:
             raise CheckpointError("the kernel clock must be timezone-aware UTC")
         return value.astimezone(timezone.utc)
+
+    def policy_version(self) -> str:
+        """### THE ONE `policy_version` THIS KERNEL BINDS — read FRESH on every call.
+
+        `policy_version` is a MATERIAL FACT (ADR-005 §3.11), so it enters the step-2 fingerprint,
+        the Checkpoint Witness, the Effect Grant and the claim CAS's WHERE clause. All four must
+        read the SAME source or a policy change would void in one place and not another, which is
+        how an effect executes on a policy that no longer exists.
+
+        Bound authority  ⇒ the tenant's durable, monotonic `policy_version` (M11's MAX across every
+                           scope). Read fresh each call, exactly as `brakes.version_token()` is, so
+                           the claim compares against the version that is current AT CLAIM TIME
+                           rather than one cached at mint time.
+        No authority     ⇒ the registry's static string, which is P3's behaviour and the ships-dark
+                           path.
+
+        ### IT NEVER FALLS BACK. If a bound authority cannot answer, the exception propagates and
+        the checkpoint refuses: *"the policy engine is unavailable at checkpoint ⇒ FAIL CLOSED. No
+        policy decision ⇒ no witness ⇒ no effect. An 'allow on error' default is how the money
+        fence dies"* (ADR-010 §11). Catching it here to return the static string would be exactly
+        that default.
+        """
+        if self.policy_authority is None:
+            return self.gates.policy_version
+        return str(self.policy_authority.current_policy_version())
 
     def observe(self, event: dict[str, Any]) -> None:
         try:
@@ -736,7 +883,52 @@ def _seven_steps_locked(
     `test_phase3_step_order.py` proves it against multi-fault inputs.
     """
     effect = request.effect
-    gate_entry = kernel.gates.gate_for(effect.action_class)
+
+    # ### THE GATE, AND THE TWO PLACES F-20 FAILS CLOSED (U8.1/P8).
+    #
+    # CONFIGURATION TIME — `product_policy.verify_registration_complete()` raises at IMPORT when
+    # the classification is incomplete. That is ADR-010 §3.1's *"the system fails to start"*, and
+    # it belongs at registration, which is when the omission is made.
+    #
+    # REQUEST TIME — this. `gate_for` no longer defaults, so an unclassified class arrives here as
+    # `UnclassifiedActionClass`. It is reported as a STEP 6 refusal because the gate is step 6's
+    # subject, and a named step is what an operator can act on. The outcome is the universal
+    # oracle's (b) either way: no witness row, no grant row, no external call.
+    #
+    # ### WHERE THE GATE COMES FROM. With a P8 authority bound, the CEILING is the authority's
+    # (product policy, total over the discovered action-class population); the registry then
+    # contributes only the operational trimmings it holds — caps and a required authority — and
+    # never the gate. Without one, the registry is the whole answer, as at P3.
+    try:
+        if kernel.policy_authority is not None:
+            ceiling = kernel.policy_authority.gate_for(effect.action_class)
+            trimmings = kernel.gates.trimmings_for(effect.action_class)
+            gate_entry = GateEntry(
+                gate=ceiling,
+                caps=trimmings.caps if trimmings is not None else None,
+                required_authority=trimmings.required_authority if trimmings is not None else None,
+                precondition_entities=(trimmings.precondition_entities
+                                       if trimmings is not None else ()),
+            )
+        else:
+            gate_entry = kernel.gates.gate_for(effect.action_class)
+    except UnclassifiedActionClass as exc:
+        # Catches the product policy's refusal too: it subclasses this one, on purpose.
+        return _step_refusal(6, "UNCLASSIFIED_ACTION_CLASS", str(exc))
+    except Exception as exc:  # noqa: BLE001 — a policy layer that cannot answer is a refusal
+        return _step_refusal(
+            6, "POLICY_ENGINE_UNAVAILABLE",
+            f"the policy authority could not supply a gate for {effect.action_class!r}: {exc}. "
+            f"No policy decision ⇒ no witness ⇒ no effect (ADR-010 §11). There is no "
+            f"allow-on-error default, because that is how the money fence dies.")
+
+    # ### ONE READ OF `policy_version`, REUSED BY EVERY STEP IN THIS TRANSACTION.
+    #
+    # It enters the step-2 fingerprint, the step-6 drift comparison, the Witness and the Grant. If
+    # each site read it independently, a policy activated mid-checkpoint could fingerprint under v1
+    # and mint under v2 — a witness that vouches for a decision nobody made. Read once, here, and
+    # the claim re-reads it FRESH later on purpose (that re-read IS the revalidation).
+    policy_version = kernel.policy_version()
     approval = inputs.approval
 
     # ---- STEP 1 — approval validity (present, unexpired, unrevoked, correct authority) -------
@@ -797,7 +989,7 @@ def _seven_steps_locked(
                 # job, so the recompute pins the decision's own versions on both sides.
                 entity_versions=(approval.entity_versions if approval
                                  else inputs.proposed_entity_versions),
-                policy_version=kernel.gates.policy_version,
+                policy_version=policy_version,
             ),
             version=fingerprint_version,
         )
@@ -897,14 +1089,70 @@ def _seven_steps_locked(
     _step_passed(kernel, 5, entity_versions=dict(sorted(pinned.items())))
 
     # ---- STEP 6 — policy evaluation (the gate decision is never null) ------------------------
+    #
+    # ### THE P8 EVALUATION (U8.1). With an authority bound, the ceiling used since step 1 is now
+    # narrowed by the tenant's durable M11 posture and the result is a deterministic
+    # `PolicyDecision` (ADR-010 §5.3). It can only narrow: a tenant policy that sits ABOVE the
+    # ceiling is refused by the authority and comes back as DENY at the ceiling, attributable to
+    # the policy that attempted it.
+    policy_decision = None
+    if kernel.policy_authority is not None:
+        try:
+            policy_decision = kernel.policy_authority.resolve_for(
+                action_class=effect.action_class,
+                now=_iso(now),                        # the checkpoint's BOUND clock, not a re-read
+                actor=request.actor,
+                accountable_owner=request.accountable_owner,
+                target_system=effect.target_system,
+                target_resource=effect.target_resource_id,
+                material_facts=dict(live_facts),      # the STEP 2 live re-read, not a second one
+                open_conflicts=sum(1 for c in inputs.native_claims if c.conflicting),
+                approval_state=(approval.state if approval is not None else ""),
+            )
+        except Exception as exc:  # noqa: BLE001 — fail closed on ANY evaluation failure
+            return _step_refusal(
+                6, "POLICY_ENGINE_UNAVAILABLE",
+                f"policy evaluation for {effect.action_class!r} produced no decision: {exc}. "
+                f"FAIL CLOSED — no policy decision ⇒ no witness ⇒ no effect (ADR-010 §11).")
+
+        effective = policy_decision.gate_decision
+        if gate_rank(effective) > gate_rank(gate_entry.gate):
+            # Structurally unreachable: the authority refuses a broadening before returning. Kept
+            # because "unreachable" is an argument and this is a fact, and because the one thing
+            # that must never happen here is a broadening arriving through the door marked
+            # "compliant".
+            return _step_refusal(
+                6, "POLICY_BROADENED_AUTHORITY",
+                f"the policy decision returned {effective.value}, which is BROADER than the "
+                f"ceiling {gate_entry.gate.value} in force since step 1. Automation may only ever "
+                f"move authority in the SAFE direction (ADR-010 §4/§7). Refused, Sev-0.",
+                sev0="UnauthorizedPolicyActivationAttempted")
+        if effective is not gate_entry.gate:
+            gate_entry = GateEntry(
+                gate=effective, caps=gate_entry.caps,
+                required_authority=gate_entry.required_authority,
+                precondition_entities=gate_entry.precondition_entities)
+        if policy_decision.decision != "PERMIT":
+            return _step_refusal(
+                6, "POLICY_DENIED",
+                f"policy DENIES {effect.action_class!r} at version "
+                f"{policy_decision.policy_version}: {policy_decision.reason}")
+        # The ceiling at step 1 may have been broader than the effective gate, so the approval
+        # requirement is re-checked against what actually decided (see `gate_for`'s docstring).
+        if gate_entry.gate in _HUMAN_GATES and approval is None:
+            return _step_refusal(
+                6, "MISSING_APPROVAL_FOR_EFFECTIVE_GATE",
+                f"the effective gate is {gate_entry.gate.value} and no human approval is bound. "
+                f"The tenant's policy is narrower than the ceiling step 1 tested against.")
+
     if gate_entry.gate is GateDecision.FORBIDDEN:
         return _step_refusal(6, "FORBIDDEN_ACTION_CLASS",
                              f"{effect.action_class!r} is FORBIDDEN: no approval unlocks it")
-    if approval is not None and approval.policy_version != kernel.gates.policy_version:
+    if approval is not None and approval.policy_version != policy_version:
         return _step_refusal(
             6, "POLICY_VERSION_DRIFT",
             f"the approval was granted under policy {approval.policy_version!r}; current is "
-            f"{kernel.gates.policy_version!r}. You cannot act under a policy that no longer "
+            f"{policy_version!r}. You cannot act under a policy that no longer "
             f"exists (ADR-010 §7.4).")
     if gate_entry.gate is GateDecision.AUTONOMOUS_WITHIN_CAPS:
         caps = gate_entry.caps or Caps()
@@ -929,7 +1177,12 @@ def _seven_steps_locked(
                     f"{amount_minor} minor units exceeds the {caps.max_amount_minor} cap")
 
     _step_passed(kernel, 6, gate_decision=gate_entry.gate.value,
-                 policy_version=kernel.gates.policy_version, runs_today=inputs.runs_today)
+                 policy_version=policy_version, runs_today=inputs.runs_today,
+                 # The decision is OBSERVED in full here. `rules_matched` and `caps_applied` have
+                 # no column on the witness or the grant yet (ADR-010 §9 asks for all four); the
+                 # two load-bearing halves — `policy_version` and `gate_decision` — ARE bound and
+                 # ARE revalidated by the claim CAS. The other two are recorded debt, not a claim.
+                 policy_decision=(policy_decision.canonical() if policy_decision else None))
 
     # ---- STEP 7 — human-brake admission (read inside this same transaction) ------------------
     try:
@@ -982,6 +1235,8 @@ def _seven_steps_locked(
         projected_observations=tuple(sorted(inputs.projection_assertion)),
         native_claims=tuple(c.claim_id for c in inputs.native_claims),
         now=now,
+        # The version THESE seven steps decided under — not a fresh read. See `mint_grant`.
+        policy_version=policy_version,
     )
 
 
@@ -1118,15 +1373,24 @@ def mint_grant(
     projected_observations: tuple[str, ...],
     native_claims: tuple[str, ...],
     now: datetime,
+    policy_version: str | None = None,
 ) -> tuple[CheckpointWitness, EffectGrantHandle]:
     """EF-1: mint the grant row and its witness in the surrounding checkpoint transaction.
 
     `witness: CheckpointPassed` is the required, non-forgeable first-class argument (ADR-004
     §3.1): code that has not passed the checkpoint has nothing to pass here. The pass is
     CONSUMED — a second mint from the same pass is refused, preserving witness : grant = 1 : 1.
+
+    `policy_version` is the value the seven steps actually decided under. It is passed rather than
+    re-read so the Witness and the Grant bind the SAME version the step-2 fingerprint and the
+    step-6 drift check used — re-reading here would open a window in which a policy activated
+    mid-transaction could be bound to a decision that never saw it. It is optional only so the
+    P3-era callers that mint a witness directly keep working; they get a fresh read.
     """
     _require_genuine(witness)
     witness._consumed = True
+    bound_policy_version = (kernel.policy_version() if policy_version is None
+                            else str(policy_version))
 
     effect = request.effect
     grant_id = str(uuid.uuid4())
@@ -1153,7 +1417,7 @@ def mint_grant(
                         else FINGERPRINT_VERSION}, sort_keys=True),
             witness.checkpoint_id, material_facts_fingerprint,
             json.dumps(entity_versions, sort_keys=True), gate_entry.gate.value,
-            kernel.gates.policy_version, brake_token,
+            bound_policy_version, brake_token,
             approval.approval_id if approval else None, grant_expires,
             hashlib.sha256(token.encode("utf-8")).hexdigest(),
             json.dumps({"minted_by": "checkpoint"}, sort_keys=True), created_at, created_at,
@@ -1173,7 +1437,7 @@ def mint_grant(
             "entity_versions": entity_versions,
             "approval_id": approval.approval_id if approval else None,
             "approval_fingerprint": approval_fingerprint,
-            "policy_version": kernel.gates.policy_version,
+            "policy_version": bound_policy_version,
             "gate_decision": gate_entry.gate.value,
             "autonomy_state": gate_entry.gate.value,
             "brake_version": brake_token,
@@ -1452,6 +1716,23 @@ def _claim_locked(
                 observations=({"kind": "ClaimRefused", "cause": "BRAKE_UNREADABLE",
                                "grant_id": handle.grant_id},),
             )
+        # ### THE POLICY HALF OF THE SAME RE-READ (ADR-010 §9.1, ADR-011 §8.2). Read HERE, at claim
+        # time, in the claim transaction — the whole point is to compare the grant's bound version
+        # against the version that is current NOW. A value cached at mint time would compare the
+        # grant to itself and always match, which is the defect this clause exists to prevent.
+        #
+        # Unreadable is NOT "unchanged": the policy store failing must refuse the claim, exactly as
+        # an unreadable brake does. *"An 'allow on error' default is how the money fence dies."*
+        try:
+            current_policy_version = kernel.policy_version()
+        except Exception as exc:  # noqa: BLE001 — any policy-store failure is a refusal
+            settle(False)
+            return PendingClaimRecords(
+                outcome=ClaimOutcome(
+                    claimed=False, cause="POLICY_UNREADABLE", grant_id=handle.grant_id),
+                observations=({"kind": "ClaimRefused", "cause": "POLICY_UNREADABLE",
+                               "grant_id": handle.grant_id, "detail": str(exc)},),
+            )
         cur = conn.execute(
             """
             UPDATE effect_grants
@@ -1460,7 +1741,7 @@ def _claim_locked(
                AND expires_at > ? AND brake_version = ? AND policy_version = ?
             """,
             (_iso(when), store.tenant, handle.grant_id, _iso(when), current_brake_token,
-             kernel.gates.policy_version),
+             current_policy_version),
         )
         if cur.rowcount == 1:
             settle(True)
@@ -1475,7 +1756,7 @@ def _claim_locked(
         cause = "ALREADY_" + row["state"] if row["state"] != "GRANTED" else (
             "EXPIRED" if row["expires_at"] <= _iso(when)
             else "BRAKE_CHANGED" if row["brake_version"] != current_brake_token
-            else "POLICY_CHANGED" if row["policy_version"] != kernel.gates.policy_version
+            else "POLICY_CHANGED" if row["policy_version"] != current_policy_version
             else "UNCLAIMABLE")
         settle(False)
         return PendingClaimRecords(

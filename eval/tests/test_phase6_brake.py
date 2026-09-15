@@ -730,12 +730,31 @@ def test_m13_builds_no_second_brake_store():
 
 
 def test_checkpoint_py_remains_the_sole_gate_minter():
+    """### AST, NOT SUBSTRINGS (CLAUDE.md §6), CORRECTED AT U8.1/P8.
+
+    This read raw text for `"GateRegistry("` and `"GateEntry(gate="`. Both are substring probes and
+    both went BLIND the moment the kernel's own construction was reformatted: U8.1 removed the
+    `_DEFAULT = GateEntry(gate=...)` one-liner and the kernel now builds its entry across several
+    lines, so `GateEntry(gate=` no longer appears anywhere — and the guard returned an EMPTY minter
+    list while the kernel was still minting. An empty result from a blind scanner is exactly the
+    false green this repository has been bitten by before.
+
+    It is now AST-based, matching its sibling
+    `test_phase0_null_gate.py::test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`, and it
+    asserts the NON-EMPTY positive control before believing the confinement.
+    """
     minters = []
     for py in sorted(PKG.rglob("*.py")):
-        src = py.read_text()
-        if "GateRegistry(" in src or "GateEntry(gate=" in src:
-            minters.append(py.name)
-    assert minters == ["checkpoint.py"], minters
+        for n in ast.walk(ast.parse(py.read_text())):
+            if isinstance(n, ast.Call):
+                name = getattr(n.func, "id", None) or getattr(n.func, "attr", None)
+                if name in {"GateEntry", "GateRegistry"}:
+                    minters.append(py.name)
+    # The positive control: a confinement assertion over a population containing no mint at all
+    # passes vacuously and proves nothing.
+    assert minters, ("the AST scan found NO gate construction anywhere, including in checkpoint.py. "
+                     "The scanner is blind, so its silence about other modules means nothing.")
+    assert sorted(set(minters)) == ["checkpoint.py"], sorted(set(minters))
 
 
 def test_m13_mints_no_gate_decision():
@@ -769,9 +788,23 @@ def test_the_landed_brakeengaged_consumers_are_preserved():
 
 
 def test_the_m1_through_m12_machines_are_unchanged():
+    """### RULE 20 AT U8.1/P8: `policy.py` (M11) LEFT THIS FROZEN SET.
+
+    This guard's subject is "did the M13 landing disturb a machine it had no business touching",
+    and byte-identity was a fair proxy while every one of them was finished. U8.1 is the unit that
+    WIRES M11: `PHASE-OUTPUTS.md` gives P8 the production policy EVALUATION RUNTIME that P6 was
+    forbidden, and completing M11's `PolicyDecision` to ADR-010 §5.3 is part of it. A guard that
+    froze M11 forever would forbid the phase that exists to use it.
+
+    M11 is not left unguarded: its own 60-case battery in `test_phase6_policy.py` still asserts all
+    seven states, all seven transitions, the ceiling order and the version namespace, and
+    `test_p8_policy_admission.py` asserts the new composition. M1..M10 and M12 remain frozen.
+    """
+    # FIXED-SPECIFICATION: the exact landed machine runtimes named must-stay-byte-identical. NOT a
+    # discovered population — discovery would admit a new machine or drop a renamed one silently.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "policy.py", "rule.py")
+                "exception.py", "compensation.py", "rule.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=str(ROOT),
                        capture_output=True, text=True)

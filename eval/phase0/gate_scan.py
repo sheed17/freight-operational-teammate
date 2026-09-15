@@ -98,9 +98,32 @@ _REGISTERING_CALLS = frozenset({"register_gate"})
 # `test_typed_policy_runtime_exists_only_with_its_canonical_authority` uses it as the expected
 # CARRIER POPULATION (who actually does). Those are different claims, and asserting that the
 # observed set equals the permitted set is a real cross-check rather than a restatement.
+# ### `product_policy.py` JOINED THIS SET AT U8.1/P8, AND IT IS A WIDENING WITH A NARROWING
+# ATTACHED, exactly as `pipeline_instance.py` was at P6-CP-2 and `policy.py` at P6-CP-11.
+#
+#   `product_policy.py`    DECLARES Neyma's own product ceiling per Action Class — the layer
+#                          ADR-010 §3 puts in CONFIG rather than code. A module whose entire
+#                          content is a gate decision per action class must NAME the four members
+#                          to classify with; that is the same "a machine that could not NAME a
+#                          decision could not hold one" argument that admitted `policy.py`.
+#
+# The narrowing is NOT negotiable and is asserted separately:
+# `test_only_the_checkpoint_kernel_may_MINT_a_gate_decision` proves by AST that this module
+# constructs NO `GateEntry` and NO `GateRegistry` — measured at this landing as
+# `product_policy.py: mints=0`, `policy_admission.py: mints=0`. CARRYING a decision and MINTING
+# one are different acts, and only `checkpoint.py` mints.
+#
+# ### AND THE PRODUCTION `GateRegistry` POPULATION IS STILL EMPTY. U8.1 deliberately did NOT
+# populate the kernel's registry: the product ceiling lives in `product_policy.py` with its own
+# import-time completeness failure, so R-07 containment condition (3) and
+# `test_the_production_gate_registration_population_is_still_empty` are UNCHANGED and still hold.
+# Measured at this landing: production registration sites = EMPTY.
+#
+# `policy_admission.py` is deliberately NOT in this set — it composes the layers and names no gate
+# member in executable code at all, so no gate token appears in that file and this guard proves it.
 GATE_RUNTIME_MODULES: frozenset[str] = frozenset({
     "checkpoint.py", "phase3_checkpoint.py", "pipeline_instance.py",
-    "policy.py", "phase6_policies.py",
+    "policy.py", "phase6_policies.py", "product_policy.py",
 })
 
 

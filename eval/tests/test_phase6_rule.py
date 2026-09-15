@@ -1007,9 +1007,17 @@ def test_the_neighbouring_machines_are_unchanged():
     # (completing the one brake authority, the whole point of the M13 unit), so asserting it
     # byte-unchanged would forbid the sanctioned unit. The M1..M11 machines and the checkpoint kernel
     # remain frozen and asserted so; adding or removing a name here is a deliberate, reviewed edit.
+    # ### RULE 20 AT U8.1/P8: `policy.py` (M11) and `checkpoint.py` (the kernel) LEFT this frozen
+    # set, by the same precedent that dropped `brake.py` when M13 landed — P8 is the unit that
+    # WIRES M11 into checkpoint step 6, so freezing either would forbid the sanctioned unit. The
+    # three kernel properties CLAUDE.md §10 actually protects are asserted directly by
+    # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`,
+    # and M11 keeps its own full battery. M1..M10 remain frozen and asserted so.
+    #
+    # FIXED-SPECIFICATION: the exact landed machine runtimes named must-stay-byte-identical.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "policy.py", "checkpoint.py")
+                "exception.py", "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)

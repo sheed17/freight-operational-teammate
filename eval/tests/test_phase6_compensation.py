@@ -879,13 +879,25 @@ def test_m1_through_m9_machines_are_unchanged():
     or drop one that was renamed; the guard's value is precisely that adding or removing a name here is
     a deliberate, reviewed edit. The checkpoint kernel and the claim CAS are named because CLAUDE.md §10
     forbids weakening them.
+
+    ### RULE 20 AT U8.1/P8: `checkpoint.py` LEFT THIS FROZEN SET, by the same precedent that dropped
+    `brake.py` from M13's set. ADR-010 is titled as completing *"atomic pre-effect checkpoint STEP
+    6"*, and step 6 is the kernel's — a guard that froze it would forbid the phase that exists to
+    complete it. CLAUDE.md §10 does not forbid editing the kernel; it names three things that may
+    not be WEAKENED, and those three (`CheckpointPassed` unconstructable, the witness table
+    append-only, the claim CAS keeping every WHERE predicate) are now asserted DIRECTLY by
+    `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`
+    — as properties rather than as a hash, which is the stronger guard because it survives a
+    legitimate edit and still fails a weakening one. M1..M9 remain frozen and asserted so.
+
+    FIXED-SPECIFICATION: the exact M1..M9 machine runtimes; NOT a discovered population.
     """
     unchanged = (
         "src/freight_recon/work_item.py", "src/freight_recon/pipeline_instance.py",
         "src/freight_recon/external_effect.py", "src/freight_recon/approval.py",
         "src/freight_recon/observation.py", "src/freight_recon/identity_binding_claim.py",
         "src/freight_recon/conflict.py", "src/freight_recon/expectation.py",
-        "src/freight_recon/exception.py", "src/freight_recon/checkpoint.py",
+        "src/freight_recon/exception.py",
     )
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *unchanged], cwd=ROOT,
                        capture_output=True, text=True)

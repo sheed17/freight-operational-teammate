@@ -869,9 +869,29 @@ def test_only_the_checkpoint_kernel_mints_a_gate_decision():
     assert "GateRegistry(" not in POLICY_SRC and "GateEntry(" not in POLICY_SRC
 
 
-def test_m11_ships_dark_no_production_importer():
+def test_m11_has_EXACTLY_ONE_production_importer_AND_IT_IS_THE_P8_ADMISSION_LAYER():
+    """REPLACED at U8.1/P8 (CLAUDE.md §4 rule 20 — replaced, not deleted, not relaxed).
+
+    It was `test_m11_ships_dark_no_production_importer`, and for its whole life it was right: M11
+    landed at P6-CP-11 as a machine with no caller, and *"ships dark"* meant literally zero
+    production importers. Asserting that now would be asserting something false, because WIRING
+    M11 is what P8 is for — `PHASE-OUTPUTS.md` gives P8 the *"production policy REGISTRATION,
+    EVALUATION RUNTIME"* that P6 was forbidden, and `pr-sequence.md` names the unit: **U8.1 typed
+    policy + Action Class gate registration**.
+
+    ### SO THE PROPERTY IS NOT WEAKENED FROM "ZERO" TO "WHATEVER" — IT IS TIGHTENED TO "EXACTLY
+    ONE, AND BY NAME." What the original guard really protected is that M11 must not acquire
+    importers scattered across the codebase, each free to compose the tenant posture its own way;
+    that is how a second policy authority arrives without anybody deciding to build one. One named
+    composition layer is the opposite of that, and it is now asserted by exact set equality — a
+    second importer, anywhere, still turns this RED.
+    """
     import freight_recon
     src = Path(freight_recon.__file__).parent
+    #: FIXED-SPECIFICATION: the ONE module entitled to import M11. This is an architectural
+    #: boundary (ADR-010 puts policy evaluation at one place), not a population to discover —
+    #: discovering it would mean asking the code who imports M11, which is the question.
+    PERMITTED = {"policy_admission.py"}
     offenders = []
     for py in src.rglob("*.py"):
         if py.name == "policy.py":
@@ -887,7 +907,27 @@ def test_m11_ships_dark_no_production_importer():
                     offenders.append(py.name)
             if isinstance(node, ast.Import) and any(a.name == "freight_recon.policy" for a in node.names):
                 offenders.append(py.name)
-    assert offenders == [], f"production importer(s) of the policy machine: {offenders}"
+
+    observed = set(offenders)
+    # ### EXACT SET EQUALITY, BOTH WAYS.
+    #
+    # `observed - PERMITTED` is the defect the original guard existed to catch: policy evaluation
+    # leaking into a workflow, an adapter or a second composition.
+    unexpected = sorted(observed - PERMITTED)
+    assert not unexpected, (
+        f"unexpected production importer(s) of the M11 policy machine: {unexpected}. Exactly one "
+        f"module composes the tenant posture ({sorted(PERMITTED)}); a second importer is a second "
+        "policy authority arriving without anybody deciding to build one (CLAUDE.md rule 17)."
+    )
+    # ...and `PERMITTED - observed` is the VACUITY the assertion above would otherwise hide: if the
+    # admission layer stopped importing M11, the set-difference check would pass over nothing and
+    # this test would report "policy is confined" about a tree in which policy is not wired at all.
+    missing = sorted(PERMITTED - observed)
+    assert not missing, (
+        f"{missing} no longer import(s) the M11 policy machine. U8.1 wires M11 into checkpoint "
+        "step 6; if nothing imports it, the tenant's durable posture is not being evaluated and "
+        "the confinement assertion above is vacuous."
+    )
 
 
 def test_the_m12_rule_and_m13_brake_machines_are_not_built():
@@ -931,11 +971,32 @@ def test_the_neighbouring_machines_are_unchanged():
     # FIXED-SPECIFICATION: this is NOT a discovered population — it is the exact list of landed
     # machine runtimes named as must-stay-byte-identical. RULE 20: `brake.py` was DROPPED from this
     # frozen set when M13 landed — it is P3's kernel brake and M13 legitimately edits it to complete
-    # the one brake authority. M1..M10 and the checkpoint kernel remain frozen and asserted so;
-    # adding or removing a name here is a deliberate, reviewed edit.
+    # the one brake authority. [HISTORICAL AS WRITTEN — this block's closing sentence read
+    # "M1..M10 and the checkpoint kernel remain frozen and asserted so". The checkpoint half is
+    # no longer true; see the U8.1 block immediately below, which supersedes it. Retained rather
+    # than rewritten, because it is the record of what the M13 landing decided.]
+    # ### RULE 20, AGAIN, AT U8.1/P8: `checkpoint.py` WAS DROPPED FROM THIS FROZEN SET — for the
+    # same reason and by the same precedent that dropped `brake.py` when M13 landed.
+    #
+    # This guard's subject is *"did the M11 landing disturb a neighbour it had no business
+    # touching"*, and byte-identity was a fair proxy while M11 shipped dark with no caller. U8.1
+    # is the unit that WIRES it: ADR-010 is titled as completing *"atomic pre-effect checkpoint
+    # STEP 6"*, and step 6 is `checkpoint.py`'s. A guard that forbade P8 from editing step 6 would
+    # forbid P8 from existing.
+    #
+    # ### AND BYTE-IDENTITY IS NOT SILENTLY TRADED FOR NOTHING. CLAUDE.md §10 does not say the
+    # kernel may not be edited; it names three things that may not be WEAKENED — `CheckpointPassed`
+    # stays unconstructable, the witness table stays append-only, and the claim CAS's WHERE-clause
+    # revalidation may never lose a predicate. Those three are now asserted DIRECTLY, as
+    # properties rather than as a hash, by
+    # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`.
+    #
+    # FIXED-SPECIFICATION: the exact M1..M10 machine runtimes named must-stay-byte-identical. NOT a
+    # discovered population — discovering it would admit a newly-added machine or drop a renamed one,
+    # and the guard's whole value is that changing this list is a deliberate, reviewed edit.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "checkpoint.py")
+                "exception.py", "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)
