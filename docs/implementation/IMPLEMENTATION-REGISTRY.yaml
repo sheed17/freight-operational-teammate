@@ -8164,9 +8164,9 @@ units:
 
   - unit_id: P7
     name: Provenance, Evidence, Observation, Claims, Identity Binding
-    status: READY
-    execution_state: NOT_STARTED
-    checkpoint_state: NO_CHECKPOINT
+    status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     objective: "The 6 provenance classes, content-addressed Evidence, the deterministic linker, Conflict."
     dependencies: [P6]
     unlocked_by: [P6]
@@ -8271,7 +8271,14 @@ units:
         criterion: scope_conformance_and_p6_non_regression
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced: test_phase7_scope_and_non_regression.py
+          re-runs the calibrated P6 guards; I ran the underlying guards directly — the 134-transition
+          corpus, the producer bijection, and the production GateRegistry-emptiness guard all PASS. Source
+          scan shows no P8 policy runtime/registration, no domain projection, no live external effect
+          enabled; denominator floored at >=50 modules to bar vacuity.
         requirement: >-
           Everything landed in P7 falls inside `allowed_scope` (provenance, evidence, observations,
           identity binding, conflict) and nothing from `prohibited_scope` is implemented: no typed
@@ -8299,7 +8306,13 @@ units:
         criterion: six_provenance_classes_and_runtime_assignment
         weight: 8
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced
+          (test_exactly_the_six_provenance_classes_and_no_seventh + one-authority test). provenance.py
+          derives PROVENANCE_CLASSES from the kernel's ProvenanceClass enum (checkpoint.py:94-102, exactly
+          six); as_class refuses a seventh; M5/M6/evidence vocabularies proven equal to the same six.
         requirement: >-
           Exactly the six authoritative provenance classes exist and there is no seventh -
           `SYSTEM_IMPORTED`, `OWNER_ASSERTED`, `LINKER_INFERRED`, `MODEL_EXTRACTED`,
@@ -8333,7 +8346,15 @@ units:
         criterion: no_provenance_laundering_r_p2
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced
+          (test_provenance_may_weaken_but_never_mechanically_strengthen,
+          test_a_model_inferred_fact_stays_model_inferred_through_every_derivation_path). reassign()
+          refuses strengthening except a new authenticated human act; derive_through/carry never
+          strengthen across the six paths; MODEL_EXTRACTED->OWNER_ASSERTED refused; mutation battery
+          (read) reintroduces the real laundering defect.
         requirement: >-
           Provenance may be WEAKENED and may never be silently STRENGTHENED. `MODEL_INFERRED` cannot
           become `LINKER_INFERRED` - or anything stronger - by being copied, cached, re-read,
@@ -8365,7 +8386,13 @@ units:
         criterion: model_inferred_cannot_be_read_by_a_consequential_gate
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (three provenance gate tests). Kernel
+          ProvenancedFact (checkpoint.py:135-167) has NO confidence field and .value raises
+          GateReadOfInferredFact on MODEL_INFERRED — structurally absent, not a runtime branch;
+          read_for_consequential_gate has no confidence parameter (inspect-verified in test).
         requirement: >-
           A `MODEL_INFERRED` fact cannot be READ by a consequential gate, and no confidence score
           changes that - not 0.95, not 0.99, and not 1.0. Confidence is not a material fact and is
@@ -8391,7 +8418,16 @@ units:
         criterion: owner_asserted_is_never_machine_recomputed_r_p3
         weight: 9
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced
+          (test_owner_asserted_is_never_machine_recomputed_and_the_value_is_preserved). machine_recompute
+          raises OwnerAssertedRecompute on any machine recompute of an OWNER_ASSERTED record, persists
+          nothing, preserves the value; a machine may not assert OWNER_ASSERTED; human_reassert is the
+          sole overwrite; registered OwnerAssertedOverwriteAttempted exists; disagreement routes to
+          Conflict. Minor: no provenance-layer emission hook (see findings), emission is the landed M6
+          concern.
         requirement: >-
           Machine recomputation may NEVER overwrite an `OWNER_ASSERTED` value - not on a better
           model, not on a better linker, not on a later cycle. The attempt is an ILLEGAL TRANSITION:
@@ -8419,7 +8455,14 @@ units:
         criterion: content_addressed_immutable_evidence
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (digest-mismatch, dedup, span-required,
+          immutability, lost-evidence-blocks). content_digest/content_ref NOT NULL, digest verified
+          against bytes on write, UNIQUE (tenant,content_digest) index read from live DB, immutability +
+          no-delete enforced by DB triggers (IntegrityError observed), MODEL_EXTRACTED refused without a
+          span; Evidence carries no provenance/state/commit_key column.
         requirement: >-
           Evidence is an IMMUTABLE, CONTENT-ADDRESSED retained artifact linked to the observation
           that brought it in: `content_digest` and `content_ref` are NOT NULL and immutable, the
@@ -8449,7 +8492,14 @@ units:
         criterion: evidence_and_claim_lineage_is_traversable
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (trace-to-complete-chain,
+          fail-closed-on-missing/inferred, span-lineage-traversable). lineage.trace walks
+          claim->provenance->evidence/rule_id/decision_ref and terminates; a missing span / MODEL_INFERRED
+          / absent evidence fails closed (LineageIncomplete). Generic mechanism only; no P9 domain
+          entities required.
         requirement: >-
           A canonical material fact used by downstream logic can be traced BACKWARD to the complete
           chain that justifies it: observation or claim → provenance record → evidence, registered
@@ -8479,7 +8529,12 @@ units:
         criterion: deterministic_linker_binding_order
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (four linker tests). Read linker.py: ADR-007
+          sec4.1 fixed order (EXACT_ID/RULE/RECONCILIATION confirm; MODEL_EXTRACT re-enters as EXACT_ID ->
+          LINKER_INFERRED; MODEL_INFER -> AMBIGUOUS at any confidence; HUMAN needs authentication).
         requirement: >-
           Binding is attempted in ADR-007 sec 4.1's fixed order and the first that succeeds wins.
           An EXACT UNIQUE IDENTIFIER MATCH may confirm deterministically (`LINKER_INFERRED`); a
@@ -8515,7 +8570,14 @@ units:
         criterion: identity_binding_safety_and_persistence
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (owner-binding-survives-relink-and-replay,
+          concurrent-binding-never-loses-owner). relink() routes through machine_recompute so an
+          OWNER_ASSERTED binding survives relink/replay byte-identical; a non-owner binding is
+          supersedable; owner_binding_survives_replay proven over a non-empty population; concurrent
+          relinks all refused.
         requirement: >-
           A human binding is bound to an IMMUTABLE IDENTIFIER, never an ordinal or a position: the
           displayed choice resolves at render time to a durable id, that id is carried in the
@@ -8542,7 +8604,14 @@ units:
         criterion: conflict_is_first_class_blocking_and_closes_two_ways_only
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (conflict-first-class-and-blocks,
+          closes-only-two-ways). Two mutually-exclusive confirming candidates -> first-class CONFLICT;
+          conflict_blocks true for RAISED/OPEN/ESCALATED, false for M7 terminal states; close_conflict
+          admits exactly rule_id XOR decision_ref and refuses neither/both/model/recency/timeout;
+          'conflicting' is a distinct EvidenceCondition (checkpoint.py:105-113).
         requirement: >-
           Two or more mutually exclusive claims or observations on the same field become a
           FIRST-CLASS Conflict. ### WHILE A CONFLICT IS OPEN the affected field's evidence condition
@@ -8577,7 +8646,14 @@ units:
         criterion: correction_supersession_and_retained_history
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced
+          (correction-and-supersession-distinct-with-retained-history). supersede() retains prior, no
+          downstream obligation; correct() requires a decision_ref, retains prior attributable, emits
+          ClaimCorrected{prior,new,decision_ref,provenance_class}, and raises a downstream remediation
+          obligation. Distinct outcomes with retained history.
         requirement: >-
           ### SUPERSESSION AND CORRECTION STAY DISTINCT, BECAUSE CONFLATING THEM LOSES MONEY.
           Supersession: a newer claim replaces an older one; the older was TRUE WHEN MADE, is
@@ -8610,7 +8686,15 @@ units:
         criterion: tenant_safety_and_knowledge_base_closure
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (cross-tenant-evidence-isolation;
+          no-hardcoded-default-tenant-reaches-a-knowledge-write + anti-vacuity control).
+          evidence/evidence_spans are tenant-first PK (PRAGMA); same bytes in T_A/T_B yield two isolated
+          rows and cross-tenant get() returns None. KB scopes via
+          _kb_tenant(store)=require_tenant(store.tenant); the five recorded KB sites use it; the two
+          remaining ops_control 'default' params are graduation/autonomy, outside the recorded five.
         requirement: >-
           Every P7 surface is TENANT-SCOPED: Evidence, provenance / lineage records, observations,
           identity-binding claims and Conflicts carry `tenant_id` NOT NULL and FIRST in the key, and
@@ -8651,7 +8735,14 @@ units:
         criterion: concurrency_duplicate_replay_and_fault_coverage
         weight: 4
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (6 tests, all GREEN): concurrent
+          identical-byte ingestion yields exactly one content-addressed row (DB UNIQUE index decides, real
+          threads); duplicate reingestion idempotent; replay reconstructs the same digest and mints zero
+          witnesses/zero grants over a non-empty corpus; interrupted ingestion fails closed with no
+          half-row; conflict-close fault leaves no partial state; races bounded by run_race.
         requirement: >-
           P7's new surfaces carry MEANINGFUL concurrent, duplicate-delivery, replay and fault
           coverage. Concurrent claim proposals and concurrent conflict raises on the same field
@@ -8680,7 +8771,16 @@ units:
         criterion: mutation_and_anti_vacuity_evidence
         weight: 4
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Corroborated + partially reproduced. Read
+          mutate_phase7_provenance.py: a genuine battery reintroducing the real R-P1/AC-4/R-P2/R-P3
+          defects with guard-green-before, red-after, byte-for-byte restore, pycache purge, and an
+          anti-vacuity control. Target guard tests reproduce GREEN; embedded
+          detector-fires-on-synthetic-defect controls in the KB/scope/ships-dark suites reproduce GREEN;
+          CI ran the file-mutation batteries on this exact tree. I could not personally run the P7
+          mutate_* scripts (outside approved command vocabulary — see findings).
         requirement: >-
           Every guard protecting a P7 tier-1 invariant has been SEEN TO FAIL against a mutant that
           reintroduces the REAL defect - at minimum the R-P1 assignment refusal, the R-P2 laundering
@@ -8709,7 +8809,14 @@ units:
         criterion: ships_dark_no_enablement_and_no_second_authority
         weight: 3
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 9e9542e610f1/69c732492012 by an independent session
+          (4aba1f6b-3581-4353-b7ab-7643d70169cd). Reproduced (7 tests, all GREEN): no production module
+          imports any P7 surface over a printed denominator; production GateRegistry empty; deployed
+          governed route still refuses ROUTE_NOT_CONFIGURED; registry records P7 readiness_target
+          LOCALLY_IMPLEMENTED (IMPLEMENTATION-REGISTRY.yaml:8200) and no higher; no P7 surface constructs
+          a GateRegistry/BrakeStore or reaches the event transport — checkpoint.py stays sole minter.
         requirement: >-
           P7 is landed and ENABLED NOWHERE. It does not populate or enable a P8 policy runtime, does
           not register an action-class gate, does not widen the production `GateRegistry` (which
@@ -8736,7 +8843,11 @@ units:
         criterion: ci_success_on_the_candidate_tree
         weight: 3
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Established on 9e9542e610f1/69c732492012 by the external-verification gate
+          (ci_success_on_the_candidate_tree: SUCCESS (SUCCESS) @ 9e9542e610f1). The adjudication scored it
+          PASS; recorded, not the authority over it.
         requirement: >-
           A required CI run on the EXACT candidate tree CONCLUDES SUCCESS - the full-suite legs and
           the safety-invariant jobs COMPLETE rather than merely start. A `cancelled` conclusion is
@@ -8760,7 +8871,11 @@ units:
         criterion: independent_phase_review_by_a_non_builder
         weight: 4
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Established on 9e9542e610f1/69c732492012 by the independent-review gate (session
+          4aba1f6b-3581-4353-b7ab-7643d70169cd, outside this run's builder lineage). The adjudication
+          scored it CANNOT_DETERMINE; recorded, not the authority over it.
         requirement: >-
           A session OUTSIDE P7's build and remediation lineage has reviewed the PHASE - not one diff
           - and scored the criteria above from evidence it RE-DERIVED ITSELF rather than accepting a
@@ -8792,7 +8907,7 @@ units:
 
   - unit_id: P8
     name: Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation
-    status: BLOCKED
+    status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
     objective: "Typed policy, compile-or-refuse rules, the real brake. Gate G4 qualifies here."
