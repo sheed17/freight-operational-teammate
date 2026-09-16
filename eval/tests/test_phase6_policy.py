@@ -470,11 +470,38 @@ def test_retention_supersession_is_permanent_and_immutable_and_undeletable():
               policy_id="p2")
     old = conn.execute("SELECT state, gate_decision FROM policies WHERE policy_id='p1'").fetchone()
     assert old["state"] == "SUPERSEDED" and old["gate_decision"] == "HUMAN_APPROVAL_REQUIRED"
+    # A superseded version stays undeletable. Any constraint saying no is enough HERE...
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("DELETE FROM policies WHERE policy_id='p1'")
     conn.rollback()
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(sqlite3.IntegrityError,
+                       match="the identity of a policy version is immutable"):
         conn.execute("UPDATE policies SET gate_decision='FORBIDDEN' WHERE policy_id='p1'")
+    conn.rollback()
+
+    # ### ...BUT IT NO LONGER PROVES THE NO-DELETE TRIGGER, AND THAT HAD TO BE RESTORED SEPARATELY
+    # ### (U8.1/P8 — CLAUDE.md sec 4 rule 20).
+    #
+    # The DELETE above asserted only a bare `sqlite3.IntegrityError`. When `policy_epochs` arrived
+    # with a composite FK (tenant, policy_id) -> policies, an ACTIVATED policy acquired a
+    # referencing epoch row — so SQLite now refuses that DELETE on the FOREIGN KEY, before the
+    # BEFORE-DELETE trigger ever fires. The case therefore stayed GREEN with the no-delete trigger
+    # REMOVED: `scripts/mutate_phase6_policy.py`'s "a superseded version is deletable" mutant
+    # ESCAPED, 33/34. A new table had quietly taken a retention guard out of service.
+    #
+    # A DRAFT is the population that still reaches the trigger: it was never activated, so no epoch
+    # row references it and no FK stands in the way. Matching the trigger's OWN abort text means no
+    # other constraint can be mistaken for it.
+    m = _m11(conn)
+    m.propose_draft(scope="never_activated", scope_kind="action_class",
+                    gate_decision=GateDecision.HUMAN_APPROVAL_REQUIRED, caps={},
+                    predicate={"clauses": []}, authored_by="po", policy_id="draft_only")
+    assert conn.execute("SELECT COUNT(*) FROM policy_epochs WHERE tenant = ? AND policy_id = ?",
+                        (TENANT, "draft_only")).fetchone()[0] == 0, (
+        "the draft has a referencing epoch row after all, so a FOREIGN KEY could refuse the DELETE "
+        "below and this case would prove nothing about the trigger")
+    with pytest.raises(sqlite3.IntegrityError, match="a policy version is never deleted"):
+        conn.execute("DELETE FROM policies WHERE policy_id='draft_only'")
     conn.rollback()
 
 
@@ -1142,3 +1169,195 @@ def test_m11_a8_a_crash_during_a_transition_leaves_the_canonical_state():
     assert twin.require("p1").version == before.version + 1, (
         "the uninterrupted transition did not advance the version by exactly one")
     assert outbox_count(twin_conn, TENANT) > twin_outbox
+
+
+# ====================================================== the tenant policy epoch (U8.1/P8, S3)
+#
+# ### WHAT THESE GUARD, AND WHY THEY DID NOT EXIST BEFORE.
+#
+# Until U8.1 `current_policy_version()` was `MAX(policy_version)` over `policies` IN ANY STATE, and
+# `policy_version` is allocated at PO-1 when a DRAFT row is inserted. So DRAFTING a policy advanced
+# the tenant scalar that is bound into every witness and revalidated by the claim CAS: a dispatcher
+# opening a draft at 4pm voided every in-flight Effect Grant and every outstanding human approval in
+# the brokerage, and a draft later rejected kept its number, so the voiding was permanent and bought
+# nothing.
+#
+# ### NOT ONE TEST IN THIS MODULE FAILED WHEN THAT BEHAVIOUR WAS REPLACED — all 60 passed against
+# ### both the old rule and the new one. The old behaviour was never asserted; it was found by
+# ### reading. That is exactly the population these cases add.
+#
+# The adjudicated rule: the epoch advances when a policy TAKES EFFECT or is WITHDRAWN (PO-4
+# ACTIVATED / PO-6 REVOKED / PO-7 EXPIRED) and at NO other time.
+
+def _epoch(conn, tenant=TENANT) -> int:
+    return _m11(conn, tenant=tenant).current_policy_version()
+
+
+def _draft_only(conn, *, policy_id, scope, owner="po", tenant=TENANT):
+    """PO-1 alone: author a DRAFT and stop. No submission, no approval, no activation."""
+    m = _m11(conn, tenant=tenant)
+    m.propose_draft(scope=scope, scope_kind="action_class",
+                    gate_decision=GateDecision.HUMAN_APPROVAL_REQUIRED, caps={},
+                    predicate={"clauses": []}, authored_by=owner, policy_id=policy_id)
+    return policy_id
+
+
+def test_drafting_a_policy_does_NOT_advance_the_tenant_epoch():
+    """### THE DEFECT THIS CLOSES. A half-written draft is not a change."""
+    conn = _conn()
+    _human(conn, "po")
+    assert _epoch(conn) == 0, "a tenant with no policy at all must sit at epoch 0"
+    _draft_only(conn, policy_id="d1", scope="raise_invoice")
+    assert _epoch(conn) == 0, (
+        "inserting a DRAFT advanced the tenant epoch. That voids every in-flight Effect Grant and "
+        "every outstanding approval in the brokerage because someone started typing.")
+    _draft_only(conn, policy_id="d2", scope="book_carrier")
+    assert _epoch(conn) == 0, "a second draft advanced the epoch"
+    # The positive control: the ROW numbers really were allocated, so the epoch staying at 0 is a
+    # decision and not an empty table.
+    rows = conn.execute(
+        "SELECT policy_id, policy_version, state FROM policies WHERE tenant = ? ORDER BY policy_version",
+        (TENANT,)).fetchall()
+    assert [r["state"] for r in rows] == ["DRAFT", "DRAFT"], rows
+    assert [r["policy_version"] for r in rows] == [1, 2], (
+        "the drafts were not numbered, so this test proved nothing about numbering vs the epoch")
+
+
+def test_submission_and_approval_advance_nothing_only_activation_does():
+    """PO-2 and PO-3 move a policy through its own governance; they move no authority."""
+    conn = _conn()
+    _human(conn, "po")
+    m = _m11(conn)
+    _approval(conn, "appr-a1", mfp="DIFF-a1")
+    _draft_only(conn, policy_id="a1", scope="raise_invoice")
+    assert _epoch(conn) == 0
+    m.submit("a1", actor_id="po")
+    assert _epoch(conn) == 0, "submitting for approval advanced the epoch"
+    m.approve("a1", approval_id="appr-a1", diff_fingerprint="DIFF-a1", approved_by="po")
+    assert _epoch(conn) == 0, "approving advanced the epoch — approval is not yet effect"
+    m.activate("a1", activated_by="po")
+    assert _epoch(conn) == 1, (
+        "ACTIVATION did NOT advance the epoch. A policy that has taken effect must void in-flight "
+        "authority granted under the previous posture (ADR-010 sec 7.4).")
+
+
+def test_revocation_advances_the_epoch_the_under_voiding_direction():
+    """### THE DIRECTION M11's OWN DOCSTRING SAYS IS NOT AVAILABLE.
+
+    A naive fix -- MAX(policy_version) WHERE activated_by IS NOT NULL -- is monotonic but does NOT
+    move on revocation, because the revoked row was already counted. Revoking a policy would then
+    leave every grant minted under it claimable. This is the case that catches that.
+    """
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="r1")
+    after_activation = _epoch(conn)
+    assert after_activation == 1
+    _m11(conn).revoke("r1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    assert _epoch(conn) == after_activation + 1, (
+        "REVOCATION did not advance the epoch. An Effect Grant minted under the revoked policy is "
+        "still claimable, so the effect executes under a policy that no longer exists.")
+
+
+def test_expiry_advances_the_epoch_because_expiry_is_withdrawal():
+    """PO-7. The policy that decided no longer governs, so its decision is not REPRODUCIBLE."""
+    conn = _conn()
+    _human(conn, "po")
+    m = _m11(conn)
+    # `_activate` mints its own approval for the policy it activates; minting a second one here
+    # collides on approvals.(tenant, commit_key).
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="base")
+    # A NARROWING policy carrying an expiry is the only thing PO-7 fires on.
+    _approval(conn, "appr-n1", mfp="DIFF-n1")
+    m.propose_draft(scope="raise_invoice", scope_kind="action_class",
+                    gate_decision=GateDecision.PERMANENT_HUMAN_ASSERTION_REQUIRED, caps={},
+                    predicate={"clauses": []}, authored_by="po", policy_id="n1",
+                    expires_at="2027-01-01T00:00:00Z")
+    m.submit("n1", actor_id="po")
+    m.approve("n1", approval_id="appr-n1", diff_fingerprint="DIFF-n1", approved_by="po")
+    m.activate("n1", activated_by="po")
+    before_expiry = _epoch(conn)
+    m.expire("n1", owner_id="po")
+    assert _epoch(conn) == before_expiry + 1, (
+        "EXPIRY did not advance the epoch. The policy that decided no longer governs, so every "
+        "decision taken under it is non-reproducible (ADR-010 sec 9.1).")
+
+
+def test_the_epoch_never_decreases_across_a_full_lifecycle():
+    """### MONOTONICITY IS THE LOAD-BEARING PROPERTY.
+
+    If the epoch could ever FALL, a grant bound at 5 would match again the moment the value returned
+    to 5 -- a stale Effect Grant resurrected, which is the precise failure the CAS predicate exists
+    to prevent. Asserted over a real lifecycle, not by reading the SQL.
+    """
+    conn = _conn()
+    _human(conn, "po")
+    m = _m11(conn)
+    seen = [_epoch(conn)]
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="v1")
+    seen.append(_epoch(conn))
+    # supersede v1 by activating v2 in the same scope
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="v2")
+    seen.append(_epoch(conn))
+    _draft_only(conn, policy_id="never", scope="book_carrier")
+    seen.append(_epoch(conn))
+    m.revoke("v2", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    seen.append(_epoch(conn))
+    assert seen == sorted(seen), f"the epoch DECREASED across the lifecycle: {seen}"
+    assert seen[0] == 0 and seen[-1] > seen[0], f"the epoch never moved at all: {seen}"
+    # and the draft step specifically moved nothing
+    assert seen[2] == seen[3], f"the DRAFT advanced the epoch: {seen}"
+
+
+def test_the_epoch_is_tenant_scoped_one_brokerage_never_moves_another():
+    conn = _conn()
+    other = "beta-brokerage"
+    _human(conn, "po")
+    _human(conn, "po2", tenant=other)
+    # `_approval` stamps granted_by='po', which is FK-backed into tenant_humans PER TENANT — so the
+    # other brokerage needs its own 'po' row before it can hold an approval at all.
+    # AUTHORIZED_HUMAN, not POLICY_OWNER: 'po2' already holds that role here, and the Policy Owner
+    # singularity index permits exactly one ACTIVE owner per tenant.
+    _human(conn, "po", role="AUTHORIZED_HUMAN", tenant=other)
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="t1")
+    assert _epoch(conn) == 1
+    assert _epoch(conn, tenant=other) == 0, (
+        "one brokerage's policy activity moved another brokerage's epoch [C-1]")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED,
+              policy_id="t2", owner="po2", tenant=other)
+    assert _epoch(conn, tenant=other) == 1
+    assert _epoch(conn) == 1, "the other tenant's activation moved ours"
+
+
+def test_a_policy_epoch_row_is_append_only_in_the_database():
+    """Not a convention: UPDATE and DELETE are refused by trigger. A DELETE would lower the MAX."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="p1")
+    assert conn.execute("SELECT COUNT(*) FROM policy_epochs WHERE tenant = ?",
+                        (TENANT,)).fetchone()[0] == 1, "no epoch row was written to take away"
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        conn.execute("UPDATE policy_epochs SET epoch = 99 WHERE tenant = ?", (TENANT,))
+    with pytest.raises(sqlite3.IntegrityError, match="never deleted"):
+        conn.execute("DELETE FROM policy_epochs WHERE tenant = ?", (TENANT,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO policy_epochs (tenant, epoch, reason, policy_id, policy_version, "
+            "transition_id, advanced_by, occurred_at) VALUES (?,?,?,?,?,?,?,?)",
+            (TENANT, 99, "DRAFTED", "p1", 1, "PO-1", "po", "2026-09-03T12:00:00Z"))
+
+
+def test_every_epoch_row_names_the_policy_and_the_transition_that_caused_it():
+    """An epoch nobody can explain is an epoch nobody can defend to the broker whose effect it voided."""
+    conn = _conn()
+    _human(conn, "po")
+    _activate(conn, scope="raise_invoice", gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="e1")
+    _m11(conn).revoke("e1", revoked_reason="withdrawn", direction="narrow", actor_id="po")
+    rows = conn.execute(
+        "SELECT epoch, reason, policy_id, transition_id, advanced_by FROM policy_epochs "
+        "WHERE tenant = ? ORDER BY epoch", (TENANT,)).fetchall()
+    assert [(r["epoch"], r["reason"], r["transition_id"]) for r in rows] == [
+        (1, "ACTIVATED", "PO-4"), (2, "REVOKED", "PO-6")], [dict(r) for r in rows]
+    assert all(r["policy_id"] == "e1" for r in rows)
+    assert all(r["advanced_by"] == "po" for r in rows), (
+        "the human who moved authority is not recorded on the epoch")

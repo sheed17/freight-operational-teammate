@@ -2600,6 +2600,18 @@ def _neighbour_unchanged(names):
 
 @case("m1-through-m11-are-unchanged")
 def _c(args):
+    # ### `policy.py` LEFT THIS SET AT U8.1/P8 (CLAUDE.md sec 4 rule 20), AND THE PROPERTY IT WAS
+    # ### STANDING IN FOR IS NOW ASSERTED DIRECTLY BELOW.
+    #
+    # M11 is DELIBERATELY edited by P8: U8.1 wired it as the production policy authority and the
+    # policy-epoch correction changed `current_policy_version()`. Keeping it here would report a
+    # sanctioned change as "### M11 MACHINE EDITED ###" on every run.
+    #
+    # Note what this check actually is: `git diff --name-only HEAD`, a WORKING-TREE tripwire. It
+    # goes green the moment a change is committed, so it never protected a committed edit and
+    # removing a name from it gives up less than it looks. What M12 owes about M11 is durable and
+    # is checked directly: rule.py must not import M11 or reimplement it. That holds whether or not
+    # anything is committed.
     machines = {
         "work_item.py": "### M1 MACHINE EDITED ###",
         "pipeline_instance.py": "### M2 STATE MACHINE EDITED ###",
@@ -2607,23 +2619,35 @@ def _c(args):
         "approval.py": "### M4 MACHINE EDITED ###",
         "conflict.py": "### SECOND CONFLICT SYSTEM BUILT ###",
         "exception.py": "### M9 MACHINE EDITED ###",
-        "policy.py": "### M11 MACHINE EDITED ###",
     }
     changed = _neighbour_unchanged(tuple(machines))
     if changed:
         for name, marker in machines.items():
             if name in changed:
                 return FAIL(f"{MISS} {name} was edited", marker)
+    # The durable replacement for policy.py's byte pin: M12 declares its precedence layer and defers
+    # the ceiling comparison rather than importing M11, so M11 keeps its ONE importer (the P8
+    # admission layer) and M12 is not a second policy authority (rule 17).
+    rsrc = _rule_src()
+    if re.search(r"from\s+\.policy\s+import|import\s+freight_recon\.policy", rsrc):
+        return FAIL(f"{MISS} rule.py imports the M11 policy machine", "### M12 IMPORTS M11 ###")
+    if _no_class(rsrc, "m11machine", "policymachine"):
+        return FAIL(f"{MISS} rule.py reimplements the policy machine",
+                    "### M12 BUILT A SECOND POLICY AUTHORITY ###")
     # nothing graduates: M12 builds no autonomy-graduation engine, so no landed machine is promoted
     # into a new authority beside being left byte-identical.
     if _no_class(_rule_src(), "graduat"):
         return FAIL(f"{MISS} M12 defines a graduation engine", "### AUTONOMY GRADUATION ENGINE BUILT ###")
-    return OK("m1-through-m11-are-unchanged: the landed machine files are byte-identical, and nothing graduates",
+    return OK("m1-through-m11-are-unchanged: M1/M2/M3/M4/M7/M9 are byte-identical, M12 neither "
+              "imports nor reimplements M11 (which P8 deliberately edits), and nothing graduates",
               "NOTHING GRADUATES",
               "THE M1 WORK ITEM MACHINE IS UNCHANGED", "THE M2 PIPELINE MACHINE IS UNCHANGED",
               "THE M3 EFFECT AUTHORITY IS UNCHANGED", "THE M4 APPROVAL MACHINE IS UNCHANGED",
               "THE M7 CONFLICT MACHINE IS UNCHANGED", "THE M9 EXCEPTION MACHINE IS UNCHANGED",
-              "THE M11 POLICY MACHINE IS UNCHANGED")
+              # ### NOT "THE M11 POLICY MACHINE IS UNCHANGED" ANY MORE — it IS changed, by U8.1/P8,
+              # and a dimension line claiming otherwise would be a false green in the probe's own
+              # summary. What M12 owes is stated instead.
+              "M12 IS NOT A SECOND POLICY AUTHORITY")
 
 
 # ------------------------------------------------------------------ the measurement block

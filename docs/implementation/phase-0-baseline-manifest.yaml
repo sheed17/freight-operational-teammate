@@ -424,6 +424,45 @@ expected_noncanonical_schema:
     #   LIVE-STATUS projection of it; read P7's current state there, not here.
     - evidence
     - evidence_spans
+    # Phase 8 (U8.1) adds ONE canonical table, `policy_epochs`, tenant-first and NOT exempt. It holds
+    # the tenant POLICY EPOCH: the scalar bound into every Checkpoint Witness and every Effect Grant
+    # and revalidated by the claim CAS, advanced ONLY when a policy takes effect or is withdrawn
+    # (PO-4 ACTIVATED / PO-6 REVOKED / PO-7 EXPIRED) and never by drafting one.
+    #   WHY IT EXISTS: `current_policy_version()` was `MAX(policy_version)` over `policies` in ANY
+    #   state, and `policy_version` is allocated at PO-1 when a DRAFT row is inserted. So opening a
+    #   draft advanced the scalar and VOIDED every in-flight Effect Grant and every outstanding human
+    #   approval in that brokerage - measured: zero policies -> 0, one draft never submitted and never
+    #   activated -> 1, a second -> 2 - and a draft later rejected kept its number, so the voiding was
+    #   permanent and bought nothing. ADR-010 sec 8's worked example is a policy the owner actually
+    #   CHANGED. The epoch separates "a sentence someone is still writing" from "authority moved".
+    #   WHY A TABLE AND NOT A DERIVED VALUE: the scalar must be MONOTONIC NON-DECREASING, because a
+    #   value that could fall would resurrect a stale Effect Grant - the grant bound at epoch 5 would
+    #   match again the moment the current value returned to 5. No derivation over `policies` is both
+    #   monotonic AND advances on withdrawal: MAX over a state subset is not monotonic (a row LEAVING
+    #   the set lowers it), MAX where activated_by IS NOT NULL is monotonic but does not move on
+    #   revocation (UNDER-voiding), and `policies` carries no column holding a NEW number at
+    #   withdrawal. An append-only table is monotonic by construction. It is NOT derived from the
+    #   event log: CLAUDE.md sec 4 rule 9 - events cannot grant execution authority - so counting
+    #   PolicyVersionChanged envelopes to produce the scalar the claim CAS trusts is forbidden.
+    #   WHY TENANT-FIRST: one brokerage's policy activity must never void another's in-flight
+    #   authority [C-1]; there is no global policy clock. MECHANICAL PROOF, not assertion, read from a
+    #   fresh canonical database via PRAGMA: PRAGMA table_info gave PK order ['tenant','epoch'];
+    #   PRAGMA index_info gave `tenant` as column 0 of BOTH indexes - the (tenant, epoch) autoindex
+    #   and idx_policy_epochs_tenant_policy (tenant, policy_id, epoch); PRAGMA foreign_key_list gave
+    #   the composite FK (tenant, policy_id) -> policies (tenant, policy_id), carrying the tenant in
+    #   the reference itself, so a cross-tenant epoch cannot be spelled. The P8 readiness oracle
+    #   (migrations/phase8_policy_epochs.phase8_policy_epochs_readiness_problems) refuses the table
+    #   without its immutability and no-delete triggers, and both were observed present on that same
+    #   fresh database - so this classification is checked against the schema a tenant's rows really
+    #   live in, not against the DDL string.
+    #   It carries NO provenance_class, NO state and NO commit_key column (verified absent): it is a
+    #   durable counter of authority movements, not a claim, so it mints nothing and answers to no
+    #   effect ledger.
+    #   Ships dark: no production module binds a policy authority, so nothing in production reads it;
+    #   recording it here moves no phase. This manifest is NOT a phase-status authority - P8's
+    #   lifecycle state is the machine authority IMPLEMENTATION-REGISTRY.yaml, with CURRENT.md's
+    #   bounded LIVE-STATUS projection of it.
+    - policy_epochs
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

@@ -391,6 +391,22 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_evidence_no_delete"
                for step in p7ev_performed), p7ev_performed
     assert phase7_evidence_readiness_problems(conn) == []
+
+    # ### P8/U8.1's POLICY EPOCH — the last step of the walk. Added when `policy_epochs` joined the
+    # canonical partition; without it this walk stops one migration short and the store below is
+    # still refused, which is what a migrated database being "complete" has to mean.
+    from freight_recon.migrations.phase8_policy_epochs import (  # noqa: E402
+        create_phase8_policy_epochs_schema,
+        phase8_policy_epochs_readiness_problems,
+    )
+
+    assert any("policy_epochs" in p for p in schema_readiness_problems(conn)), \
+        schema_readiness_problems(conn)
+    p8pe_performed = create_phase8_policy_epochs_schema(conn, now=utc_now())
+    assert any(step == "create-table:policy_epochs" for step in p8pe_performed), p8pe_performed
+    assert any(step == "create-trigger:trg_policy_epochs_no_delete"
+               for step in p8pe_performed), p8pe_performed
+    assert phase8_policy_epochs_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

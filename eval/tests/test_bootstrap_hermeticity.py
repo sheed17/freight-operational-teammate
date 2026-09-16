@@ -3459,6 +3459,9 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
     from freight_recon.migrations.phase7_evidence import (
         P7EV_EXEMPT_TABLES, P7EV_TENANT_TABLES,
     )
+    from freight_recon.migrations.phase8_policy_epochs import (
+        P8PE_EXEMPT_TABLES, P8PE_TENANT_TABLES,
+    )
     from freight_recon.schema import CANONICAL_TABLES
 
     assert set(P5_EXEMPT_TABLES) == set(), (
@@ -3519,6 +3522,11 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         f"isolated rules. A rule scoped to no tenant would let one brokerage's rule decide another's "
         f"gate. Defend it here first."
     )
+    assert set(P8PE_EXEMPT_TABLES) == set(), (
+        f"P8 declared a tenant-exempt policy-epoch table {sorted(P8PE_EXEMPT_TABLES)}: the epoch "
+        f"decides whose in-flight authority is void, and one brokerage's policy activity must "
+        f"never void another's [C-1]. There is no global policy clock. Defend it here first."
+    )
     assert set(P7EV_EXEMPT_TABLES) == set(), (
         f"P7 declared a tenant-exempt evidence table {sorted(P7EV_EXEMPT_TABLES)}: Evidence may hold "
         f"a sensitive customer document, and the same bytes in two tenants are two isolated artifacts "
@@ -3543,6 +3551,7 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
         "p6_policies_tenant": set(P6PO_TENANT_TABLES),
         "p6_rules_tenant": set(P6RU_TENANT_TABLES),
         "p7_evidence_tenant": set(P7EV_TENANT_TABLES),
+        "p8_policy_epochs_tenant": set(P8PE_TENANT_TABLES),
     }
     for a, b in itertools.combinations(sorted(classes), 2):
         overlap = classes[a] & classes[b]
@@ -3568,7 +3577,8 @@ def test_the_canonical_table_partition_is_exact_and_disjoint():
                      "p6_compensations_tenant": 1,
                      "p6_policies_tenant": 1,
                      "p6_rules_tenant": 1,
-                     "p7_evidence_tenant": 2}, (
+                     "p7_evidence_tenant": 2,
+                     "p8_policy_epochs_tenant": 1}, (
         f"the partition shape drifted: {shape}")
 
     text = read(IMPL / "CURRENT.md")

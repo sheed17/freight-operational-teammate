@@ -1196,6 +1196,17 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase7ev:{step}")
         conn.commit()
 
+        # P8/U8.1's POLICY EPOCH — ONE new table holding an FK into policies (M11, the policy whose
+        # activation, revocation or expiry caused the epoch). Created after M11. Append-only, so the
+        # tenant scalar the claim CAS revalidates is monotonic by construction. A fresh database is
+        # built with it directly; this brings a P2-shaped database to the same shape. Idempotent.
+        # Ships dark — nothing in production binds a policy authority.
+        from .phase8_policy_epochs import create_phase8_policy_epochs_schema
+
+        for step in create_phase8_policy_epochs_schema(conn, now=_now()):
+            _mark(conn, f"phase8pe:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.

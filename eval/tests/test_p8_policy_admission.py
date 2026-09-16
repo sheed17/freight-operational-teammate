@@ -831,14 +831,21 @@ def test_e2e_a_broadening_tenant_policy_cannot_authorize_anything(tmp_path):
 def test_e2e_an_unreadable_policy_store_refuses_and_never_means_unchanged(tmp_path):
     """### 'CANNOT READ THE POLICY' NEVER MEANS 'UNCHANGED' (ADR-010 §11).
 
-    The symmetric twin of the brake's `BRAKE_UNREADABLE`. The policy table is dropped between mint
+    The symmetric twin of the brake's `BRAKE_UNREADABLE`. The policy store is dropped between mint
     and claim; the claim must refuse rather than compare against a stale cached value.
+
+    ### WHAT "THE POLICY STORE" MEANS CHANGED AT U8.1/P8, AND THIS DROPS BOTH TABLES (rule 20).
+    The version the claim re-reads now comes from `policy_epochs`, not from `MAX(policy_version)`
+    over `policies`, so dropping `policies` alone would no longer make the read fail — the test
+    would pass for the wrong reason, or not at all. `policy_epochs` also holds an FK into
+    `policies`, so the drop order matters: the child goes first.
     """
     store, kernel, clock, authority = _wired(tmp_path)
     effect, inputs, request, _world = _scenario(kernel, clock, authority)
     outcome = run_checkpoint(kernel, request, inputs)
     assert outcome.authorized
 
+    store.conn.execute("DROP TABLE policy_epochs")
     store.conn.execute("DROP TABLE policies")
     store.conn.commit()
 

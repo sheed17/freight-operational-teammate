@@ -200,6 +200,16 @@ from .migrations.phase7_evidence import (
     phase7_evidence_readiness_problems,
     stamp_phase7_evidence_version,
 )
+from .migrations.phase8_policy_epochs import (
+    P8PE_EXEMPT_TABLES,
+    P8PE_INDEXES,
+    P8PE_REPLACED_INDEXES,
+    P8PE_TARGET_SCHEMA,
+    P8PE_TENANT_TABLES,
+    create_phase8_policy_epochs_schema,
+    phase8_policy_epochs_readiness_problems,
+    stamp_phase8_policy_epochs_version,
+)
 
 TENANT_COLUMN = "tenant"
 
@@ -281,6 +291,10 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # `source_observation_id` referent exists. Evidence is DATA: it carries no provenance_class and no
     # state, so it is not a machine and not answerable to the effect ledger.
     **P7EV_TARGET_SCHEMA,
+    # policy_epochs (the tenant policy epoch). New table, no override — merged after M11 so the
+    # `policies` referent exists. Append-only: the scalar the claim CAS revalidates must be
+    # monotonic, and a table you can DELETE from is not.
+    **P8PE_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -294,6 +308,7 @@ ALL_TENANT_TABLES: tuple[str, ...] = (
     *P6IBC_TENANT_TABLES, *P6CF_TENANT_TABLES, *P6EX_TENANT_TABLES, *P6XC_TENANT_TABLES,
     *P6CM_TENANT_TABLES, *P6PO_TENANT_TABLES, *P6RU_TENANT_TABLES,
     *P7EV_TENANT_TABLES,
+    *P8PE_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -332,6 +347,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P6RU_EXEMPT_TABLES,
     *P7EV_TENANT_TABLES,
     *P7EV_EXEMPT_TABLES,
+    *P8PE_TENANT_TABLES,
+    *P8PE_EXEMPT_TABLES,
 )
 
 
@@ -386,7 +403,8 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                                         **P6OB_INDEXES, **P6IBC_INDEXES, **P6CF_INDEXES,
                                         **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES,
                                         **P6PO_INDEXES, **P6RU_INDEXES,
-                                        **P6BR_INDEXES, **P7EV_INDEXES}.items()
+                                        **P6BR_INDEXES, **P7EV_INDEXES,
+                                        **P8PE_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
@@ -394,7 +412,8 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                       and n not in P6CF_REPLACED_INDEXES and n not in P6EX_REPLACED_INDEXES
                       and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES
                       and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES
-                      and n not in P6BR_REPLACED_INDEXES and n not in P7EV_REPLACED_INDEXES}
+                      and n not in P6BR_REPLACED_INDEXES and n not in P7EV_REPLACED_INDEXES
+                      and n not in P8PE_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -526,6 +545,17 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase7_evidence_schema(conn, now=_now())
     if not phase7_evidence_readiness_problems(conn):
         stamp_phase7_evidence_version(conn, now=_now())
+    # ### P8/U8.1's POLICY EPOCH: the `policy_epochs` table. Built AFTER M11 (`policies`) because
+    # `policy_epochs.policy_id` holds a foreign key into it — an epoch always names the policy that
+    # caused it. It replaces `MAX(policy_version)`-over-any-state as the scalar bound into every
+    # witness and revalidated by the claim CAS, so that DRAFTING a policy no longer voids a
+    # brokerage's in-flight authority while ACTIVATION, REVOCATION and EXPIRY still do. Append-only,
+    # so the value is monotonic by construction. On a fresh database the merged DDL already built
+    # the shape, so this only adds the triggers; on a migrated one it creates the table.
+    # Marker-last, like every phase. Ships dark — nothing in production binds a policy authority.
+    create_phase8_policy_epochs_schema(conn, now=_now())
+    if not phase8_policy_epochs_readiness_problems(conn):
+        stamp_phase8_policy_epochs_version(conn, now=_now())
     conn.commit()
 
 

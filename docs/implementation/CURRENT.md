@@ -1450,6 +1450,7 @@ missing from the written account.
 | **P6 tenant — M11** (1) | `policies` |
 | **P6 tenant — M12** (1) | `rules` |
 | **P7 tenant — Evidence** (2) | `evidence`, `evidence_spans` |
+| **P8 tenant — the policy epoch** (1) | `policy_epochs` |
 
 ### **P6/M13 ADDS NO ROW TO THIS TABLE, AND THAT IS CORRECT RATHER THAN AN OMISSION.** M13 **hardens**
 `brakes` and `platform_brake`, which P3 created and which are already carried above as **P3 tenant**

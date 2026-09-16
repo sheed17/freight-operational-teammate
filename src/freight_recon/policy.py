@@ -741,13 +741,74 @@ class M11Machine:
         return _row_to_policy(row) if row is not None else None
 
     def current_policy_version(self) -> int:
-        """The tenant's current `policy_version` — the MAX across ALL scopes (the version namespace is the
-        TENANT, ### M11-AQ-6). This is the scalar a checkpoint pins and the claim CAS revalidates; a change
-        in ANY scope advances it, which is why a policy change voids in-flight authority in EVERY scope."""
+        """### THE TENANT'S POLICY EPOCH — the scalar a checkpoint pins and the claim CAS revalidates.
+
+        A change in ANY scope advances it, which is why a policy change voids in-flight authority in
+        EVERY scope (the version namespace is the TENANT, ### M11-AQ-6). Over-voiding is the
+        deliberate direction: a voided claim refuses BEFORE any adapter call, so it manufactures no
+        Unknown Outcome, while under-voiding would let an effect execute under a policy that no
+        longer exists (ADR-010 sec 7.4).
+
+        ### IT READS `policy_epochs`, NOT `MAX(policy_version)` OVER `policies` (CORRECTED AT
+        ### U8.1/P8 — CLAUDE.md sec 4 rule 20).
+
+        It WAS `SELECT COALESCE(MAX(policy_version), 0) FROM policies WHERE tenant = ?`. Because
+        `policy_version` is allocated at PO-1, when a DRAFT row is inserted, that made DRAFTING a
+        policy advance the tenant's version: measured, zero policies -> 0, one draft never submitted
+        and never activated -> 1, a second -> 2. A dispatcher opening a draft at 4pm therefore voided
+        every in-flight Effect Grant and every outstanding human approval in the brokerage — and a
+        draft later REJECTED kept its number, so the voiding was permanent and bought nothing.
+        ADR-010 sec 8's worked example is a policy the owner actually CHANGED; a half-written draft
+        is not a change.
+
+        ### THE EPOCH ADVANCES WHEN A POLICY TAKES EFFECT OR IS WITHDRAWN, AND AT NO OTHER TIME:
+        PO-4 ACTIVATED, PO-6 REVOKED, PO-7 EXPIRED. Drafting, rejecting and submitting for approval
+        advance nothing. PO-5 SUPERSEDED rides inside PO-4's transaction and does not advance twice.
+
+        Monotonic BY CONSTRUCTION rather than by care: `policy_epochs` is append-only (UPDATE and
+        DELETE refused by trigger) and `epoch` is allocated as the tenant MAX + 1. It can only rise.
+        That matters because a value that could FALL would resurrect a stale Effect Grant — the grant
+        bound at epoch 5 would match again the moment the current value returned to 5.
+        """
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(epoch), 0) FROM policy_epochs WHERE tenant = ?",
+            (self._tenant,)).fetchone()
+        return int(row[0])
+
+    def _next_row_version(self) -> int:
+        """The next `policies.policy_version` for THIS tenant — a ROW NUMBER, not the epoch.
+
+        `UNIQUE (tenant, policy_version)` plus per-tenant monotonicity make a scope-local numbering
+        impossible, so the row number is still allocated from the tenant MAX over `policies`. It
+        identifies and orders the row; it no longer decides whose authority is void. Keeping the two
+        separate is the whole point of the U8.1 correction: allocating a draft a number must not
+        move the scalar the claim CAS compares against.
+        """
         row = self._conn.execute(
             "SELECT COALESCE(MAX(policy_version), 0) FROM policies WHERE tenant = ?",
             (self._tenant,)).fetchone()
-        return int(row[0])
+        return int(row[0]) + 1
+
+    def _advance_epoch(self, *, reason: str, policy: PolicyRecord, transition_id: str,
+                       advanced_by: str | None, now: str) -> int:
+        """Advance the tenant's policy epoch. ### CALLED INSIDE THE TRANSITION'S OWN TRANSACTION.
+
+        The epoch row and the state change commit together or not at all — an activation whose epoch
+        did not land would leave in-flight authority valid under a policy that had already taken
+        effect, which is exactly the under-voiding this exists to prevent.
+
+        `reason` must be one of the three withdrawal-or-effect causes; the database CHECK enforces
+        it, and 'DRAFTED' is deliberately not a member.
+        """
+        nxt = int(self._conn.execute(
+            "SELECT COALESCE(MAX(epoch), 0) FROM policy_epochs WHERE tenant = ?",
+            (self._tenant,)).fetchone()[0]) + 1
+        self._conn.execute(
+            "INSERT INTO policy_epochs (tenant, epoch, reason, policy_id, policy_version, "
+            "transition_id, advanced_by, occurred_at) VALUES (?,?,?,?,?,?,?,?)",
+            (self._tenant, nxt, reason, policy.policy_id, int(policy.policy_version),
+             transition_id, advanced_by, now))
+        return nxt
 
     # --- reads: the Policy Owner ------------------------------------------------------------------
 
@@ -855,7 +916,11 @@ class M11Machine:
                 "may take authority away, never give it.")
         caps_json = json.dumps(dict(caps or {}), sort_keys=True, separators=(",", ":"))
         pid = policy_id or f"pol-{uuid.uuid4().hex[:16]}"
-        pv = self.current_policy_version() + 1
+        # ### A ROW NUMBER, NOT THE EPOCH (U8.1/P8). This was `current_policy_version() + 1`, which
+        # made inserting a DRAFT advance the tenant scalar the claim CAS revalidates — so drafting
+        # voided the brokerage's in-flight authority. PO-1 now allocates only a row number; the
+        # epoch moves at PO-4/PO-6/PO-7.
+        pv = self._next_row_version()
         now = format_instant(self._clock())
         eff = effective_from or now
         conn = self._conn
@@ -1038,7 +1103,13 @@ class M11Machine:
                     f"or another activation won the one-active-per-scope race. Reload.")
             after = self.require(comp.policy_id)
             pins = self._pins_from_approval_id(after.approval_id)
-            new_tenant_version = str(after.policy_version)
+            # ### THE POLICY TOOK EFFECT, SO THE EPOCH ADVANCES — in this same transaction (U8.1/P8).
+            # It was `str(after.policy_version)`, the row's own number, which had already been spent
+            # when the DRAFT was inserted; the coordination event therefore announced a "new version"
+            # that had been current since drafting.
+            new_tenant_version = str(self._advance_epoch(
+                reason="ACTIVATED", policy=after, transition_id="PO-4",
+                advanced_by=activator, now=now))
             # PolicyActivated (consequential, human-only), then the coordination PolicyVersionChanged.
             act = self._policy_envelope(
                 event_name="PolicyActivated", transition_id="PO-4", policy=after,
@@ -1117,7 +1188,13 @@ class M11Machine:
             consequential=False, pins=pins, actor_type=self._actor_type(actor_kind), actor_id=actor_id,
             writes="revoked_reason = ?, revoked_direction = ?", write_args=(reason, dir_norm),
             correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id, event_id=event_id,
-            extra_event=("PolicyVersionChanged", {"policy_version": str(self.current_policy_version())}))
+            # ### REVOCATION WITHDRAWS AUTHORITY, SO IT ADVANCES THE EPOCH (U8.1/P8). The payload
+            # below is a placeholder: `_advance` allocates the new epoch inside the transaction and
+            # substitutes it. Before this, the announced value was `current_policy_version()` read
+            # BEFORE the revocation — which under the old MAX-over-policies rule had not moved, so a
+            # revoked policy left every in-flight grant claimable.
+            extra_event=("PolicyVersionChanged", {"policy_version": str(self.current_policy_version())}),
+            epoch_reason="REVOKED")
 
     # --- PO-7: the narrowing policy's TTL fires ---------------------------------------------------
 
@@ -1162,7 +1239,12 @@ class M11Machine:
             comp, "PO-7", PolicyState.EXPIRED, event_name="PolicyExpired",
             payload={}, consequential=False, pins=None, actor_type="system", actor_id=actor_id,
             writes="", write_args=(), correlation_id=correlation_id, causation_id=causation_id,
-            trace_id=trace_id, event_id=event_id)
+            trace_id=trace_id, event_id=event_id,
+            # ### EXPIRY IS WITHDRAWAL, SO IT ADVANCES THE EPOCH (U8.1/P8). The policy that decided
+            # no longer governs, which makes every decision taken under it non-REPRODUCIBLE — an
+            # unclaimable condition in its own right (ADR-010 sec 9.1). Authority is NOT restored by
+            # the expiry; the owed human confirmation below is what could restore it.
+            epoch_reason="EXPIRED")
         escalation = ExpiryEscalation(
             source_kind="policy", source_ref=comp.policy_id, owner_id=owner,
             type="policy_expiry_requires_human_confirmation", severity="SEV1",
@@ -1257,10 +1339,20 @@ class M11Machine:
         actor_type: str, actor_id: str, writes: str, write_args: tuple[Any, ...],
         correlation_id: str | None, causation_id: str | None, trace_id: str | None,
         event_id: str | None, extra_event: tuple[str, dict[str, Any]] | None = None,
+        epoch_reason: str | None = None,
     ) -> TransitionResult:
         """One transition: the state row and its event(s), in ONE transaction, or neither (GR-2). OCC on
         the version the decision was read at (GR-3): zero rows is a lost update that raises. Every M11
-        transition changes state, so version always advances by one."""
+        transition changes state, so version always advances by one.
+
+        ### `epoch_reason` ADVANCES THE TENANT POLICY EPOCH IN THIS SAME TRANSACTION (U8.1/P8).
+        Passed by PO-6 (REVOKED) and PO-7 (EXPIRED) — the two transitions that WITHDRAW authority.
+        Not passed by PO-2/PO-3 (submission and approval move no authority) and not by PO-5, whose
+        supersession rides inside PO-4's own commit and must not advance twice.
+
+        ### THE REPLAY PATH DOES NOT COME THROUGH HERE. `_reconstruct_locked` moves `state` only, so
+        replay advances no epoch, mints no authority and voids nothing (CLAUDE.md sec 4 rule 10).
+        """
         now = format_instant(self._clock())
         conn = self._conn
         conn.execute("BEGIN IMMEDIATE")
@@ -1286,8 +1378,21 @@ class M11Machine:
             self._outbox().emit(main)
             event_ids = [main.event_id]
             event_names = [event_name]
+            new_epoch: int | None = None
+            if epoch_reason is not None:
+                # The withdrawal and its epoch commit together or not at all. A revocation whose
+                # epoch did not land would leave in-flight grants claimable under a policy that has
+                # already been withdrawn — the under-voiding direction, which is not available.
+                new_epoch = self._advance_epoch(
+                    reason=epoch_reason, policy=after, transition_id=transition_id,
+                    advanced_by=(actor_id if actor_type == "human" else None), now=now)
             if extra_event is not None:
                 extra_name, extra_payload = extra_event
+                if new_epoch is not None and extra_name == "PolicyVersionChanged":
+                    # The caller could not know the new epoch — it is allocated above, inside this
+                    # transaction. Announcing the PRE-transition value would tell every consumer the
+                    # version had not moved, on the transition whose whole point is that it did.
+                    extra_payload = {**extra_payload, "policy_version": str(new_epoch)}
                 extra = self._policy_envelope(
                     event_name=extra_name, transition_id=transition_id, policy=after,
                     actor_type=actor_type, actor_id=actor_id, payload=extra_payload,
