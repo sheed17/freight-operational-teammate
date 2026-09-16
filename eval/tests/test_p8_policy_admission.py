@@ -877,6 +877,113 @@ def test_e2e_the_unbound_kernel_is_exactly_p3_minus_the_default(tmp_path):
     assert outcome2.reason == "UNCLASSIFIED_ACTION_CLASS", outcome2.reason
 
 
+def test_a_policy_authority_on_a_DIFFERENT_connection_is_REFUSED_at_construction(tmp_path):
+    """### THE CLAIM CAS RE-READ MUST BE ATOMIC WITH THE CAS (ADR-011 §8.2), WHICH IS ONLY TRUE ON
+    THE STORE'S OWN CONNECTION.
+
+    The kernel builds its `BrakeStore` on `store.conn`, so the brake re-read at claim time is
+    transactionally atomic with the CAS for free. The policy authority is INJECTED, so nothing but
+    this guard makes the policy re-read atomic too. An authority reading a DIFFERENT connection —
+    worse, a different database — would compare the grant against some other epoch, and a policy
+    change the CAS could not see would slip through as a claim: UNDER-VOIDING, the one direction
+    M11's own docstring says is not available. So the mismatch is refused at CONSTRUCTION, before
+    any effect is possible.
+
+    Both shapes are exercised: a separate connection to the SAME file (whose serial read happens to
+    agree but is NOT one transaction with the CAS), and a separate database entirely (whose epoch is
+    frozen and can never see the store's policy). The positive control is the correct wiring — the
+    authority on `store.conn` — which is accepted.
+    """
+    from freight_recon.checkpoint import CheckpointError
+
+    def _store(name):
+        store = make_store(tmp_path, TENANT, name=name)
+        create_canonical_schema(store.conn)
+        enable_and_verify_foreign_keys(store.conn)
+        store.conn.row_factory = sqlite3.Row
+        _human(store.conn)
+        _activate(store.conn, scope="raise_invoice",
+                  gate=GateDecision.HUMAN_APPROVAL_REQUIRED, policy_id="pA")
+        return store
+
+    # (1) a SEPARATE connection to the SAME file — refused: the re-read would be a separate
+    #     transaction from the CAS even though it points at the same bytes.
+    store = _store("mismatch-samefile.db")
+    other = sqlite3.connect(tmp_path / "mismatch-samefile.db")
+    other.row_factory = sqlite3.Row
+    enable_and_verify_foreign_keys(other)
+    foreign = PolicyAdmissionAuthority(other, tenant=TENANT, clock=CLOCK)
+    assert foreign.conn is not store.conn
+    with pytest.raises(CheckpointError, match="DIFFERENT sqlite connection"):
+        CheckpointKernel(store, GateRegistry({}, policy_version="pv1"), policy_authority=foreign)
+
+    # (2) a SEPARATE database entirely (:memory:) — the authority cannot see the store's policy at
+    #     all, so its epoch is frozen and no real policy change would ever void a grant.
+    store2 = _store("mismatch-memory.db")
+    mem = sqlite3.connect(":memory:")
+    mem.row_factory = sqlite3.Row
+    create_canonical_schema(mem)
+    enable_and_verify_foreign_keys(mem)
+    _human(mem)
+    detached = PolicyAdmissionAuthority(mem, tenant=TENANT, clock=CLOCK)
+    with pytest.raises(CheckpointError, match="DIFFERENT sqlite connection"):
+        CheckpointKernel(store2, GateRegistry({}, policy_version="pv1"), policy_authority=detached)
+
+    # (3) THE POSITIVE CONTROL: the correct wiring is ACCEPTED, and its connection IS the store's.
+    store3 = _store("shared.db")
+    bound = PolicyAdmissionAuthority(store3.conn, tenant=TENANT, clock=CLOCK)
+    assert bound.conn is store3.conn
+    kernel = CheckpointKernel(store3, GateRegistry({}, policy_version="pv1"), policy_authority=bound)
+    assert kernel.policy_authority is bound
+
+
+def test_the_connection_identity_guard_is_load_bearing__mutant_CAUGHT_by_the_runner():
+    """### THE GUARD ABOVE, PROVEN DISCRIMINATING BY A RUNNER-COLLECTED MUTATION (CLAUDE.md §6).
+
+    `test_a_policy_authority_on_a_DIFFERENT_connection_is_REFUSED_at_construction` asserts the guard
+    REFUSES a mismatched connection and ACCEPTS the shared one. That is necessary but not sufficient:
+    ### A REFUSAL TEST THAT COULD NEVER TURN RED IS A DECORATION, and a guard whose refusal cannot be
+    shown to FAIL is unverified — attempted, succeeded and verified must stay distinguishable.
+
+    So this test drives the connection-guard mutant in `scripts/mutate_p8_policy_admission.py`
+    THROUGH THE STANDARD PYTEST RUNNER — not only the ad-hoc battery script — so the runner itself
+    observes the discrimination: the refusal test is GREEN on the un-mutated tree, goes RED when the
+    guard is removed (the mutant is CAUGHT), and is GREEN again after a byte-for-byte restore. It is
+    the whole-file counterpart of the fast in-process scanner control in `test_phase0_null_gate.py`.
+
+    The battery harness holds the original `checkpoint.py` in memory, purges `__pycache__` around the
+    run and restores unconditionally in a `finally` — it NEVER uses git to undo a mutation
+    (CLAUDE.md §6). Loading it here as a non-`__main__` module does not trigger its `main()`.
+    """
+    import importlib.util
+
+    battery_path = ROOT / "scripts" / "mutate_p8_policy_admission.py"
+    assert battery_path.exists(), f"the mutation battery is gone: {battery_path}"
+    spec = importlib.util.spec_from_file_location("_mutate_p8_admission_for_test", battery_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    suffix = "test_a_policy_authority_on_a_DIFFERENT_connection_is_REFUSED_at_construction"
+    cases = [(label, edits, guard) for (label, edits, guard) in mod.CASES
+             if guard.endswith(suffix)]
+    # ### A NON-EMPTY POPULATION IS THE PRECONDITION FOR THIS PROOF TO MEAN ANYTHING (M-9): if the
+    # mutant were absent this would pass over nothing and report a guard that verified nothing.
+    assert len(cases) == 1, (
+        f"expected EXACTLY ONE connection-guard mutant targeting {suffix!r}, found {len(cases)}. "
+        f"The runner-collected discrimination proof requires that mutant to exist and be unique."
+    )
+    _label, edits, guard = cases[0]
+
+    verdict, note = mod._run_edits(edits, guard)
+    # CAUGHT means the harness saw: GREEN before the mutation, RED under it, GREEN after restore.
+    assert verdict == "CAUGHT", (
+        f"the connection-identity guard is NOT discriminating: mutating it away left {suffix!r} "
+        f"GREEN (verdict={verdict!r}, note={note!r}). A guard whose refusal test cannot be shown to "
+        f"fail is a decoration (CLAUDE.md §6); the tier-1 kernel edit is unverified."
+    )
+
+
 # ==================================================================================================
 # THE PRICE OF EDITING THE KERNEL — the three invariants CLAUDE.md §10 actually protects
 # ==================================================================================================

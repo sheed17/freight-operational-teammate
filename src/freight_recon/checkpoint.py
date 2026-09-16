@@ -642,8 +642,8 @@ class CheckpointKernel:
         # durable M11 posture) and the `policy_version` that the witness pins and the claim CAS
         # revalidates. It is typed as `Any` deliberately — importing `policy_admission` here would
         # be a cycle (that module imports this one for `GateDecision`), and the kernel must not
-        # depend on the policy layer that sits above it. The protocol is two methods, checked on
-        # use, not a class the kernel names.
+        # depend on the policy layer that sits above it. The protocol is three methods plus a
+        # tenant and a connection, all verified at CONSTRUCTION here, not a class the kernel names.
         #
         # ### WHEN IT IS NOT BOUND, STEP 6 IS EXACTLY WHAT P3 BUILT, MINUS THE DEFAULT. That is
         # the ships-dark and test path, and it is NOT a second policy authority: the registry is
@@ -663,6 +663,29 @@ class CheckpointKernel:
                 raise CheckpointError(
                     f"the policy authority is bound to tenant {authority_tenant!r} and the store "
                     f"to {store.tenant!r}. The tenant is first in every key and is never inferred."
+                )
+            # ### THE POLICY AUTHORITY MUST READ THE STORE'S OWN CONNECTION (U8.1 hardening).
+            #
+            # The claim CAS re-reads `policy_version` at claim time and compares it against the
+            # grant's bound version *atomically with the CAS* (ADR-011 §8.2): the re-read and the
+            # UPDATE are the same transaction, so a policy change between mint and claim makes the
+            # WHERE clause match zero rows. That atomicity holds ONLY if the re-read runs on the
+            # CAS's own connection. An authority reading a DIFFERENT connection — worse, a different
+            # database — would compare the grant against some other epoch, and a policy change the
+            # CAS cannot see is UNDER-VOIDING: the one direction M11's own docstring says is not
+            # available. `brake.py` gets this for free because the kernel builds `BrakeStore` on
+            # `store.conn` itself; the policy authority is injected, so the identity is asserted
+            # here rather than assumed. Symmetric with the tenant check above: an authority that
+            # does not expose its connection is tolerated (there is only one implementation and it
+            # does), but a mismatched one is refused at construction, before any effect is possible.
+            authority_conn = getattr(policy_authority, "conn", None)
+            if authority_conn is not None and authority_conn is not store.conn:
+                raise CheckpointError(
+                    "the policy authority reads a DIFFERENT sqlite connection than the store. The "
+                    "claim CAS re-reads policy_version atomically with the CAS (ADR-011 §8.2), "
+                    "which is only true on the CAS's own connection; an authority reading another "
+                    "connection or database would let a policy change the CAS cannot see slip "
+                    "through as a claim — under-voiding. Bind the authority to store.conn."
                 )
         self.policy_authority = policy_authority
         self._clock = clock or (lambda: datetime.now(timezone.utc))

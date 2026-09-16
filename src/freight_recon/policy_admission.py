@@ -177,6 +177,18 @@ class PolicyAdmissionAuthority:
         return self._m11
 
     @property
+    def conn(self) -> sqlite3.Connection:
+        """### THE CONNECTION THIS AUTHORITY READS — exposed so the checkpoint kernel can assert it
+        is the STORE'S connection at construction.
+
+        The claim CAS re-reads `policy_version` through this authority atomically with the CAS
+        (ADR-011 §8.2). That atomicity holds only if the read runs on the CAS's own connection, so
+        the kernel refuses a bound authority whose `conn` is not `store.conn`. This delegates to the
+        M11 machine, which owns the single connection every policy read and write goes through —
+        there is no second connection to confuse."""
+        return self._m11.conn
+
+    @property
     def registered_action_class_count(self) -> int:
         """U8.1's non-zero denominator, carried so a caller can assert it rather than trust it."""
         return REGISTERED_ACTION_CLASS_COUNT

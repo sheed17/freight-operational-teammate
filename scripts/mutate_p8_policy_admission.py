@@ -172,6 +172,18 @@ CASES = [
        "    GateDecision.FORBIDDEN: 1,  # MUTANT")],
      f"{T}::test_forbidden_is_NOT_collapsed_into_permanent_human_assertion_required"),
 
+    # -------------------------------------------------- the authority reads the store's connection
+    ("### THE POLICY AUTHORITY IS BOUND TO A DIFFERENT CONNECTION — the kernel stops requiring the "
+     "authority to read the store's own connection, so the claim CAS re-read is no longer atomic "
+     "with the CAS (ADR-011 §8.2) and a policy change on another connection is invisible: "
+     "under-voiding",
+     [(CKPT,
+       "            authority_conn = getattr(policy_authority, \"conn\", None)\n"
+       "            if authority_conn is not None and authority_conn is not store.conn:",
+       "            authority_conn = getattr(policy_authority, \"conn\", None)\n"
+       "            if False and authority_conn is not None and authority_conn is not store.conn:  # MUTANT")],
+     f"{T}::test_a_policy_authority_on_a_DIFFERENT_connection_is_REFUSED_at_construction"),
+
     # ------------------------------------------------------------------ the brake's independence
     ("### THE BRAKE DEPENDS ON THE POLICY ENGINE — `brake.py` imports the very subsystem the "
      "brake exists to overrule, so it would not work in the moment it is needed (ADR-011 §0)",
