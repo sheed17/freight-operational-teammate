@@ -266,5 +266,29 @@ def main() -> int:
     return 0 if (caught == total and control_ok) else 1
 
 
+def test_the_p8_admission_mutation_battery_catches_every_mutant():
+    """### THE PYTEST-COLLECTED ENTRY POINT (CLAUDE.md §6): the standard runner OPERATES this battery
+    directly — `pytest scripts/mutate_p8_policy_admission.py` — and reads its exit status, not only
+    the `__main__` CLI. An unmeasured guard is not a passing guard; a battery only a hand-run command
+    exercises is one the runner cannot measure.
+
+    `main()` runs EVERY mutant (each reintroduces a real defect and must be CAUGHT — including the
+    connection-identity guard added by this slice) and the anti-vacuity control (the un-mutated tree
+    must be GREEN), restoring every source file byte-for-byte from memory and never with git. It
+    returns 0 only if every mutant is caught AND the control is green, so `== 0` is the whole battery,
+    measured — over a non-empty, >=15 population, so it cannot pass vacuously (M-9).
+
+    This file is deliberately NOT collected by a bare `pytest eval` (it is outside `testpaths` and is
+    not named `test_*.py`); it runs only when named explicitly, which is exactly how a slow mutation
+    battery should be operated — on purpose, never by accident sweeping the whole suite.
+    """
+    assert len(CASES) >= 15, (
+        f"the battery carries {len(CASES)} mutants; it must carry all of them (>=15, including the "
+        f"connection-identity guard) for 'every mutant caught' to mean anything (M-9).")
+    assert main() == 0, (
+        "the P8 admission mutation battery did NOT report every mutant CAUGHT with a GREEN "
+        "anti-vacuity control; a guard that cannot be shown to fire is unverified. See the report.")
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
