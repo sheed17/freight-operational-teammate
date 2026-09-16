@@ -1420,12 +1420,55 @@ def _c(args):
     return OK("m11-constructs-no-gateentry-and-no-gateregistry: neither is constructed in policy.py")
 
 
-@case("an-unregistered-action-class-falls-to-the-human-default")
+@case("an-unregistered-action-class-REFUSES-it-does-not-fall-to-a-default")
 def _c(args):
-    from freight_recon.checkpoint import GateRegistry
-    if GateRegistry({}, policy_version="pv1").gate_for("anything").gate is not GateDecision.HUMAN_APPROVAL_REQUIRED:
-        return FAIL(f"{MISS} the fallback is not HUMAN_APPROVAL_REQUIRED", "### GATE DECISION DEFAULTED SILENTLY ###")
-    return OK("an-unregistered-action-class-falls-to-the-human-default: fail-closed default is HUMAN_APPROVAL_REQUIRED")
+    # ### REPLACED AT U8.1/P8 (CLAUDE.md sec 4 rule 20). This case WAS
+    # `an-unregistered-action-class-falls-to-the-human-default`, and it asserted, AS A DESIRABLE
+    # PROPERTY, that `GateRegistry({}).gate_for("anything")` returns HUMAN_APPROVAL_REQUIRED.
+    #
+    # The VALUE was safe. The MECHANISM was F-20 (ADR-010 sec 2: "null, missing, DEFAULTED, or
+    # inherited by accident"), because it made FORGETTING survivable — an action class nobody had
+    # ever classified looked exactly like one somebody had decided needed a human. U8.1 removed
+    # `GateRegistry._DEFAULT` for that reason, so this case was a GREEN ASSERTION OF A FORBIDDEN
+    # BEHAVIOUR: a defect with a passing status, which is precisely what rule 20 exists to catch.
+    #
+    # It is REPLACED rather than deleted, and INVERTED: the absence of a gate must now be a
+    # REFUSAL. Both directions are exercised, so the case cannot pass by the registry having
+    # stopped answering at all.
+    from freight_recon.checkpoint import GateRegistry, UnclassifiedActionClass
+    reg = GateRegistry({}, policy_version="pv1")  # a PROVABLY EMPTY literal — not a registration
+    try:
+        got = reg.gate_for("anything")
+    except UnclassifiedActionClass:
+        pass
+    else:
+        return FAIL(f"{MISS} an unclassified action class resolved to {got.gate.value} instead of "
+                    f"refusing — the F-20 default is back",
+                    "### GATE DECISION DEFAULTED SILENTLY ###")
+    # The positive control: a classification layer that refuses EVERYTHING would pass the check
+    # above while being broken, so prove a CLASSIFIED class still resolves.
+    #
+    # ### IT IS DELIBERATELY READ THROUGH `resolve_ceiling`, NOT BY CONSTRUCTING A POPULATED
+    # `GateRegistry` HERE. A `GateRegistry({...})` with real members in this file IS a production
+    # gate registration site: `gate_scan.gate_registration_sites` discounts only PROVABLY EMPTY
+    # dict literals, and it sweeps `scripts/` as well as `src/`. Writing the obvious positive
+    # control that way turned `test_p8_policy_admission.py::
+    # test_the_production_gate_registry_population_is_STILL_empty_after_u81` and the Phase-0
+    # R-07 containment guard RED — correctly, because it was a real breach of R-07 condition (3).
+    # The product ceiling is the right oracle anyway: it is the layer that actually classifies.
+    from freight_recon.policy_admission import resolve_ceiling
+    from freight_recon.product_policy import ACTION_CLASS_POPULATION
+    known = sorted(ACTION_CLASS_POPULATION)
+    if not known:
+        return FAIL(f"{MISS} the discovered action-class population is EMPTY, so the refusal "
+                    f"above proves nothing", "### THE ACTION CLASS POPULATION IS EMPTY ###")
+    if resolve_ceiling(known[0]) is not GateDecision.HUMAN_APPROVAL_REQUIRED:
+        return FAIL(f"{MISS} classified action class {known[0]!r} no longer resolves to a gate; "
+                    f"the refusal above proves nothing",
+                    "### THE PRODUCT CEILING ANSWERS NOTHING ###")
+    return OK("an-unregistered-action-class-REFUSES-it-does-not-fall-to-a-default: unclassified "
+              "raises UnclassifiedActionClass; a registered class still resolves",
+              "A MISSING GATE IS A REFUSAL, NOT A DEFAULT")
 
 
 @case("the-production-gate-registry-population-stays-empty")
@@ -2088,8 +2131,22 @@ def _c(args):
 
 # =========================================================== posture / not built
 
-@case("m11-ships-dark-with-zero-production-importers")
+@case("m11-has-EXACTLY-ONE-production-importer-and-it-is-the-P8-admission-layer")
 def _c(args):
+    # ### REPLACED AT U8.1/P8 (CLAUDE.md sec 4 rule 20), MATCHING THE PYTEST COPY
+    # `test_m11_has_EXACTLY_ONE_production_importer_AND_IT_IS_THE_P8_ADMISSION_LAYER`, WHICH GOT
+    # THIS CORRECTION WHILE THIS PROBE DID NOT.
+    #
+    # This case was `m11-ships-dark-with-zero-production-importers`, and for its whole life it was
+    # right: M11 landed at P6-CP-11 as a machine with no caller. WIRING it is what U8.1 is, so
+    # asserting zero importers now asserts something FALSE — it reported
+    # `### PRODUCTION IMPORTER OF POLICY ###` against the very module the unit exists to add.
+    #
+    # The replacement is STRICTER than a relaxation: exactly ONE module composes the tenant
+    # posture, BY NAME. A second importer anywhere — a scattered composition, i.e. a second policy
+    # authority (rule 17) — still turns this RED. Both set-differences are asserted, so if the
+    # admission layer ever stops importing M11 the check cannot pass over nothing.
+    PERMITTED = {"policy_admission.py"}
     import freight_recon
     src = Path(freight_recon.__file__).parent
     offenders = []
@@ -2106,10 +2163,24 @@ def _c(args):
                     offenders.append(py.name)
             if isinstance(node, ast.Import) and any(a.name == "freight_recon.policy" for a in node.names):
                 offenders.append(py.name)
-    if offenders:
-        return FAIL(f"{MISS} production importer(s): {offenders}", "### PRODUCTION IMPORTER OF POLICY ###")
-    return OK("m11-ships-dark-with-zero-production-importers: no production importer",
-              "M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS")
+    observed = set(offenders)
+    unexpected = sorted(observed - PERMITTED)
+    if unexpected:
+        return FAIL(f"{MISS} unexpected production importer(s) of the M11 policy machine: "
+                    f"{unexpected}. Exactly one module composes the tenant posture "
+                    f"({sorted(PERMITTED)}); a second importer is a second policy authority.",
+                    "### A SECOND PRODUCTION IMPORTER OF POLICY ###")
+    missing = sorted(PERMITTED - observed)
+    if missing:
+        # The other direction. Without this the set-difference above would pass over an EMPTY
+        # observed set — the admission layer having stopped importing M11 entirely — and report
+        # confinement it never checked.
+        return FAIL(f"{MISS} the P8 admission layer no longer imports M11: {missing} absent from "
+                    f"the observed importers {sorted(observed)}. The confinement check above "
+                    f"passed over nothing.", "### THE P8 ADMISSION LAYER IS GONE ###")
+    return OK(f"m11-has-EXACTLY-ONE-production-importer-and-it-is-the-P8-admission-layer: "
+              f"{sorted(observed)}",
+              "M11 HAS EXACTLY ONE PRODUCTION IMPORTER: THE P8 ADMISSION LAYER")
 
 
 @case("m11-joins-no-outbound-channel")
@@ -2151,20 +2222,38 @@ def _c(args):
     psrc = (ROOT / "src" / "freight_recon" / "policy.py").read_text()
     if re.search(r"from\s+\.rule\s+import|import\s+freight_recon\.rule", psrc):
         return FAIL(f"{MISS} policy.py imports the rule machine", "### M11 IMPORTS M12 ###")
-    import freight_recon
-    files = {p.name for p in Path(freight_recon.__file__).parent.rglob("*.py")}
-    if any("brake" in f and "lifecycle" in f for f in files):
-        return FAIL(f"{MISS} an M13 brake lifecycle module exists", "### M13 BRAKE MACHINE BUILT ###")
-    return OK("m12-rule-is-not-built: M12 landed; M11 does not import it and M13 is not built")
+    # ### THE M13 HALF IS REPLACED AT U8.1/P8 (rule 20). This case additionally asserted that NO
+    # brake-lifecycle module exists. M13 (the Brake) LANDED as `P6-CP-13`, so `brake_lifecycle.py`
+    # has been in the tree since then and this half has reported WRONG on every run since — the
+    # same defect the compensation probe's `m11-m12-and-m13-are-not-built` case carried. What is
+    # still M11's to guarantee is its own confinement: policy.py imports neither M12 nor M13.
+    psrc_l = psrc.lower()
+    if re.search(r"from\s+\.brake(_lifecycle)?\s+import|import\s+freight_recon\.brake", psrc_l):
+        return FAIL(f"{MISS} policy.py imports the brake", "### M11 IMPORTS THE BRAKE ###")
+    return OK("m12-rule-is-not-built: M12 and M13 have both LANDED; M11 imports neither",
+              "M11 IMPORTS NEITHER THE RULE MACHINE NOR THE BRAKE")
 
 
-@case("m13-brake-lifecycle-is-not-built")
+@case("m11-builds-no-part-of-m13-the-brake")
 def _c(args):
-    import freight_recon
-    files = {p.name for p in Path(freight_recon.__file__).parent.rglob("*.py")}
-    if any("brake" in f and "lifecycle" in f for f in files):
-        return FAIL(f"{MISS} an M13 brake lifecycle module exists", "### M13 BRAKE MACHINE BUILT ###")
-    return OK("m13-brake-lifecycle-is-not-built: no M13 brake lifecycle module")
+    # ### REPLACED AT U8.1/P8 (rule 20). This case was `m13-brake-lifecycle-is-not-built` and
+    # asserted that no brake-lifecycle module exists anywhere in the package. M13 LANDED as
+    # `P6-CP-13`; the assertion has been FALSE since, and reported `### M13 BRAKE MACHINE BUILT ###`
+    # as though the brake landing were a defect.
+    #
+    # What M11 actually owes is unchanged and is what is asserted now: M11 builds no part of the
+    # brake and imports nothing from it. ADR-011 sec 0 runs the other way too — one of the reasons
+    # you pull the brake is that the policy engine is wrong, so the two must not be entangled in
+    # EITHER direction.
+    psrc = (ROOT / "src" / "freight_recon" / "policy.py").read_text()
+    if re.search(r"from\s+\.brake(_lifecycle)?\s+import|import\s+freight_recon\.brake", psrc):
+        return FAIL(f"{MISS} policy.py imports the brake", "### M11 IMPORTS THE BRAKE ###")
+    for node in ast.walk(ast.parse(psrc)):
+        if isinstance(node, ast.ClassDef) and "brake" in node.name.lower():
+            return FAIL(f"{MISS} policy.py defines a brake class: {node.name}",
+                        "### M11 BUILT A SECOND BRAKE ###")
+    return OK("m11-builds-no-part-of-m13-the-brake: M13 has LANDED and M11 neither imports it nor "
+              "reimplements it", "M11 BUILDS NO PART OF THE BRAKE")
 
 
 @case("no-autonomy-graduation-engine-is-built")
@@ -2376,8 +2465,15 @@ def _measurements():
     migsrc = (src / "migrations" / "phase6_policies.py").read_text()
     out.append(f"modules that MINT a gate decision: {sorted(_mint_scan())}")
     out.append(f"M11 constructs a GateEntry or GateRegistry: {('GateRegistry(' in psrc or 'GateEntry(' in psrc)}")
-    from freight_recon.checkpoint import GateRegistry
-    out.append(f"the unregistered-class fallback: {GateRegistry({}, policy_version='pv1').gate_for('x').gate.value}")
+    # ### CORRECTED AT U8.1/P8 (rule 20): there is NO unregistered-class fallback any more, so
+    # reading `.gate_for('x').gate.value` raises and took the whole `--all` run down with it. The
+    # measurement now REPORTS the refusal, which is the fact worth measuring.
+    from freight_recon.checkpoint import GateRegistry, UnclassifiedActionClass
+    try:
+        _fallback = GateRegistry({}, policy_version="pv1").gate_for("x").gate.value
+    except UnclassifiedActionClass:
+        _fallback = "REFUSED (UnclassifiedActionClass) — no default, F-20 closed"
+    out.append(f"the unregistered-class fallback: {_fallback}")
     carriers = sorted(p.name for p in src.rglob("*.py")
                       if gate_scan.gate_token_sites(p.read_text(), ("HUMAN_APPROVAL_REQUIRED",
                           "AUTONOMOUS_WITHIN_CAPS", "PERMANENT_HUMAN_ASSERTION_REQUIRED")))

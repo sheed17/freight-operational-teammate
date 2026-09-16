@@ -2461,14 +2461,17 @@ def _c(args):
                 offenders.append(py.name)
     if offenders:
         return FAIL(f"{MISS} production importer(s): {offenders}", "### PRODUCTION RULE IMPORTER BUILT ###")
-    # shipping dark also means the machine after this one is not here: no M13 brake-lifecycle module
-    # in the package, and rule.py builds no brake machine of its own.
-    files = {p.name for p in src.rglob("*.py")}
-    if any("brake" in f and "lifecycle" in f for f in files) or _no_class(_rule_src(), "brakemachine", "brakelifecycle"):
-        return FAIL(f"{MISS} an M13 brake machine exists", "### M13 BRAKE MACHINE BUILT ###")
-    return OK("m12-ships-dark-with-zero-production-importers: no production importer, and no M13 brake machine",
-              "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS",
-              "THE M13 BRAKE MACHINE IS NOT BUILT")
+    # ### THE M13 HALF IS REPLACED AT U8.1/P8 (rule 20). This also asserted that no
+    # brake-lifecycle module exists in the package. M13 (the Brake) LANDED as `P6-CP-13`, so that
+    # half has reported WRONG on every run since — the same defect the compensation probe carried
+    # and the M11 probe carried. Shipping dark is about THIS machine's callers, not about which
+    # later machines exist. What M12 still owes is that it builds no brake of its own.
+    if _no_class(_rule_src(), "brakemachine", "brakelifecycle"):
+        return FAIL(f"{MISS} rule.py defines a brake machine of its own",
+                    "### M12 BUILT A SECOND BRAKE ###")
+    return OK("m12-ships-dark-with-zero-production-importers: no production importer, and M12 "
+              "builds no brake of its own (M13 has LANDED and is not M12's to carry)",
+              "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS")
 
 
 @case("m12-joins-no-outbound-channel")
@@ -2522,16 +2525,22 @@ def _c(args):
     return OK("m12-imports-no-timer-service: RU-8's TTL rides existing timers, none imported here")
 
 
-@case("m13-brake-lifecycle-is-not-built")
+@case("m12-builds-no-part-of-m13-the-brake")
 def _c(args):
-    import freight_recon
-    files = {p.name for p in Path(freight_recon.__file__).parent.rglob("*.py")}
-    if any("brake" in f and "lifecycle" in f for f in files):
-        return FAIL(f"{MISS} an M13 brake lifecycle module exists", "### M13 BRAKE MACHINE BUILT ###")
-    if _no_class(_rule_src(), "brakemachine", "brakelifecycle"):
+    # ### REPLACED AT U8.1/P8 (rule 20). This case was `m13-brake-lifecycle-is-not-built` and
+    # asserted no brake-lifecycle module exists anywhere in the package. M13 LANDED as `P6-CP-13`,
+    # so it has been FALSE since, and it announced the brake's arrival as
+    # `### M13 BRAKE MACHINE BUILT ###` — a defect banner over a sanctioned landing.
+    #
+    # What M12 owes is unchanged: it builds no brake and imports none. ADR-011 sec 0 — the brake
+    # must keep working when the rule and policy engines are wrong, so it stays unentangled.
+    rsrc = _rule_src()
+    if re.search(r"from\s+\.brake(_lifecycle)?\s+import|import\s+freight_recon\.brake", rsrc):
+        return FAIL(f"{MISS} rule.py imports the brake", "### M12 IMPORTS THE BRAKE ###")
+    if _no_class(rsrc, "brakemachine", "brakelifecycle"):
         return FAIL(f"{MISS} rule.py defines a brake lifecycle", "### BRAKE LIFECYCLE BUILT ###")
-    return OK("m13-brake-lifecycle-is-not-built: no M13 brake lifecycle module",
-              "THE M13 BRAKE MACHINE IS NOT BUILT")
+    return OK("m12-builds-no-part-of-m13-the-brake: M13 has LANDED and M12 neither imports it nor "
+              "reimplements it", "M12 BUILDS NO PART OF THE BRAKE")
 
 
 @case("no-autonomy-graduation-engine-is-built")
@@ -2792,7 +2801,14 @@ def _measurements():
     out.append(f"M12 constructs a GateEntry or GateRegistry: {('GateRegistry(' in rsrc or 'GateEntry(' in rsrc)}")
     reg = gate_scan.gate_registration_sites(rsrc, label="rule.py")
     out.append(f"modules that REGISTER an action class gate: {reg}")
-    out.append(f"the unregistered-class fallback: {GateRegistry({}, policy_version='pv1').gate_for('x').gate.value}")
+    # ### CORRECTED AT U8.1/P8 (rule 20): there is NO unregistered-class fallback any more, so this
+    # read raised and took the whole `--all` run down with it. It now reports the refusal.
+    from freight_recon.checkpoint import UnclassifiedActionClass
+    try:
+        _fallback = GateRegistry({}, policy_version="pv1").gate_for("x").gate.value
+    except UnclassifiedActionClass:
+        _fallback = "REFUSED (UnclassifiedActionClass) — no default, F-20 closed"
+    out.append(f"the unregistered-class fallback: {_fallback}")
     name_to_path = {p.name: p for p in src.rglob("*.py")}
     carriers = sorted(p.name for p in src.rglob("*.py")
                       if gate_scan.gate_token_sites(p.read_text(), ("HUMAN_APPROVAL_REQUIRED",

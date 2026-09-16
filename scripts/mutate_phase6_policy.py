@@ -285,11 +285,21 @@ CASES = [
        "        \"ON tenant_humans (authority_role) WHERE authority_role = 'POLICY_OWNER' AND state = 'ACTIVE'\"  # MUTANT")],
      f"{T}::test_the_policy_owner_singularity_does_not_couple_tenants"),
 
+    # ### GUARD NODE ID CORRECTED AT U8.1/P8. U8.1 renamed this guard from
+    # `test_m11_ships_dark_no_production_importer` to the name below, and this sibling battery was
+    # not swept — so pytest exited 4 (no such node), `_run_edits`'s pre-check read that as
+    # "SETUP-FAIL: guard already RED before mutation", and the whole M11 battery could no longer
+    # reach N/N. Loud rather than a false green, but it is exactly the "grep the suite for the
+    # symbol you renamed" discipline (CLAUDE.md sec 6) not being applied.
+    #
+    # The MUTANT itself is unchanged and still names the real defect: a production module importing
+    # M11 is a SECOND policy authority, which the renamed guard catches via its set-difference on
+    # unexpected importers.
     ("M11 is production-enabled — a production module (schema.py) imports the policy machine, so M11 no "
      "longer ships dark (R-07, U8.1)",
      [(SCHEMA, "TENANT_COLUMN = \"tenant\"",
        "from .policy import M11Machine  # MUTANT\nTENANT_COLUMN = \"tenant\"")],
-     f"{T}::test_m11_ships_dark_no_production_importer"),
+     f"{T}::test_m11_has_EXACTLY_ONE_production_importer_AND_IT_IS_THE_P8_ADMISSION_LAYER"),
 ]
 
 

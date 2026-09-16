@@ -35,6 +35,7 @@ This probe therefore phrases its own token headlines so the key word before the 
 from __future__ import annotations
 
 import argparse
+import ast
 import sqlite3
 import sys
 import traceback
@@ -2988,14 +2989,37 @@ def _c(a):
 
 @case("checkpoint-py-remains-the-sole-gate-minter")
 def _c(a):
+    # ### AST, NOT SUBSTRINGS (CLAUDE.md sec 6), CORRECTED AT U8.1/P8 — THE SAME CORRECTION ITS
+    # PYTEST SIBLING RECEIVED, WHICH THIS COPY DID NOT GET.
+    #
+    # This read raw text for `"GateRegistry("` and `"GateEntry(gate="`. U8.1 removed the
+    # `_DEFAULT = GateEntry(gate=...)` one-liner and the kernel now builds its entry across several
+    # lines, so `GateEntry(gate=` appears NOWHERE in the package — the scan returned an EMPTY list
+    # while the kernel was still minting, and `[] != ["checkpoint.py"]` then reported
+    # ### SECOND GATE MINTER BUILT ### and exited 1. A blind scanner announcing a Sev-0 it cannot
+    # see is the same defect as one staying silent about a breach it cannot see.
+    #
+    # Now AST-based, matching `eval/tests/test_phase6_brake.py::
+    # test_checkpoint_py_remains_the_sole_gate_minter` and
+    # `test_phase0_null_gate.py::test_only_the_checkpoint_kernel_may_MINT_a_gate_decision`, and it
+    # asserts the NON-EMPTY positive control BEFORE believing the confinement.
     minters = []
     for py in sorted(_PKG.rglob("*.py")):
-        src = py.read_text()
-        if "GateRegistry(" in src or "GateEntry(gate=" in src:
-            minters.append(py.name)
-    return OK(f"checkpoint-py-remains-the-sole-gate-minter: {minters}",
-              "THE CHECKPOINT IS STILL THE ONLY GATE MINTER") if minters == ["checkpoint.py"] else \
-        FAIL(f"{MISS} a second gate minter: {minters}", "### SECOND GATE MINTER BUILT ###")
+        for n in ast.walk(ast.parse(py.read_text())):
+            if isinstance(n, ast.Call):
+                name = getattr(n.func, "id", None) or getattr(n.func, "attr", None)
+                if name in {"GateEntry", "GateRegistry"}:
+                    minters.append(py.name)
+    found = sorted(set(minters))
+    if not found:
+        # The positive control. A confinement assertion over a population containing no mint at all
+        # passes vacuously, and its FAILURE is just as meaningless — report the blindness itself.
+        return FAIL(f"{MISS} the AST scan found NO gate construction anywhere, including in "
+                    f"checkpoint.py. The scanner is blind, so its silence about other modules "
+                    f"means nothing.", "### THE GATE-MINTER SCANNER IS BLIND ###")
+    return OK(f"checkpoint-py-remains-the-sole-gate-minter: {found}",
+              "THE CHECKPOINT IS STILL THE ONLY GATE MINTER") if found == ["checkpoint.py"] else \
+        FAIL(f"{MISS} a second gate minter: {found}", "### SECOND GATE MINTER BUILT ###")
 
 
 @case("m13-builds-no-second-checkpoint")
