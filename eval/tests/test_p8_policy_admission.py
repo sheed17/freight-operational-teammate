@@ -984,6 +984,51 @@ def test_the_connection_identity_guard_is_load_bearing__mutant_CAUGHT_by_the_run
     )
 
 
+def test_the_whole_p8_admission_mutation_battery_is_OPERATED_by_the_runner():
+    """### THE ENTIRE CHANGED MUTATION BATTERY, OPERATED THROUGH PYTEST — not only the ad-hoc CLI.
+
+    `scripts/mutate_p8_policy_admission.py` is a verification deliverable this slice edited (it grew
+    the connection-identity mutant). A battery that only a hand-run command exercises is a battery
+    the standard runner cannot MEASURE, and an unmeasured guard is not a passing guard — 28 of this
+    file's cases assert an ABSENCE (autonomy granted to no class, an unregistered gate refused, an
+    empty population refused), and an absence proves nothing until a realised forbidden state shows
+    the guard still FIRES. Each mutant IS that realised forbidden state.
+
+    So this test invokes the battery's own approved entry point, `main()`, which for EVERY case runs
+    the guard GREEN on the un-mutated tree, reintroduces the real defect, requires the guard to go
+    RED (CAUGHT), and restores `checkpoint.py`/`policy_admission.py`/`product_policy.py`/`policy.py`/
+    `brake.py` byte-for-byte from memory — never with git (CLAUDE.md §6). `main()` returns 0 only if
+    every mutant is caught AND the anti-vacuity control is GREEN, so a single `== 0` is the whole
+    battery, measured by the runner. It is slow by nature (a subprocess pytest per mutant); that cost
+    is the measurement.
+
+    Command the runner executes it under:
+        .venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p8_policy_admission.py
+    """
+    import importlib.util
+
+    battery_path = ROOT / "scripts" / "mutate_p8_policy_admission.py"
+    assert battery_path.exists(), f"the mutation battery is gone: {battery_path}"
+    spec = importlib.util.spec_from_file_location("_mutate_p8_admission_full_for_test", battery_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # ### A NON-EMPTY, GROWN POPULATION (M-9): the battery must carry every mutant it had plus the
+    # connection-identity one this slice added, or "all caught" would be a vacuous pass over few.
+    assert len(mod.CASES) >= 15, (
+        f"the P8 admission battery has {len(mod.CASES)} mutants; it must carry all of them "
+        f"(≥15, including the connection-identity guard) for 'every mutant CAUGHT' to mean anything."
+    )
+
+    rc = mod.main()
+    assert rc == 0, (
+        "the P8 admission mutation battery did NOT report every mutant CAUGHT with a GREEN "
+        "anti-vacuity control (main() returned nonzero). A guard that cannot be shown to fire is "
+        "unverified (CLAUDE.md §6); see the per-mutant report captured above."
+    )
+
+
 # ==================================================================================================
 # THE PRICE OF EDITING THE KERNEL — the three invariants CLAUDE.md §10 actually protects
 # ==================================================================================================
