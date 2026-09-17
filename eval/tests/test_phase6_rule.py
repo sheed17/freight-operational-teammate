@@ -950,8 +950,25 @@ def test_rule_py_calls_m7_m9_but_does_not_import_policy_or_brake():
 
 
 def test_m12_ships_dark_no_production_importer():
+    """### RULE 20 AT U8.2/P8: THIS GUARD EVOLVED FROM "NOTHING IMPORTS rule.py" TO "ONLY THE
+    AUTHORIZED LAYER-6 ADMISSION READER IMPORTS IT."
+
+    *(As written at P6-CP-12 this asserted `offenders == []` — nothing under `src/freight_recon/`
+    imported the machine. That was TRUE at the P6-CP-12 landing and is corrected rather than deleted
+    per CLAUDE.md §4 rule 20.)* U8.2 is the unit that composes a tenant's ACTIVE rules into the
+    checkpoint's step-6 `PolicyDecision` (ADR-010 §8 layer 6), so it ADDS exactly ONE production
+    importer: `rule_admission.py`. That importer binds nothing live — the production `GateRegistry`
+    stays EMPTY and the governed route still refuses (asserted by the U8.1 admission battery), and it
+    names NO gate member (asserted by `test_m12_is_not_a_gate_runtime_carrier...`). This guard now
+    proves the importer set is EXACTLY that one authorized reader: ANY OTHER production module
+    importing the machine is still an offense, and the authorized integration must actually be PRESENT
+    (a silently-removed integration is caught too)."""
     import freight_recon
     src = Path(freight_recon.__file__).parent
+    # FIXED-SPECIFICATION: the sole production module ADR-010 §8 / U8.2 entitles to import M12 — the
+    # layer-6 standing-rule admission reader. It reads ACTIVE rows and mints nothing; adding a name
+    # here is a deliberate, reviewed edit, exactly like widening the gate-runtime allowlist.
+    AUTHORIZED = {"rule_admission.py"}
     offenders = []
     for py in src.rglob("*.py"):
         if py.name == "rule.py":
@@ -967,7 +984,16 @@ def test_m12_ships_dark_no_production_importer():
                     offenders.append(py.name)
             if isinstance(node, ast.Import) and any(a.name == "freight_recon.rule" for a in node.names):
                 offenders.append(py.name)
-    assert offenders == [], f"production importer(s) of the rule machine: {offenders}"
+    unauthorized = sorted(set(offenders) - AUTHORIZED)
+    assert unauthorized == [], (
+        f"unauthorized production importer(s) of the rule machine: {unauthorized}. Only the layer-6 "
+        f"admission reader {sorted(AUTHORIZED)} may import M12 (ADR-010 §8, U8.2); a second importer is "
+        f"a second rule authority arriving without anybody deciding to build one (CLAUDE.md rule 17).")
+    # ...and the authorized integration is genuinely PRESENT — a silently-removed layer-6 reader would
+    # make M12 dead code again while this guard passed vacuously.
+    assert "rule_admission.py" in set(offenders), (
+        "rule_admission.py no longer imports the M12 machine: the U8.2 layer-6 integration vanished, "
+        "and rules would stop being real evidence in the step-6 PolicyDecision (M-9).")
 
 
 def test_m12_defines_no_graduation_engine():

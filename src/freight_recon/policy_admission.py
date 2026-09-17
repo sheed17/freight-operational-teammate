@@ -20,14 +20,26 @@ Three authorities already existed and none of them was composed:
     evaluation (a typed gate ladder and a fail-closed registry lookup) over an EMPTY production
     population and a STATIC `policy_version` string.
 
-### THIS MODULE IS THE COMPOSITION, AND IT IS THE ONLY PRODUCTION IMPORTER OF M11. It creates no
-new entity, no second gate authority, no second version authority and no second brake. It MINTS
-NOTHING: `checkpoint.py` remains the sole constructor of a `GateEntry`/`GateRegistry`, and the
-`PolicyDecision` it returns is M11's own type (ADR-010 §5.3) — a VALUE, never a new orchestration
-entity. The Brake is deliberately absent from this file: ADR-011 §0 is explicit that *"one of the
-reasons you pull the brake is that the POLICY ENGINE IS WRONG"*, so a brake that depended on this
-module would not work in the moment it exists for. STEP 7 reads `brake.py` and this module never
-touches it.
+### THIS MODULE IS THE COMPOSITION, AND IT IS THE PRODUCTION IMPORTER OF M11 (LAYER 5) AND, AT U8.2,
+OF M12 (LAYER 6). It creates no new entity, no second gate authority, no second version authority
+and no second brake. It MINTS NOTHING: `checkpoint.py` remains the sole constructor of a
+`GateEntry`/`GateRegistry`, and the `PolicyDecision` it returns is M11's own type (ADR-010 §5.3) —
+a VALUE, never a new orchestration entity. The Brake is deliberately absent from this file: ADR-011
+§0 is explicit that *"one of the reasons you pull the brake is that the POLICY ENGINE IS WRONG"*, so
+a brake that depended on this module would not work in the moment it exists for. STEP 7 reads
+`brake.py` and this module never touches it.
+
+### LAYER 6 — THE STANDING RULES (U8.2). `rule_admission.RuleAdmissionLayer` folds the tenant's
+ALREADY-ACTIVE M12 rules into the decision AFTER the tenant posture, and only ever as a NARROWING
+(ADR-010 §8): a rule DENIES, narrows the gate toward the human gate, or does not act — it may never
+broaden authority and may never flip a DENY into a PERMIT, so a rule overrides nothing in layers 1–5
+(Constraint, Permanent Truth, Brake, Product Policy, Tenant Policy). Its verdicts are what finally
+make `rules_evaluated` / `rules_matched` / `rules_rejected` carry REAL rule ids rather than being
+decorative. ### WITH NO ACTIVE RULES FOR THE SCOPE THE DECISION IS BYTE-IDENTICAL TO U8.1 — the M12
+importer is present but binds nothing live: the production `GateRegistry` stays EMPTY and the
+governed route still refuses. Rule-vs-rule conflict is M12's RU-3 → M7's landed Conflict authority,
+which happens BEFORE activation, so a conflicting rule is never ACTIVE and never reaches this layer;
+this module builds no second conflict engine and never picks a winner.
 
 ### THE VERSION BINDING, AND THE UNDER-VOIDING DEFECT IT CLOSES.
 
@@ -70,7 +82,9 @@ passed through this module either.
 | the tenant policy is BROADER than the ceiling | `DENY`, `escalation_required`, a security signal, and the attempted broadening named |
 | M11 cannot produce a reproducible decision | `PolicyEngineUnavailable` propagates — no decision, no witness |
 | a predicate is handed a `MODEL_INFERRED` fact | M11 raises; this module does not catch it into a pass |
-| the policy store is unreadable | the exception propagates; STEP 6 refuses |
+| a STANDING RULE is handed a `MODEL_INFERRED` fact | the rule layer re-raises `PolicyEngineUnavailable` — no allow-on-rule-error pass (ADR-010 §11) |
+| a standing rule's effect would BROADEN authority | it is refused, recorded in `rules_rejected`, and the decision is forced to DENY |
+| the policy or rule store is unreadable | the exception propagates; STEP 6 refuses |
 
 An allow-on-error default is how the money fence dies (ADR-010 §11), so there is none.
 """
@@ -94,6 +108,7 @@ from .product_policy import (
     permanent_truth_for,
     product_gate_for,
 )
+from .rule_admission import RuleAdmissionLayer
 from .tenant import require_tenant
 
 #: The security signal recorded when a tenant policy is found to sit ABOVE the product ceiling.
@@ -152,6 +167,7 @@ class PolicyAdmissionAuthority:
         tenant: str,
         clock: Callable[[], object] | None = None,
         machine: M11Machine | None = None,
+        rule_layer: RuleAdmissionLayer | None = None,
     ) -> None:
         self._tenant = require_tenant(tenant, context="PolicyAdmissionAuthority")
         if machine is not None:
@@ -167,6 +183,19 @@ class PolicyAdmissionAuthority:
             # the machine was constructed with — defence in depth, and this layer is the one that
             # knows the per-class answer.
             self._m11 = M11Machine(conn, tenant=self._tenant, clock=clock)  # type: ignore[arg-type]
+        # ### LAYER 6 — THE TENANT'S ACTIVE STANDING RULES (U8.2). Composed AFTER the tenant posture
+        # (layer 5) and only ever as a NARROWING (ADR-010 §8). Built on the SAME connection as M11 so
+        # the rule read at step 6 is atomic with the policy read and the claim CAS. It imports M12 but
+        # binds nothing live: the production GateRegistry stays EMPTY and the governed route still
+        # refuses. When a tenant has no active rules for a scope, the decision is byte-identical to U8.1.
+        if rule_layer is not None:
+            if rule_layer.tenant != self._tenant:
+                raise PolicyAdmissionError(
+                    f"the supplied standing-rule layer is bound to tenant {rule_layer.tenant!r}, not "
+                    f"{self._tenant!r}. One authority, one tenant ([C-1]).")
+            self._rules = rule_layer
+        else:
+            self._rules = RuleAdmissionLayer(conn, tenant=self._tenant, clock=clock)
 
     @property
     def tenant(self) -> str:
@@ -175,6 +204,12 @@ class PolicyAdmissionAuthority:
     @property
     def machine(self) -> M11Machine:
         return self._m11
+
+    @property
+    def rules(self) -> RuleAdmissionLayer:
+        """### LAYER 6 — the tenant's active standing rules (U8.2). Exposed so a caller can observe
+        which rules the composition would fold in, exactly as `machine` exposes the M11 posture."""
+        return self._rules
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -337,23 +372,46 @@ class PolicyAdmissionAuthority:
 
         # The tenant gate is at or below the ceiling, so it stands — narrower always wins (§8).
         effective = tenant_gate
+
+        # ### LAYER 6 — FOLD IN THE TENANT'S ACTIVE STANDING RULES (U8.2, ADR-010 §8). A rule may only
+        # NARROW: a DENY rule turns the decision to DENY, a REQUIRE_HUMAN_APPROVAL rule is matched
+        # evidence (its human requirement is already carried by the effective gate), and a PERMIT rule
+        # that would loosen a DENY is refused. The layer names NO gate member — it never rewrites the
+        # gate the tenant posture set, so `checkpoint.py` stays the sole gate authority. A rule that
+        # cannot be evaluated deterministically (a MODEL_INFERRED fact at checkpoint time) FAILS CLOSED
+        # by raising, which the kernel treats as no-decision. With no active rules the contribution is
+        # empty and this decision is BYTE-IDENTICAL to U8.1's — the rules_* fields carry real rule ids
+        # only when the tenant has actually activated rules for the scope.
+        contribution = self._rules.compose(
+            action_class=action_class, base_decision=tenant_decision.decision,
+            material_facts=inputs.material_facts)
+        final_decision = contribution.decision
+        rules_evaluated = tuple(sorted(set(rules_evaluated) | set(contribution.rules_evaluated)))
+        rules_matched = tuple(sorted(set(rules_matched) | set(contribution.rules_matched)))
+        if final_decision != "PERMIT":
+            # A standing rule denied what the tenant posture permitted — matched policies are no longer
+            # a PERMIT witness. Keep them in rules_evaluated (they were considered) but not in matched.
+            rules_matched = tuple(sorted(set(contribution.rules_matched)))
+        signals.extend(contribution.security_signals)
+
         reason = (
             f"action class {action_class!r}: product ceiling {product.value}"
             + (f"; permanent product truth {permanent.value} (layer 2, unoverridable)"
                if permanent else "")
             + f"; tenant posture {tenant_gate.value} ⇒ effective gate {effective.value}, "
-              f"{tenant_decision.decision} at tenant policy_version {bound_version}. "
+              f"{final_decision} at tenant policy_version {bound_version}. "
             + tenant_decision.reason
+            + contribution.reason_suffix
         )
         return PolicyDecision(
             gate_decision=effective,
-            decision=tenant_decision.decision,
+            decision=final_decision,
             policy_version=bound_version,
             reason=reason,
             rules_evaluated=rules_evaluated,
             rules_matched=rules_matched,
-            rules_rejected=(),
+            rules_rejected=contribution.rules_rejected,
             caps_applied=tenant_decision.caps_applied,
             security_signals=tuple(sorted(set(signals))),
-            escalation_required=bool(tenant_decision.decision == "DENY"),
+            escalation_required=bool(final_decision == "DENY"),
         )

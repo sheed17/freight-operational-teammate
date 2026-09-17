@@ -118,9 +118,15 @@ FRESH == MIGRATED, SHIPS DARK
 
     `create_canonical_schema` builds this table directly; a migrated database reaches the SAME shape
     through `create_phase6_rules_schema`. Built LAST of the P6 units (its FKs reach tenant_humans/M1 and
-    conflicts/M7). Nothing routes production traffic through M12; `rule.py` is the only non-test module
-    that reads it, and only `scripts/probe_phase6_rule.py` imports the machine. NO rule editor, admin
-    screen, importer, oversight queue, dashboard or notifier ships with M12.
+    conflicts/M7). *(### HISTORICAL AS WRITTEN AT P6-CP-12 — this paragraph read "Nothing routes
+    production traffic through M12; `rule.py` is the only non-test module that reads it, and only
+    `scripts/probe_phase6_rule.py` imports the machine." Corrected rather than deleted per CLAUDE.md §4
+    rule 20.)* At U8.2/P8 the standing-rule admission layer (`rule_admission.py`, ADR-010 §8 layer 6)
+    reads a tenant's ALREADY-ACTIVE rows and folds their deterministic verdicts into the U8.1
+    `PolicyDecision` — the first production reader of this table. It binds nothing live: the production
+    `GateRegistry` stays EMPTY and the governed route still refuses, so this table still routes no
+    production traffic. NO rule editor, admin screen, importer, oversight queue, dashboard or notifier
+    ships with M12.
 """
 
 from __future__ import annotations

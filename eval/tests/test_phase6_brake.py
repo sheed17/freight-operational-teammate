@@ -788,7 +788,8 @@ def test_the_landed_brakeengaged_consumers_are_preserved():
 
 
 def test_the_m1_through_m12_machines_are_unchanged():
-    """### RULE 20 AT U8.1/P8: `policy.py` (M11) LEFT THIS FROZEN SET.
+    """### RULE 20 AT U8.1/P8: `policy.py` (M11) LEFT THIS FROZEN SET. ### AND AT U8.2/P8, `rule.py`
+    (M12) LEFT IT TOO, BY THE SAME PRECEDENT.
 
     This guard's subject is "did the M13 landing disturb a machine it had no business touching",
     and byte-identity was a fair proxy while every one of them was finished. U8.1 is the unit that
@@ -796,19 +797,32 @@ def test_the_m1_through_m12_machines_are_unchanged():
     forbidden, and completing M11's `PolicyDecision` to ADR-010 §5.3 is part of it. A guard that
     froze M11 forever would forbid the phase that exists to use it.
 
-    M11 is not left unguarded: its own 60-case battery in `test_phase6_policy.py` still asserts all
-    seven states, all seven transitions, the ceiling order and the version namespace, and
-    `test_p8_policy_admission.py` asserts the new composition. M1..M10 and M12 remain frozen.
+    ### U8.2 IS THE UNIT THAT WIRES M12: it composes a tenant's ACTIVE rules into the checkpoint's
+    step-6 `PolicyDecision` (ADR-010 §8 layer 6) through the new `rule_admission.py`, which needs the
+    typed compiled predicate BACK from the row — the additive `rule.compiled_predicate_from_json`.
+    That, plus M12's rule-20 ships-dark docstring correction, is the whole of the `rule.py` change.
+    Freezing M12 forever would forbid the phase that exists to use it, exactly as it would have
+    forbidden M11 at U8.1. *(Until U8.2 this tuple carried `"rule.py"`; that was TRUE while M12 was a
+    finished-and-unused machine and is corrected rather than deleted per CLAUDE.md §4 rule 20.)*
+
+    NEITHER machine is left unguarded. M11's own 60-case battery in `test_phase6_policy.py` and M12's
+    63-test battery in `test_phase6_rule.py` (plus the 35-mutant `scripts/mutate_phase6_rule.py`)
+    still assert every state, every transition, compile-or-refuse, the version namespace and the
+    ship-dark posture; `test_p8_policy_admission.py` and `test_p8_rule_admission.py` assert the new
+    compositions. M1..M10 remain frozen here.
     """
     # FIXED-SPECIFICATION: the exact landed machine runtimes named must-stay-byte-identical. NOT a
     # discovered population — discovery would admit a new machine or drop a renamed one silently.
+    # `policy.py` (M11, U8.1) and `rule.py` (M12, U8.2) are deliberately absent: each is the subject
+    # of the P8 unit that wired it, and each is guarded by its own battery. Removing a name here is a
+    # deliberate, reviewed edit; the ten below stay frozen.
     machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py", "rule.py")
+                "exception.py", "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=str(ROOT),
                        capture_output=True, text=True)
-    assert r.returncode == 0 and r.stdout.strip() == "", f"an M1..M12 machine changed: {r.stdout}"
+    assert r.returncode == 0 and r.stdout.strip() == "", f"an M1..M10 machine changed: {r.stdout}"
 
 
 def test_the_m13_brake_machine_and_no_graduation_engine():

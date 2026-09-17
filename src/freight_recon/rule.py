@@ -50,12 +50,22 @@ unauthorized-activation contract (F14's `UnauthorizedPolicyActivationAttempted` 
 `PolicyOverridden` (unregistered, ### M12-AQ-7 / P6-D71 — BLOCKED_AUTHORITY, minted by nobody but a
 founder/architect).
 
-### IT SHIPS DARK. Nothing under `src/freight_recon/` imports this module; the only script that may is
-`scripts/probe_phase6_rule.py`. It joins no importer, editor, admin screen, importer, oversight queue,
-dashboard or notifier; it builds no part of M13 (Brake) and no autonomy-graduation engine; nothing
-graduates. Override rate is the key rule-health metric (entity §42): a repeatedly-overridden rule ASKS a
-human through M9 and is NEVER auto-disabled — Q3 stays deferred at "never", and no override mechanism is
-built (### M12-AQ-7).
+### IT SHIPS DARK. *(### HISTORICAL AS WRITTEN AT P6-CP-12 — this line read "Nothing under
+`src/freight_recon/` imports this module; the only script that may is `scripts/probe_phase6_rule.py`."
+That was TRUE at the P6-CP-12 landing and is corrected rather than deleted per CLAUDE.md §4 rule 20.)*
+### AT U8.2/P8, `rule_admission.py` (ADR-010 §8 LAYER 6) IS THE FIRST PRODUCTION IMPORTER OF THIS
+MACHINE — it reads a tenant's ALREADY-ACTIVE rules and folds their deterministic verdicts into the
+U8.1 `PolicyDecision`, exactly as U8.1's `policy_admission.py` became the first production importer of
+M11. **That importer changes what "ships dark" MEANS, not whether it holds:** the admission layer binds
+nothing live, so the kernel's `GateRegistry` population stays EMPTY, the governed route still answers
+`ROUTE_NOT_CONFIGURED`, and no external effect and no autonomy are enabled. The composition is a READER
+of active rules; it never compiles, confirms, activates, evaluates-in-order-to-activate or resolves —
+the model, automation, a retry and replay each activate NOTHING, and `checkpoint.py` stays the SOLE
+minter of a gate decision. Beyond that admission reader and `scripts/probe_phase6_rule.py`, M12 joins
+no editor, admin screen, oversight queue, dashboard or notifier; it builds no part of M13 (Brake) and no
+autonomy-graduation engine; nothing graduates. Override rate is the key rule-health metric (entity §42):
+a repeatedly-overridden rule ASKS a human through M9 and is NEVER auto-disabled — Q3 stays deferred at
+"never", and no override mechanism is built (### M12-AQ-7).
 """
 
 from __future__ import annotations
@@ -489,6 +499,41 @@ def compile_candidate(candidate: Any, *, scope: str,
             f"the rule references field(s) that are unmodelled or MODEL_INFERRED: {missing}. It FAILS TO "
             f"COMPILE and the owner is told it is not a rule (RU-2f, M-49, GR-8).", missing=missing)
     return CompiledPredicate(kind=kind, effect=effect, combine=combine, clauses=tuple(clauses))
+
+
+def compiled_predicate_from_json(raw: str) -> CompiledPredicate:
+    """### REBUILD A `CompiledPredicate` FROM THE CANONICAL JSON RU-2 WROTE ONTO THE ROW.
+
+    An ACTIVE rule stores `compile_candidate(...).canonical()` in `rules.compiled_predicate`
+    (`{status: COMPILED, kind, effect, combine, clauses:[…]}`). Checkpoint step 6 needs the typed
+    form back to re-evaluate the rule deterministically. This is the inverse of `canonical()` and
+    NOTHING MORE: it re-validates nothing, admits no model, and cannot turn an uncompiled candidate
+    into a compiled predicate — a row whose `status` is not `COMPILED` (a PROPOSED rule's uncompiled
+    candidate) is REFUSED, because a predicate that never compiled is not one the checkpoint may
+    evaluate. It is deterministic and reads no clock.
+    """
+    obj = _parse_json_obj(raw)
+    if obj.get("status") != "COMPILED":
+        raise RuleEngineUnavailable(
+            f"compiled_predicate_from_json expects a COMPILED predicate, got status "
+            f"{obj.get('status')!r}: a PROPOSED rule's uncompiled candidate is not an enforceable "
+            f"predicate and the checkpoint may not evaluate one (ADR-010 §6). Fail closed.")
+    combine = str(obj.get("combine", "AND")).upper()
+    if combine not in ("AND", "OR"):
+        raise RuleEngineUnavailable(f"compiled predicate combine must be AND or OR; got {combine!r}.")
+    clauses: list[PredicateClause] = []
+    for raw_clause in obj.get("clauses", []) or []:
+        if not isinstance(raw_clause, Mapping):
+            raise RuleEngineUnavailable(f"a compiled clause is a mapping; got {raw_clause!r}.")
+        clauses.append(PredicateClause(
+            field=str(raw_clause.get("field", "")),
+            attr=str(raw_clause.get("attr", "value")),
+            op=str(raw_clause.get("op", "==")),
+            literal=raw_clause.get("literal"),
+            provenance_class=str(raw_clause.get("provenance_class", "SYSTEM_IMPORTED")),
+            modelled=bool(raw_clause.get("modelled", True))))
+    return CompiledPredicate(kind=str(obj.get("kind", "")), effect=str(obj.get("effect", "")),
+                             combine=combine, clauses=tuple(clauses))
 
 
 def generate_test_vectors(compiled: CompiledPredicate) -> list[dict[str, Any]]:
