@@ -1975,7 +1975,7 @@ def _c(a):
 @case("an-unknown-scope-is-never-treated-as-no-brake")
 def _c(a):
     try:
-        bl.parse_scope("integration:tms")
+        bl.parse_scope("not-a-scope:value")
         return FAIL(f"{MISS} an unknown scope parsed to something", "### AN UNKNOWN SCOPE READ AS NO BRAKE ###")
     except BrakeError:
         pass
