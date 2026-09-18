@@ -586,6 +586,10 @@ def test_checkpoint_is_the_SOLE_gate_minter_rule_module_and_migration_mint_NONE(
     assert swept > 100, f"the sweep walked only {swept} modules — it saw a corner (M-9)"
     # ### CHECKPOINT.PY IS THE SOLE MINTER; THE RULE MODULE, ITS MIGRATION AND THE U8.2 LAYER MINT NONE.
     assert minters == {"checkpoint.py"}, f"a module other than the checkpoint mints a gate: {sorted(minters)}"
+    # FIXED-SPECIFICATION: NOT a discovered population — the whole production tree is already discovered
+    # above via `src.rglob("*.py")`. These three are the exact U8.2 surfaces specifically required to mint
+    # no GateEntry/GateRegistry and register no gate: `rule.py` (the U8.2 rule machine), `phase6_rules.py`
+    # (its migration/schema surface) and `rule_admission.py` (the U8.2 admission layer).
     for must_not_mint in ("rule.py", "phase6_rules.py", "rule_admission.py"):
         assert must_not_mint not in minters, (
             f"{must_not_mint} constructs a GateEntry/GateRegistry — a second gate authority (rule 17)")
