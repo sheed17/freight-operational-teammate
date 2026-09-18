@@ -23,6 +23,7 @@ production `GateRegistry` stays EMPTY and the governed route still refuses.
 
 from __future__ import annotations
 
+import ast
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -545,6 +546,53 @@ def test_a_rule_vs_rule_conflict_routes_through_M7_and_the_rule_never_activates(
         (TENANT,)).fetchone()[0] == 1
     # ...and only the original, unconflicted rule is ever ACTIVE evidence for admission.
     assert tuple(r.rule_id for r in _layer(conn).active_rules("raise_invoice")) == ("r-active",)
+
+
+def test_checkpoint_is_the_SOLE_gate_minter_rule_module_and_migration_mint_NONE():
+    """### THE SOLE-GATE-MINTER PROPERTY, ASSERTED THE WAY THE PRODUCT-DRIVER PROBES IT — BUT F-20-AWARE.
+
+    Across the WHOLE production tree, only `checkpoint.py` constructs a `GateEntry`/`GateRegistry`; the
+    M12 rule machine (`rule.py`), its migration (`phase6_rules.py`) and the U8.2 admission layer
+    (`rule_admission.py`) mint NONE and register NO action-class gate. This is the in-repo, executable
+    counterpart of the product-driver's `P8-S11` probe.
+
+    ### AND THE ONE THING THE NAIVE EXTERNAL PROBE GETS WRONG — querying an UNREGISTERED class on an
+    empty kernel registry — REFUSES under F-20 (no default, no inheritance-by-accident, no second gate
+    authority), which is the CORRECT handling, not a fallback. `scripts/probe_phase6_rule.py:2831`
+    wraps exactly this read in `try/except UnclassifiedActionClass` for the same reason; a probe that
+    calls `.gate_for('raise_invoice').gate.value` directly crashes ON the F-20 refusal, and greening
+    that crash would mean reintroducing the default this test proves is gone (CLAUDE.md §10, U8.1).
+    """
+    import freight_recon
+    from freight_recon.checkpoint import GateRegistry, UnclassifiedActionClass
+    src = Path(freight_recon.__file__).parent
+    mints = {"GateEntry", "GateRegistry"}
+
+    def _callee(fn):
+        return fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+
+    minters: set[str] = set()
+    registrars: set[str] = set()
+    swept = 0
+    for py in sorted(src.rglob("*.py")):
+        swept += 1
+        for node in ast.walk(ast.parse(py.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                name = _callee(node.func)
+                if name in mints:
+                    minters.add(py.name)
+                elif name == "register_gate":
+                    registrars.add(py.name)
+    assert swept > 100, f"the sweep walked only {swept} modules — it saw a corner (M-9)"
+    # ### CHECKPOINT.PY IS THE SOLE MINTER; THE RULE MODULE, ITS MIGRATION AND THE U8.2 LAYER MINT NONE.
+    assert minters == {"checkpoint.py"}, f"a module other than the checkpoint mints a gate: {sorted(minters)}"
+    for must_not_mint in ("rule.py", "phase6_rules.py", "rule_admission.py"):
+        assert must_not_mint not in minters, (
+            f"{must_not_mint} constructs a GateEntry/GateRegistry — a second gate authority (rule 17)")
+    assert registrars == set(), f"a module registers an action-class gate: {sorted(registrars)}"
+    # ### F-20: the query the naive external probe crashes on REFUSES, by design.
+    with pytest.raises(UnclassifiedActionClass):
+        GateRegistry({}, policy_version="pv1").gate_for("raise_invoice")
 
 
 def test_the_admission_layer_mints_no_gate_decision_and_names_no_gate_token():
