@@ -1210,7 +1210,12 @@ def _seven_steps_locked(
     # ---- STEP 7 — human-brake admission (read inside this same transaction) ------------------
     try:
         denied_by = kernel.brakes.admission_denied(
-            tenant=kernel.store.tenant, action_class=effect.action_class)
+            tenant=kernel.store.tenant, action_class=effect.action_class,
+            # `target_system` is a deterministic field of the canonical LogicalEffect (part of the
+            # commit key, revalidated by the claim CAS), so an ACTIVE integration brake denies the
+            # matching effect at the mint (P8/U8.3). Any brake change still bumps the tenant version
+            # and invalidates outstanding grants (§8.3), so the claim CAS remains the second gate.
+            target_system=effect.target_system)
     except BrakeStoreUnreachable as exc:
         return _step_refusal(7, "BRAKE_UNREADABLE",
                              f"{exc}. 'Cannot read the brake' NEVER means 'off'.")

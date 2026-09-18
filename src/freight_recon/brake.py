@@ -53,10 +53,18 @@ from .event_contracts import CONTRACTS
 from .event_envelope import EventEnvelope, format_instant
 from .tenant import require_tenant
 
-# Scope grammar at P3: the whole tenant, or one action class within it. Wider vocabularies
-# (counterparty, integration) arrive with the policy runtime (P8); the grammar is closed here so
-# an unparseable scope cannot silently scope to nothing.
+# Scope grammar: the whole tenant, one integration (target_system) within it, or one action class
+# within it. INTEGRATION lands at P8/U8.3 because `target_system` is a DETERMINISTIC field of the
+# canonical LogicalEffect (part of the commit key, revalidated by the claim CAS), so an integration
+# brake matches an effect with no guessing. COUNTERPARTY stays unspellable — the effect carries no
+# deterministic counterparty identity (that vocabulary arrives at P9) — so the grammar remains
+# closed and an unparseable scope can never silently scope to nothing (fail-safe to a wider brake).
+# The landed grammar is single-dimension: a brake row names ONE of tenant / integration / action
+# class, never a composite, because a composite scope string the closed grammar cannot spell is the
+# exact drift the closed grammar exists to prevent.
 TENANT_WIDE = "tenant"
+INTEGRATION_PREFIX = "integration:"
+ACTION_PREFIX = "action:"
 
 HUMAN = "HUMAN"
 DETECTOR = "DETECTOR"
@@ -95,13 +103,44 @@ class BrakeStatus:
     signal_count: int = 1
 
 
-def _scope_for(action_class: str | None) -> str:
-    if action_class is None:
-        return TENANT_WIDE
-    text = str(action_class).strip().lower()
-    if not text:
-        raise BrakeError("an action-class brake scope needs a non-empty action class")
-    return f"action:{text}"
+def _scope_for(action_class: str | None = None, *, target_system: str | None = None) -> str:
+    """The single-dimension scope string for one brake, at the landed grammar.
+
+    EITHER an integration (target_system) OR an action class OR neither (tenant-wide). The landed
+    grammar has no composite scope string, so naming both at once is REFUSED rather than silently
+    collapsed to one — an ambiguous scope is precisely the drift the closed grammar prevents. Both
+    dimension values are normalised (strip + lower) exactly as the action class already was, so the
+    engage side and the admission side derive the same string for the same effect.
+    """
+    if target_system is not None and action_class is not None:
+        raise BrakeError(
+            "the landed brake grammar has no composite scope: name an integration OR an action "
+            "class, not both (a tenant + action-class + counterparty composite needs the "
+            "counterparty vocabulary that has not landed)"
+        )
+    if target_system is not None:
+        text = str(target_system).strip().lower()
+        if not text:
+            raise BrakeError("an integration brake scope needs a non-empty target_system")
+        return f"{INTEGRATION_PREFIX}{text}"
+    if action_class is not None:
+        text = str(action_class).strip().lower()
+        if not text:
+            raise BrakeError("an action-class brake scope needs a non-empty action class")
+        return f"{ACTION_PREFIX}{text}"
+    return TENANT_WIDE
+
+
+def _scope_breadth_rank(scope: str) -> int:
+    """How wide a scope is, for reporting the WIDEST applicable brake first. Tenant-wide (0) is
+    broadest; an integration brake (1) stops one system across every action class; an action-class
+    brake (2) stops one action class. Any match denies admission regardless of rank — the rank only
+    decides which brake the operator report leads with."""
+    if scope == TENANT_WIDE:
+        return 0
+    if scope.startswith(INTEGRATION_PREFIX):
+        return 1
+    return 2
 
 
 class BrakeStore:
@@ -126,24 +165,32 @@ class BrakeStore:
         *,
         tenant: str | None,
         action_class: str | None = None,
+        target_system: str | None = None,
         actor: str,
         actor_kind: str,
         reason: str,
     ) -> BrakeStatus:
         """BR-1: any authenticated human INSTANTLY, or an automated Sev-0 detector. One row write.
 
-        NEVER requires the system to be healthy. Idempotent on scope: engaging an already-braked
-        scope records nothing new, bumps no version, emits no event, and only raises the row's
-        `signal_count` — a flapping detector is one ACTIVE brake, not a pile, and it cannot
-        self-release, so flapping opens no window. The first engagement co-commits `BrakeEngaged`.
+        Scopes to the whole tenant (neither argument), one integration (`target_system`), or one
+        action class — never a composite (`_scope_for` refuses both). NEVER requires the system to
+        be healthy. Idempotent on scope: engaging an already-braked scope records nothing new, bumps
+        no version, emits no event, and only raises the row's `signal_count` — a flapping detector
+        is one ACTIVE brake, not a pile, and it cannot self-release, so flapping opens no window. The
+        first engagement co-commits `BrakeEngaged`.
         """
         kind = self._require_actor(actor, actor_kind)
         if not str(reason or "").strip():
             raise BrakeError("a brake engagement records WHY; an empty reason is not a reason")
         if tenant is None:
+            if action_class is not None or target_system is not None:
+                raise BrakeError(
+                    "the platform (GLOBAL) brake stops everything, everywhere; it carries no "
+                    "integration or action-class scope. Engage a tenant brake for a narrower scope."
+                )
             return self._engage_platform(actor=actor, actor_kind=kind, reason=reason)
         bound = require_tenant(tenant, context="BrakeStore.engage")
-        scope = _scope_for(action_class)
+        scope = _scope_for(action_class, target_system=target_system)
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             existing = self._conn.execute(
@@ -396,14 +443,25 @@ class BrakeStore:
 
     # ------------------------------------------------------------------ reads (fail closed)
 
-    def admission_denied(self, *, tenant: str, action_class: str) -> BrakeStatus | None:
+    def admission_denied(
+        self, *, tenant: str, action_class: str, target_system: str | None = None,
+    ) -> BrakeStatus | None:
         """The checkpoint step-7 / claim-CAS read: the ACTIVE brake covering this effect, if any.
 
-        Read order is platform -> tenant-wide -> action-class, so the widest applicable brake is
-        the one reported. Any read failure raises BrakeStoreUnreachable: the caller refuses.
+        Consults every landed scope that could cover the effect: the platform (GLOBAL) brake, this
+        tenant's tenant-wide brake, this tenant's integration (`target_system`) brake, and this
+        tenant's action-class brake. The WIDEST match is the one reported (tenant-wide > integration
+        > action class) so the operator sees the broadest reason a mint is refused. `target_system`
+        is optional so a legacy caller that names only the action class matches only tenant/action
+        scopes; the checkpoint passes `effect.target_system`, so an integration brake actually
+        denies the matching effect. Any read failure raises BrakeStoreUnreachable: the caller
+        refuses — 'cannot read the brake' NEVER means 'off'.
         """
         bound = require_tenant(tenant, context="BrakeStore.admission_denied")
-        scope = _scope_for(action_class)
+        action_scope = _scope_for(action_class)
+        scopes = [TENANT_WIDE, action_scope]
+        if target_system is not None:
+            scopes.append(_scope_for(target_system=target_system))
         try:
             platform = self._conn.execute("SELECT * FROM platform_brake WHERE id = 1").fetchone()
             if platform is None:
@@ -413,14 +471,17 @@ class BrakeStore:
                 )
             if platform["state"] == "ACTIVE":
                 return self._platform_status_row(platform)
-            row = self._conn.execute(
-                "SELECT * FROM brakes WHERE tenant = ? AND state = 'ACTIVE' "
-                "AND scope IN (?, ?) ORDER BY CASE scope WHEN ? THEN 0 ELSE 1 END LIMIT 1",
-                (bound, TENANT_WIDE, scope, TENANT_WIDE),
-            ).fetchone()
-            return self._row_status(row) if row is not None else None
+            placeholders = ",".join("?" for _ in scopes)
+            rows = self._conn.execute(
+                f"SELECT * FROM brakes WHERE tenant = ? AND state = 'ACTIVE' "
+                f"AND scope IN ({placeholders})",
+                (bound, *scopes),
+            ).fetchall()
         except sqlite3.Error as exc:
             raise BrakeStoreUnreachable(f"brake state could not be read: {exc}") from exc
+        if not rows:
+            return None
+        return self._row_status(min(rows, key=lambda r: _scope_breadth_rank(r["scope"])))
 
     def version_token(self, *, tenant: str) -> str:
         """The composite brake-version token bound into witnesses and grants (M13 §17).

@@ -215,22 +215,27 @@ def automation_transitions() -> list[str]:
 CANONICAL_SCOPE_DIMENSIONS: tuple[str, ...] = (
     "GLOBAL", "TENANT", "INTEGRATION", "ACTION_CLASS", "COUNTERPARTY",
 )
-# What M13 LANDS at P3's closed grammar: the whole platform, the whole tenant, one action class.
-LANDED_SCOPE_DIMENSIONS: tuple[str, ...] = ("GLOBAL", "TENANT", "ACTION_CLASS")
-# What M13 DEFERS to the policy runtime (P8), with a recorded reason each. `M13-AQ-6`, read B: the
-# canonical five PARTITION into landed ∪ deferred with no overlap; a deferred (or unknown) scope is
-# UNSPELLABLE — `parse_scope` refuses it — never silently parsed into something narrower or nothing.
-DEFERRED_SCOPE_DIMENSIONS: tuple[str, ...] = ("INTEGRATION", "COUNTERPARTY")
+# What M13 LANDS: the whole platform, the whole tenant, one integration (target_system), one action
+# class. INTEGRATION lands at P8/U8.3 because `target_system` is a DETERMINISTIC field of the
+# canonical LogicalEffect (part of the commit key, revalidated by the claim CAS) — an integration
+# brake matches an effect with no guessing (ADR-011 §9).
+LANDED_SCOPE_DIMENSIONS: tuple[str, ...] = ("GLOBAL", "TENANT", "INTEGRATION", "ACTION_CLASS")
+# What M13 still DEFERS, with a recorded reason. `M13-AQ-6`, read B: the canonical five PARTITION
+# into landed ∪ deferred with no overlap; a deferred (or unknown) scope is UNSPELLABLE — `parse_scope`
+# refuses it — never silently parsed into something narrower or nothing.
+DEFERRED_SCOPE_DIMENSIONS: tuple[str, ...] = ("COUNTERPARTY",)
 SCOPE_DEFERRAL_REASONS: dict[str, str] = {
-    "INTEGRATION": (
-        "INTEGRATION(target_system) scope arrives with the policy runtime (P8), whose allowed_scope "
-        "contains 'brake'. Deferring it weakens no current guarantee: an unspellable integration "
-        "scope forces a WIDER (tenant or global) brake, which is the safe direction."
-    ),
     "COUNTERPARTY": (
-        "COUNTERPARTY scope needs the counterparty vocabulary the policy runtime (P8) introduces. "
-        "Same fail-safe: an unspellable counterparty scope forces a wider brake, never a narrower "
-        "one and never none."
+        "COUNTERPARTY scope stays UNSPELLABLE, adjudicated at P8/U8.3: the canonical LogicalEffect "
+        "carries no counterparty field (commit_key.py — six frozen fields), the checkpoint step-7 "
+        "admission read is handed only (tenant, action_class, target_system), and the only "
+        "counterparty value that exists today is an OPTIONAL free-form SYSTEM_IMPORTED material "
+        "fact keyed to the load — not a deterministic, spoofing-resistant identity (ADR-005 §3.4 "
+        "declines to even normalise it). Matching a counterparty brake against a MODEL_INFERRED / "
+        "free-form fact would let a mislabel BYPASS the brake — the inverse of a safety control. "
+        "The canonical counterparty-identity model arrives at P9; until then an unspellable "
+        "counterparty scope forces a wider (tenant or global) brake — the safe direction — and "
+        "never means no brake."
     ),
 }
 
@@ -238,9 +243,10 @@ SCOPE_DEFERRAL_REASONS: dict[str, str] = {
 def parse_scope(scope: str) -> tuple[str, str | None]:
     """Parse one of the LANDED scope forms into (dimension, value), or REFUSE.
 
-    Landed forms: `GLOBAL` -> (GLOBAL, None); `tenant` -> (TENANT, None); `action:<class>` ->
-    (ACTION_CLASS, <class>). An empty, deferred, or unknown scope raises `BrakeError` at the
-    boundary — it is NEVER treated as "no brake" and never silently narrowed to nothing.
+    Landed forms: `GLOBAL` -> (GLOBAL, None); `tenant` -> (TENANT, None); `integration:<system>` ->
+    (INTEGRATION, <system>); `action:<class>` -> (ACTION_CLASS, <class>). An empty, deferred, or
+    unknown scope raises `BrakeError` at the boundary — it is NEVER treated as "no brake" and never
+    silently narrowed to nothing.
     """
     text = str(scope or "").strip()
     if not text:
@@ -250,6 +256,11 @@ def parse_scope(scope: str) -> tuple[str, str | None]:
         return ("GLOBAL", None)
     if text == "tenant":
         return ("TENANT", None)
+    if text.startswith("integration:"):
+        value = text[len("integration:"):].strip()
+        if not value:
+            raise BrakeError("an integration scope needs a non-empty target_system")
+        return ("INTEGRATION", value)
     if text.startswith("action:"):
         value = text[len("action:"):].strip()
         if not value:
@@ -258,7 +269,8 @@ def parse_scope(scope: str) -> tuple[str, str | None]:
     raise BrakeError(
         f"unknown or deferred brake scope {scope!r}: it is not one of the landed forms "
         f"{LANDED_SCOPE_DIMENSIONS}. An unknown scope REFUSES; it is never read as no brake, and "
-        f"a deferred dimension (INTEGRATION/COUNTERPARTY) is unspellable until P8."
+        f"the deferred COUNTERPARTY dimension is unspellable until its deterministic identity "
+        f"lands (P9)."
     )
 
 
@@ -457,7 +469,7 @@ class BrakeMachine:
     # ---- BR-1 engage -----------------------------------------------------------------------
     def engage_brake(
         self, *, tenant: str | None, actor: str, actor_class: str, reason: str,
-        action_class: str | None = None,
+        action_class: str | None = None, target_system: str | None = None,
     ) -> BrakeStatus:
         cls = _norm_class(actor_class)
         if "BR-1" not in permitted_transitions(cls):
@@ -465,8 +477,10 @@ class BrakeMachine:
         kind = self._db_kind(cls)
         if tenant is None:
             return self._store.engage_platform(actor=actor, actor_kind=kind, reason=reason)
+        # INTEGRATION(target_system) is a landed scope at P8/U8.3; the store refuses a composite.
         return self._store.engage(
-            tenant=tenant, action_class=action_class, actor=actor, actor_kind=kind, reason=reason)
+            tenant=tenant, action_class=action_class, target_system=target_system,
+            actor=actor, actor_kind=kind, reason=reason)
 
     # ---- BR-2 widen ------------------------------------------------------------------------
     def widen_brake(self, *, tenant: str, brake_id: str, actor: str, actor_class: str) -> BrakeStatus:
@@ -515,9 +529,64 @@ class BrakeMachine:
                 "release requires positive evidence, not a decision_ref alone. Outstanding: "
                 + "; ".join(release_evidence_shortfalls(evidence))
             )
+        # DURABLE BACKSTOP (P8/U8.3): the caller's attestation may not outrun the ONE canonical
+        # effect ledger. Two release facts of ADR-011 §6 are provable against `effect_grants`, so an
+        # attestation must not be able to assert past them — that is the difference between
+        # "described as P3-proportionate" and "durably evidenced". (Tenant brakes only: the platform
+        # brake spans every tenant's ledger, and a cross-tenant accounting is deferred with the other
+        # platform-brake gaps — M13-AQ-5 — not guessed here.)
+        if tenant is not None:
+            durable = self.release_ledger_shortfalls(
+                tenant=tenant,
+                acknowledged_unknowns=(evidence or {}).get("unknown_outcomes", ()),
+            )
+            if durable:
+                raise BrakeRefused(
+                    "release is contradicted by the durable effect ledger, not by the attestation: "
+                    + "; ".join(durable)
+                )
         return self._store.release(
             tenant=tenant, brake_id=brake_id, actor=actor, actor_kind=HUMAN,
             decision_ref=decision_ref)
+
+    def release_ledger_shortfalls(
+        self, *, tenant: str, acknowledged_unknowns: Sequence[Mapping[str, Any]],
+    ) -> list[str]:
+        """The release shortfalls the DURABLE effect ledger (`effect_grants`) proves — read from the
+        one canonical ledger, never from the caller's attestation. Empty == the ledger does not
+        contradict release. The exact list an operator report states, NOT 'contact an administrator'.
+
+        Two facts of ADR-011 §6 the ledger can prove and the attestation must not override:
+          1. No effect is still IN FLIGHT past the claim (`CLAIMED`/`ATTEMPTED`). Those run to a
+             verified conclusion (§3); releasing over one is releasing before it is accounted for —
+             and the brake never kills it, so it cannot be waved away.
+          2. Every durable `UNKNOWN_OUTCOME` is named in the acknowledged-and-owned set. Unresolved
+             unknowns do NOT block release (§6) — but a caller must not be able to make one disappear
+             by OMITTING it. They stay frozen and owned regardless; the brake resolves nothing.
+        """
+        conn = self._store._conn  # read-only ledger access, exactly as `report` uses
+        out: list[str] = []
+        in_flight = self._grants(conn, tenant, ("CLAIMED", "ATTEMPTED"))
+        if in_flight:
+            out.append(
+                f"{len(in_flight)} effect(s) are still in flight past the claim and run to a "
+                f"verified conclusion before release (ADR-011 §3): {in_flight}"
+            )
+        ledger_unknowns = set(self._grants(conn, tenant, ("UNKNOWN_OUTCOME",)))
+        acknowledged = {
+            str(u.get("grant_id") or "").strip()
+            for u in (acknowledged_unknowns or ())
+            if isinstance(u, Mapping) and u.get("acknowledged")
+            and str(u.get("owner") or "").strip()
+        }
+        unowned = sorted(ledger_unknowns - acknowledged)
+        if unowned:
+            out.append(
+                f"{len(unowned)} UNKNOWN_OUTCOME(s) in the ledger are not acknowledged and owned in "
+                f"the release evidence (they do not block release, but they may not be hidden by "
+                f"omission — they stay frozen and owned): {unowned}"
+            )
+        return out
 
     # ---- R17 report ------------------------------------------------------------------------
     def report(self, *, tenant: str) -> list[BrakeReport]:

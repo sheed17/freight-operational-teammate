@@ -23,6 +23,7 @@ BL = "src/freight_recon/brake_lifecycle.py"
 MIG = "src/freight_recon/migrations/phase6_brakes.py"
 CP = "src/freight_recon/checkpoint.py"
 T = "eval/tests/test_phase6_brake.py"
+T8 = "eval/tests/test_p8_brake_scope.py"   # the P8/U8.3 delta (integration scope + release durability)
 
 _SENTINEL = "MUTANT"
 
@@ -118,6 +119,37 @@ CASES = [
      [(BL, 'UNAUTHORIZED_RELEASE_CONTRACT = "UnauthorizedBrakeReleaseAttempted"',
        'UNAUTHORIZED_RELEASE_CONTRACT = "UnauthorizedBrakeReleaseAttempted"\nBrakeReleaseRefused = "brake-release-refused"  # MUTANT synonym')],
      f"{T}::test_an_unauthorized_release_emits_the_registered_f14_and_no_synonym"),
+
+    # ---- P8/U8.3 delta: INTEGRATION scope + the durable release-evidence backstop ----------------
+    ("admission stops matching an integration brake",
+     [(BR, "        if target_system is not None:\n            scopes.append(_scope_for(target_system=target_system))",
+       "        if False and target_system is not None:  # MUTANT drop integration match\n            scopes.append(_scope_for(target_system=target_system))")],
+     f"{T8}::test_an_integration_brake_denies_the_matching_effect_and_spares_others"),
+
+    ("the checkpoint stops passing the effect's integration to admission",
+     [(CP, "            target_system=effect.target_system)",
+       "            target_system=None)  # MUTANT drop the effect integration")],
+     f"{T8}::test_an_integration_brake_refuses_the_mint_through_the_checkpoint"),
+
+    ("the composite scope is silently accepted instead of refused",
+     [(BR, "    if target_system is not None and action_class is not None:\n        raise BrakeError(",
+       "    if False and target_system is not None and action_class is not None:  # MUTANT\n        raise BrakeError(")],
+     f"{T8}::test_the_landed_grammar_has_no_composite_scope"),
+
+    ("counterparty stops being a deferred (unspellable) dimension",
+     [(BL, 'DEFERRED_SCOPE_DIMENSIONS: tuple[str, ...] = ("COUNTERPARTY",)',
+       'DEFERRED_SCOPE_DIMENSIONS: tuple[str, ...] = ()  # MUTANT')],
+     f"{T8}::test_counterparty_scope_stays_unspellable_and_the_partition_is_clean"),
+
+    ("release stops consulting the ledger for an in-flight effect",
+     [(BL, '        in_flight = self._grants(conn, tenant, ("CLAIMED", "ATTEMPTED"))\n        if in_flight:',
+       '        in_flight = self._grants(conn, tenant, ("CLAIMED", "ATTEMPTED"))\n        if False and in_flight:  # MUTANT')],
+     f"{T8}::test_release_refused_while_a_claimed_effect_is_in_flight_despite_attestation"),
+
+    ("release lets a hidden UNKNOWN_OUTCOME pass by omission",
+     [(BL, "        unowned = sorted(ledger_unknowns - acknowledged)\n        if unowned:",
+       "        unowned = sorted(ledger_unknowns - acknowledged)\n        if False and unowned:  # MUTANT")],
+     f"{T8}::test_release_refused_when_an_unknown_outcome_is_hidden_by_omission"),
 ]
 
 # Anti-vacuity control: NOT mutated; a representative guard must be GREEN.
