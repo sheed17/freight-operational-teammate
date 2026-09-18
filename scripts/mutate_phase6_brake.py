@@ -250,5 +250,33 @@ def main() -> int:
     return 1
 
 
+def test_the_m13_brake_mutation_battery_catches_every_mutant():
+    """### THE PYTEST-COLLECTED ENTRY POINT (CLAUDE.md §6): the standard runner OPERATES this battery
+    DIRECTLY — `pytest scripts/mutate_phase6_brake.py` — and reads its exit status, not only the
+    `__main__` CLI. An unmeasured guard is not a passing guard, and the guards this battery defends
+    assert refusals and scoped denials — an ABSENCE proves nothing until a realised forbidden state
+    (each mutant) shows the guard still FIRES.
+
+    `main()` runs EVERY mutant (each reintroduces a real defect and must be CAUGHT — including the six
+    U8.3 delta guards this change added: the integration-scope match, the checkpoint wiring, the
+    composite refusal, the counterparty deferral, the in-flight-ledger and unknown-outcome-completeness
+    release backstops) plus the anti-vacuity control (the un-mutated tree must be GREEN). It restores
+    every source file byte-for-byte from memory and NEVER with git (CLAUDE.md §6), and returns 0 only
+    if every mutant is caught AND the control is green — so `== 0` is the whole battery, measured, over
+    a non-empty >=24 population, so it cannot pass vacuously (M-9).
+
+    This file is deliberately NOT collected by a bare `pytest eval` (it is outside `testpaths` and is
+    not named `test_*.py`); it runs only when named explicitly, which is exactly how a slow mutation
+    battery should be operated — on purpose, never by accident sweeping the whole suite. This mirrors
+    `scripts/mutate_p8_policy_admission.py` and `scripts/mutate_p8_rule_admission.py`.
+    """
+    assert len(CASES) >= 24, (
+        f"the battery carries {len(CASES)} mutants; it must carry all of them (the 18 landed M13 "
+        f"guards plus the 6 U8.3 delta guards) for 'every mutant caught' to mean anything (M-9).")
+    assert main() == 0, (
+        "the M13 brake mutation battery did NOT report every mutant CAUGHT with a GREEN anti-vacuity "
+        "control; a guard that cannot be shown to fire is unverified (CLAUDE.md §6). See the report.")
+
+
 if __name__ == "__main__":
     sys.exit(main())
