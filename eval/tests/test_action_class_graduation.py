@@ -72,6 +72,12 @@ def test_supervised_action_class_escalates_without_human_approval(tmp_path):
     # No human approve passed and the action class is supervised -> it must stop and ask, not run.
     res = router.run(_operate("invoice the load for Acme"))
     assert res.status == "ESCALATED" and "supervised" in res.note
+    # Firing proof: realise the forbidden state — GRADUATE the action class — and the SAME guard
+    # flips (it runs unattended: DONE, and the note no longer says "supervised"). So the
+    # "ESCALATED + supervised" assertion above is discriminating, not vacuously true.
+    grad.graduate("acme", "raise_invoice", actor="R")
+    ran = router.run(_operate("invoice the load for Acme"))
+    assert ran.status == "DONE" and "supervised" not in ran.note
 
 
 def test_graduated_action_class_runs_unattended(tmp_path):
@@ -220,6 +226,12 @@ def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_id
         assert "no safe identity" in result.note
         assert "no load/invoice reference" in result.note
         assert store.autonomous_runs_today("acme", "raise_invoice") == 0
+        # Firing proof: a run WITH a safe identity (a bound load_ref) DOES consume a slot, so the
+        # "== 0" above is discriminating — the counter can increment; the fail-closed refusal is
+        # exactly what holds it at 0 when the effect cannot be named.
+        ok = router.run(_operate("invoice the load", {"customer": "Acme Corp", "load_ref": "LD-1"}))
+        assert ok.status == "DONE"
+        assert store.autonomous_runs_today("acme", "raise_invoice") == 1
     finally:
         store.close()
 

@@ -139,6 +139,12 @@ def test_non_money_effects_are_actually_reserved_not_merely_keyed():
         "same POD can be filed twice (AC-SAFE-013)"
     )
     assert "will_commit = route.requires_amount" not in text
+    # Firing proof (forced drift): the absence check above is NOT vacuous. A mutated copy of the
+    # source that reintroduces the exact defect form (post-U8.5 the excluded-non-money-effects bug
+    # reads `will_commit = route.requires_amount`) IS caught by the same substring, so the guard can
+    # still fire when the forbidden state is realised.
+    drifted = text.replace("will_commit = not prepare_only", "will_commit = route.requires_amount")
+    assert "will_commit = route.requires_amount" in drifted
 
 
 def test_the_legacy_bridge_has_no_claim_authority():
