@@ -22,13 +22,18 @@ def test_missing_pod_is_chased_not_billed():
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice"]))
     assert a.thread_state == ThreadState.MISSING_BACKUP
     assert "pod" in a.suggested_action.lower() and a.suggested_action_class is None and a.actionable
-    # Firing proof for the `is None` absence guard: realise the forbidden state — the SAME load with
-    # the POD delivered — and `suggested_action_class` becomes NON-None (raise_invoice). So the
-    # assertion above discriminates missing-backup from ready-to-bill; it is not vacuously true.
-    ready = assess_inbox_item(_item(load_ref="LD-1", subject="POD attached – Load LD-1",
-                                    doc_types=["pod"],
-                                    delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
-    assert ready.suggested_action_class == "raise_invoice"
+
+
+def test_missing_pod_none_guard_fires_when_the_load_is_fully_documented():
+    """Discrimination proof (distinct, co-located) for test_missing_pod_is_chased_not_billed's
+    `suggested_action_class is None`: the SAME load LD-1 WITH the POD delivered realises the forbidden
+    state and `suggested_action_class` becomes NON-None (raise_invoice). So the `is None` guard
+    distinguishes missing-backup from ready-to-bill rather than being vacuously true."""
+    a = assess_inbox_item(_item(load_ref="LD-1", subject="POD attached – Load LD-1",
+                                doc_types=["pod"],
+                                delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
+    assert a.thread_state == ThreadState.READY_TO_BILL
+    assert a.suggested_action_class == "raise_invoice"
 
 
 def test_fully_documented_load_is_ready_to_bill_and_suggests_invoice_lane():
@@ -45,13 +50,19 @@ def test_new_carrier_invoice_goes_to_reconcile_not_a_write_lane():
                                 doc_types=["carrier_invoice"],
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
     assert a.thread_state == ThreadState.NEW_CARRIER_INVOICE and a.suggested_action_class is None
-    # Firing proof for the `is None` absence guard: a fully-documented load with no NEW carrier
-    # invoice in this email DOES suggest a write action class, so the assertion above is
-    # discriminating — reconcile stays None precisely because a write path is otherwise reachable.
-    ready = assess_inbox_item(_item(load_ref="LD-3", subject="POD attached – Load LD-3",
-                                    doc_types=["pod"],
-                                    delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
-    assert ready.suggested_action_class == "raise_invoice"
+
+
+def test_new_carrier_invoice_none_guard_fires_when_the_load_is_ready_to_bill():
+    """Discrimination proof (distinct, co-located) for
+    test_new_carrier_invoice_goes_to_reconcile_not_a_write_lane's `suggested_action_class is None`:
+    the SAME load LD-3, fully documented with no NEW carrier invoice in this email, realises the
+    forbidden state and DOES suggest a write action class (raise_invoice). So reconcile's `is None`
+    is discriminating — it holds precisely because a write path is otherwise reachable."""
+    a = assess_inbox_item(_item(load_ref="LD-3", subject="POD attached – Load LD-3",
+                                doc_types=["pod"],
+                                delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
+    assert a.thread_state == ThreadState.READY_TO_BILL
+    assert a.suggested_action_class == "raise_invoice"
 
 
 def test_dispute_reply_is_flagged_for_human():

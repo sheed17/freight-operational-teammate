@@ -139,11 +139,18 @@ def test_non_money_effects_are_actually_reserved_not_merely_keyed():
         "same POD can be filed twice (AC-SAFE-013)"
     )
     assert "will_commit = route.requires_amount" not in text
-    # Firing proof (forced drift): the absence check above is NOT vacuous. A mutated copy of the
-    # source that reintroduces the exact defect form (post-U8.5 the excluded-non-money-effects bug
-    # reads `will_commit = route.requires_amount`) IS caught by the same substring, so the guard can
-    # still fire when the forbidden state is realised.
+
+
+def test_non_money_reservation_guard_fires_on_forced_drift():
+    """Discrimination proof (distinct, co-located) for
+    test_non_money_effects_are_actually_reserved_not_merely_keyed's
+    `"will_commit = route.requires_amount" not in text`: realise the forbidden state — a mutated copy
+    of the router source that reintroduces the exact excluded-non-money-effects defect form — and the
+    SAME substring check FIRES (matches it). So the `not in text` guard is not vacuously true on any
+    source; it detects the defect when present."""
+    text = ROUTER.read_text(encoding="utf-8")
     drifted = text.replace("will_commit = not prepare_only", "will_commit = route.requires_amount")
+    assert drifted != text, "the forced-drift substitution was a no-op; the guard's subject moved"
     assert "will_commit = route.requires_amount" in drifted
 
 

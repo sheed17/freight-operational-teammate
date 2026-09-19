@@ -72,10 +72,20 @@ def test_supervised_action_class_escalates_without_human_approval(tmp_path):
     # No human approve passed and the action class is supervised -> it must stop and ask, not run.
     res = router.run(_operate("invoice the load for Acme"))
     assert res.status == "ESCALATED" and "supervised" in res.note
-    # Firing proof: realise the forbidden state — GRADUATE the action class — and the SAME guard
-    # flips (it runs unattended: DONE, and the note no longer says "supervised"). So the
-    # "ESCALATED + supervised" assertion above is discriminating, not vacuously true.
+
+
+def test_supervised_escalation_guard_fires_when_the_action_class_is_graduated(tmp_path):
+    """Discrimination proof (distinct, co-located) for
+    test_supervised_action_class_escalates_without_human_approval's `ESCALATED + "supervised"`:
+    realise the forbidden state — GRADUATE the action class — and the SAME no-human-approval run
+    flips to DONE with no "supervised" in the note. So the escalation guard is discriminating, not
+    vacuously true."""
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R")
+    router = OperationRouter(
+        routes=freight_routes(), build_agent=_agent_factory(_scripted_llm([])),
+        approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
+    )
     ran = router.run(_operate("invoice the load for Acme"))
     assert ran.status == "DONE" and "supervised" not in ran.note
 
@@ -226,9 +236,28 @@ def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_id
         assert "no safe identity" in result.note
         assert "no load/invoice reference" in result.note
         assert store.autonomous_runs_today("acme", "raise_invoice") == 0
-        # Firing proof: a run WITH a safe identity (a bound load_ref) DOES consume a slot, so the
-        # "== 0" above is discriminating — the counter can increment; the fail-closed refusal is
-        # exactly what holds it at 0 when the effect cannot be named.
+    finally:
+        store.close()
+
+
+def test_daily_cap_zero_guard_fires_when_a_safe_identity_consumes_a_slot(tmp_path):
+    """Discrimination proof (distinct, co-located) for
+    test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_identity's
+    `autonomous_runs_today == 0`: realise the forbidden state — a run WITH a safe identity (a bound
+    load_ref) — and the SAME cap counter DOES increment to 1. So the `== 0` above is the fail-closed
+    refusal holding the slot, not a counter that can never move."""
+    grad = ActionClassGraduation(tmp_path / "grad.json")
+    grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
+    store = WorkflowStore(tmp_path / "w.sqlite3", tenant="acme")
+    try:
+        router = OperationRouter(
+            routes=freight_routes(),
+            build_agent=_agent_factory(_scripted_llm([])),
+            approved_amount_for=lambda _i: "100.00",
+            graduation=grad,
+            tenant="acme",
+            commit_store=store,
+        )
         ok = router.run(_operate("invoice the load", {"customer": "Acme Corp", "load_ref": "LD-1"}))
         assert ok.status == "DONE"
         assert store.autonomous_runs_today("acme", "raise_invoice") == 1
