@@ -22,6 +22,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # eval/
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))  # src/
 
@@ -224,6 +226,59 @@ def test_admission_equivalence_guard_is_non_vacuous_a_perturbed_gate_posture_fai
     assert snap["raise_invoice"] != GOLDEN_ADMISSION["raise_invoice"]
     # and the OTHER classes are untouched by the single-class perturbation (the guard is per-class).
     assert snap["record_payable"] == GOLDEN_ADMISSION["record_payable"]
+
+
+# ---------------------------------------------------- R4: the load-bearing precedence regression
+
+def test_r4_rename_does_not_shift_adr010_ordering_product_ceiling_or_precedence():
+    """### R4 (risk keys regression:22ad358fa7 / regression:7524ef4b6c). THE hostile case, realised:
+    the mechanical lane->action_class rename must NOT shift the ADR-010 gate-decision total order, the
+    per-action-class product ceiling, or the composed policy precedence. This guard FAILS (raises
+    AssertionError) the moment any of the three is realised. Its RED-ability is proven by the two
+    `_catches_` controls beside it, which reintroduce the forbidden behaviour and invoke THIS guard.
+
+    The behaviour asserted here is defined by ADR-010 §3.1/§8 (the gate total order and the precedence
+    ladder) and product_policy.py (the ceiling); U8.5 leaves both authorities byte-identical to
+    baseline (test_admission_precedence_ladder_source_is_byte_identical_to_baseline)."""
+    # (a) the ADR-010 gate-decision total order is unchanged (broadening cannot read as narrowing).
+    assert _current_gate_order() == GOLDEN_GATE_ORDER, (
+        "the ADR-010 gate-decision total order shifted under the rename — a broadening could read as "
+        "a narrowing (or vice versa) and policy precedence would change")
+    # (b) the product ceiling for every registered action class is unchanged.
+    for ac in sorted(EXPECTED_ACTION_CLASSES):
+        assert resolve_ceiling(ac).value == GOLDEN_ADMISSION[ac]["ceiling"], (
+            f"the product ceiling for {ac!r} shifted under the rename")
+    # (c) the composed policy precedence — the whole compiled decision per class — is unchanged.
+    snap = _admission_snapshot()
+    for ac in sorted(EXPECTED_ACTION_CLASSES):
+        assert snap[ac] == GOLDEN_ADMISSION[ac], (
+            f"the composed policy precedence / compiled decision for {ac!r} shifted under the rename:\n"
+            f"  now:    {snap[ac]}\n  golden: {GOLDEN_ADMISSION[ac]}")
+
+
+def test_r4_control_catches_a_shifted_gate_ordering(monkeypatch):
+    """### CONTROL proving the R4 guard goes RED. Reintroduce the forbidden behaviour — shift the
+    ADR-010 gate-decision total order (swap the HUMAN_APPROVAL_REQUIRED and AUTONOMOUS_WITHIN_CAPS
+    ranks, the single most dangerous inversion) — then INVOKE the R4 guard; it must FAIL."""
+    import freight_recon.checkpoint as ckpt
+    perturbed = dict(ckpt._GATE_RANK)
+    perturbed[GateDecision.HUMAN_APPROVAL_REQUIRED], perturbed[GateDecision.AUTONOMOUS_WITHIN_CAPS] = (
+        perturbed[GateDecision.AUTONOMOUS_WITHIN_CAPS], perturbed[GateDecision.HUMAN_APPROVAL_REQUIRED])
+    monkeypatch.setattr(ckpt, "_GATE_RANK", perturbed)
+    with pytest.raises(AssertionError):
+        test_r4_rename_does_not_shift_adr010_ordering_product_ceiling_or_precedence()
+
+
+def test_r4_control_catches_a_shifted_product_ceiling(monkeypatch):
+    """### CONTROL proving the R4 guard goes RED. Reintroduce the forbidden behaviour — shift one
+    action class's product ceiling (raise_invoice -> FORBIDDEN) — then INVOKE the R4 guard; it must
+    FAIL. (FORBIDDEN is a real GateDecision member; this perturbs the ceiling, not the vocabulary.)"""
+    perturbed = dict(pp.PRODUCT_POLICY)
+    perturbed["raise_invoice"] = pp.ProductPolicyEntry(
+        gate=GateDecision.FORBIDDEN, authority="PERTURBED control (not a real policy)")
+    monkeypatch.setattr(pp, "PRODUCT_POLICY", perturbed)
+    with pytest.raises(AssertionError):
+        test_r4_rename_does_not_shift_adr010_ordering_product_ceiling_or_precedence()
 
 
 # --------------------------------------------- the legacy router/graduation carry NO production gate
