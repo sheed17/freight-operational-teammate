@@ -422,6 +422,81 @@ def test_unknown_outcome_refusal_is_not_escalated_by_m9_m33(tmp_path):
     assert len(_all_exceptions(store)) == 0  # M-33: no second resolution path
 
 
+def test_unknown_outcome_original_effect_invents_no_compensating_call_or_grant_or_effect(tmp_path):
+    """### R4 / M-33 (P0 ambiguous_external_effect). An UNKNOWN_OUTCOME original effect must NEVER be
+    read as VERIFIED and made to invent a compensating call/grant/effect from an ambiguous outcome — you
+    cannot undo what you cannot prove you did, and a compensating write against an ambiguous outcome can
+    CREATE the very state it meant to remove. raise_from_correction REFUSES (CompensationRefused) with
+    ZERO compensating effect: no compensations row, no NEW effect_grant, no adapter/effect call; the
+    original effect stays UNKNOWN_OUTCOME (never silently flipped to VERIFIED); and the compensation-to-
+    exception wiring invents NO Exception from the refusal (its owner lives upstream on the effect
+    grant's UNKNOWN_OUTCOME, resolved by a human via M3 EF-5).
+
+    This asserts an ABSENCE, so its firing case is the `mutate_p8_u84_seams.py` mutant that reintroduces
+    "treat UNKNOWN_OUTCOME as VERIFIED and invent a compensation", driven RED by the control test below.
+    """
+    store, clk = _store_clk(tmp_path)
+    _human(store)
+    gid = ck.an_original_effect_in(store, "UNKNOWN_OUTCOME", tenant=TENANT, clock=clk)
+    dref = ck.a_human_decision(store, tenant=TENANT, actor_id=OWNER, seed=f"d-{gid}", clock=clk)
+    grants_before = store.conn.execute(
+        "SELECT COUNT(*) FROM effect_grants WHERE tenant=?", (TENANT,)).fetchone()[0]
+    m = M10Machine(store.conn, tenant=TENANT, clock=clk)
+    r = m.raise_from_correction(original_effect_id=gid, owner_id=OWNER, exposure=Money(285000, "GBP"),
+                                reason="POD rebound to load 4471", decision_ref=dref)
+    # M10 REFUSES with zero compensating effect — CompensationRefused, no row, no NEW grant.
+    assert r.event_names == ("CompensationRefused",) and r.compensation is None
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM compensations WHERE tenant=?", (TENANT,)).fetchone()[0] == 0, (
+        "an UNKNOWN_OUTCOME original effect invented a compensation row — an ambiguous outcome was "
+        "treated as VERIFIED (R4 / M-33 violated).")
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM effect_grants WHERE tenant=?", (TENANT,)).fetchone()[0] == grants_before, (
+        "a compensating effect_grant was minted from an ambiguous outcome (R4 / M-33 violated).")
+    assert store.conn.execute(
+        "SELECT state FROM effect_grants WHERE tenant=? AND grant_id=?",
+        (TENANT, gid)).fetchone()[0] == "UNKNOWN_OUTCOME"  # never silently flipped to VERIFIED
+    # the compensation-to-exception wiring invents NO Exception from the refusal.
+    row = store.conn.execute(
+        "SELECT envelope_json FROM event_outbox WHERE tenant=? AND event_name='CompensationRefused' "
+        "ORDER BY sequence DESC LIMIT 1", (TENANT,)).fetchone()
+    assert row is not None
+    m9 = M9Machine(store.conn, tenant=TENANT, clock=clk)
+    ct = m9.consume_source_escalation(EventEnvelope.from_json(row["envelope_json"]))
+    assert ct.consume.applied and ct.transition is None
+    assert len(_all_exceptions(store)) == 0
+
+
+def test_the_unknown_outcome_guard_is_load_bearing__mutant_CAUGHT_by_the_runner():
+    """### THE CONTROL THAT PROVES THE R4 GUARD CAN GO RED (CLAUDE.md §6, the product principle: an
+    absence proves nothing until a realised forbidden state shows the guard still FIRES). It drives the
+    `mutate_p8_u84_seams.py` mutant that reintroduces the real defect — M-33's ledger refusal skipped and
+    UNKNOWN_OUTCOME let through the compensable check, so raise_from_correction INVENTS a compensation
+    from an ambiguous outcome — through the battery's own in-memory harness, and requires the R4 guard to
+    go RED under it: GREEN un-mutated, RED under the mutant, GREEN again after a byte-for-byte restore
+    (never a `git` undo). Mirrors U8.1's
+    `test_the_connection_identity_guard_is_load_bearing__mutant_CAUGHT_by_the_runner`.
+    """
+    import importlib.util
+
+    battery = ROOT / "scripts" / "mutate_p8_u84_seams.py"
+    spec = importlib.util.spec_from_file_location("_mutate_u84_r4_control", battery)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    suffix = "test_unknown_outcome_original_effect_invents_no_compensating_call_or_grant_or_effect"
+    cases = [(label, edits, guard) for (label, edits, guard) in mod.CASES if guard.endswith(suffix)]
+    # ### A NON-EMPTY, UNIQUE POPULATION (M-9): the R4 discrimination proof requires exactly this mutant.
+    assert len(cases) == 1, (
+        f"expected EXACTLY ONE mutant targeting {suffix!r}, found {len(cases)}.")
+    _label, edits, guard = cases[0]
+    verdict, note = mod._run_edits(edits, guard)
+    assert verdict == "CAUGHT", (
+        f"the R4 / M-33 guard is NOT discriminating: reintroducing 'treat UNKNOWN_OUTCOME as VERIFIED "
+        f"and invent a compensation' left it GREEN (verdict={verdict!r}, note={note!r}). A guard whose "
+        f"refusal cannot be shown to fail is a decoration (CLAUDE.md §6).")
+
+
 # ============================================================ P6-D4 across the shared resolver
 
 def test_active_rule_decision_ref_is_accepted_and_model_closure_is_refused(tmp_path):

@@ -26,6 +26,7 @@ PY = sys.executable
 
 M1 = "src/freight_recon/work_item.py"
 M9 = "src/freight_recon/exception.py"
+M10 = "src/freight_recon/compensation.py"
 WORK = "eval/tests/test_phase6_work_item.py"
 U84 = "eval/tests/test_p8_u84_seams.py"
 
@@ -102,6 +103,20 @@ CASES = [
      [(M9, "consumer_id=SOURCE_ESCALATION_CONSUMER_ID,",
        "consumer_id=SOURCE_ESCALATION_CONSUMER_ID + uuid.uuid4().hex,  # MUTANT")],
      f"{U84}::test_redelivered_expectation_event_raises_no_second_exception"),
+
+    # ### R4 (P0 ambiguous_external_effect): an UNKNOWN_OUTCOME original effect treated as VERIFIED,
+    # inventing a compensation from an ambiguous outcome. Two edits reintroduce the real defect — skip
+    # M-33's ledger refusal AND let UNKNOWN through the compensable check — so raise_from_correction
+    # creates a compensations row instead of refusing with zero compensating effect (entity §21, M-33:
+    # you cannot undo what you cannot prove you did).
+    ("an UNKNOWN_OUTCOME original effect is treated as VERIFIED and INVENTS a compensation — M-33's "
+     "ledger refusal is skipped and UNKNOWN is let through the compensable check, so a compensating "
+     "obligation is created from an ambiguous external outcome (R4)",
+     [(M10, "if original.state == ORIGINAL_UNKNOWN:",
+       "if False:  # MUTANT: skip the M-33 UNKNOWN refusal"),
+      (M10, "if original.state != ORIGINAL_VERIFIED:",
+       "if original.state not in (ORIGINAL_VERIFIED, ORIGINAL_UNKNOWN):  # MUTANT: UNKNOWN as VERIFIED")],
+     f"{U84}::test_unknown_outcome_original_effect_invents_no_compensating_call_or_grant_or_effect"),
 ]
 
 
@@ -171,9 +186,10 @@ def test_the_u84_seam_mutation_battery_catches_every_mutant():
     runs only when named explicitly, which is how a slow mutation battery should be operated — on
     purpose, never by accident sweeping the suite.
     """
-    assert len(CASES) >= 9, (
+    assert len(CASES) >= 10, (
         f"the U8.4 battery carries {len(CASES)} mutants; it must carry one per load-bearing seam "
-        f"(>=9) for 'every mutant caught' to mean anything (M-9).")
+        f"(>=10, including the R4 UNKNOWN-OUTCOME-invents-no-compensation guard) for 'every mutant "
+        f"caught' to mean anything (M-9).")
     assert main() == 0, (
         "the U8.4 seam mutation battery did NOT report every mutant CAUGHT; a changed absence-asserting "
         "guard could not be shown to FIRE when its forbidden state was realised (CLAUDE.md §6).")
