@@ -7138,8 +7138,16 @@ units:
         disposition: >-
           FAILS CLOSED with a named reason. A stub accepting any rule id would make "closed by an
           active rule" true of rules that do not exist.
+          ### CLOSED AT U8.4/P8. `work_item.resolve_decision_ref` — the ONE shared resolver M1/M2/M3/
+          M9/M10 use — now resolves a `RULE` decision_ref against M12's landed `rules`: valid iff the
+          named rule is a row of THIS tenant whose state is ACTIVE; COMPILED / CONFIRMED / PROPOSED /
+          SUPERSEDED / REVOKED / EXPIRED / REJECTED / missing / blank / cross-tenant all refuse. Read by
+          raw SQL against `rules` (no import cycle rule -> exception -> work_item). No second resolver
+          was created. AC-SAFE-024 / K-1 are satisfied; the model prohibition is preserved (a rule is
+          ACTIVE only by M12's authenticated-human activation). The `closes_at: M12` estimate was one
+          machine early — it closed at the first change AUTHORISED to touch M1's resolver (rule 20).
         severity: LOW
-        closes_at: M12
+        closes_at: M12  # actually resolved at U8.4/P8 — see the disposition note above (rule 20)
       - id: P6-D5
         finding: >-
           WI-3's `obligation_satisfied` is a fact the CALLER states; M1 will not derive it from a
@@ -7806,8 +7814,13 @@ units:
           review, not a side effect of a status/evidence landing. The row exists so a later session
           reading that message does not conclude the table is missing. It closes with whatever change
           resolves P6-D4, which will have to touch the same lines.
+          ### CLOSED AT U8.4/P8, ALONGSIDE P6-D4 AND ON THE SAME LINES, AS PREDICTED. The `work_item.py`
+          RULE-refusal message and point (b) docstring were rewritten to state that the RULE referent
+          RESOLVES against M12's ACTIVE `rules` (P6-D4 closed); the now-stale echoes in
+          `migrations/phase6_exceptions.py` and the M9-AQ-1 header in `exception.py` were reconciled in
+          the same change (rule 20).
         severity: LOW - nonblocking
-        closes_at: the change that resolves P6-D4
+        closes_at: the change that resolves P6-D4  # = U8.4/P8 — see the disposition note above
       - id: P6-D83
         finding: >-
           ### THE P6-CP-11 RECORD EXPECTED `P6-D71` TO CLOSE AT M12, AND IT DID NOT. That record

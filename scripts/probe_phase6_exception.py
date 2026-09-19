@@ -409,12 +409,12 @@ _SIG: dict[str, str] = {
     "malformed-exception-fails-closed": "THE DATABASE ENFORCES THE EXCEPTION INVARIANTS",
     "an-illegal-transition-persists-nothing-and-is-recorded":
         "AN ILLEGAL TRANSITION PERSISTS NOTHING AND IS RECORDED",
-    "the-m1-work-item-machine-is-not-rewritten": "THE M1 WORK ITEM MACHINE IS UNCHANGED",
+    "the-m1-work-item-machine-is-not-rewritten": "M9 REUSES M1's RESOLVER AND REWRITES NO PART OF M1",
     "the-m3-effect-authority-is-unchanged": "THE M3 EFFECT AUTHORITY IS UNCHANGED",
     "the-m5-observation-machine-is-not-rewritten": "THE M5 OBSERVATION MACHINE IS UNCHANGED",
     "the-m7-conflict-machine-is-not-rewritten": "THE M7 CONFLICT MACHINE IS UNCHANGED",
     "the-m8-expectation-machine-is-not-rewritten": "THE M8 EXPECTATION MACHINE IS UNCHANGED",
-    "m10-m11-and-m12-are-not-built": "THE M10, M11 AND M12 MACHINES ARE NOT BUILT",
+    "m10-m11-and-m12-are-not-built": "M10/M11/M12 HAVE LANDED; M9 BUILDS ONLY EXCEPTIONS AND IMPORTS NONE",
 }
 
 # The whole-run headline plus the lines not primarily owned by one case, so a full battery cannot pass
@@ -1771,8 +1771,16 @@ def _unchanged(paths: tuple[str, ...]) -> bool:
 
 
 def case_the_m1_work_item_machine_is_not_rewritten(w: World) -> CaseResult:
-    ok = _unchanged(("src/freight_recon/work_item.py",
-                     "src/freight_recon/migrations/phase6_work_items.py"))
+    # ### CORRECTED AT U8.4/P8 (rule 20). The byte-freeze this case once used (`git diff` vs HEAD) is
+    # retired: U8.4 legitimately EXTENDS M1's `resolve_decision_ref` to close P6-D4 (K-1's RULE referent
+    # now resolves against M12's ACTIVE rules), so "work_item.py unchanged" is no longer the right
+    # question. What M9 must still hold is unchanged: it REUSES M1's ONE resolver (rule 17) and rewrites
+    # no part of M1 — it defines no second resolver and never writes the `work_items` table.
+    src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    reuses_resolver = "resolve_decision_ref" in src and "from .work_item import" in src
+    defines_second = "def resolve_decision_ref" in src
+    writes_work_items = "INSERT INTO work_items" in src or "UPDATE work_items" in src
+    ok = reuses_resolver and not defines_second and not writes_work_items
     if not ok:
         return CaseResult(False, markers=["### M1 WORK ITEM ROW REWRITTEN BY M9 ###"])
     return CaseResult(True, lines=_lines("the-m1-work-item-machine-is-not-rewritten"))
@@ -1811,12 +1819,21 @@ def case_the_m8_expectation_machine_is_not_rewritten(w: World) -> CaseResult:
 
 
 def case_m10_m11_and_m12_are_not_built(w: World) -> CaseResult:
-    tables = {t[0] for t in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    forbidden = {"compensations", "policies", "rules", "evidence"}
-    src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    # ### CORRECTED AT U8.4/P8 (rule 20). M10, M11 and M12 have since LANDED (P6-CP-10/11/12), so
+    # `compensations`/`policies`/`rules` legitimately EXIST in the canonical schema — built by THEIR OWN
+    # migrations, not M9's. The once-checked "absent from the DB" was true at M9's landing and is
+    # corrected here. What M9 must still hold is its ship-dark posture: ITS migration builds only
+    # `exceptions` (no foreign CREATE TABLE), exception.py imports none of those machines, and it mints
+    # no CM/PO/RU transition (### U8.4 wired the F8/F10 → M9 CONSUMER, which imports no producer machine).
     import re
+    mig = (ROOT / "src" / "freight_recon" / "migrations" / "phase6_exceptions.py").read_text("utf-8")
+    foreign_tables = re.findall(r"CREATE TABLE\s+(compensations|policies|rules|evidence)\b", mig)
+    src = (ROOT / "src" / "freight_recon" / "exception.py").read_text(encoding="utf-8")
+    foreign_imports = re.findall(
+        r"from\s+\.(?:compensation|policy|rule|brake|brake_lifecycle)\s+import"
+        r"|import\s+freight_recon\.(?:compensation|policy|rule|brake)", src)
     foreign_ids = re.findall(r"\b(?:CM|PO|RU)-\d+[a-z]*\b", src)
-    ok = not (forbidden & tables) and not foreign_ids
+    ok = not foreign_tables and not foreign_imports and not foreign_ids
     if not ok:
         return CaseResult(False, markers=["### M10 EVENT MINTED ###", "### COMPENSATION FABRICATED ###"])
     return CaseResult(True, lines=_lines("m10-m11-and-m12-are-not-built"))

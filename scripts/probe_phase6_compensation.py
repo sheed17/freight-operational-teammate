@@ -404,7 +404,7 @@ _SIG: dict[str, str] = {
     "m11-m12-and-m13-have-landed-and-m10-still-does-not-touch-them":
         "M11, M12 AND M13 HAVE LANDED AND M10 STILL IMPORTS NONE OF THEM",
     "the-m9-escalation-seam-is-named-and-left-unwired": "THE M9 ESCALATION SEAM IS NAMED AND LEFT UNWIRED",
-    "m1-through-m9-are-unchanged": "M1 THROUGH M9 ARE UNCHANGED",
+    "m1-through-m9-are-unchanged": "M2..M8 ARE UNCHANGED (M1 AND M9 LEFT THE SET AT U8.4)",
 }
 
 # The whole-run headline plus the sentences not primarily owned by one case, so a full battery cannot
@@ -412,11 +412,13 @@ _SIG: dict[str, str] = {
 _EXTRA_REQUIRED: tuple[str, ...] = (
     "A COMPENSATION IS THE UNDOING OF AN EXTERNAL EFFECT THAT SHOULD NOT HAVE HAPPENED",
     "AN UNDO THAT BYPASSES THE GATES IS AN UNGATED WRITE WITH A GOOD EXCUSE",
-    "THE M1 WORK ITEM MACHINE IS UNCHANGED",
+    # ### M1 AND M9 DROPPED FROM THE HEADLINE AT U8.4/P8. U8.4 legitimately EDITED work_item.py (M1,
+    # P6-D4) and exception.py (M9, the F8/F10 consumer), so "M1/M9 UNCHANGED" is now FALSE — the
+    # freeze reconciliation lives in the `m1-through-m9-are-unchanged` case signature (now "M2..M8 ARE
+    # UNCHANGED (M1 AND M9 LEFT THE SET AT U8.4)") and in `_landed_unchanged`, which excludes them.
     "THE M2 PIPELINE MACHINE IS UNCHANGED",
     "THE M3 EFFECT AUTHORITY IS UNCHANGED",
     "THE M4 APPROVAL MACHINE IS UNCHANGED",
-    "THE M9 EXCEPTION MACHINE IS UNCHANGED",
     "M11, M12 AND M13 HAVE LANDED AND M10 IMPORTS NONE OF THEM",
 )
 
@@ -688,8 +690,13 @@ def _landed_unchanged() -> list[str]:
     # STEP 6", so a probe that froze the kernel would report the sanctioned unit as a defect. The
     # three properties CLAUDE.md §10 actually protects are asserted directly by
     # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`.
-    # M1..M9 and M2's pipeline remain frozen here and are asserted so.
-    files = [f"src/freight_recon/{v}" for v in LANDED.values()] + [
+    # ### RULE 20 AT U8.4/P8: `work_item.py` (M1) and `exception.py` (M9) LEFT this frozen set too, by
+    # the same precedent. U8.4 closes P6-D4 in M1's ONE shared `resolve_decision_ref` and WIRES M9 as
+    # the canonical F8/F10 exception consumer, so a probe that froze either would report the sanctioned
+    # unit as a defect. M1 keeps its own battery, M9 keeps `test_phase6_exception.py`, and
+    # `test_p8_u84_seams.py` asserts the U8.4 seam directly. M2..M8 and M2's pipeline stay frozen here.
+    edited_by_u84 = {"work_item.py", "exception.py"}
+    files = [f"src/freight_recon/{v}" for v in LANDED.values() if v not in edited_by_u84] + [
         "src/freight_recon/pipeline_instance.py"]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *sorted(set(files))],
                        cwd=ROOT, capture_output=True, text=True)
@@ -1415,9 +1422,9 @@ def report_lines() -> list[str]:  # noqa: C901 — a flat report, deliberately
     pk = [r[1] for r in conn.execute("PRAGMA table_info(compensations)") if r[5]]
     P(f"tenant is first in the primary key: {bool(pk) and pk[0] == 'tenant'}")
 
-    for lit in ("THE M1 WORK ITEM MACHINE IS UNCHANGED", "THE M2 PIPELINE MACHINE IS UNCHANGED",
+    for lit in ("THE M2 PIPELINE MACHINE IS UNCHANGED",
                 "THE M3 EFFECT AUTHORITY IS UNCHANGED", "THE M4 APPROVAL MACHINE IS UNCHANGED",
-                "THE M9 EXCEPTION MACHINE IS UNCHANGED", "M11, M12 AND M13 HAVE LANDED AND M10 IMPORTS NONE OF THEM"):
+                "M11, M12 AND M13 HAVE LANDED AND M10 IMPORTS NONE OF THEM"):
         P(lit)
     conn.close()
     return out

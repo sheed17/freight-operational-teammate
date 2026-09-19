@@ -445,11 +445,39 @@ def test_decision_ref_must_resolve_to_a_human_decision_event_or_active_rule():
     # A human-decision event TYPE recorded by AUTOMATION is authority laundering (ER-11) — refused.
     automated = _human_decision(conn, actor="automation", actor_type="system")
     refused(decision_ref=automated)
-    # The RULE branch refuses today (M12 not built, P6-D4) — NOT M9's to close.
-    d = _human_decision(conn)
-    x = _raise(m, source_ref="c-rule").exception.exception_id
+
+    # ### THE RULE BRANCH RESOLVES AGAINST AN ACTIVE M12 RULE (### P6-D4 CLOSED at U8.4). A human closes
+    # the Exception (EC-3/EC-6 are trigger H) citing an ACTIVE rule as the basis; the shared resolver
+    # accepts it and the Exception reaches RESOLVED. A COMPILED (non-ACTIVE) rule ref still REFUSES —
+    # the difference between "in force" and "written down but not switched on". M9 imports the ONE
+    # resolver unchanged and closes P6-D4 nowhere itself.
+    from freight_recon.rule import M12Machine
+
+    conn.execute(
+        "INSERT OR IGNORE INTO tenant_humans (tenant, human_id, display_name, authority_role, state, "
+        "recorded_at, recorded_by, recorded_by_kind, offboarded_at) VALUES (?,?,?, 'POLICY_OWNER', "
+        "'ACTIVE', '2026-08-20T09:00:00.000Z', 'founder', 'human', NULL)", (TENANT, "po", "po"))
+    conn.commit()
+    m12 = M12Machine(conn, tenant=TENANT, clock=Clock())
+    _pod = [{"field": "pod", "attr": "evidence_condition", "op": "==", "literal": "consistent",
+             "provenance_class": "SYSTEM_IMPORTED", "modelled": True}]
+    m12.propose(scope="action_class:raise_invoice", kind="GATE_PRECONDITION", effect="DENY",
+                source_instruction="never bill without a pod", authored_by="po", clauses=_pod,
+                rule_id="rule-active")
+    m12.compile("rule-active")
+    m12.confirm("rule-active", confirmed_by="po")
+    m12.activate("rule-active", activated_by="po")
+    ok = _raise(m, source_ref="c-rule-ok").exception.exception_id
+    m.resolve(ok, decision_ref="rule-active", decision_human_id=HUMAN, decision_ref_kind="RULE")
+    assert m.get(ok).state is EcState.RESOLVED
+
+    m12.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="DENY",
+                source_instruction="x", authored_by="po", clauses=_pod, rule_id="rule-compiled")
+    m12.compile("rule-compiled")
+    xr = _raise(m, source_ref="c-rule-bad").exception.exception_id
     with pytest.raises(IllegalTransition):
-        m.resolve(x, decision_ref=d, decision_human_id=HUMAN, decision_ref_kind="RULE")
+        m.resolve(xr, decision_ref="rule-compiled", decision_human_id=HUMAN, decision_ref_kind="RULE")
+    assert m.get(xr).state is EcState.OPEN
 
 
 # ============================================================ the state set & vocabularies

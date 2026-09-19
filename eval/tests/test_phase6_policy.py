@@ -1018,12 +1018,19 @@ def test_the_neighbouring_machines_are_unchanged():
     # properties rather than as a hash, by
     # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`.
     #
-    # FIXED-SPECIFICATION: the exact M1..M10 machine runtimes named must-stay-byte-identical. NOT a
+    # ### RULE 20 AT U8.4/P8: `work_item.py` (M1) and `exception.py` (M9) LEFT this frozen set, by the
+    # same precedent that dropped `checkpoint.py` at U8.1. U8.4 closes P6-D4 in M1's ONE shared
+    # `resolve_decision_ref` and WIRES M9 as the F8/F10 exception consumer (M8-AQ-1 / M10-AQ-12);
+    # freezing either would forbid the sanctioned unit. M1 keeps `test_phase6_work_item.py`, M9 keeps
+    # `test_phase6_exception.py`, and `test_p8_u84_seams.py` asserts the new seam. M2..M8 and M10 remain
+    # frozen and asserted so.
+    #
+    # FIXED-SPECIFICATION: the exact M2..M8 + M10 machine runtimes named must-stay-byte-identical. NOT a
     # discovered population — discovering it would admit a newly-added machine or drop a renamed one,
     # and the guard's whole value is that changing this list is a deliberate, reviewed edit.
-    machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
+    machines = ("pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py")
+                "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)

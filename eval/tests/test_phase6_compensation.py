@@ -888,16 +888,28 @@ def test_m1_through_m9_machines_are_unchanged():
     append-only, the claim CAS keeping every WHERE predicate) are now asserted DIRECTLY by
     `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`
     — as properties rather than as a hash, which is the stronger guard because it survives a
-    legitimate edit and still fails a weakening one. M1..M9 remain frozen and asserted so.
+    legitimate edit and still fails a weakening one.
 
-    FIXED-SPECIFICATION: the exact M1..M9 machine runtimes; NOT a discovered population.
+    ### RULE 20 AT U8.4/P8: `work_item.py` (M1) AND `exception.py` (M9) LEFT THIS FROZEN SET, by the
+    same precedent that dropped `policy.py` at U8.1 and `rule.py` at U8.2. U8.4 closes P6-D4 in M1's
+    ONE shared `resolve_decision_ref` (K-1's RULE referent now resolves against M12's ACTIVE rules),
+    and WIRES M9 as the canonical consumer of the F8/F10 "needs-a-human" events (the M8-AQ-1 /
+    M10-AQ-12 seams) through M9's own landed raise core. A guard that froze either would forbid the
+    unit that exists to wire them. Neither is left unguarded: M1 keeps its full battery in
+    `test_phase6_work_item.py`, M9 keeps its 58-test battery in `test_phase6_exception.py`, and the new
+    U8.4 seam is asserted directly in `test_p8_u84_seams.py` (resolver ACTIVE-rule contract, the F8/F10
+    escalation, idempotency, the honesty split and fail-closed ownership). *(Until U8.4 this tuple
+    carried `work_item.py` and `exception.py`; that was TRUE while M1's resolver refused RULE and M9
+    consumed no source event, and is corrected rather than deleted per CLAUDE.md §4 rule 20.)* M2..M8
+    remain frozen and asserted so.
+
+    FIXED-SPECIFICATION: the exact M2..M8 machine runtimes; NOT a discovered population.
     """
     unchanged = (
-        "src/freight_recon/work_item.py", "src/freight_recon/pipeline_instance.py",
+        "src/freight_recon/pipeline_instance.py",
         "src/freight_recon/external_effect.py", "src/freight_recon/approval.py",
         "src/freight_recon/observation.py", "src/freight_recon/identity_binding_claim.py",
         "src/freight_recon/conflict.py", "src/freight_recon/expectation.py",
-        "src/freight_recon/exception.py",
     )
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *unchanged], cwd=ROOT,
                        capture_output=True, text=True)

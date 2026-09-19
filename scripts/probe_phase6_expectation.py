@@ -370,7 +370,7 @@ _SIG: dict[str, str] = {
     "the-m7-conflict-machine-is-not-rewritten": "THE M7 CONFLICT MACHINE IS UNCHANGED",
     "an-overdue-expectation-is-not-automatically-a-conflict":
         "AN OVERDUE EXPECTATION IS NOT AUTOMATICALLY A CONFLICT",
-    "m9-m10-m11-and-m12-are-not-built": "THE M9, M10, M11 AND M12 MACHINES ARE NOT BUILT",
+    "m9-m10-m11-and-m12-are-not-built": "M9..M12 HAVE LANDED; M8 BUILDS ONLY EXPECTATIONS AND MINTS NO M9 EVENT",
 }
 
 # The whole-run headline plus the lines not primarily owned by one case, so a full battery cannot pass
@@ -1667,16 +1667,20 @@ def case_an_overdue_expectation_is_not_automatically_a_conflict(w: World) -> Cas
 
 
 def case_m9_m10_m11_and_m12_are_not_built(w: World) -> CaseResult:
-    # M9 (the Exception) LANDED after M8, so `exceptions` is now canonical and is no longer in the
-    # forbidden set — a prior unit's forward-looking "not built" is corrected the moment the unit
-    # lands (rule 20). The still-unbuilt neighbours stay asserted-absent, and M8's machine still mints
-    # no M9 event and carries no foreign transition ids.
-    tables = {t[0] for t in w.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    forbidden = {"compensations", "policies", "rules", "evidence"}
-    src = (ROOT / "src" / "freight_recon" / "expectation.py").read_text(encoding="utf-8")
+    # ### CORRECTED AT U8.4/P8 (rule 20). M9..M12 have ALL since LANDED (P6-CP-9..12), so `exceptions`/
+    # `compensations`/`policies`/`rules` legitimately EXIST in the canonical schema — built by THEIR OWN
+    # migrations, not M8's. The "absent from the DB" check was true at M8's landing and is corrected
+    # here. What M8 must still hold is unchanged, and is what U8.4's M8 → M9 seam depends on: M8 stays a
+    # pure PRODUCER — ITS migration builds only `expectations`/`observation_coverage` (no foreign
+    # CREATE TABLE), expectation.py mints NO `ExceptionRaised` (the F8 → M9 CONSUMER lives in M9 and
+    # imports no producer), and it carries no EC/CM/PO/RU transition id.
     import re
+    mig = (ROOT / "src" / "freight_recon" / "migrations" / "phase6_expectations.py").read_text("utf-8")
+    foreign_tables = re.findall(
+        r"CREATE TABLE\s+(exceptions|compensations|policies|rules|evidence)\b", mig)
+    src = (ROOT / "src" / "freight_recon" / "expectation.py").read_text(encoding="utf-8")
     foreign_ids = re.findall(r"\b(?:EC|CM|PO|RU)-\d+[a-z]*\b", src)
-    ok = not (forbidden & tables) and not foreign_ids and "ExceptionRaised" not in src
+    ok = not foreign_tables and not foreign_ids and "ExceptionRaised" not in src
     if not ok:
         return CaseResult(False, markers=["### M9 EVENT MINTED ###"])
     return CaseResult(True, lines=[_SIG["m9-m10-m11-and-m12-are-not-built"]])

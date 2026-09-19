@@ -809,16 +809,26 @@ def test_the_m1_through_m12_machines_are_unchanged():
     63-test battery in `test_phase6_rule.py` (plus the 35-mutant `scripts/mutate_phase6_rule.py`)
     still assert every state, every transition, compile-or-refuse, the version namespace and the
     ship-dark posture; `test_p8_policy_admission.py` and `test_p8_rule_admission.py` assert the new
-    compositions. M1..M10 remain frozen here.
+    compositions.
+
+    ### AND AT U8.4/P8, `work_item.py` (M1) AND `exception.py` (M9) LEFT IT TOO, BY THE SAME PRECEDENT.
+    U8.4 closes P6-D4 in M1's ONE shared `resolve_decision_ref` (K-1's RULE referent now resolves
+    against M12's ACTIVE rules) and WIRES M9 as the canonical consumer of the F8/F10 "needs-a-human"
+    events (M8-AQ-1 / M10-AQ-12). Freezing either would forbid the unit that exists to wire them.
+    Neither is left unguarded: M1's `test_phase6_work_item.py` battery and M9's `test_phase6_exception.py`
+    battery still hold, and `test_p8_u84_seams.py` asserts the new seam directly. *(Until U8.4 this
+    tuple carried `work_item.py` and `exception.py`; TRUE while M1's resolver refused RULE and M9
+    consumed no source event, corrected per CLAUDE.md §4 rule 20.)* M2..M8 and M10 remain frozen here.
     """
     # FIXED-SPECIFICATION: the exact landed machine runtimes named must-stay-byte-identical. NOT a
     # discovered population — discovery would admit a new machine or drop a renamed one silently.
-    # `policy.py` (M11, U8.1) and `rule.py` (M12, U8.2) are deliberately absent: each is the subject
-    # of the P8 unit that wired it, and each is guarded by its own battery. Removing a name here is a
-    # deliberate, reviewed edit; the ten below stay frozen.
-    machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
+    # `policy.py` (M11, U8.1), `rule.py` (M12, U8.2), `work_item.py` (M1, U8.4) and `exception.py`
+    # (M9, U8.4) are deliberately absent: each is the subject of the P8 unit that wired it, and each is
+    # guarded by its own battery. Removing a name here is a deliberate, reviewed edit; the eight below
+    # stay frozen.
+    machines = ("pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py")
+                "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=str(ROOT),
                        capture_output=True, text=True)

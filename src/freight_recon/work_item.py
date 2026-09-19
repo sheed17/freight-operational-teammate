@@ -700,10 +700,20 @@ def resolve_decision_ref(
         is not enough, because `ApprovalGranted` emitted by automation would be exactly the laundered
         authority ER-11 refuses.
 
-    (b) `RULE` — ### REFUSES TODAY, AND SAYS WHY. K-1's other referent is an `ACTIVE` `rule_id`, and
-        Rules are machine M12, a later P6 unit with no table yet. A stub that accepted any rule id
-        would make "closed by an active rule" true of rules that do not exist, which is worse than a
-        refusal by exactly the margin that matters. Recorded as debt P6-D4.
+    (b) `RULE` — ### RESOLVES AGAINST M12's `rules` TABLE (### P6-D4 CLOSED at U8.4). K-1's other
+        referent is an `ACTIVE` `rule_id`: a registered, versioned, deterministic decision procedure.
+        A RULE decision_ref is valid ONLY when the named rule exists in THIS tenant and is currently
+        `ACTIVE` under M12 authority. A `COMPILED`, `PROPOSED`, `CONFIRMED`, `SUPERSEDED`, `REVOKED`,
+        `EXPIRED` or `REJECTED` rule, a missing id, a blank ref and a cross-tenant id ALL refuse — the
+        cross-tenant case automatically, because the read is tenant-scoped and [C-1] never looks across
+        tenants to find out whether the rule exists elsewhere. Read by raw SQL against `rules`, not by
+        importing M12: `rule` imports `exception` imports `work_item`, so a top-level `from .rule import
+        …` here would be an import cycle — the `AUDIT_EVENT` branch below reads `event_outbox` the same
+        raw way, for the same reason. ### THIS IS THE ONE CANONICAL RESOLVER: M9, M10 and every other
+        caller share it, and no second rule resolver exists. ### THE MODEL NEVER REACHES A RULE THROUGH
+        HERE: a Rule is `ACTIVE` only by M12's authenticated-human activation (a `rules` CHECK + an FK
+        into `tenant_humans`), so "an ACTIVE rule" already means "a human switched it on", and nothing
+        here trusts a caller-supplied assertion about a rule.
     """
     tenant = require_tenant(tenant, context="resolve_decision_ref")
     if kind not in DECISION_REF_KINDS:
@@ -719,12 +729,32 @@ def resolve_decision_ref(
             "inference, and never the string 'done'."
         )
     if kind == "RULE":
-        raise DecisionRefUnresolvable(
-            f"decision_ref {text!r} claims kind RULE, and Rules (machine M12) are not implemented "
-            f"yet — there is no `rules` table to resolve an ACTIVE rule_id against. Refused rather "
-            f"than accepted on trust: accepting would make 'closed by an active rule' true of a rule "
-            f"that does not exist. Use an AUDIT_EVENT reference, or wait for M12 (debt P6-D4)."
-        )
+        # ### P6-D4 CLOSED (U8.4). M12 landed (`P6-CP-12`), so K-1's rule referent now RESOLVES. Valid
+        # iff the named rule is a row of THIS tenant whose state is ACTIVE. Raw SQL, not `import rule`
+        # (that would be the cycle rule→exception→work_item); the `rules` table is canonical since M12,
+        # exactly as `event_outbox` is for the AUDIT_EVENT branch. Cross-tenant refuses via the tenant
+        # predicate; every non-ACTIVE lifecycle state, a missing id and a blank ref refuse.
+        rule_row = conn.execute(
+            "SELECT state FROM rules WHERE tenant = ? AND rule_id = ?",
+            (tenant, text),
+        ).fetchone()
+        if rule_row is None:
+            raise DecisionRefUnresolvable(
+                f"decision_ref {text!r} claims kind RULE and names no rule of tenant {tenant!r} (K-1). "
+                f"A string that references nothing is not a decision_ref, and a cross-tenant rule id is "
+                f"indistinguishable from a missing one here on purpose ([C-1]) — the transition is "
+                f"illegal."
+            )
+        rule_state = rule_row["state"]
+        if rule_state != "ACTIVE":
+            raise DecisionRefUnresolvable(
+                f"decision_ref {text!r} names a rule that is {rule_state!r}, not ACTIVE (K-1). Only an "
+                f"ACTIVE rule is a registered, in-force decision procedure; a COMPILED, PROPOSED, "
+                f"CONFIRMED, SUPERSEDED, REVOKED, EXPIRED or REJECTED rule is in force NOWHERE, and "
+                f"closing on it would enforce a rule that no human has switched on (or has switched "
+                f"off). Refused rather than accepted on trust."
+            )
+        return DecisionRef(ref=text, kind=kind, event_name=None, actor_id=None)
     row = conn.execute(
         "SELECT event_name, envelope_json FROM event_outbox WHERE tenant = ? AND event_id = ?",
         (tenant, text),

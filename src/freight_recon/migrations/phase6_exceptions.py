@@ -86,9 +86,12 @@ WHAT IS DELIBERATELY *NOT* HERE (the seams this unit does not own)
 
     No `exceptions`-adjacent freeze table (### M9-AQ-5: the row IS the durable condition, projected into
     the checkpoint's existing types). No `compensations`/`policies`/`rules`/`evidence` table and no
-    `CM-*`/`PO-*`/`RU-*`. No `rules` FK for a `decision_ref` of kind RULE — that half REFUSES today in
-    M1's resolver (debt P6-D4, closes at M12). No brake engagement — a Sev-0 exception CARRIES `SEV0`;
-    the brake is the source detector's act (F9 cross-cutting), not M9's.
+    `CM-*`/`PO-*`/`RU-*`. No `rules` FK on `decision_ref` for kind RULE — and there still is none: as of
+    U8.4/P8 the RULE half RESOLVES in M1's ONE shared resolver by reading M12's `rules` directly (### P6-D4
+    CLOSED), so this migration adds no rules FK and needs none. *(This line read "that half REFUSES today
+    in M1's resolver (debt P6-D4, closes at M12)"; TRUE at M9's landing, corrected per CLAUDE.md §4 rule
+    20 — M12 landed and P6-D4 is closed.)* No brake engagement — a Sev-0 exception CARRIES `SEV0`; the
+    brake is the source detector's act (F9 cross-cutting), not M9's.
 
 FRESH == MIGRATED, SHIPS DARK
 
@@ -152,7 +155,9 @@ FAILURE_CLASSIFICATIONS: tuple[str, ...] = ("transient", "permanent")
 # `decision_ref`'s resolvable-kind discriminator (K-1), UPPERCASE to match M1's `DECISION_REF_KINDS`
 # EXACTLY, because M9 IMPORTS and CALLS `work_item.resolve_decision_ref` (never a second resolver). A
 # human decision resolves into an `audit_events` row (the canonical event log); a rule-basis decision
-# would resolve into `rules` (M12, NOT built) and refuses today — debt P6-D4, not M9's to close.
+# resolves into an ACTIVE `rules` row (M12) — the RULE half RESOLVES as of U8.4/P8 (### P6-D4 CLOSED in
+# the ONE shared resolver, which M9 still imports unchanged). *(This read "would resolve into `rules`
+# (M12, NOT built) and refuses today — debt P6-D4"; TRUE at M9's landing, corrected per rule 20.)*
 DECISION_REF_KINDS: tuple[str, ...] = ("AUDIT_EVENT", "RULE")
 
 # ### THE POLYMORPHIC SOURCE (### M9-AQ-3, entity §9/§18). `source_ref` is the single source of truth;

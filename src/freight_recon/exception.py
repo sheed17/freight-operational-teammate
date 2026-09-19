@@ -32,10 +32,11 @@ rides P5's transactional outbox, dedup inbox and durable timers exactly as M3…
 `work_item.resolve_decision_ref`, the landed K-1 executor M3 already imports for EF-5. Two
 implementations of "does this decision_ref resolve" is two places for one of them to start accepting the
 string "done". The database CHECK is the STRUCTURAL half (a RESOLVED row with no decision_ref is not
-insertable); the resolver is the "RESOLVES" half. ### M9-AQ-1 is REPORTED: three files say resolution
-requires a HUMAN and GR-14/K-1/AC-SAFE-024/F9 say a human OR an ACTIVE rule — every reading agrees a bare
-string is not a decision_ref, a model may NEVER resolve, and the RULE branch REFUSES today (debt P6-D4,
-closes at M12, NOT here). This machine builds the human branch and imports the resolver unchanged.
+insertable); the resolver is the "RESOLVES" half. ### M9-AQ-1: three files say resolution requires a
+HUMAN and GR-14/K-1/AC-SAFE-024/F9 say a human OR an ACTIVE rule — every reading agrees a bare string is
+not a decision_ref and a model may NEVER resolve. The RULE branch REFUSED at M9's landing (debt P6-D4,
+which M9 correctly did NOT close itself) and, as of U8.4/P8, RESOLVES against M12's ACTIVE `rules` in the
+ONE shared resolver M9 still imports UNCHANGED — P6-D4 is closed there, not by a second resolver here.
 
 ### THE FREEZE IS CONDITIONAL AND PROJECTED, NEVER A NEW TABLE (### M9-AQ-5, entity §38). NOT every
 Exception freezes an entity — only those that make a material field non-`consistent`. `native_projection`
@@ -124,10 +125,38 @@ TIMER_KIND_AGE = "exception_age_threshold"
 TIMER_KIND_ESCALATION = "exception_escalation_threshold"
 
 # The K-1 kind M9 offers to M1's resolver for a human closure — the audit_events referent. The RULE kind
-# is in DECISION_REF_KINDS (so the DB CHECK admits it) but REFUSES in the resolver today (debt P6-D4).
+# is in DECISION_REF_KINDS (so the DB CHECK admits it) and, as of U8.4/P8, RESOLVES against M12's
+# `rules` table (an ACTIVE rule) in M1's ONE shared resolver — the P6-D4 refusal is closed. M9 offers
+# AUDIT_EVENT by default; a caller closing on a rule passes decision_ref_kind="RULE" (and still names a
+# human via decision_human_id, EC-3/EC-6 being trigger H).
 DECISION_KIND_AUDIT = "AUDIT_EVENT"
 
 HUMAN = "HUMAN"
+
+# ### U8.4 — M9 IS THE CANONICAL CONSUMER OF THE F8/F10 "NEEDS-A-HUMAN" EVENTS (closes M8-AQ-1 and
+# M10-AQ-12). This consumer identity is DISTINCT from CONSUMER_ID: the F8/F10 source-escalation stream
+# is a different consumer of a different set of aggregates from M9's own `exception`-aggregate replay,
+# and the dedup key is (tenant, consumer_id, event_id) — sharing the id would tangle the two dedup
+# namespaces.
+SOURCE_ESCALATION_CONSUMER_ID = "m9-source-escalation"
+
+# ### THE STABLE M9 `type` FOR AN EXPECTATION ESCALATION. entity §14 makes an OVERDUE/INDETERMINATE/
+# EXPIRED Expectation `1 : 1` with its Exception, so all three F8 events for ONE expectation share ONE
+# dedup key (tenant, source_ref, type) and coalesce onto ONE open Exception — an EXPIRED that follows
+# an already-open OVERDUE adds no second row, and "no duplicate open Exception per source" holds. The
+# honesty split (OVERDUE = the thing never came over a healthy channel; INDETERMINATE = we were BLIND)
+# lives in the human question, NOT in the type — an expectation is only ever OVERDUE xor INDETERMINATE,
+# so the type never has to carry a distinction the question already makes (I8, M-32).
+EXPECTATION_ESCALATION_TYPE = "expectation_unmet"
+
+# ### THE M9 SEVERITY FOR EACH ESCALATED SOURCE EVENT — A RECORDED CHOICE, NOT A SMUGGLED CRITERION.
+# M9 severity orders the human queue and NEVER gates (it is not a checkpoint input), so this mapping is
+# queue ergonomics, not a freight rule. CompensationFailed/CompensationImpossible are SEV0 because
+# entity §42 and the F10 spec name them "the most dangerous states the system can be in" / "the loudest
+# state" (reality and the projection are KNOWN to diverge, with money exposure). The expectation
+# escalations are SEV1 — a real human obligation, not a system-integrity emergency — matching M12's own
+# SEV1 rule escalations. Raising a SEV0 here engages NO brake: brake engagement is the source detector's
+# act (F9 cross-cutting), never M9's.
 
 # The SIX F9 contracts this machine MINTS — exactly the registered set, no seventh `Exception*` name.
 PRODUCED_CONTRACTS: frozenset[str] = frozenset(
@@ -557,64 +586,163 @@ class M9Machine:
                 "no field to block is a freeze that blocks nothing.")
         owner = self._require_named_human(owner_id, "the exception owner", actor_kind=actor_kind)
 
-        mirror = SOURCE_KIND_TABLE.get(kind)
-        mirror_col = mirror[0] if mirror else None
-        xid = exception_id or f"exc-{uuid.uuid4().hex[:16]}"
         now = format_instant(self._clock())
         conn = self._conn
         conn.execute("BEGIN IMMEDIATE")
         try:
-            columns = [
-                "tenant", "exception_id", "type", "severity", "state", "version", "owner_id",
-                "source_ref", "source_kind", "entity_ref", "frozen_field", "freezes_entity",
-                "sub_status", "failure_classification", "exposure", "specific_question", "summary",
-                "acknowledged_at", "acknowledged_by", "ageing_at", "escalation_at", "decision_ref",
-                "decision_ref_kind", "decision_human_id", "created_at", "updated_at",
-            ]
-            values: list[Any] = [
-                self._tenant, xid, etype, sev, "OPEN", 1, owner, source, kind,
-                entity_ref, frozen_field, 1 if freezes_entity else 0, sub,
-                classification.value if classification is not None else None, exposure,
-                specific_question, summary_text, None, None, None, None, None, None, None, now, now,
-            ]
-            if mirror_col is not None:
-                columns.append(mirror_col)
-                values.append(source)
-            placeholders = ",".join("?" for _ in columns)
-            try:
-                conn.execute(
-                    f"INSERT INTO exceptions ({','.join(columns)}) VALUES ({placeholders})", values)
-            except sqlite3.IntegrityError:
-                # ### AT MOST ONE OPEN EXCEPTION PER CAUSE (the optional dedup index this build built).
-                # An OPEN exception already exists — coalesce onto it rather than raise a second (entity
-                # §17/§33). A concurrent raiser loses no obligation and never creates a duplicate.
-                conn.rollback()
-                existing = self.open_exception_for(source, etype)
-                if existing is None:
-                    raise
-                return TransitionResult(
-                    transition_id="EC-1", exception=existing, from_state=None,
-                    to_state=existing.state, coalesced=True)
-            created = self.require(xid)
-            if schedule_timer and age_threshold_ms is not None:
-                # ### AGEING RIDES A DURABLE TIMER, IN THE SAME COMMIT AS THE RAISE (machine §37, M-36,
-                # AP-3's shape). The owner and the escalation threshold ride the payload so the fired age
-                # timer knows who owns the resulting AGEING obligation and when it escalates. ### V10: the
-                # THRESHOLD is caller-supplied with no business default — the MECHANISM is complete.
-                self._arm_age_timer(created, owner, age_threshold_ms, escalation_threshold_ms,
-                                    correlation_id)
-            envelope = self._raise_envelope(
-                created, actor_kind=actor_kind, actor_id=actor_id, correlation_id=correlation_id,
-                causation_id=causation_id, trace_id=trace_id, event_id=event_id, now=now)
-            self._outbox().emit(envelope)
+            result = self._raise_exception_locked(
+                etype=etype, sev=sev, source=source, kind=kind, owner=owner,
+                summary_text=summary_text, entity_ref=entity_ref, frozen_field=frozen_field,
+                freezes_entity=freezes_entity, sub=sub, classification=classification,
+                exposure=exposure, specific_question=specific_question, exception_id=exception_id,
+                schedule_timer=schedule_timer, age_threshold_ms=age_threshold_ms,
+                escalation_threshold_ms=escalation_threshold_ms, actor_kind=actor_kind,
+                actor_id=actor_id, correlation_id=correlation_id, causation_id=causation_id,
+                trace_id=trace_id, event_id=event_id, now=now)
             conn.commit()
         except BaseException:
             if conn.in_transaction:
                 conn.rollback()
             raise
+        return result
+
+    def _raise_exception_locked(
+        self, *, etype: str, sev: str, source: str, kind: str, owner: str, summary_text: str,
+        entity_ref: str | None, frozen_field: str | None, freezes_entity: bool,
+        sub: str | None, classification: FailureDisposition | None, exposure: str | None,
+        specific_question: str | None, exception_id: str | None, schedule_timer: bool,
+        age_threshold_ms: int | None, escalation_threshold_ms: int | None, actor_kind: str,
+        actor_id: str, correlation_id: str | None, causation_id: str | None,
+        trace_id: str | None, event_id: str | None, now: str,
+    ) -> TransitionResult:
+        """EC-1's core, run INSIDE the caller's ALREADY-OPEN transaction (the write lock is held).
+
+        It opens, commits and rolls back NOTHING. `raise_exception` wraps it in its own BEGIN IMMEDIATE;
+        the U8.4 F8/F10 escalation consumer runs it inside P5's dedup-inbox transaction so the exception
+        row and the inbox row share ONE commit (M-24) — a crash between a source transition and this
+        consumer redelivers the source event and reaches the SAME one exception, never a lost escalation
+        and never a duplicate.
+
+        ### THE COALESCE IS CHECK-FIRST, NOT INSERT-THEN-ROLLBACK. A rollback here would discard the
+        inbox row the consumer co-commits, and a caught constraint violation poisons a PostgreSQL
+        transaction the inbox owns. Because the write lock is held, reading `open_exception_for` and then
+        inserting is atomic, so a re-raise of the same (source_ref, type) cause returns the existing OPEN
+        exception (entity §17/§33) without ever attempting a duplicate insert. The partial unique index
+        `ix_exceptions_one_open_per_cause` remains the database backstop."""
+        conn = self._conn
+        existing = self.open_exception_for(source, etype)
+        if existing is not None:
+            # ### AT MOST ONE OPEN EXCEPTION PER CAUSE (the optional dedup index this build built). An
+            # OPEN exception already exists — coalesce onto it rather than raise a second (entity §17/
+            # §33). A concurrent raiser is serialized by the held write lock and loses no obligation.
+            return TransitionResult(
+                transition_id="EC-1", exception=existing, from_state=None,
+                to_state=existing.state, coalesced=True)
+        mirror = SOURCE_KIND_TABLE.get(kind)
+        mirror_col = mirror[0] if mirror else None
+        xid = exception_id or f"exc-{uuid.uuid4().hex[:16]}"
+        columns = [
+            "tenant", "exception_id", "type", "severity", "state", "version", "owner_id",
+            "source_ref", "source_kind", "entity_ref", "frozen_field", "freezes_entity",
+            "sub_status", "failure_classification", "exposure", "specific_question", "summary",
+            "acknowledged_at", "acknowledged_by", "ageing_at", "escalation_at", "decision_ref",
+            "decision_ref_kind", "decision_human_id", "created_at", "updated_at",
+        ]
+        values: list[Any] = [
+            self._tenant, xid, etype, sev, "OPEN", 1, owner, source, kind,
+            entity_ref, frozen_field, 1 if freezes_entity else 0, sub,
+            classification.value if classification is not None else None, exposure,
+            specific_question, summary_text, None, None, None, None, None, None, None, now, now,
+        ]
+        if mirror_col is not None:
+            columns.append(mirror_col)
+            values.append(source)
+        placeholders = ",".join("?" for _ in columns)
+        conn.execute(
+            f"INSERT INTO exceptions ({','.join(columns)}) VALUES ({placeholders})", values)
+        created = self.require(xid)
+        if schedule_timer and age_threshold_ms is not None:
+            # ### AGEING RIDES A DURABLE TIMER, IN THE SAME COMMIT AS THE RAISE (machine §37, M-36,
+            # AP-3's shape). The owner and the escalation threshold ride the payload so the fired age
+            # timer knows who owns the resulting AGEING obligation and when it escalates. ### V10: the
+            # THRESHOLD is caller-supplied with no business default — the MECHANISM is complete.
+            self._arm_age_timer(created, owner, age_threshold_ms, escalation_threshold_ms,
+                                correlation_id)
+        envelope = self._raise_envelope(
+            created, actor_kind=actor_kind, actor_id=actor_id, correlation_id=correlation_id,
+            causation_id=causation_id, trace_id=trace_id, event_id=event_id, now=now)
+        self._outbox().emit(envelope)
         return TransitionResult(
             transition_id="EC-1", exception=created, from_state=None, to_state=EcState.OPEN,
             event_ids=(envelope.event_id,), event_names=("ExceptionRaised",), event_producer="EC-1")
+
+    def consume_source_escalation(
+        self, envelope: EventEnvelope, *, inbox: DedupInbox | None = None,
+    ) -> ConsumedTransition:
+        """### U8.4 — M9 CONSUMES THE F8/F10 "NEEDS-A-HUMAN" EVENTS AND RAISES EXACTLY ONE EXCEPTION
+        THROUGH ITS OWN LANDED RAISE ENTRY POINT (### closes M8-AQ-1 and M10-AQ-12).
+
+        F8 canonically names M9 the consumer of `ExpectationOverdue` / `ExpectationIndeterminate` /
+        `ExpectationExpired`; F10 names it the consumer of `CompensationFailed` /
+        `CompensationImpossible`. This consumes ONE such event idempotently through P5's dedup inbox and
+        raises the Exception through `_raise_exception_locked` — M9's own raise core — never a second
+        `exceptions` writer (rule 17). M8 and M10 stay pure producers: they are not imported and not
+        edited; only their already-emitted canonical events cross this seam.
+
+        ### IDEMPOTENT ON TWO AXES, SO THE ESCALATION HAPPENS EXACTLY ONCE. The dedup inbox makes the
+        SAME event's redelivery a no-op (M-24) — an event redelivered after the exception is even
+        RESOLVED never raises a second — and the exception row and the inbox row share ONE commit, so a
+        crash between the source transition and this consumer redelivers the source event and reaches the
+        same one exception. The (source_ref, type) partial unique index makes a DIFFERENT event that
+        names the same cause coalesce. Together: at most one OPEN exception per owed source, and expiry
+        is never silence.
+
+        ### THE NAMED HUMAN OWNER IS PRESERVED DETERMINISTICALLY from the source event's
+        `accountable_owner_id` (M8 pins the expectation owner on EX-3/EX-3i; M10 pins the compensation
+        owner). It is re-checked ACTIVE at raise: if the owner was deactivated between the source
+        transition and this consumer, the raise FAILS CLOSED (the handler raises, the inbox rolls back,
+        the source event redelivers) — never an ownerless or inactive-owner exception, and never a
+        silent drop (AC-RACE-016: no consequential action proceeds without a reassigned owner).
+
+        ### THE HONESTY SPLIT IS PRESERVED IN THE HUMAN QUESTION (I8, M-32). An OVERDUE-derived exception
+        asks a counterparty-follow-up question; an INDETERMINATE-derived one says WE WERE BLIND and must
+        NOT be read as counterparty fault. Blindness is never converted into counterparty fault.
+
+        ### M-33: `CompensationRefused` IS NOT ESCALATED HERE. Its human owner already lives UPSTREAM on
+        the original effect's `UNKNOWN_OUTCOME`, which a human resolves via M3 EF-5 — inventing a second
+        M9 owner would be the duplicate resolution path M-33 forbids. It is consumed once (so the
+        transport stops redelivering) and creates nothing. `CompensationFailed`/`CompensationImpossible`
+        remain loud, owned and exposure-carrying: no retry, timer, model or consumer clears them."""
+        box = inbox or DedupInbox(
+            self._conn, tenant=self._tenant, consumer_id=SOURCE_ESCALATION_CONSUMER_ID,
+            clock=self._clock)
+        outcome: dict[str, Any] = {"transition": None, "refusal": None}
+
+        def handler(event: EventEnvelope) -> None:
+            spec = _escalation_spec(event)
+            if spec is None:
+                # Not an F8/F10 escalation this consumer raises — e.g. CompensationRefused (owner is
+                # upstream on the effect grant, M-33) or an event routed here by mistake. Consumed once
+                # so the transport stops redelivering; nothing is persisted, no exception is created.
+                outcome["refusal"] = (
+                    f"{event.event_name} is not an F8/F10 escalation M9 raises an Exception for "
+                    f"(M-33 leaves CompensationRefused owned upstream on the effect grant). Consumed "
+                    f"once, nothing persisted.")
+                return
+            owner = self._require_named_human(
+                event.accountable_owner_id, "the escalation owner", actor_kind="system")
+            outcome["transition"] = self._raise_exception_locked(
+                etype=spec.type, sev=spec.severity, source=event.aggregate_id, kind=spec.source_kind,
+                owner=owner, summary_text=spec.summary, entity_ref=None, frozen_field=None,
+                freezes_entity=False, sub=None, classification=None, exposure=spec.exposure,
+                specific_question=spec.question, exception_id=None, schedule_timer=False,
+                age_threshold_ms=None, escalation_threshold_ms=None, actor_kind="system",
+                actor_id="exception", correlation_id=event.correlation_id, causation_id=event.event_id,
+                trace_id=event.trace_id, event_id=None, now=format_instant(self._clock()))
+
+        result = box.consume(envelope, handler)
+        return ConsumedTransition(
+            consume=result, transition=outcome["transition"], refusal=outcome["refusal"])
 
     def raise_from_failure(
         self, *, classification: FailureDisposition, attempts_before_raise: int = 0, **kw: Any,
@@ -1244,6 +1372,83 @@ class M9Machine:
 
 
 # ------------------------------------------------------------------------------------- plumbing
+
+@dataclass(frozen=True)
+class _EscalationSpec:
+    """How one F8/F10 source event becomes exactly one M9 Exception (U8.4). `type` is M9's free cause
+    string (there is no type enum — entity §21's cause list is open, ending in an ellipsis); `severity`
+    is a recorded queue-ordering CHOICE that never gates; `question` is the honesty-preserving
+    `specific_question`; `exposure` is the money at stake, carried only for a compensation."""
+
+    type: str
+    source_kind: str
+    severity: str
+    summary: str
+    question: str
+    exposure: str | None
+
+
+def _escalation_spec(event: EventEnvelope) -> _EscalationSpec | None:
+    """Map an F8/F10 "needs-a-human" event to its Exception, or None if M9 raises nothing for it.
+
+    ### THE HONESTY SPLIT LIVES HERE (I8, M-32). `ExpectationOverdue` proves the thing never came over a
+    demonstrably healthy channel — a counterparty/operational follow-up. `ExpectationIndeterminate`
+    proves the deadline passed while WE WERE BLIND — OUR failure to observe, and the one thing this seam
+    may NEVER do is convert that blindness into counterparty fault. Both carry the STABLE expectation
+    `type` so an expectation's OVERDUE/INDETERMINATE/EXPIRED escalations are one Exception (entity §14's
+    1 : 1), while the question keeps them distinct.
+
+    ### CompensationRefused RETURNS None ON PURPOSE (M-33). Its owner is upstream on the effect grant's
+    UNKNOWN_OUTCOME (resolved by a human via M3 EF-5); a second M9 owner here would be a duplicate
+    resolution path. `CompensationFailed`/`CompensationImpossible` are SEV0 and carry the exposure —
+    loud, owned, and never cleared by a retry, timer, model or this consumer."""
+    name = event.event_name
+    payload = event.payload or {}
+    src = event.aggregate_id
+    if name == "ExpectationOverdue":
+        return _EscalationSpec(
+            type=EXPECTATION_ESCALATION_TYPE, source_kind="expectation", severity="SEV1",
+            summary=(f"expectation {src} is OVERDUE: the awaited observation did not arrive AND coverage "
+                     f"proves the channel was HEALTHY throughout the window "
+                     f"(coverage_ref={payload.get('coverage_ref')})."),
+            question=("The awaited observation never arrived over a demonstrably healthy channel — chase "
+                      "the counterparty / source for the missing observation."),
+            exposure=None)
+    if name == "ExpectationIndeterminate":
+        return _EscalationSpec(
+            type=EXPECTATION_ESCALATION_TYPE, source_kind="expectation", severity="SEV1",
+            summary=(f"expectation {src} is INDETERMINATE: the deadline passed while WE WERE BLIND "
+                     f"({payload.get('coverage_gap')})."),
+            question=("We could NOT establish whether the awaited observation arrived — this is OUR "
+                      "blindness, NOT the counterparty's fault. Restore coverage or verify directly; do "
+                      "not treat it as a counterparty failure."),
+            exposure=None)
+    if name == "ExpectationExpired":
+        return _EscalationSpec(
+            type=EXPECTATION_ESCALATION_TYPE, source_kind="expectation", severity="SEV1",
+            summary=(f"expectation {src} EXPIRED: it aged past its terminal window still undischarged and "
+                     f"unresolved."),
+            question=("An overdue / indeterminate expectation reached terminal age without a human "
+                      "resolving it — decide the disposition. Expiry is never silence."),
+            exposure=None)
+    if name == "CompensationFailed":
+        return _EscalationSpec(
+            type="compensation_failed", source_kind="compensation", severity="SEV0",
+            summary=(f"compensation {src} FAILED: the compensating effect did not complete and reality "
+                     f"and the projection are KNOWN to diverge. Exposure: {payload.get('exposure')}."),
+            question=("A compensation FAILED and the exposure stands. Establish reality (VERIFIED or "
+                      "FAILED) and decide the recovery — no timer, retry or model resolves this."),
+            exposure=payload.get("exposure"))
+    if name == "CompensationImpossible":
+        return _EscalationSpec(
+            type="compensation_impossible", source_kind="compensation", severity="SEV0",
+            summary=(f"compensation {src} is NOT_POSSIBLE: it cannot be performed and the system does "
+                     f"NOT pretend it compensated. Exposure: {payload.get('exposure')}."),
+            question=("A required compensation is impossible and the exposure stands. A human must decide "
+                      "how to make reality right — no timer, retry or model resolves this."),
+            exposure=payload.get("exposure"))
+    return None
+
 
 def _severity_value(severity: str | EcSeverity) -> str:
     value = severity.value if isinstance(severity, EcSeverity) else str(severity)

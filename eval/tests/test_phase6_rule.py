@@ -1038,12 +1038,21 @@ def test_the_neighbouring_machines_are_unchanged():
     # WIRES M11 into checkpoint step 6, so freezing either would forbid the sanctioned unit. The
     # three kernel properties CLAUDE.md §10 actually protects are asserted directly by
     # `test_p8_policy_admission.py::test_the_three_kernel_invariants_claude_md_10_protects_still_hold`,
-    # and M11 keeps its own full battery. M1..M10 remain frozen and asserted so.
+    # and M11 keeps its own full battery.
+    #
+    # ### RULE 20 AT U8.4/P8: `work_item.py` (M1) and `exception.py` (M9) LEFT it too, by the same
+    # precedent. U8.4 closes P6-D4 in M1's ONE shared `resolve_decision_ref` (K-1's RULE referent now
+    # resolves against M12's ACTIVE rules — the header note two lines up saying "M7 and M9 in
+    # particular are not edited at all" was TRUE at M12's landing and is corrected here per rule 20:
+    # M9 IS now edited, to consume the F8/F10 escalations) and WIRES M9 as the F8/F10 exception
+    # consumer (M8-AQ-1 / M10-AQ-12). Freezing either would forbid the sanctioned unit; M1 keeps
+    # `test_phase6_work_item.py`, M9 keeps `test_phase6_exception.py`, and `test_p8_u84_seams.py`
+    # asserts the new seam. M2..M8 and M10 remain frozen and asserted so.
     #
     # FIXED-SPECIFICATION: the exact landed machine runtimes named must-stay-byte-identical.
-    machines = ("work_item.py", "pipeline_instance.py", "external_effect.py", "approval.py",
+    machines = ("pipeline_instance.py", "external_effect.py", "approval.py",
                 "observation.py", "identity_binding_claim.py", "conflict.py", "expectation.py",
-                "exception.py", "compensation.py")
+                "compensation.py")
     rel = [f"src/freight_recon/{n}" for n in machines]
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *rel], cwd=ROOT,
                        capture_output=True, text=True)

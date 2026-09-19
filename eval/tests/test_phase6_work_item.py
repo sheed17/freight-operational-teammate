@@ -1042,15 +1042,69 @@ def test_a_non_decision_event_does_not_resolve(tmp_path):
     store.close()
 
 
-def test_a_rule_kind_decision_ref_fails_closed_today(tmp_path):
-    """M12 does not exist yet. A stub that accepted any rule id would make 'closed by an active
-    rule' true of rules that do not exist — refused, and the refusal says why (debt P6-D4)."""
+def _an_active_m12_rule(store, rule_id, *, scope="action_class:raise_invoice", tenant=T_A):
+    """Drive M12 to an ACTIVE rule the way the product does — propose → compile → confirm → activate.
+    Local so `work_item.py` (which `rule` imports) never imports `rule` (the import cycle)."""
+    from freight_recon.rule import M12Machine
+
+    a_human(store, "po", tenant=tenant)
+    m12 = M12Machine(store.conn, tenant=tenant, clock=Clock())
+    m12.propose(scope=scope, kind="GATE_PRECONDITION", effect="DENY",
+                source_instruction=f"instruction {rule_id}", authored_by="po",
+                clauses=[{"field": "pod", "attr": "evidence_condition", "op": "==",
+                          "literal": "consistent", "provenance_class": "SYSTEM_IMPORTED",
+                          "modelled": True}], rule_id=rule_id)
+    m12.compile(rule_id)
+    m12.confirm(rule_id, confirmed_by="po")
+    m12.activate(rule_id, activated_by="po")
+    return m12
+
+
+def test_a_rule_kind_decision_ref_resolves_only_against_an_active_m12_rule(tmp_path):
+    """### P6-D4 CLOSED (U8.4). K-1's RULE referent resolves against M12's `rules`, but ONLY an ACTIVE
+    rule of THIS tenant. A COMPILED (non-ACTIVE) rule, a missing id, a blank ref and an unknown kind all
+    REFUSE. This is the ONE shared resolver (M1/M2/M3/M9/M10); a model never mints a rule (M12's
+    activation is authenticated-human only), so "an ACTIVE rule" already means "a human switched it on".
+    """
     store = make_store(tmp_path)
+    m12 = _an_active_m12_rule(store, "r-active")
+
+    # (a) an ACTIVE rule of this tenant RESOLVES.
+    resolved = resolve_decision_ref(store.conn, tenant=T_A, ref="r-active", kind="RULE")
+    assert resolved.kind == "RULE" and resolved.ref == "r-active" and resolved.event_name is None
+
+    # (b) a COMPILED rule (not ACTIVE) REFUSES, naming its state.
+    m12.propose(scope="action_class:pay_carrier", kind="GATE_PRECONDITION", effect="DENY",
+                source_instruction="x", authored_by="po",
+                clauses=[{"field": "pod", "attr": "evidence_condition", "op": "==",
+                          "literal": "consistent", "provenance_class": "SYSTEM_IMPORTED",
+                          "modelled": True}], rule_id="r-compiled")
+    m12.compile("r-compiled")
     with pytest.raises(DecisionRefUnresolvable) as caught:
-        resolve_decision_ref(store.conn, tenant=T_A, ref="rule-net-30", kind="RULE")
-    assert "M12" in str(caught.value) and "not implemented yet" in str(caught.value)
+        resolve_decision_ref(store.conn, tenant=T_A, ref="r-compiled", kind="RULE")
+    assert "COMPILED" in str(caught.value) and "not ACTIVE" in str(caught.value)
+
+    # (c) a missing rule id REFUSES; (d) a blank ref REFUSES before the RULE branch;
+    # (e) an unknown kind REFUSES.
+    with pytest.raises(DecisionRefUnresolvable) as caught:
+        resolve_decision_ref(store.conn, tenant=T_A, ref="no-such-rule", kind="RULE")
+    assert "names no rule" in str(caught.value)
+    with pytest.raises(DecisionRefUnresolvable):
+        resolve_decision_ref(store.conn, tenant=T_A, ref="   ", kind="RULE")
     with pytest.raises(DecisionRefUnresolvable):
         resolve_decision_ref(store.conn, tenant=T_A, ref="x", kind="SOMETHING_ELSE")
+    store.close()
+
+
+def test_a_rule_ref_active_in_another_tenant_refuses_here(tmp_path):
+    """[C-1]. An ACTIVE rule of tenant A is NOT resolvable from tenant B — the read is tenant-scoped and
+    a cross-tenant rule id is indistinguishable from a missing one, so the RULE referent never leaks
+    authority across tenants."""
+    store = make_store(tmp_path, name="rule-xtenant.db")
+    _an_active_m12_rule(store, "r-xt")
+    with pytest.raises(DecisionRefUnresolvable) as caught:
+        resolve_decision_ref(store.conn, tenant=T_B, ref="r-xt", kind="RULE")
+    assert "names no rule" in str(caught.value)
     store.close()
 
 
