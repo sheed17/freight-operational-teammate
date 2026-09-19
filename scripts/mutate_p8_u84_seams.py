@@ -153,6 +153,32 @@ def _run_edits(edits, guard) -> tuple[str, str]:
     return ("CAUGHT" if caught else "MISS"), ""
 
 
+def test_the_u84_seam_mutation_battery_catches_every_mutant():
+    """### THE PYTEST-COLLECTED ENTRY POINT (CLAUDE.md §6): the standard runner OPERATES this battery
+    DIRECTLY — `python -m pytest scripts/mutate_p8_u84_seams.py` — and reads its exit status, not only
+    the `__main__` CLI. This is the firing-case proof for U8.4's absence-asserting guards: an ABSENCE
+    proves nothing until a realised forbidden state (each mutant) shows the guard still FIRES.
+
+    `main()` runs EVERY mutant — the RULE resolver's ACTIVE gate and its tenant scope, the OVERDUE-vs-
+    INDETERMINATE honesty split, the escalation owner re-check, CompensationFailed's SEV0 loudness and
+    its exposure, the M-33 refusal, the (source_ref, type) coalesce and the redelivery dedup — and
+    each must be CAUGHT (guard GREEN un-mutated, RED under the reintroduced defect, GREEN again after a
+    byte-for-byte in-memory restore, NEVER a `git` undo). It returns 0 only if every mutant is caught,
+    over a non-empty population, so `== 0` is the whole battery, measured, and cannot pass vacuously
+    (M-9). Mirrors `scripts/mutate_phase6_brake.py` / `mutate_p8_policy_admission.py`.
+
+    Deliberately NOT collected by a bare `pytest eval` (outside `testpaths`, not named `test_*.py`); it
+    runs only when named explicitly, which is how a slow mutation battery should be operated — on
+    purpose, never by accident sweeping the suite.
+    """
+    assert len(CASES) >= 9, (
+        f"the U8.4 battery carries {len(CASES)} mutants; it must carry one per load-bearing seam "
+        f"(>=9) for 'every mutant caught' to mean anything (M-9).")
+    assert main() == 0, (
+        "the U8.4 seam mutation battery did NOT report every mutant CAUGHT; a changed absence-asserting "
+        "guard could not be shown to FIRE when its forbidden state was realised (CLAUDE.md §6).")
+
+
 def main() -> int:
     results = [(label, *_run_edits(edits, guard)) for label, edits, guard in CASES]
     print("\n=========== P8 U8.4 SEAM MUTATION BATTERY ===========")

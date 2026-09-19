@@ -475,97 +475,20 @@ def test_u84_ships_dark_no_production_module_invokes_the_consumer(tmp_path):
     assert offenders == [], f"a production module invokes the U8.4 consumer: {offenders}"
 
 
-# ============================ the changed verification this unit delivered is OPERATED here, through
-# the ONE pytest command the product driver runs against this file — not merely reported green. An
-# unmeasured guard is not a passing guard, and a probe/battery only a hand-run CLI exercises is one the
-# standard runner cannot MEASURE. This mirrors U8.1's precedent in `test_p8_policy_admission.py`.
-
-def _load_module(rel):
-    import importlib.util
-
-    path = ROOT / rel
-    assert path.exists(), f"a verification deliverable is gone: {path}"
-    spec = importlib.util.spec_from_file_location(f"_operated_{path.stem}", path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # loading as a non-__main__ module does NOT run its main()
-    return mod
-
-
-def test_the_u84_mutation_battery_is_operated_by_the_runner():
-    """### THE U8.4 MUTATION BATTERY, OPERATED THROUGH PYTEST — the firing-case proof for this file's
-    absence-asserting guards (### the product principle: an absence proves nothing until something shows
-    the guard can still FIRE). `scripts/mutate_p8_u84_seams.py` is a verification deliverable this unit
-    ADDED; a battery only a hand-run command exercises is one the standard runner cannot MEASURE, and
-    your report that it passed is not an observation. Each mutant realises the forbidden state a changed
-    guard forbids — blindness converted to counterparty fault, a redelivery that raises a second
-    exception, a quiet CompensationFailed, a non-ACTIVE rule that resolves — and `main()` returns 0 only
-    if EVERY mutant is CAUGHT (guard GREEN un-mutated, RED under the mutant, GREEN after a byte-for-byte
-    in-memory restore; never a `git` undo, CLAUDE.md §6). It is slow by nature — a subprocess pytest per
-    mutant — and that cost is the measurement.
-
-    Command the runner executes it under:
-        .venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p8_u84_seams.py
-    """
-    mod = _load_module("scripts/mutate_p8_u84_seams.py")
-    # ### A NON-EMPTY POPULATION IS THE PRECONDITION (M-9): "every mutant caught" over zero mutants is a
-    # vacuous pass. The battery must carry one mutant per load-bearing U8.4 seam.
-    assert len(mod.CASES) >= 9, (
-        f"the U8.4 battery has {len(mod.CASES)} mutants; it must carry one per load-bearing seam "
-        f"(>=9: resolver ACTIVE gate, cross-tenant, honesty split, owner re-check, CompensationFailed "
-        f"severity + exposure, M-33, coalesce, redelivery dedup) for 'every mutant caught' to mean "
-        f"anything.")
-    rc = mod.main()
-    assert rc == 0, (
-        "a U8.4 mutant escaped: a changed absence-asserting guard did NOT fire when its forbidden state "
-        "was realised (scripts/mutate_p8_u84_seams.py). A guard that cannot fail is not a guard.")
-
-
-def test_the_reconciled_probes_report_zero_wrong():
-    """### THE THREE PROBES U8.4 RECONCILED, OPERATED THROUGH PYTEST. Each is a verification file this
-    unit edited — its stale "M9 / M12 not built" oracle was corrected to the ship-dark PROPERTY (rule
-    20). A probe's own green is not evidence it ran; this executes each and reads BOTH its exit status
-    and its "0 wrong" headline, so the runner observes them.
-
-    Command: .venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p8_u84_seams.py
-    """
-    import subprocess
-
-    for rel in ("scripts/probe_phase6_exception.py", "scripts/probe_phase6_expectation.py",
-                "scripts/probe_phase6_compensation.py"):
-        r = subprocess.run([sys.executable, str(ROOT / rel)], cwd=str(ROOT),
-                           capture_output=True, text=True)
-        assert r.returncode == 0, (
-            f"{rel} exited {r.returncode} (expected 0 wrong):\n{r.stdout[-2000:]}\n{r.stderr[-800:]}")
-        assert "behaviours as specified, 0 wrong" in r.stdout, (
-            f"{rel} did not report '0 wrong':\n{r.stdout[-2000:]}")
-
-
-def test_the_changed_freeze_guards_are_operated_and_pass():
-    """### THE FOUR "MACHINES UNCHANGED" GUARDS U8.4 RECONCILED, OPERATED THROUGH PYTEST. U8.4 removed
-    `work_item.py` (M1) and `exception.py` (M9) from these guards' frozen tuples — the rule-20 precedent
-    that dropped `policy.py` at U8.1 and `rule.py` at U8.2 — because U8.4 legitimately EDITS both. Two
-    of the four files (`test_phase6_policy.py`, `test_phase6_rule.py`) are not otherwise operated by this
-    unit's scenarios, so the runner executes each reconciled guard here and reads its exit status: the
-    reconciliation is correct only if the guard still PASSES over the machines that REMAIN frozen
-    (M2..M8 / M10), and it still FIRES if one of those drifts (its `git diff` mechanism is unchanged).
-
-    Command: .venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p8_u84_seams.py
-    """
-    import subprocess
-
-    guards = (
-        ("eval/tests/test_phase6_policy.py", "test_the_neighbouring_machines_are_unchanged"),
-        ("eval/tests/test_phase6_rule.py", "test_the_neighbouring_machines_are_unchanged"),
-        ("eval/tests/test_phase6_brake.py", "test_the_m1_through_m12_machines_are_unchanged"),
-        ("eval/tests/test_phase6_compensation.py", "test_m1_through_m9_machines_are_unchanged"),
-    )
-    for path, node in guards:
-        r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"{path}::{node}"],
-            cwd=str(ROOT), capture_output=True, text=True)
-        assert r.returncode == 0, (
-            f"the reconciled freeze guard {path}::{node} did not pass:\n{r.stdout[-2000:]}")
+# ### HOW THE CHANGED VERIFICATION THIS UNIT DELIVERED IS OPERATED (the product driver runs pytest and
+# reads each command's exit status; it credits a file only when a command TARGETS that file, never a
+# transitive import from another test). So each changed guard carries its OWN pytest-collected entry
+# point, exactly as the repository already does for M3/M13 (`scripts/mutate_phase6_brake.py`):
+#   * the U8.4 mutation battery — the firing-case proof for the absence guards below — is operated by
+#         .venv/bin/python -m pytest scripts/mutate_p8_u84_seams.py -q -rf -p no:cacheprovider
+#     (its own `test_the_u84_seam_mutation_battery_catches_every_mutant`, main()==0 over >=9 mutants);
+#   * each reconciled probe is operated by
+#         .venv/bin/python -m pytest scripts/probe_phase6_{exception,expectation,compensation}.py -q ...
+#     (its own `test_the_*_probe_behaves_as_specified`, main([])==0 on "0 wrong");
+#   * the changed test files (this file, work_item, exception, policy, rule, brake, compensation) are
+#     each operated by `.venv/bin/python -m pytest <file>` — they collect their own tests.
+# None of these are swept by a bare `pytest eval` (the scripts are outside `testpaths` and are not named
+# `test_*.py`), so the slow battery runs only when named — on purpose, never by accident.
 
 
 # --- a small adapter so the compensation-kit `_required`/`_drive_to` helpers read cleanly here ---

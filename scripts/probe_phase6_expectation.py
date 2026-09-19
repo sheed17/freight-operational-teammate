@@ -1833,5 +1833,16 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if wrong == 0 else 1
 
 
+def test_the_m8_expectation_probe_behaves_as_specified():
+    """### PYTEST-COLLECTED ENTRY POINT (CLAUDE.md §6). U8.4 reconciled this probe's stale "M9..M12 not
+    built" oracle to the ship-dark property; the standard runner OPERATES the whole probe here —
+    `python -m pytest scripts/probe_phase6_expectation.py` — and reads its exit status, not only the
+    `__main__` CLI. `main([])` runs every case in canonical order and returns 0 only on "behaviours as
+    specified, 0 wrong". Deliberately NOT swept by `pytest eval` (outside `testpaths`, `probe_*.py`)."""
+    assert main([]) == 0, (
+        "the M8 expectation probe reported behaviours NOT as specified (see its '... wrong' line); the "
+        "U8.4 reconciliation of its ship-dark oracle is not observed green here.")
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
