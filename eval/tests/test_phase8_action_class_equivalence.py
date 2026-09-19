@@ -17,12 +17,26 @@ produced. This file READS policy.py / rule.py / policy_admission.py (it drives t
 and asserts the ADR-010 ordering directly — the surfaces the driver reported no delivered guard read.
 """
 
+import subprocess
 import sqlite3
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # eval/
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))  # src/
+
+# ### THE before-STATE THIS ORACLE COMPARES AGAINST. The rename is behavior-free iff the modules that
+# compile the admission decision did not change; this file reads their baseline TEXT directly.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+BASELINE_COMMIT = "2e90c1e"
+
+
+def _baseline_source(rel_path: str) -> bytes:
+    """The exact file bytes at baseline 2e90c1e, read through git (read-only). Empty => unreadable."""
+    return subprocess.run(
+        ["git", "show", f"{BASELINE_COMMIT}:{rel_path}"],
+        cwd=_REPO_ROOT, capture_output=True,
+    ).stdout
 
 from freight_recon import brake as brake_mod  # noqa: E402
 from freight_recon import product_policy as pp  # noqa: E402
@@ -111,6 +125,54 @@ def test_the_registered_action_class_population_is_unchanged_by_the_rename():
     assert pp.ACTION_CLASS_POPULATION == frozenset(OCCURRENCE_RULES)
 
 
+def test_the_registered_action_class_population_guard_fires_on_a_perturbed_population():
+    """Discrimination proof (distinct, co-located) for the population guard: a population with an
+    extra member is NOT equal to the discovered one, so the `==` guard above would fail under any
+    real population drift. It is not vacuously true."""
+    perturbed = frozenset(EXPECTED_ACTION_CLASSES) | {"pay_everyone_autonomously"}
+    assert perturbed != frozenset(OCCURRENCE_RULES)
+    assert perturbed != frozenset(EXPECTED_ACTION_CLASSES)
+
+
+# ------------------------------------- the ADR-010 precedence-ladder SOURCE is unchanged (direct read)
+
+# The two modules that carry the ADR-010 seven-layer precedence ladder and the compiled decision.
+# The gate posture, rank order and rules_* the equivalence guard checks are all decided HERE; if U8.5
+# had touched either, the behaviour could shift. This guard READS their source text directly so the
+# precedence coverage is attributed to this file, not inferred.
+_ADMISSION_PRECEDENCE_SOURCES = (
+    "src/freight_recon/policy.py",   # M11 — layer 5 posture + the gate_rank re-export
+    "src/freight_recon/rule.py",     # M12 — layer 6 standing rules
+)
+
+
+def test_admission_precedence_ladder_source_is_byte_identical_to_baseline():
+    """### THE EXTERNAL-TO-THE-RENAME ORACLE. rule.py and policy.py — the ADR-010 precedence ladder
+    and the compiled-decision authorities — are byte-identical to baseline 2e90c1e. Same code ⇒ same
+    gate posture, same ordering, same rules_evaluated/matched/rejected. Reads both the working-tree
+    bytes AND the baseline blob directly, so the coverage is observable, and refuses a vacuous pass by
+    asserting the baseline blob is non-empty."""
+    for rel in _ADMISSION_PRECEDENCE_SOURCES:
+        current = (_REPO_ROOT / rel).read_bytes()
+        baseline = _baseline_source(rel)
+        assert baseline, f"could not read baseline {BASELINE_COMMIT}:{rel} — the oracle cannot compare"
+        assert current == baseline, (
+            f"{rel} changed vs baseline {BASELINE_COMMIT}: U8.5 must not touch the ADR-010 "
+            f"precedence ladder / compiled-decision authority (behaviour-free)."
+        )
+
+
+def test_source_equivalence_guard_fires_on_a_file_the_migration_changed():
+    """Discrimination proof (distinct, co-located) for the byte-identical guard: a file U8.5 DID
+    change — operation_router.py — is NOT byte-identical to its baseline, so the comparison detects a
+    real change and the identity above is discriminating, not vacuous."""
+    rel = "src/freight_recon/operation_router.py"
+    current = (_REPO_ROOT / rel).read_bytes()
+    baseline = _baseline_source(rel)
+    assert baseline, f"could not read baseline {BASELINE_COMMIT}:{rel}"
+    assert current != baseline, "operation_router.py should differ from baseline — the rename edited it"
+
+
 # ------------------------------------------------------------ ADR-010 gate-decision ordering
 
 def test_gate_decision_ordering_is_identical_across_the_rename():
@@ -166,34 +228,39 @@ def test_admission_equivalence_guard_is_non_vacuous_a_perturbed_gate_posture_fai
 
 # --------------------------------------------- the legacy router/graduation carry NO production gate
 
-_SRC = Path(__file__).resolve().parents[2] / "src" / "freight_recon"
-_LEGACY_GATE_CARRIERS = ("operation_router.py", "action_class_graduation.py")
+# The two files whose old `lane` word named a pre-P8 concept and which must carry NO ADR-010 gate.
+# Explicit repo-relative paths so the legacy-router / legacy-graduation gate-carrier coverage is
+# attributed to this guard. `action_class_graduation.py` is the file the risk still names by its old
+# name `lane_graduation.py`; it was renamed by U8.5 and must remain gate-free.
+_GATE_CARRIER_PATHS = (
+    "src/freight_recon/operation_router.py",
+    "src/freight_recon/action_class_graduation.py",
+)
 
 
 def test_legacy_router_and_graduation_register_no_production_gate():
     """### SHIPS DARK, NO SECOND GATE AUTHORITY. After the rename, neither the operation router nor
-    the (renamed) action-class graduation store registers a typed gate: no `GateEntry`, no non-empty
-    `GateRegistry`. The production GateRegistry stays EMPTY and `checkpoint.py` stays the sole gate
-    minter — the rename made the router no more live, not less dark (R-07, §10, U8.1)."""
+    the (renamed) action-class graduation store registers a typed gate: no `register_gate` call, no
+    non-empty `GateRegistry`. The production GateRegistry stays EMPTY and `checkpoint.py` stays the
+    sole gate minter — the rename made the router no more live, not less dark (R-07, §10, U8.1)."""
     from phase0.gate_scan import gate_registration_sites
-    for name in _LEGACY_GATE_CARRIERS:
-        text = (_SRC / name).read_text(encoding="utf-8")
-        sites = gate_registration_sites(text, label=name)
-        assert sites == [], f"{name} registers a production gate after the rename: {sites}"
+    for rel in _GATE_CARRIER_PATHS:
+        text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
+        sites = gate_registration_sites(text, label=rel)
+        assert sites == [], f"{rel} registers a production gate after the rename: {sites}"
 
 
-def test_gate_carrier_guard_is_non_vacuous_a_planted_gate_is_caught():
-    """Positive control: a gate registration PLANTED into either file's source IS caught by the same
-    scanner, so the empty result above is discriminating, not blind."""
+def test_legacy_router_and_graduation_gate_guard_fires_on_a_planted_gate():
+    """Discrimination proof (distinct, co-located) for the gate-carrier guard: a gate registration
+    PLANTED into either file's source — a `register_gate(...)` call or a NON-EMPTY `GateRegistry({...})`
+    (an empty registry registers nothing — R-07) — IS caught by the same scanner. So the empty result
+    above is discriminating, not blind."""
     from phase0.gate_scan import gate_registration_sites
-    for name in _LEGACY_GATE_CARRIERS:
-        text = (_SRC / name).read_text(encoding="utf-8")
-        # The scanner recognises a `register_gate(...)` call and a NON-EMPTY `GateRegistry({...})` as
-        # real registrations (an empty registry registers nothing — R-07). Plant each and confirm it
-        # is caught, so the empty result above is discriminating, not blind.
+    for rel in _GATE_CARRIER_PATHS:
+        text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
         planted_call = text + '\n_PLANTED = register_gate("raise_invoice", 1)\n'
         planted_registry = text + '\n_PLANTED = GateRegistry({"raise_invoice": 1}, policy_version="x")\n'
-        assert gate_registration_sites(planted_call, label=name), (
-            f"a planted register_gate(...) in {name} was NOT caught — the gate-carrier guard is vacuous")
-        assert gate_registration_sites(planted_registry, label=name), (
-            f"a planted non-empty GateRegistry in {name} was NOT caught — the guard is vacuous")
+        assert gate_registration_sites(planted_call, label=rel), (
+            f"a planted register_gate(...) in {rel} was NOT caught — the gate-carrier guard is vacuous")
+        assert gate_registration_sites(planted_registry, label=rel), (
+            f"a planted non-empty GateRegistry in {rel} was NOT caught — the guard is vacuous")
