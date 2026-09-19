@@ -36,7 +36,7 @@ from freight_recon.commit_key import (
     UnresolvedCanonicalOccurrence,
     occurrence_key_for,
 )
-from freight_recon.operation_router import OperationRouter, _commit_reservation, freight_lanes
+from freight_recon.operation_router import OperationRouter, _commit_reservation, freight_routes
 from freight_recon.operator_agent import OperatorAgent
 from freight_recon.slack_delegate import CommandIntent, CommandKind
 from freight_recon.workflow import WorkflowStore
@@ -75,7 +75,7 @@ def _operate(summary, params):
 
 
 def _lane(name):
-    return next(l for l in freight_lanes() if l.name == name)
+    return next(l for l in freight_routes() if l.name == name)
 
 
 def _payment_params(**extra):
@@ -117,7 +117,7 @@ def test_4_changing_the_free_form_value_between_retries_cannot_produce_a_second_
         actuator = _Actuator()
         for attempt in ("attempt-1", "attempt-2", "attempt-3"):
             result = OperationRouter(
-                lanes=freight_lanes(), build_agent=_agent(actuator),
+                routes=freight_routes(), build_agent=_agent(actuator),
                 approved_amount_for=lambda _i: "500.00", tenant="acme", commit_store=store,
             ).run(_operate("record a payment on INV-9",
                            _payment_params(occurrence_key=attempt, commit=True)),
@@ -143,7 +143,7 @@ def test_5_payment_amount_cannot_distinguish_two_payment_occurrences():
 def test_6_two_canonical_payment_application_identities_are_two_legitimate_partial_payments():
     """The contract, at the derivation: distinct Payment Applications => distinct logical effects.
 
-    Asserted against the canonical type rather than a lane, because Payment Application persistence
+    Asserted against the canonical type rather than an action class, because Payment Application persistence
     does not exist (P9) and faking it in production to make a test pass would be the fake-oracle
     failure the acceptance rules forbid.
     """
@@ -259,7 +259,7 @@ def test_14_and_15_missing_canonical_occurrence_means_zero_actuator_calls_and_no
     try:
         actuator = _Actuator()
         result = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent(actuator),
+            routes=freight_routes(), build_agent=_agent(actuator),
             approved_amount_for=lambda _i: amount, tenant="acme", commit_store=store,
         ).run(_operate({"record_payment": "record a payment on INV-9",
                         "adjust_invoice": "credit invoice INV-9",

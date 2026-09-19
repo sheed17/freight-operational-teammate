@@ -442,6 +442,10 @@ TARGET_SCHEMA: dict[str, str] = {
             handle_digest TEXT,            -- P3
             claimed_at TEXT,
             -- legacy descriptive columns, carried so history stays attributable
+            -- U8.5: `lane` is a NON-AUTHORITATIVE mirror of `action_class` (written byte-identical to
+            -- it by the WorkflowStore legacy path, never read for any decision — the lookup queries
+            -- `action_class`). Retained only so pre-migration rows stay attributable. The M3/P3
+            -- checkpoint path populates action_class and leaves this '' (it never uses the mirror).
             lane TEXT NOT NULL DEFAULT '',
             load_ref TEXT NOT NULL DEFAULT '',
             party TEXT NOT NULL DEFAULT '',
@@ -452,14 +456,19 @@ TARGET_SCHEMA: dict[str, str] = {
         )""",
     # Already tenant-first before Phase 2, and carried here so ONE table in the tree owns the
     # canonical shape. A fresh database must not have to run a migration to obtain it.
+    # U8.5: keyed by action_class (WHAT effect the daily autonomous-run cap counts), tenant-first.
+    # The identifier was mechanically determined to be an action_class — it is OperationRouter's
+    # `route.name` (the WHAT-effect), the same population as commit_key.OCCURRENCE_RULES — not a
+    # policy scope distinct from it, so the column carries the canonical name rather than the legacy
+    # `lane`. The atomic-cap concurrency behaviour is unchanged; only the column name moved.
     "autonomous_run_counters": """
         CREATE TABLE autonomous_run_counters (
             tenant TEXT NOT NULL,
-            lane TEXT NOT NULL,
+            action_class TEXT NOT NULL,
             day TEXT NOT NULL,
             runs INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (tenant, lane, day)
+            PRIMARY KEY (tenant, action_class, day)
         )""",
     # THE OWNER ASSERTION. Append-only: a prior assertion is never rewritten, because rewriting one
     # to hide a failed attempt is precisely how an audit trail stops being evidence. A rerun that

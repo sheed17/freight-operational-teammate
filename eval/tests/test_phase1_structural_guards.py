@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from freight_recon.commit_key import OCCURRENCE_RULES
-from freight_recon.operation_router import freight_lanes
+from freight_recon.operation_router import freight_routes
 from phase0.evaluation import Evaluation
 from phase0.sources import SCRIPTS, SRC, python_files, rel
 
@@ -101,17 +101,17 @@ def test_the_identity_hash_is_built_only_from_identity_fields():
     assert referenced & allowed, "the derivation reads no identity fields at all"
 
 
-def test_every_consequential_lane_declares_an_occurrence_rule():
+def test_every_consequential_action_class_declares_an_occurrence_rule():
     """A new consequential operation with no Commit Key obligation fails here, before it can run."""
-    ev = Evaluation(name="phase1.lane_occurrence_rules", sources_inspected=[rel(ROUTER)])
-    for lane in freight_lanes():
-        ev.candidates.append(lane.name)
-        ev.parsed.append(lane.name)
-        ev.accepted.append(lane.name)
+    ev = Evaluation(name="phase1.action_class_occurrence_rules", sources_inspected=[rel(ROUTER)])
+    for route in freight_routes():
+        ev.candidates.append(route.name)
+        ev.parsed.append(route.name)
+        ev.accepted.append(route.name)
     ev.require_population(minimum=8)
-    undeclared = [l.name for l in freight_lanes() if l.name not in OCCURRENCE_RULES]
+    undeclared = [r.name for r in freight_routes() if r.name not in OCCURRENCE_RULES]
     assert not undeclared, (
-        f"consequential lane(s) with no occurrence rule: {undeclared}\n"
+        f"consequential action class(es) with no occurrence rule: {undeclared}\n"
         f"Every action class must state whether repetition is legitimate BEFORE it may run."
     )
 
@@ -138,7 +138,7 @@ def test_non_money_effects_are_actually_reserved_not_merely_keyed():
         "will_commit excludes non-money effects again, so their Commit Key is never used and the "
         "same POD can be filed twice (AC-SAFE-013)"
     )
-    assert "will_commit = lane.requires_amount" not in text
+    assert "will_commit = route.requires_amount" not in text
 
 
 def test_the_legacy_bridge_has_no_claim_authority():
@@ -210,9 +210,9 @@ FORBIDDEN_OCCURRENCE_SOURCES = (
 )
 
 
-def _consequential_lanes():
+def _consequential_routes():
     from freight_recon.commit_key import OCCURRENCE_RULES
-    return [l for l in freight_lanes() if l.name in OCCURRENCE_RULES]
+    return [r for r in freight_routes() if r.name in OCCURRENCE_RULES]
 
 
 # The ONLY request-payload keys the identity builder may read. An allowlist, not a blocklist: a
@@ -377,7 +377,7 @@ def test_a_canonical_occurrence_cannot_be_built_from_a_request_payload():
         occ.occurrence_id = "pa-2"   # type: ignore[misc]
 
 
-def test_every_repetition_legitimate_lane_names_a_canonical_source_a_phase_and_an_owner():
+def test_every_repetition_legitimate_action_class_names_a_canonical_source_a_phase_and_an_owner():
     """No operation may sit fail-closed with no stated way out. Name the entity and who builds it."""
     from freight_recon.commit_key import (
         CANONICAL_OCCURRENCE_REQUIRED,
@@ -407,9 +407,9 @@ def test_the_canonical_field_names_match_the_frozen_specifications():
         "adjust_invoice": ("compensation_id", "Compensation"),
         "check_call": ("expectation_id", "Expectation"),
     }
-    for lane, (field, entity) in expected.items():
-        src = CANONICAL_OCCURRENCE_SOURCES[lane]
-        assert src.field == field, f"{lane}: {src.field!r} is not the frozen field name {field!r}"
+    for action_class, (field, entity) in expected.items():
+        src = CANONICAL_OCCURRENCE_SOURCES[action_class]
+        assert src.field == field, f"{action_class}: {src.field!r} is not the frozen field name {field!r}"
         assert src.entity == entity
 
     specs = Path(__file__).resolve().parents[2] / "docs" / "specifications"

@@ -241,7 +241,7 @@ def _reservation(key="ck-shared"):
     """Note what is ABSENT: a tenant. `claim_operation_commit` has no tenant parameter, so a caller
     cannot supply one — ownership comes from the store binding or not at all. That is stronger than
     ignoring a caller's value, and it is why the override test below asserts the SIGNATURE."""
-    return {"commit_key": key, "target_system": "tms", "lane": "raise_invoice",
+    return {"commit_key": key, "target_system": "tms", "action_class": "raise_invoice",
             "load_ref": "LD-1", "party": "ACME", "approved_amount": "2850.00"}
 
 
@@ -377,23 +377,23 @@ def test_action_claims_are_tenant_scoped(tmp_path):
 
 def test_router_and_store_tenants_must_match(tmp_path):
     """A Commit Key minted for one tenant and persisted under another is a cross-tenant defect."""
-    from freight_recon.operation_router import OperationRouter, freight_lanes
+    from freight_recon.operation_router import OperationRouter, freight_routes
 
     store = _store(tmp_path, A)
     try:
         with pytest.raises(ValueError, match="does not match its commit_store tenant"):
-            OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None,
+            OperationRouter(routes=freight_routes(), build_agent=lambda **_: None,
                             tenant=B, commit_store=store)
     finally:
         store.close()
 
 
 def test_router_with_matching_tenant_is_accepted(tmp_path):
-    from freight_recon.operation_router import OperationRouter, freight_lanes
+    from freight_recon.operation_router import OperationRouter, freight_routes
 
     store = _store(tmp_path, A)
     try:
-        r = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None,
+        r = OperationRouter(routes=freight_routes(), build_agent=lambda **_: None,
                             tenant=A, commit_store=store)
         assert r.tenant == store.tenant
     finally:

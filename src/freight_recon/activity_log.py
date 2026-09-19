@@ -26,7 +26,9 @@ class ActivityEvent:
 
 
 def _ref(payload: dict) -> str | None:
-    for key in ("load_id", "load_ref", "invoice_number", "lane"):
+    # U8.5: `action_class` is the canonical WHAT-effect key; legacy `lane` is accepted for a
+    # pre-migration persisted payload (bounded, read-only compat).
+    for key in ("load_id", "load_ref", "invoice_number", "action_class", "lane"):
         val = payload.get(key)
         if val:
             return str(val)
@@ -34,10 +36,10 @@ def _ref(payload: dict) -> str | None:
 
 
 def _op_applied(p: dict) -> tuple[str, str]:
-    lane = p.get("lane") or "operation"
+    action_class = p.get("action_class") or p.get("lane") or "operation"
     status = p.get("status", "")
     amt = f" · ${p['approved_amount']}" if p.get("approved_amount") else ""
-    return "🤖", f"Ran {lane} — {status}{amt}"
+    return "🤖", f"Ran {action_class} — {status}{amt}"
 
 
 def _op_failed(p: dict) -> tuple[str, str]:

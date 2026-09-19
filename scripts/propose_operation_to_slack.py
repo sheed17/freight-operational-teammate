@@ -16,7 +16,7 @@ Prereqs: the teammate running with `--enable-operation-router --allowed-slack-us
 
 Example:
   python scripts/propose_operation_to_slack.py --client-config configs/clients/rasheed.json \
-      --channel C0123 --lane raise_invoice --customer Acme --load-ref LD-9 --amount 2850.00
+      --channel C0123 --action-class raise_invoice --customer Acme --load-ref LD-9 --amount 2850.00
 """
 
 from __future__ import annotations
@@ -46,7 +46,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-config", required=True, help="client delivery config (for the signer + Slack token)")
     parser.add_argument("--channel", required=True, help="Slack channel id to post the proposal into")
-    parser.add_argument("--lane", required=True, help="bounded lane to run, e.g. raise_invoice / record_payable")
+    parser.add_argument("--action-class", required=True, dest="action_class",
+                        help="bounded action class to run, e.g. raise_invoice / record_payable")
     parser.add_argument("--amount", required=True, help="the human-approvable amount (from the rate con/reconciliation)")
     parser.add_argument("--customer", default=None)
     parser.add_argument("--carrier", default=None)
@@ -64,12 +65,12 @@ def main() -> int:
     if not token:
         parser.error(f"no Slack bot token in env var {config.slack.bot_token_env!r}")
 
-    params: dict = {"lane": args.lane}
+    params: dict = {"action_class": args.action_class}
     for key, val in (("customer", args.customer), ("carrier", args.carrier), ("load_ref", args.load_ref)):
         if val:
             params[key] = val
     party = args.customer or args.carrier or "the counterparty"
-    summary = args.summary or f"Ready to run {args.lane} for {party}" + (f" on {args.load_ref}" if args.load_ref else "")
+    summary = args.summary or f"Ready to run {args.action_class} for {party}" + (f" on {args.load_ref}" if args.load_ref else "")
     intent = CommandIntent(kind=CommandKind.OPERATE, summary=summary, params=params)
 
     message = build_operation_proposal_message(

@@ -17,12 +17,12 @@ from freight_recon.summary import DailySummary  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 
 
-def _applied(store, *, lane, status, amount=None, note="", summary="", steps=None):
+def _applied(store, *, action_class, status, amount=None, note="", summary="", steps=None):
     store.add_security_event(
         "slack_operation_applied",
         actor="U_OWNER",
         payload={
-            "lane": lane, "status": status, "approved_amount": amount,
+            "action_class": action_class, "status": status, "approved_amount": amount,
             "note": note, "summary": summary, "steps": steps or [],
             "channel_id": "C_OPS", "thread_ts": "1.1",
         },
@@ -41,9 +41,9 @@ def _daily(**kw):
 def test_receipts_are_read_from_the_audit_log(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
-        _applied(store, lane="raise_invoice", status="DONE", amount="2850.00",
+        _applied(store, action_class="raise_invoice", status="DONE", amount="2850.00",
                  note="invoice INV-4912 verified")
-        _applied(store, lane="record_payable", status="ESCALATED", summary="customer not found")
+        _applied(store, action_class="record_payable", status="ESCALATED", summary="customer not found")
         receipts = build_operation_receipts(store)
         assert [r.status for r in receipts] == ["DONE", "ESCALATED"]
         assert receipts[0].proof == "INV-4912" and receipts[0].amount == "2850.00"
@@ -54,11 +54,11 @@ def test_receipts_are_read_from_the_audit_log(tmp_path):
 def test_value_digest_tallies_invoiced_and_payables_only_on_done(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
-        _applied(store, lane="raise_invoice", status="DONE", amount="2850.00")
-        _applied(store, lane="raise_invoice", status="DONE", amount="1150.00")
-        _applied(store, lane="raise_invoice", status="FAILED", amount="9999.00")  # must NOT count
-        _applied(store, lane="record_payable", status="DONE", amount="1200.00")
-        _applied(store, lane="record_payable", status="ESCALATED")
+        _applied(store, action_class="raise_invoice", status="DONE", amount="2850.00")
+        _applied(store, action_class="raise_invoice", status="DONE", amount="1150.00")
+        _applied(store, action_class="raise_invoice", status="FAILED", amount="9999.00")  # must NOT count
+        _applied(store, action_class="record_payable", status="DONE", amount="1200.00")
+        _applied(store, action_class="record_payable", status="ESCALATED")
         digest = build_value_digest(store)
         assert digest.invoices_raised == 2 and digest.invoiced_amount == "4000.00"
         assert digest.payables_recorded == 1 and digest.payables_amount == "1200.00"
@@ -73,7 +73,7 @@ def test_value_digest_tallies_invoiced_and_payables_only_on_done(tmp_path):
 def test_value_digest_folds_in_ap_reconciliation_numbers(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
-        _applied(store, lane="raise_invoice", status="DONE", amount="2850.00")
+        _applied(store, action_class="raise_invoice", status="DONE", amount="2850.00")
         daily = _daily(auto_cleared=10, needs_review=3,
                        potential_overbilling_flagged="1310.00", confirmed_recovered="940.00")
         digest = build_value_digest(store, daily=daily)
@@ -91,7 +91,7 @@ def test_ar_invoice_never_inflates_the_carrier_overbilling_recovered_bucket(tmp_
     # NEVER be counted as money "recovered" from carrier overbilling (an AP concept).
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
-        _applied(store, lane="raise_invoice", status="DONE", amount="9999.00")  # big AR invoice
+        _applied(store, action_class="raise_invoice", status="DONE", amount="9999.00")  # big AR invoice
         daily = _daily(potential_overbilling_flagged="100.00", confirmed_recovered="40.00")
         digest = build_value_digest(store, daily=daily)
         # Recovered stays the AP number; the $9,999 AR invoice lives only in the invoiced bucket.
@@ -105,7 +105,7 @@ def test_ar_invoice_never_inflates_the_carrier_overbilling_recovered_bucket(tmp_
 def test_hours_saved_is_a_tunable_estimate(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
-        _applied(store, lane="raise_invoice", status="DONE", amount="100.00")
+        _applied(store, action_class="raise_invoice", status="DONE", amount="100.00")
         daily = _daily(auto_cleared=0, needs_review=0)
         # 1 invoice * 30 min = 30 min = 0.5 hr
         digest = build_value_digest(store, daily=daily, minutes=MinutesPerTask(invoice_raised=30))
@@ -116,22 +116,22 @@ def test_hours_saved_is_a_tunable_estimate(tmp_path):
 
 def test_render_receipt_shapes_per_status():
     # Verified (read back) shows "(verified)"; a prose-only id shows "(reported by agent)".
-    done = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="DONE",
+    done = render_operation_receipt(OperationReceipt(action_class="raise_invoice", status="DONE",
                                                      amount="2850.00", proof="INV-4912", verified=True))
     assert done.startswith("✅ Done — customer invoice · $2850.00 — INV-4912 (verified)")
-    reported = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="DONE",
+    reported = render_operation_receipt(OperationReceipt(action_class="raise_invoice", status="DONE",
                                                          amount="2850.00", proof="INV-4912", verified=False))
     assert "INV-4912 (reported by agent)" in reported and "(verified)" not in reported
 
-    esc = render_operation_receipt(OperationReceipt(lane="raise_invoice", status="ESCALATED",
+    esc = render_operation_receipt(OperationReceipt(action_class="raise_invoice", status="ESCALATED",
                                                     summary="customer field missing"))
     assert esc.startswith("✋ I need you") and "customer field missing" in esc
 
-    refused = render_operation_receipt(OperationReceipt(lane=None, status="REFUSED",
+    refused = render_operation_receipt(OperationReceipt(action_class=None, status="REFUSED",
                                                         summary="no known lane"))
     assert refused.startswith("🚫 I won't improvise")
 
-    failed = render_operation_receipt(OperationReceipt(lane="record_payable", status="FAILED",
+    failed = render_operation_receipt(OperationReceipt(action_class="record_payable", status="FAILED",
                                                        amount="1200.00"))
     assert failed.startswith("⚠️ Couldn't finish — carrier payable · $1200.00")
 
@@ -218,7 +218,7 @@ def test_receipt_from_result_carries_and_renders_the_trace():
         {"action": "READ", "target": "invoice", "observed": "#560010", "ok": True},
     ]
     receipt = receipt_from_result(
-        SimpleNamespace(lane="raise_invoice", status="DONE", note="Invoice #560010 saved", steps=steps),
+        SimpleNamespace(action_class="raise_invoice", status="DONE", note="Invoice #560010 saved", steps=steps),
         amount="2500.00",
     )
     assert receipt.trace == ["Committed: Create Invoice", "Read invoice → #560010"]
@@ -231,6 +231,6 @@ def test_receipt_from_result_carries_and_renders_the_trace():
 
 
 def test_refused_receipt_has_no_trace_since_nothing_ran():
-    r = OperationReceipt(lane=None, status="REFUSED", summary="unknown request",
+    r = OperationReceipt(action_class=None, status="REFUSED", summary="unknown request",
                          trace=["should-not-render"])
     assert render_operation_receipt(r) == "🚫 I won't improvise — unknown request"

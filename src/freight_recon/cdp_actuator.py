@@ -258,7 +258,7 @@ class CdpActuator:
 
         The file is supplied by the RUNTIME, never chosen by the model — the same fence as money
         amounts. Returns False (a soft-failed action) if the file is missing or there is no file-input
-        on the page, so a missing artifact fails CLOSED and the lane escalates instead of "attaching"
+        on the page, so a missing artifact fails CLOSED and the action class escalates instead of "attaching"
         nothing."""
         ok = self.session.set_file_input(file_path, target=target)
         if ok:

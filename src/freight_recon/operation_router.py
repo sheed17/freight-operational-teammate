@@ -1,17 +1,25 @@
 """The request->agent->result bridge: a request becomes a BOUNDED goal the embedded agent drives.
 
 This is "Version B" of the delegate loop. The owner makes a request; Neyma recognizes it as one of a
-small set of KNOWN workflow lanes (raise an invoice, record a carrier payable, ...) and hands the
-agent a *bounded* goal scoped to that lane. The agent (``OperatorAgent``) then drives the live TMS
-toward the goal — money-fenced and approval-gated — and the result is rendered back as a receipt the
-owner reads in Slack ("Done — invoice #4912, $2,850, verified" / "Stuck on the customer field").
+small set of KNOWN action classes (raise an invoice, record a carrier payable, ...) and hands the
+agent a *bounded* goal scoped to that action class. The agent (``OperatorAgent``) then drives the live
+TMS toward the goal — money-fenced and approval-gated — and the result is rendered back as a receipt
+the owner reads in Slack ("Done — invoice #4912, $2,850, verified" / "Stuck on the customer field").
 
-Why a lane registry instead of "do whatever the request says":
+### VOCABULARY (U8.5): what this module used to call a "lane" is an **action_class** — WHAT
+consequential effect is attempted (``raise_invoice`` / ``record_payable`` / ...). It is the same
+population U8.1 registers (``commit_key.OCCURRENCE_RULES`` / ``product_policy.ACTION_CLASS_POPULATION``);
+there is no second registry. ``ActionClassRoute.name`` IS the action_class, and it is exactly the value
+already written to ``LogicalEffect.action_class`` and ``effect_grants.action_class``. The migration is
+mechanical and behavior-free: it changes no gate, no cap, no approval requirement, and enables no
+autonomy — every action class remains ``HUMAN_APPROVAL_REQUIRED`` and the router still ships dark.
+
+Why an action-class registry instead of "do whatever the request says":
 - An open-ended "free goal" agent is the demo version; in money ops it eventually does something
-  confident and wrong. The lane registry is the boundary that makes autonomous operation safe: a
-  request that matches no known lane is REFUSED, not improvised.
-- The lane decides the goal; the human-approved amount (never the model) supplies money; the agent's
-  own consequential gate still fires on the committing action. Three independent guards, all reused.
+  confident and wrong. The registry is the boundary that makes autonomous operation safe: a
+  request that matches no known action class is REFUSED, not improvised.
+- The action class decides the goal; the human-approved amount (never the model) supplies money; the
+  agent's own consequential gate still fires on the committing action. Three independent guards, reused.
 
 Pure and injectable: ``build_agent`` constructs the (real or fake) ``OperatorAgent``, so the routing +
 boundedness + receipt logic is unit-tested without a browser or a model.
@@ -36,27 +44,41 @@ from freight_recon.workflow import WorkflowStore, normalize_money_amount
 GoalBuilder = Callable[[CommandIntent], str]
 
 
-@dataclass
-class OperationLane:
-    """A known, safe-to-run workflow the agent is allowed to drive.
+def _requested_action_class(intent) -> str:
+    """The action_class an intent explicitly names, if any — read at the inbound boundary ONCE.
 
-    ``matches`` decides if this lane handles an intent (keyword/param based for now). ``build_goal``
-    renders the BOUNDED goal handed to the agent. ``requires_amount`` marks a money lane: it must have a
-    human-approved amount bound before it may run, or the router refuses at the front door.
+    U8.5 bounded compatibility: the canonical param is ``action_class``; a legacy ``lane`` key is
+    accepted here and translated exactly once, so an old serialized payload still routes. The legacy
+    key never survives internally as authority — only the returned string does, and it can only ever
+    select a route the router was CONSTRUCTED with (see ``ActionClassRoute.matches``), so inbound
+    content can never conjure an unregistered action class.
+    """
+    params = intent.params or {}
+    return str(params.get("action_class") or params.get("lane") or "").lower()
+
+
+@dataclass
+class ActionClassRoute:
+    """A known, safe-to-run action class the agent is allowed to drive.
+
+    ``matches`` decides if this route handles an intent (keyword/param based for now). ``build_goal``
+    renders the BOUNDED goal handed to the agent. ``requires_amount`` marks a money action class: it
+    must have a human-approved amount bound before it may run, or the router refuses at the front door.
     """
 
     name: str
     keywords: tuple[str, ...]
     build_goal: GoalBuilder
     requires_amount: bool = True
-    # A document lane (e.g. file_document) must have a real file resolved before it runs — the document
-    # fence, mirror of requires_amount: no file bound => refuse at the front door instead of "attaching" nothing.
+    # A document action class (e.g. file_document) must have a real file resolved before it runs — the
+    # document fence, mirror of requires_amount: no file bound => refuse at the front door instead of
+    # "attaching" nothing.
     requires_document: bool = False
 
     def matches(self, intent: CommandIntent) -> bool:
         hint = (intent.summary or "") + " " + " ".join(str(v) for v in (intent.params or {}).values())
         hint = hint.lower()
-        if str((intent.params or {}).get("lane", "")).lower() == self.name:
+        if _requested_action_class(intent) == self.name:
             return True
         return any(k in hint for k in self.keywords)
 
@@ -66,34 +88,34 @@ class OperationResult:
     """The outcome of a request, rendered for the owner. ``status`` mirrors the agent plus REFUSED."""
 
     status: str  # DONE | ESCALATED | FAILED | REFUSED
-    lane: str | None
+    action_class: str | None
     note: str
     steps: list[dict] = field(default_factory=list)
 
     def to_slack(self) -> str:
-        lane = f" (lane: {self.lane})" if self.lane else ""
+        ac = f" ({self.action_class})" if self.action_class else ""
         if self.status == "DONE":
-            return f"✅ Done{lane} — {self.note}"
+            return f"✅ Done{ac} — {self.note}"
         if self.status == "ESCALATED":
-            return f"✋ I need you{lane} — {self.note}"
+            return f"✋ I need you{ac} — {self.note}"
         if self.status == "REFUSED":
             return f"🚫 I won't improvise on this — {self.note}"
-        return f"⚠️ Couldn't finish{lane} — {self.note}"
+        return f"⚠️ Couldn't finish{ac} — {self.note}"
 
 
 class OperationRouter:
-    """Routes a recognized OPERATE intent to a known lane and drives the agent through it (gated).
+    """Routes a recognized OPERATE intent to a known action class and drives the agent through it (gated).
 
     ``build_agent(goal_amount, approve)`` returns an :class:`OperatorAgent` wired to the real Actuator +
     model at the edge (a fake in tests). ``approved_amount_for(intent)`` yields the human-approved amount
-    for a money lane — there is no fallback to a model-chosen number; if a money lane has no approved
-    amount, the request is refused fail-closed.
+    for a money action class — there is no fallback to a model-chosen number; if a money action class has
+    no approved amount, the request is refused fail-closed.
     """
 
     def __init__(
         self,
         *,
-        lanes: list[OperationLane],
+        routes: list[ActionClassRoute],
         build_agent: Callable[..., OperatorAgent],
         approved_amount_for: Callable[[CommandIntent], str | None] | None = None,
         document_for: Callable[[CommandIntent], str | None] | None = None,
@@ -106,14 +128,14 @@ class OperationRouter:
         browser_lock=None,
         browser_health_check: Callable[[], object] | None = None,
     ) -> None:
-        self.lanes = lanes
+        self.routes = routes
         self.build_agent = build_agent
         self.approved_amount_for = approved_amount_for or (lambda _i: None)
-        # Resolves the local file a document lane should attach (POD/BOL/rate con for the bound load).
-        # The RUNTIME picks the file; the model never names a path (mirror of approved_amount_for).
+        # Resolves the local file a document action class should attach (POD/BOL/rate con for the bound
+        # load). The RUNTIME picks the file; the model never names a path (mirror of approved_amount_for).
         self.document_for = document_for or (lambda _i: None)
-        # Optional LaneGraduation policy: governs whether a consequential lane may run WITHOUT a
-        # per-run human approval. Absent/ungraduated => supervised (fail-safe).
+        # Optional ActionClassGraduation policy: governs whether a consequential action class may run
+        # WITHOUT a per-run human approval. Absent/ungraduated => supervised (fail-safe).
         self.graduation = graduation
         self.tenant = tenant
         self.target_system = target_system
@@ -137,35 +159,35 @@ class OperationRouter:
         self.browser_lock = browser_lock
         self.browser_health_check = browser_health_check
 
-    def lane_for(self, intent: CommandIntent) -> OperationLane | None:
-        for lane in self.lanes:
-            if lane.matches(intent):
-                return lane
+    def route_for(self, intent: CommandIntent) -> ActionClassRoute | None:
+        for route in self.routes:
+            if route.matches(intent):
+                return route
         return None
 
     def run(self, intent: CommandIntent, *, approve: Callable | None = None) -> OperationResult:
-        lane = self.lane_for(intent)
-        if lane is None:
+        route = self.route_for(intent)
+        if route is None:
             return OperationResult(
                 "REFUSED", None,
-                "no known workflow lane handles this request, and I don't act on requests I haven't "
+                "no known action class handles this request, and I don't act on requests I haven't "
                 "been taught to run safely. Ask for a supported action (e.g. invoicing a delivered load).",
             )
 
-        amount = self.approved_amount_for(intent) if lane.requires_amount else None
-        if lane.requires_amount and not amount:
-            # Money fence at the front door: a money lane never runs off a model-chosen figure.
+        amount = self.approved_amount_for(intent) if route.requires_amount else None
+        if route.requires_amount and not amount:
+            # Money fence at the front door: a money action class never runs off a model-chosen figure.
             return OperationResult(
-                "ESCALATED", lane.name,
+                "ESCALATED", route.name,
                 "this is a money action but no human-approved amount is bound to it yet — approve an "
                 "amount and I'll run it through the gates.",
             )
 
-        document_path = self.document_for(intent) if lane.requires_document else None
-        if lane.requires_document and not document_path:
-            # Document fence at the front door: a filing lane never runs without a real file to attach.
+        document_path = self.document_for(intent) if route.requires_document else None
+        if route.requires_document and not document_path:
+            # Document fence at the front door: a filing action class never runs without a real file.
             return OperationResult(
-                "ESCALATED", lane.name,
+                "ESCALATED", route.name,
                 "this is a document-filing action but I don't have the file to attach yet — I couldn't "
                 "find the document for that load. Point me at it and I'll file it.",
             )
@@ -177,71 +199,72 @@ class OperationRouter:
         unidentifiable: str | None = None
         try:
             commit_reservation = _commit_reservation(
-                self.tenant, self.target_system, lane, intent, amount, document_path=document_path
+                self.tenant, self.target_system, route, intent, amount, document_path=document_path
             )
         except UnidentifiableEffect as exc:
             unidentifiable = str(exc)
 
-        # Supervised vs autonomous: a consequential (money) lane with no per-run human approval may only
-        # proceed if it is graduated AND the run is within the owner's guardrails (dollar ceiling, party
-        # allowlist, daily cap). Otherwise it stops and asks — crossing a limit escalates, never slips.
+        # Supervised vs autonomous: a consequential (money) action class with no per-run human approval
+        # may only proceed if it is graduated AND the run is within the owner's guardrails (dollar
+        # ceiling, party allowlist, daily cap). Otherwise it stops and asks — crossing a limit
+        # escalates, never slips.
         autonomous_run = False
         # Autonomous entry point: callers deliberately pass approve=None. The normal Slack approval
         # callback passes an explicit approver, so it stays supervised and never consumes autonomy caps.
-        if approve is None and lane.requires_amount:
+        if approve is None and route.requires_amount:
             party = _party_of(intent)
             allowed, reason = (
-                self.graduation.autonomy_allows(self.tenant, lane.name, amount=amount, party=party)
-                if self.graduation is not None else (False, "lane is supervised")
+                self.graduation.autonomy_allows(self.tenant, route.name, amount=amount, party=party)
+                if self.graduation is not None else (False, "action class is supervised")
             )
             if not allowed:
                 return OperationResult(
-                    "ESCALATED", lane.name,
+                    "ESCALATED", route.name,
                     f"needs your approval — {reason}. Graduate it (with limits) once you trust it and "
                     "I'll handle it unattended.",
                 )
             if self.commit_store is not None and commit_reservation is None:
                 return OperationResult(
                     "ESCALATED",
-                    lane.name,
+                    route.name,
                     f"needs your approval — this effect has no safe identity: {unidentifiable}",
                 )
             if self.graduation is not None and self.commit_store is not None:
-                cap = self.graduation.guardrails(self.tenant, lane.name).get("daily_cap")
+                cap = self.graduation.guardrails(self.tenant, route.name).get("daily_cap")
                 if cap is not None:
-                    claimed, used = self.commit_store.claim_autonomous_run(self.tenant, lane.name, cap=int(cap))
+                    claimed, used = self.commit_store.claim_autonomous_run(self.tenant, route.name, cap=int(cap))
                     if not claimed:
                         return OperationResult(
                             "ESCALATED",
-                            lane.name,
-                            f"needs your approval — daily autonomous cap of {cap} for {lane.name} reached",
+                            route.name,
+                            f"needs your approval — daily autonomous cap of {cap} for {route.name} reached",
                             [{"autonomous_runs_today": used}],
                         )
             approve = _autonomous_approval()
             autonomous_run = True
 
-        # PREPARE vs COMMIT: with a graduation policy present, a supervised (ungraduated) money lane
-        # PREPARES — the agent fills everything and stops before Save, and the human commits (safe on a
-        # flaky TMS; full-auto is the graduation). A graduated/autonomous run commits, and an explicit
-        # resume ("submit", params['commit']) commits. No graduation policy = old behavior (commit).
+        # PREPARE vs COMMIT: with a graduation policy present, a supervised (ungraduated) money action
+        # class PREPARES — the agent fills everything and stops before Save, and the human commits (safe
+        # on a flaky TMS; full-auto is the graduation). A graduated/autonomous run commits, and an
+        # explicit resume ("submit", params['commit']) commits. No graduation policy = old behavior.
         commit_requested = bool((intent.params or {}).get("commit"))
         verify_only = bool((intent.params or {}).get("verify_only"))
-        if verify_only and lane.requires_amount:
+        if verify_only and route.requires_amount:
             return OperationResult(
                 "DONE",
-                lane.name,
+                route.name,
                 "operation was already committed; resume is verify-only and will not repeat the TMS commit",
                 [{"committed": True, "verify_only": True}],
             )
         prepare_only = (
             self.graduation is not None
-            and lane.requires_amount
+            and route.requires_amount
             and not autonomous_run
             and not commit_requested
         )
         # Phase 1: a non-money consequential effect (filing a POD, setting a status, creating a load)
         # is still a real external write, so it now takes a commit-once reservation like a money one.
-        # Before this, `will_commit` was `lane.requires_amount and ...`, so the entire commit-once
+        # Before this, `will_commit` was `route.requires_amount and ...`, so the entire commit-once
         # path was skipped for them: filing the same POD twice attached it twice, and nothing could
         # notice. That is the structural half of AC-SAFE-013 - the key alone would have been a
         # decoration if nothing ever reserved with it.
@@ -251,7 +274,7 @@ class OperationRouter:
             if not bool(getattr(health, "healthy", False)):
                 return OperationResult(
                     "ESCALATED",
-                    lane.name,
+                    route.name,
                     f"TMS browser session is not ready: {getattr(health, 'detail', 'unknown session state')}",
                     [
                         {
@@ -265,12 +288,12 @@ class OperationRouter:
             # Fail closed. A consequential effect we cannot name is one we cannot protect.
             return OperationResult(
                 "ESCALATED",
-                lane.name,
+                route.name,
                 f"this effect has no safe identity, so I won't run it: {unidentifiable}",
             )
         if will_commit and self.commit_store is not None and commit_reservation is not None:
             historical = self.commit_store.legacy_commit_rows(
-                lane=commit_reservation["lane"],
+                action_class=commit_reservation["action_class"],
                 load_ref=commit_reservation["load_ref"],
                 party=commit_reservation["party"],
                 canonical_commit_key=commit_reservation["commit_key"],
@@ -283,8 +306,8 @@ class OperationRouter:
                 # logical effect are EVIDENCE OF A HISTORICAL DOUBLE-COMMIT, for a human to settle.
                 return OperationResult(
                     "ESCALATED",
-                    lane.name,
-                    f"a pre-migration attempt to {lane.name} "
+                    route.name,
+                    f"a pre-migration attempt to {route.name} "
                     f"{commit_reservation['load_ref']} exists under the old amount-keyed identity — "
                     "check the TMS whether it already happened; it is NOT confirmed done and I will "
                     "not repeat it.",
@@ -305,12 +328,12 @@ class OperationRouter:
                 # A leaked reservation (a prior run crashed / was killed by the supervisor AFTER reserving
                 # but BEFORE it could confirm a write) is NOT a real commit — we do not know whether the
                 # TMS was written. Reporting DONE here would be a false receipt (and would silently un-bill
-                # in the autonomous lane). Escalate for a human to check, rather than guess.
+                # in the autonomous action class). Escalate for a human to check, rather than guess.
                 if prior_status in ("RESERVED", "NEEDS_VERIFICATION", ""):
                     return OperationResult(
                         "ESCALATED",
-                        lane.name,
-                        f"a prior or concurrent attempt to {lane.name} "
+                        route.name,
+                        f"a prior or concurrent attempt to {route.name} "
                         f"{commit_reservation.get('load_ref') or 'this record'} has not confirmed it saved — "
                         "check the TMS whether it already happened before retrying (it is NOT confirmed done).",
                         [{"reserved_but_unconfirmed": True,
@@ -318,7 +341,7 @@ class OperationRouter:
                     )
                 return OperationResult(
                     "DONE",
-                    lane.name,
+                    route.name,
                     "already committed; refusing to repeat the TMS commit",
                     [
                         {
@@ -329,7 +352,7 @@ class OperationRouter:
                     ],
                 )
 
-        goal = lane.build_goal(intent)
+        goal = route.build_goal(intent)
         agent = self.build_agent(
             approved_amount=amount,
             approve=approve,
@@ -345,7 +368,7 @@ class OperationRouter:
         # Hold the shared browser for the duration of the write so the periodic AR-trigger defers.
         try:
             if self.browser_lock is not None:
-                with self.browser_lock.hold(holder=f"{lane.name}:{_load_ref_of(intent) or ''}"):
+                with self.browser_lock.hold(holder=f"{route.name}:{_load_ref_of(intent) or ''}"):
                     result: AgentResult = agent.run(goal)
             else:
                 result = agent.run(goal)
@@ -387,8 +410,8 @@ class OperationRouter:
             self.commit_store.release_operation_commit(commit_key=commit_reservation["commit_key"])
         # Count an unattended run against the daily cap only once it actually ran.
         if autonomous_run and self.graduation is not None and self.commit_store is None:
-            self.graduation.record_autonomous_run(self.tenant, lane.name)
-        return OperationResult(result.status, lane.name, result.note, steps)
+            self.graduation.record_autonomous_run(self.tenant, route.name)
+        return OperationResult(result.status, route.name, result.note, steps)
 
 
 def _party_of(intent: CommandIntent) -> str | None:
@@ -411,7 +434,7 @@ def _load_ref_of(intent: CommandIntent) -> str | None:
 def _logical_effect(
     tenant: str,
     target_system: str,
-    lane: OperationLane,
+    route: ActionClassRoute,
     intent: CommandIntent,
     *,
     document_path: str | None = None,
@@ -453,7 +476,7 @@ def _logical_effect(
     # No such resolver exists yet (Payment Application arrives at P9; Compensation and Expectation at
     # P8), so record_payment / adjust_invoice / check_call fail closed and a human performs them.
     occurrence = occurrence_key_for(
-        lane.name,
+        route.name,
         resolved=None,
         document_digest=digest,
         target_status=params.get("status_value"),
@@ -465,10 +488,10 @@ def _logical_effect(
     resource = f"{str(load_ref).strip().lower()}|{str(party).strip().lower()}"
     return LogicalEffect(
         tenant=tenant,
-        action_class=lane.name,
+        action_class=route.name,
         target_system=target_system,
         target_resource_id=resource,
-        target_operation=lane.name,
+        target_operation=route.name,
         occurrence_key=occurrence,
     )
 
@@ -476,7 +499,7 @@ def _logical_effect(
 def _commit_reservation(
     tenant: str,
     target_system: str,
-    lane: OperationLane,
+    route: ActionClassRoute,
     intent: CommandIntent,
     amount: str | None,
     *,
@@ -491,7 +514,7 @@ def _commit_reservation(
 
     The amount is preserved, not discarded. It is simply no longer allowed to say who the effect is.
     """
-    effect = _logical_effect(tenant, target_system, lane, intent, document_path=document_path)
+    effect = _logical_effect(tenant, target_system, route, intent, document_path=document_path)
     return {
         "commit_key": effect.key(),
         # NOT "tenant". U2.6BC: a reservation does not carry the tenant it is FOR - the store it is
@@ -499,7 +522,9 @@ def _commit_reservation(
         # input above, because the Commit Key binds it; it is just no longer an output that a caller
         # could hand to a store bound to somebody else.
         "target_system": target_system,
-        "lane": lane.name,
+        # WHAT effect (U8.5: this was "lane"; the value is unchanged — it is route.name, the same
+        # action_class already carried by the Commit Key and effect_grants.action_class).
+        "action_class": route.name,
         "load_ref": _load_ref_of(intent) or "",
         "party": _party_of(intent) or "",
         # MATERIAL FACT, not identity. "" for a non-money effect, which now reserves too.
@@ -516,8 +541,9 @@ def _result_committed(result: AgentResult) -> bool:
 
 
 def _autonomous_approval() -> Callable[[object], bool]:
-    """A single-use approval a graduated lane grants itself: exactly ONE consequential commit may run
-    unattended; any further consequential action still escalates (autonomy is bounded, not blanket)."""
+    """A single-use approval a graduated action class grants itself: exactly ONE consequential commit
+    may run unattended; any further consequential action still escalates (autonomy is bounded, not
+    blanket)."""
     used = {"spent": False}
 
     def approve(_action) -> bool:
@@ -529,8 +555,8 @@ def _autonomous_approval() -> Callable[[object], bool]:
     return approve
 
 
-def freight_lanes() -> list[OperationLane]:
-    """The default freight back-office lanes — the workflows Neyma is taught to run autonomously.
+def freight_routes() -> list[ActionClassRoute]:
+    """The default freight back-office action classes — the workflows Neyma is taught to run.
 
     Each goal is deliberately bounded and ends with a read-back-to-confirm instruction, so the agent
     verifies its own work rather than declaring victory blind. Money fields are filled with the approved
@@ -639,35 +665,37 @@ def freight_lanes() -> list[OperationLane]:
             + _guidance(intent)
         )
 
-    # Order matters: more specific lanes first, so "record payment on invoice 5" isn't caught by the
-    # invoice lane's "invoice" keyword. Money lanes require a human-approved amount; filing a doc doesn't.
+    # Order matters: more specific action classes first, so "record payment on invoice 5" isn't caught
+    # by the invoice route's "invoice" keyword. Money action classes require a human-approved amount;
+    # filing a doc doesn't.
     return [
-        OperationLane("record_payment",
-                      # "payment" is deliberately generic and this lane is FIRST: any request mentioning a
-                      # payment ("record a $1,950 payment on invoice 560009") must win over the invoice
-                      # lane's "invoice" keyword — live-found mis-route during owner dogfooding.
-                      ("payment", "customer paid", "mark paid", "paid invoice"),
-                      payment_goal),
-        OperationLane("adjust_invoice",
-                      ("credit", "short-pay", "short pay", "shortpay", "adjust invoice", "credit memo",
-                       "write off", "write-off", "adjustment"),
-                      credit_goal),
-        OperationLane("raise_invoice", ("invoice", "bill ", "raise", "receivable", " ar "), invoice_goal),
-        OperationLane("record_payable", ("payable", "settle", "carrier pay", "carrier bill", "pay ", " ap "), payable_goal),
-        OperationLane("file_document",
-                      ("attach", "file pod", "file the pod", "file bol", "file document", "upload pod",
-                       "upload bol", "attach pod", "attach bol"),
-                      file_document_goal, requires_amount=False, requires_document=True),
-        OperationLane("create_load",
-                      ("create load", "new load", "add load", "add order", "create order", "new order",
-                       "book a load", "book load", "enter a load", "build a load"),
-                      create_load_goal, requires_amount=False),
-        OperationLane("update_status",
-                      ("update status", "set status", "change status", "status to", "mark delivered",
-                       "delivered", "dispatched", "picked up", "in transit", "mark it"),
-                      update_status_goal, requires_amount=False),
-        OperationLane("check_call",
-                      ("check call", "check-call", "tracking update", "log a call", "add a note",
-                       "driver update", "log note", "note on load"),
-                      check_call_goal, requires_amount=False),
+        ActionClassRoute("record_payment",
+                         # "payment" is deliberately generic and this route is FIRST: any request
+                         # mentioning a payment ("record a $1,950 payment on invoice 560009") must win
+                         # over the invoice route's "invoice" keyword — live-found mis-route during
+                         # owner dogfooding.
+                         ("payment", "customer paid", "mark paid", "paid invoice"),
+                         payment_goal),
+        ActionClassRoute("adjust_invoice",
+                         ("credit", "short-pay", "short pay", "shortpay", "adjust invoice", "credit memo",
+                          "write off", "write-off", "adjustment"),
+                         credit_goal),
+        ActionClassRoute("raise_invoice", ("invoice", "bill ", "raise", "receivable", " ar "), invoice_goal),
+        ActionClassRoute("record_payable", ("payable", "settle", "carrier pay", "carrier bill", "pay ", " ap "), payable_goal),
+        ActionClassRoute("file_document",
+                         ("attach", "file pod", "file the pod", "file bol", "file document", "upload pod",
+                          "upload bol", "attach pod", "attach bol"),
+                         file_document_goal, requires_amount=False, requires_document=True),
+        ActionClassRoute("create_load",
+                         ("create load", "new load", "add load", "add order", "create order", "new order",
+                          "book a load", "book load", "enter a load", "build a load"),
+                         create_load_goal, requires_amount=False),
+        ActionClassRoute("update_status",
+                         ("update status", "set status", "change status", "status to", "mark delivered",
+                          "delivered", "dispatched", "picked up", "in transit", "mark it"),
+                         update_status_goal, requires_amount=False),
+        ActionClassRoute("check_call",
+                         ("check call", "check-call", "tracking update", "log a call", "add a note",
+                          "driver update", "log note", "note on load"),
+                         check_call_goal, requires_amount=False),
     ]

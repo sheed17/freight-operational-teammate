@@ -13,7 +13,7 @@ def test_timeline_is_curated_newest_first_and_proof_bearing(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         store.add_security_event("slack_operation_applied", actor="R",
-                                 payload={"lane": "raise_invoice", "status": "DONE",
+                                 payload={"action_class": "raise_invoice", "status": "DONE",
                                           "approved_amount": "2850.00", "invoice_number": "INV-4912"})
         store.add_security_event("slack_operation_rejected", actor="X",
                                  payload={"failure": "authorization"})
@@ -47,7 +47,7 @@ def test_audit_command_renders_timeline(tmp_path):
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="tenant-fixture-a")
     try:
         store.add_security_event("slack_operation_applied", actor="R",
-                                 payload={"lane": "record_payable", "status": "DONE"})
+                                 payload={"action_class": "record_payable", "status": "DONE"})
         out = handle_ops_command("audit", actor="R", ops_control=oc, store=store)
         assert "What Neyma did" in out and "record_payable" in out
     finally:

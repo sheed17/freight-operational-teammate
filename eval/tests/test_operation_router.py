@@ -1,4 +1,4 @@
-"""Tests for the request->agent->result bridge (Version B): bounded lanes, gates, refusal, receipts."""
+"""Tests for the request->agent->result bridge (Version B): bounded action classes, gates, refusal, receipts."""
 
 import json
 import sys
@@ -10,9 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
 from freight_recon.operation_router import (  # noqa: E402
-    OperationLane,
+    ActionClassRoute,
     OperationRouter,
-    freight_lanes,
+    freight_routes,
 )
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
@@ -58,7 +58,7 @@ def _agent_factory(llm, actuator=None):
     return build_agent
 
 
-def test_known_lane_drives_agent_to_done():
+def test_known_action_class_drives_agent_to_done():
     llm = _scripted_llm([
         {"action": "NAVIGATE", "target": "https://tms.test/invoices/new"},
         {"action": "TYPE", "target": "Total Charge", "value": "0"},
@@ -68,31 +68,31 @@ def test_known_lane_drives_agent_to_done():
     ])
     build_agent = _agent_factory(llm)
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=build_agent,
+        routes=freight_routes(), build_agent=build_agent,
         approved_amount_for=lambda _i: "2850.00",
     )
     res = router.run(_operate("invoice today's delivered load for Acme"), approve=lambda a: True)
-    assert res.status == "DONE" and res.lane == "raise_invoice"
+    assert res.status == "DONE" and res.action_class == "raise_invoice"
     # Money fence: the approved amount reached the form, not a model-chosen number.
     assert ("type", "Total Charge", "2850.00") in build_agent.actuator.calls
     assert "✅ Done" in res.to_slack()
 
 
 def test_unknown_request_is_refused_not_improvised():
-    # The core Version-B boundary: a request with no known lane must NOT free-form a goal.
+    # The core Version-B boundary: a request with no known action class must NOT free-form a goal.
     build_agent = _agent_factory(_scripted_llm([]))
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: "1")
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent, approved_amount_for=lambda _i: "1")
     res = router.run(_operate("reorganize the whole accounting system however you see fit"))
-    assert res.status == "REFUSED" and res.lane is None
+    assert res.status == "REFUSED" and res.action_class is None
     assert build_agent.actuator.calls == []  # the agent never ran
     assert "won't improvise" in res.to_slack()
 
 
-def test_money_lane_without_approved_amount_escalates_at_the_door():
+def test_money_action_class_without_approved_amount_escalates_at_the_door():
     build_agent = _agent_factory(_scripted_llm([]))
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: None)
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent, approved_amount_for=lambda _i: None)
     res = router.run(_operate("invoice the delivered load for Acme"))
-    assert res.status == "ESCALATED" and res.lane == "raise_invoice"
+    assert res.status == "ESCALATED" and res.action_class == "raise_invoice"
     assert "no human-approved amount" in res.note
     assert build_agent.actuator.calls == []  # never drove without an approved amount
 
@@ -107,7 +107,7 @@ def test_browser_preflight_blocks_operation_before_agent_runs():
         return OperatorAgent(actuator=FakeActuator(), complete=_scripted_llm([]))
 
     router = OperationRouter(
-        lanes=freight_lanes(),
+        routes=freight_routes(),
         build_agent=build_agent,
         approved_amount_for=lambda _i: "2850.00",
         browser_health_check=lambda: SimpleNamespace(
@@ -118,7 +118,7 @@ def test_browser_preflight_blocks_operation_before_agent_runs():
         ),
     )
     res = router.run(_operate("invoice the delivered load for Acme"), approve=lambda a: True)
-    assert res.status == "ESCALATED" and res.lane == "raise_invoice"
+    assert res.status == "ESCALATED" and res.action_class == "raise_invoice"
     assert "human re-auth" in res.note
     assert res.steps[0]["browser_preflight"] == "SESSION_EXPIRED"
     assert called["build"] == 0
@@ -127,37 +127,37 @@ def test_browser_preflight_blocks_operation_before_agent_runs():
 def test_agent_escalation_propagates_as_result():
     llm = _scripted_llm([{"action": "ESCALATE", "target": "cannot find the customer field"}])
     build_agent = _agent_factory(llm)
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: "100.00")
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent, approved_amount_for=lambda _i: "100.00")
     res = router.run(_operate("invoice the load for Acme"), approve=lambda a: True)
-    assert res.status == "ESCALATED" and res.lane == "raise_invoice"
+    assert res.status == "ESCALATED" and res.action_class == "raise_invoice"
     assert "✋ I need you" in res.to_slack()
 
 
-def test_payable_lane_matches_and_binds_amount():
+def test_payable_action_class_matches_and_binds_amount():
     # a money run must read the record back before DONE (verify-before-done)
     llm = _scripted_llm([{"action": "READ", "target": "saved payable"}, {"action": "DONE", "why": "payable recorded"}])
     build_agent = _agent_factory(llm)
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: "1200.00")
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent, approved_amount_for=lambda _i: "1200.00")
     res = router.run(_operate("record the carrier payable for load LD-5001"), approve=lambda a: True)
-    assert res.status == "DONE" and res.lane == "record_payable"
+    assert res.status == "DONE" and res.action_class == "record_payable"
 
 
-def test_explicit_lane_param_overrides_keyword_matching():
+def test_explicit_action_class_param_overrides_keyword_matching():
     llm = _scripted_llm([{"action": "DONE", "why": "ok"}])
     build_agent = _agent_factory(llm)
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent, approved_amount_for=lambda _i: "5.00")
-    res = router.run(CommandIntent(CommandKind.OPERATE, "handle this", {"lane": "raise_invoice"}),
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent, approved_amount_for=lambda _i: "5.00")
+    res = router.run(CommandIntent(CommandKind.OPERATE, "handle this", {"action_class": "raise_invoice"}),
                      approve=lambda a: True)
-    assert res.lane == "raise_invoice"
+    assert res.action_class == "raise_invoice"
 
 
-def test_non_money_lane_runs_without_an_amount():
-    lane = OperationLane("status_check", ("check status",), lambda i: "check the load status", requires_amount=False)
+def test_non_money_action_class_runs_without_an_amount():
+    route = ActionClassRoute("status_check", ("check status",), lambda i: "check the load status", requires_amount=False)
     llm = _scripted_llm([{"action": "DONE", "why": "checked"}])
     build_agent = _agent_factory(llm)
-    router = OperationRouter(lanes=[lane], build_agent=build_agent, approved_amount_for=lambda _i: None)
+    router = OperationRouter(routes=[route], build_agent=build_agent, approved_amount_for=lambda _i: None)
     res = router.run(_operate("check status of LD-5001"))
-    assert res.status == "DONE" and res.lane == "status_check"
+    assert res.status == "DONE" and res.action_class == "status_check"
 
 
 def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
@@ -169,7 +169,7 @@ def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
         ])
         first_agent = _agent_factory(first_llm)
         router = OperationRouter(
-            lanes=freight_lanes(),
+            routes=freight_routes(),
             build_agent=first_agent,
             approved_amount_for=lambda _i: "2850.00",
             tenant="acme",
@@ -191,7 +191,7 @@ def test_cross_run_commit_claim_prevents_resumed_double_save(tmp_path):
         ])
         second_agent = _agent_factory(second_llm)
         resumed = OperationRouter(
-            lanes=freight_lanes(),
+            routes=freight_routes(),
             build_agent=second_agent,
             approved_amount_for=lambda _i: "2850.00",
             tenant="acme",
@@ -233,7 +233,7 @@ def test_cross_run_commit_claim_prevents_concurrent_double_save(tmp_path):
                 actuator=actuator,
             )
             router = OperationRouter(
-                lanes=freight_lanes(),
+                routes=freight_routes(),
                 build_agent=build_agent,
                 approved_amount_for=lambda _i: "2850.00",
                 tenant="acme",
@@ -315,38 +315,38 @@ def test_the_same_logical_payable_has_one_key_whatever_the_amount():
     assert len(commit_key(effect)) == 64
 
 
-def test_expanded_operation_set_routes_each_owner_request_to_its_lane():
-    # The back-office operations an owner requests each resolve to a distinct bounded lane. Ordering +
+def test_expanded_operation_set_routes_each_owner_request_to_its_action_class():
+    # The back-office operations an owner requests each resolve to a distinct bounded action class. Ordering +
     # keywords keep overlaps ("payment on invoice" vs "invoice ...") from mis-routing.
-    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    router = OperationRouter(routes=freight_routes(), build_agent=lambda **_: None)
 
-    def lane(text):
-        got = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
+    def action_class_of(text):
+        got = router.route_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
         return got.name if got else None
 
-    assert lane("invoice Great Lakes for load 105") == "raise_invoice"
-    assert lane("bill load 105") == "raise_invoice"
-    assert lane("record payment on invoice 560003 for 184.50") == "record_payment"
-    assert lane("apply the payment to invoice 560009") == "record_payment"
-    # live-found mis-route: words between "record" and "payment" must not hand it to the invoice lane
-    assert lane("record a 1950 payment on invoice 560009 from Coyote") == "record_payment"
-    assert lane("credit invoice 560003 by 200 short pay") == "adjust_invoice"
-    assert lane("record payable to Iron Horse for LD-5") == "record_payable"
-    assert lane("attach the POD to load 105") == "file_document"
-    assert lane("create a new load for Acme from Dallas to Chicago") == "create_load"
-    assert lane("book a load for Coyote") == "create_load"
-    assert lane("mark load 105 delivered") == "update_status"
-    assert lane("update status of 88 to dispatched") == "update_status"
-    assert lane("log a check call on load 105 driver is 50 miles out") == "check_call"
-    # the invoice lane still wins its own phrasing even though it mentions a delivered load
-    assert lane("invoice today's delivered load for Acme") == "raise_invoice"
+    assert action_class_of("invoice Great Lakes for load 105") == "raise_invoice"
+    assert action_class_of("bill load 105") == "raise_invoice"
+    assert action_class_of("record payment on invoice 560003 for 184.50") == "record_payment"
+    assert action_class_of("apply the payment to invoice 560009") == "record_payment"
+    # live-found mis-route: words between "record" and "payment" must not hand it to the invoice action class
+    assert action_class_of("record a 1950 payment on invoice 560009 from Coyote") == "record_payment"
+    assert action_class_of("credit invoice 560003 by 200 short pay") == "adjust_invoice"
+    assert action_class_of("record payable to Iron Horse for LD-5") == "record_payable"
+    assert action_class_of("attach the POD to load 105") == "file_document"
+    assert action_class_of("create a new load for Acme from Dallas to Chicago") == "create_load"
+    assert action_class_of("book a load for Coyote") == "create_load"
+    assert action_class_of("mark load 105 delivered") == "update_status"
+    assert action_class_of("update status of 88 to dispatched") == "update_status"
+    assert action_class_of("log a check call on load 105 driver is 50 miles out") == "check_call"
+    # the invoice action class still wins its own phrasing even though it mentions a delivered load
+    assert action_class_of("invoice today's delivered load for Acme") == "raise_invoice"
 
-    # operational lanes create/update/log records without money; the AR/AP lanes require an amount
-    lanes = {l.name: l for l in freight_lanes()}
+    # operational action classes create/update/log records without money; the AR/AP ones require an amount
+    routes = {r.name: r for r in freight_routes()}
     for op in ("file_document", "create_load", "update_status", "check_call"):
-        assert lanes[op].requires_amount is False, op
+        assert routes[op].requires_amount is False, op
     for money in ("raise_invoice", "record_payment", "adjust_invoice", "record_payable"):
-        assert lanes[money].requires_amount is True, money
+        assert routes[money].requires_amount is True, money
 
 
 def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
@@ -362,7 +362,7 @@ def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
         boom = _agent_factory(_scripted_llm([]), actuator=BoomActuator())
         intent = _operate("invoice the delivered load for Acme",
                           {"customer": "Acme", "load_ref": "LD-9001", "commit": True})
-        r1 = OperationRouter(lanes=freight_lanes(), build_agent=boom, approved_amount_for=lambda _i: "2850.00",
+        r1 = OperationRouter(routes=freight_routes(), build_agent=boom, approved_amount_for=lambda _i: "2850.00",
                              tenant="acme", commit_store=store)
         raised = False
         try:
@@ -372,7 +372,7 @@ def test_crash_after_reservation_escalates_on_retry_not_false_done(tmp_path):
         assert raised and boom.actuator.calls == []          # crashed, wrote nothing
 
         good = _agent_factory(_scripted_llm([{"action": "READ", "target": "x"}, {"action": "DONE", "why": "ok"}]))
-        retry = OperationRouter(lanes=freight_lanes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
+        retry = OperationRouter(routes=freight_routes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
                                 tenant="acme", commit_store=store).run(intent, approve=lambda a: True)
         assert retry.status == "ESCALATED"                   # NOT a false DONE
         assert "not confirmed done" in retry.note.lower()
@@ -393,11 +393,11 @@ def test_leaked_reserved_claim_from_hard_kill_escalates(tmp_path):
             target_resource_id="LD-9001|Acme", target_operation="raise_invoice", occurrence_key="",
         )
         store.claim_operation_commit(commit_key=leaked.key(), target_system="tms",
-                                     lane="raise_invoice",
+                                     action_class="raise_invoice",
                                      load_ref="LD-9001", party="Acme", approved_amount="2850.00",
                                      payload={"status": "RESERVED"})
         good = _agent_factory(_scripted_llm([{"action": "DONE", "why": "ok"}]))
-        res = OperationRouter(lanes=freight_lanes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
+        res = OperationRouter(routes=freight_routes(), build_agent=good, approved_amount_for=lambda _i: "2850.00",
                               tenant="acme", commit_store=store).run(
             _operate("invoice the delivered load for Acme", {"customer": "Acme", "load_ref": "LD-9001", "commit": True}),
             approve=lambda a: True)

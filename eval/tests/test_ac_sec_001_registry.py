@@ -253,7 +253,7 @@ def test_document_hash_lookup_is_tenant_scoped(tmp_path):
 def test_commit_key_lookup_is_tenant_scoped(tmp_path):
     a, b = _store(tmp_path, A), _store(tmp_path, B)
     try:
-        a.claim_operation_commit(commit_key="ck", target_system="tms", lane="raise_invoice",
+        a.claim_operation_commit(commit_key="ck", target_system="tms", action_class="raise_invoice",
                                  load_ref="LD-1", party="ACME", approved_amount="100.00",
                                  payload={"status": "RESERVED"})
         assert a.operation_commit_claim(commit_key="ck") is not None
@@ -274,7 +274,7 @@ def test_every_affected_write_persists_the_bound_tenant(tmp_path):
         s.claim_delivery_action("del-1", run_id=run.id, actor="a", payload={})
         s.record_operation_token_amount(token_fingerprint="fp", action_id="act-1",
                                         approved_amount="10.00", payload={})
-        s.claim_operation_commit(commit_key="ck", target_system="tms", lane="raise_invoice",
+        s.claim_operation_commit(commit_key="ck", target_system="tms", action_class="raise_invoice",
                                  load_ref="LD-1", party="ACME", payload={"status": "RESERVED"})
         for table in CANONICAL_TENANT_TABLES:
             rows = s.conn.execute(f"SELECT COUNT(*) c FROM {table} WHERE tenant != ?",
@@ -431,7 +431,7 @@ def test_same_document_hash_across_tenants_is_independent(tmp_path):
 
 def test_same_commit_key_across_tenants_is_independent(tmp_path):
     a, b = _store(tmp_path, A), _store(tmp_path, B)
-    kw = dict(commit_key="shared-ck", target_system="tms", lane="raise_invoice",
+    kw = dict(commit_key="shared-ck", target_system="tms", action_class="raise_invoice",
               load_ref="LD-1", party="ACME", payload={"status": "RESERVED"})
     try:
         assert a.claim_operation_commit(**kw) is True
@@ -470,7 +470,7 @@ def test_same_tenant_duplicate_document_converges(tmp_path):
 
 def test_same_tenant_duplicate_commit_key_is_refused(tmp_path):
     s = _store(tmp_path, A)
-    kw = dict(commit_key="one-effect", target_system="tms", lane="raise_invoice",
+    kw = dict(commit_key="one-effect", target_system="tms", action_class="raise_invoice",
               load_ref="LD-1", party="ACME", payload={"status": "RESERVED"})
     try:
         assert s.claim_operation_commit(**kw) is True
@@ -493,12 +493,12 @@ def test_commit_key_excludes_the_amount_structurally():
 
 
 def test_router_and_store_tenants_must_agree(tmp_path):
-    from freight_recon.operation_router import OperationRouter, freight_lanes
+    from freight_recon.operation_router import OperationRouter, freight_routes
 
     store = _store(tmp_path, A)
     try:
         with pytest.raises(ValueError, match="does not match its commit_store tenant"):
-            OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None,
+            OperationRouter(routes=freight_routes(), build_agent=lambda **_: None,
                             tenant=B, commit_store=store)
     finally:
         store.close()

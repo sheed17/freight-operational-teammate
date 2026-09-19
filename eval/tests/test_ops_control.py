@@ -54,7 +54,7 @@ def test_handle_command_roi_reports_what_neyma_did(tmp_path):
     try:
         store.add_security_event(
             "slack_operation_applied", actor="R",
-            payload={"lane": "raise_invoice", "status": "DONE", "approved_amount": "2850.00",
+            payload={"action_class": "raise_invoice", "status": "DONE", "approved_amount": "2850.00",
                      "note": "invoice INV-4912 verified", "steps": []},
         )
         out = handle_ops_command("roi", actor="R", ops_control=oc, store=store)
@@ -120,8 +120,8 @@ def test_handle_command_graduation_flips_lane_autonomy(tmp_path):
         assert "AUTONOMOUS" in out
         assert "raise_invoice" in handle_ops_command("autonomy", actor="R", ops_control=oc, store=store)
         assert "SUPERVISED" in handle_ops_command("supervise raise_invoice", actor="R", ops_control=oc, store=store)
-        # Unknown lane is refused, not created.
-        assert "Unknown lane" in handle_ops_command("graduate frobnicate", actor="R", ops_control=oc, store=store)
+        # Unknown action class is refused, not created.
+        assert "Unknown action class" in handle_ops_command("graduate frobnicate", actor="R", ops_control=oc, store=store)
     finally:
         store.close()
 

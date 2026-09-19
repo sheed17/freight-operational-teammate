@@ -17,7 +17,7 @@ from freight_recon.operation_proposal import (  # noqa: E402
     build_operation_proposal_message,
     proposal_from_assessment,
 )
-from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_routes  # noqa: E402
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 
@@ -139,20 +139,20 @@ class _FakeActuator:
 
 
 def test_proposal_button_decodes_to_the_exact_gated_operation():
-    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme for LD-9", {"lane": "raise_invoice", "customer": "Acme"})
+    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme for LD-9", {"action_class": "raise_invoice", "customer": "Acme"})
     msg = build_operation_proposal_message(intent, _SIGNER, approved_amount="2850.00",
                                            channel_id="C_OPS", thread_ts="1.1")
     assert msg["blocks"][1]["elements"][0]["action_id"] == APPROVE_ACTION_ID
     approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
     assert approval is not None
-    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["action_class"] == "raise_invoice"
     assert approval.approved_amount == "2850.00"
     assert approval.expected_channel_id == "C_OPS" and approval.expected_thread_ts == "1.1"
 
 
 def test_tapping_the_button_drives_the_router_money_fenced():
     # Simulate the full bridge: emit button -> decode (the "tap") -> run the router with the bound amount.
-    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme", {"lane": "raise_invoice", "customer": "Acme"})
+    intent = CommandIntent(CommandKind.OPERATE, "Invoice Acme", {"action_class": "raise_invoice", "customer": "Acme"})
     msg = build_operation_proposal_message(intent, _SIGNER, approved_amount="2850.00", channel_id="C")
     approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
 
@@ -167,26 +167,26 @@ def test_tapping_the_button_drives_the_router_money_fenced():
         return OperatorAgent(actuator=actuator, complete=complete, approved_amount=approved_amount,
                              approve=approve, prepare_only=prepare_only)
 
-    router = OperationRouter(lanes=freight_lanes(), build_agent=build_agent,
+    router = OperationRouter(routes=freight_routes(), build_agent=build_agent,
                              approved_amount_for=lambda i: i.params.get("approved_amount"))
     # The callback injects the signed amount into params before running; mirror that.
     intent2 = approval.intent
     intent2.params["approved_amount"] = approval.approved_amount
     res = router.run(intent2, approve=lambda a: True)
-    assert res.status == "DONE" and res.lane == "raise_invoice"
+    assert res.status == "DONE" and res.action_class == "raise_invoice"
     # Money fence: the bound $2,850 reached the form, never the model's 9999.
     assert ("type", "Total Charge", "2850.00") in actuator.calls
 
 
 def test_proposal_from_ready_to_bill_assessment():
-    a = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_lane="raise_invoice",
+    a = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_action_class="raise_invoice",
                         suggested_action="LD-9 is ready to invoice Acme", load_ref="LD-9",
                         confidence=0.8, rationale="complete")
     msg = proposal_from_assessment(a, _SIGNER, channel_id="C_OPS", approved_amount="2850.00",
                                    params={"customer": "Acme"})
     assert msg is not None
     approval = _verify_operation_approval_value(_button_value(msg), _SIGNER)
-    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["action_class"] == "raise_invoice"
     assert approval.intent.params["customer"] == "Acme" and approval.intent.params["load_ref"] == "LD-9"
 
 
@@ -212,7 +212,7 @@ def test_auto_emit_only_for_clean_matches_with_a_deterministic_amount():
     )
     assert len(proposals) == 1  # only the clean match with a known amount
     approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
-    assert approval.intent.params["lane"] == "record_payable"
+    assert approval.intent.params["action_class"] == "record_payable"
     assert approval.intent.params["carrier"] == "TQL" and approval.approved_amount == "2700.00"
 
 
@@ -233,7 +233,7 @@ def test_proposals_for_ready_to_bill_makes_an_ar_invoice_button_per_delivered_lo
     )
     assert len(proposals) == 1  # only the delivered load with a known agreed amount
     approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
-    assert approval.intent.params["lane"] == "raise_invoice"          # AR lane, not AP
+    assert approval.intent.params["action_class"] == "raise_invoice"          # AR action class, not AP
     assert approval.intent.params["customer"] == "Coyote Logistics"   # bill the CUSTOMER
     assert approval.approved_amount == "2450.00"
 
@@ -298,7 +298,7 @@ def test_proposals_from_tms_loads_builds_ar_buttons_from_a_loads_table():
     proposals = proposals_from_tms_loads(obs, signer=_SIGNER, channel_id="C")
     assert len(proposals) == 1
     approval = _verify_operation_approval_value(_button_value(proposals[0]), _SIGNER)
-    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["action_class"] == "raise_invoice"
     assert approval.intent.params["customer"] == "Acme Foods"
     assert approval.intent.params["load_ref"] == "102"
     assert approval.approved_amount == "3450.50"        # the load's Total, deterministic
@@ -613,13 +613,13 @@ def test_attachment_labels_from_detail_observation_pulls_document_rows():
 
 
 def test_no_button_for_non_lane_or_amountless_assessments():
-    # Missing-backup has no bounded lane -> chase a doc, not an Approve-and-run button.
-    chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,
+    # Missing-backup has no bounded action class -> chase a doc, not an Approve-and-run button.
+    chase = InboxAssessment(ThreadState.MISSING_BACKUP, actionable=True, suggested_action_class=None,
                             suggested_action="missing POD", load_ref="LD-1", confidence=0.9, rationale="")
     assert proposal_from_assessment(chase, _SIGNER, channel_id="C", approved_amount="100") is None
 
-    # A money lane with no human-approvable figure -> never post a run button.
-    ready = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_lane="raise_invoice",
+    # A money action class with no human-approvable figure -> never post a run button.
+    ready = InboxAssessment(ThreadState.READY_TO_BILL, actionable=True, suggested_action_class="raise_invoice",
                             suggested_action="ready", load_ref="LD-2", confidence=0.8, rationale="")
     assert proposal_from_assessment(ready, _SIGNER, channel_id="C", approved_amount=None) is None
 
@@ -662,7 +662,7 @@ def test_digest_batch_token_round_trips_and_preserves_exact_amounts():
         _SIGNER, expected_channel_id="C",
     )
     batch = _parse_operation_batch_value(value, _SIGNER)
-    assert batch["lane"] == "raise_invoice" and batch["expected_channel_id"] == "C"
+    assert batch["action_class"] == "raise_invoice" and batch["expected_channel_id"] == "C"
     assert [(i["load_ref"], i["amount"]) for i in batch["items"]] == [("103", "2500.00"), ("104", "1200.00")]
     # a tampered token must not verify
     import pytest

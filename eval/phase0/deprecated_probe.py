@@ -36,13 +36,21 @@ def _word(term: str) -> re.Pattern:
 
 
 def _is_phase0_meta(path) -> bool:
-    """The Phase-0 guards NAME the terms they guard. That is metadata, not usage.
+    """The Phase-0 guards NAME the terms they guard. That is metadata, not usage. A mutation battery
+    likewise NAMES the deprecated term whose defect it injects (its `old`/`new` anchor strings are
+    payload DATA, not production usage), so it is excluded on the same principle — the U8.5 semantic
+    detector (`action_class_migration._is_excluded`) excludes `mutate_*` for exactly this reason, and
+    the two instruments must not disagree about what counts as surface.
 
     Excluding them is stated in the counting rule rather than left implicit, because an unstated
     exclusion is how a count stops meaning what its label says.
     """
     parts = path.parts
-    return "phase0" in parts or path.name.startswith("test_phase0_")
+    return (
+        "phase0" in parts
+        or path.name.startswith("test_phase0_")
+        or path.name.startswith("mutate_")
+    )
 
 
 def occurrences(*, include_tests: bool = False) -> tuple[dict[str, list[Occurrence]], Evaluation]:

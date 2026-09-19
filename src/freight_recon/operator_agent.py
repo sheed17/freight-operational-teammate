@@ -140,7 +140,7 @@ class OperatorAgent:
         self.max_steps = max_steps
         self.stuck_after = stuck_after  # escalate after this many identical actions in a row
         # prepare_only: drive + fill everything but STOP before the committing action, so a human does
-        # the final Save. This is the safe default for a supervised lane (full-auto is the graduation).
+        # the final Save. This is the safe default for a supervised action class (full-auto is the graduation).
         self.prepare_only = prepare_only
         # Memory makes the agent improve with repetition: recall learned facts about this system, and
         # crystallize what worked (per tenant). Optional — without it the agent just reasons fresh.
@@ -253,7 +253,7 @@ class OperatorAgent:
 
             if action.kind == LiveActionKind.DONE:
                 # VERIFY-BEFORE-DONE: a money operation may not be declared DONE until a READ has confirmed
-                # the saved record. Crucially this is gated on the run being a MONEY LANE (an approved
+                # the saved record. Crucially this is gated on the run being a MONEY ACTION CLASS (an approved
                 # amount is bound) OR a detected commit — NOT on commit-detection alone. A live run showed
                 # why: when the commit button's label didn't match the consequential keywords, _committed
                 # stayed False, the gate never fired, and the agent reported a hallucinated total off an
@@ -277,7 +277,7 @@ class OperatorAgent:
                 return AgentResult(goal, "ESCALATED", history, action.target or action.why or "agent escalated")
 
             # DOCUMENT FENCE: an UPLOAD attaches the RUNTIME-supplied file — the model chooses only the
-            # field, never the path. With no file bound, the lane fails CLOSED (escalate) rather than
+            # field, never the path. With no file bound, the action class fails CLOSED (escalate) rather than
             # pretending to attach nothing — the exact "no file available to upload" gap file_document hit.
             if action.kind == LiveActionKind.UPLOAD and not self.document_path:
                 return AgentResult(goal, "ESCALATED", history,

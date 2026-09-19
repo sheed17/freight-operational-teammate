@@ -210,6 +210,11 @@ from .migrations.phase8_policy_epochs import (
     phase8_policy_epochs_readiness_problems,
     stamp_phase8_policy_epochs_version,
 )
+from .migrations.phase8_action_class import (
+    migrate_phase8_action_class,
+    phase8_action_class_readiness_problems,
+    stamp_phase8_action_class_version,
+)
 
 TENANT_COLUMN = "tenant"
 
@@ -558,6 +563,16 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
         stamp_phase8_policy_epochs_version(conn, now=_now())
     conn.commit()
 
+    # U8.5 — THE lane -> action_class migration (persistence half). On a fresh database the merged
+    # DDL already built autonomous_run_counters with `action_class`, so this is a no-op; on a
+    # pre-U8.5 database it renames the counter's `lane` key to `action_class` (PK and per-tenant
+    # counts preserved) and leaves effect_grants' non-authoritative `lane` mirror in place. Ships
+    # dark — it grants no autonomy and mints no gate. Marker-last, like every phase.
+    migrate_phase8_action_class(conn, now=_now())
+    if not phase8_action_class_readiness_problems(conn):
+        stamp_phase8_action_class_version(conn, now=_now())
+    conn.commit()
+
 
 def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     """Every reason this database cannot serve tenant-owned SQL. Empty list == ready.
@@ -642,6 +657,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_rules_readiness_problems(conn))
     problems.extend(phase6_brakes_readiness_problems(conn))
     problems.extend(phase7_evidence_readiness_problems(conn))
+    problems.extend(phase8_action_class_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

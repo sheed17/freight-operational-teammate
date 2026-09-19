@@ -428,7 +428,7 @@ def _claim(s: WorkflowStore, key: str, amount: str = "2850.00") -> bool:
     return s.claim_operation_commit(
         commit_key=key,
         target_system="truckingoffice",
-        lane="record_payment",
+        action_class="record_payment",
         load_ref="INV-560010",
         party="acme",
         approved_amount=amount,

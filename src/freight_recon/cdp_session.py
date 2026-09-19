@@ -128,7 +128,7 @@ class CdpBrowserSession:
         The file is supplied by the RUNTIME — a real path on disk — never chosen by the model: the
         same fence as money amounts. The agent may say "upload here"; it cannot conjure or pick a
         file. Returns False if the path is missing or no file-input is present, so a missing artifact
-        fails CLOSED (the lane escalates) rather than silently attaching nothing. ``target`` is an
+        fails CLOSED (the action class escalates) rather than silently attaching nothing. ``target`` is an
         optional label/name hint used to pick among multiple file inputs."""
         p = Path(file_path)
         if not p.is_file():

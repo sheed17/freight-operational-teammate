@@ -180,7 +180,9 @@ CANONICAL_OCCURRENCE_SOURCES: dict[str, OccurrenceSource] = {
     ),
 }
 
-# Keyed by the current lane name (the action class's ancestor; renamed at P8, NOT here).
+# Keyed by action_class. This is the canonical Action Class population (U8.1 derives
+# product_policy.ACTION_CLASS_POPULATION from these keys). Until U8.5 the ancestor concept was called
+# `lane`; U8.5 completed that rename — action_class is now the one name for WHAT effect is attempted.
 OCCURRENCE_RULES: dict[str, str] = {
     # One invoice per (load, customer). A second attempt is the same effect. THE double-pay case.
     "raise_invoice": SINGLE,

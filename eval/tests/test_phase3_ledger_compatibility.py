@@ -60,7 +60,7 @@ def _rows(store, commit_key):
 
 def _legacy_reserve(store, commit_key, *, status="RESERVED", load_ref="load:4471"):
     return store.claim_operation_commit(
-        commit_key=commit_key, target_system="tms:truckingoffice", lane="raise_invoice",
+        commit_key=commit_key, target_system="tms:truckingoffice", action_class="raise_invoice",
         load_ref=load_ref, party="Acme Logistics", approved_amount="2850.00",
         payload={"status": status, "summary": "raise invoice"},
     )
@@ -159,7 +159,7 @@ def test_legacy_commit_rows_never_reports_a_checkpoint_bound_grant(tmp_path):
     assert p3_states, "no checkpoint-bound row exists - this guard would prove nothing"
 
     rows = store.legacy_commit_rows(
-        lane="raise_invoice", load_ref="load:4471", party="Acme Logistics",
+        action_class="raise_invoice", load_ref="load:4471", party="Acme Logistics",
         canonical_commit_key="some-other-canonical-key")
     assert rows == [], f"a checkpoint-bound P3 grant was reported as pre-migration evidence: {rows}"
 

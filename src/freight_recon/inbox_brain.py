@@ -7,12 +7,12 @@ have to ask. For each inbound item (an email + its attachments, already linked t
      vocabulary the vision identifier already extracts;
   2. what is the THREAD's state? — ready-to-bill, missing-backup, a dispute reply, a fresh carrier
      invoice to reconcile, or just informational;
-  3. what's the next step, and which bounded lane (if any) would do it?
+  3. what's the next step, and which bounded action class (if any) would do it?
 
 Two rules are structural, not optional:
 - **Injection boundary.** Inbound content is DATA to assess, NEVER a command to obey. The Inbox Brain
   only ever PROPOSES; it cannot execute. Whether a proposal may then run unattended is decided
-  elsewhere by lane graduation — never by anything written in an email.
+  elsewhere by action-class graduation — never by anything written in an email.
 - **No money decisions here.** It links and routes; it never decides an amount.
 
 The deterministic core classifies confident cases from the required/delivered document sets (so it is
@@ -42,9 +42,9 @@ class ThreadState(str, Enum):
     UNKNOWN = "UNKNOWN"                       # unclear -> surface for a human, never guess an action
 
 
-# Which bounded OperationRouter lane (if any) a thread state suggests. None = a non-write next step
-# (chase a doc, reconcile, escalate) that does not go through the agent's write lanes.
-LANE_FOR_STATE = {
+# Which bounded OperationRouter action class (if any) a thread state suggests. None = a non-write
+# next step (chase a doc, reconcile, escalate) that does not go through the agent's write action classes.
+ACTION_CLASS_FOR_STATE = {
     ThreadState.READY_TO_BILL: "raise_invoice",
 }
 
@@ -65,7 +65,7 @@ class InboxItem:
 class InboxAssessment:
     thread_state: ThreadState
     actionable: bool
-    suggested_lane: str | None
+    suggested_action_class: str | None
     suggested_action: str
     load_ref: str | None
     confidence: float
@@ -88,7 +88,7 @@ def assess_inbox_item(item: InboxItem, *, complete=None) -> InboxAssessment:
     # A dispute/short-pay reply is high-signal from prose and always needs a human path — check first.
     if any(h in text for h in _DISPUTE_HINTS):
         return InboxAssessment(
-            ThreadState.DISPUTE_REPLY, actionable=True, suggested_lane=None,
+            ThreadState.DISPUTE_REPLY, actionable=True, suggested_action_class=None,
             suggested_action="A reply is contesting money on this load — needs your review (dispute path).",
             load_ref=item.load_ref, confidence=0.8,
             rationale="dispute/short-pay language in the message",
@@ -98,7 +98,7 @@ def assess_inbox_item(item: InboxItem, *, complete=None) -> InboxAssessment:
         # Required backup missing (most often the POD) -> chase it; cannot bill/process without it.
         if missing:
             return InboxAssessment(
-                ThreadState.MISSING_BACKUP, actionable=True, suggested_lane=None,
+                ThreadState.MISSING_BACKUP, actionable=True, suggested_action_class=None,
                 suggested_action=f"Missing {', '.join(missing)} for {item.load_ref or 'this load'} — request it before billing.",
                 load_ref=item.load_ref, confidence=0.85,
                 rationale=f"required docs not yet received: {missing}",
@@ -108,14 +108,14 @@ def assess_inbox_item(item: InboxItem, *, complete=None) -> InboxAssessment:
         # is fully documented and ready to bill the customer (AR).
         if "carrier_invoice" in (d.lower() for d in item.doc_types):
             return InboxAssessment(
-                ThreadState.NEW_CARRIER_INVOICE, actionable=True, suggested_lane=None,
+                ThreadState.NEW_CARRIER_INVOICE, actionable=True, suggested_action_class=None,
                 suggested_action=f"Carrier invoice received for {item.load_ref or 'this load'} — reconcile it against the rate con.",
                 load_ref=item.load_ref, confidence=0.8,
                 rationale="carrier_invoice attached and backup complete",
             )
         if required and required <= delivered:
             return InboxAssessment(
-                ThreadState.READY_TO_BILL, actionable=True, suggested_lane=LANE_FOR_STATE[ThreadState.READY_TO_BILL],
+                ThreadState.READY_TO_BILL, actionable=True, suggested_action_class=ACTION_CLASS_FOR_STATE[ThreadState.READY_TO_BILL],
                 suggested_action=f"{item.load_ref or 'This load'} is delivered and fully documented — ready to invoice the customer.",
                 load_ref=item.load_ref, confidence=0.75,
                 rationale="all required docs present, no carrier invoice pending",
@@ -127,7 +127,7 @@ def assess_inbox_item(item: InboxItem, *, complete=None) -> InboxAssessment:
         if elevated is not None:
             return elevated
     return InboxAssessment(
-        ThreadState.UNKNOWN, actionable=False, suggested_lane=None,
+        ThreadState.UNKNOWN, actionable=False, suggested_action_class=None,
         suggested_action="Couldn't classify this confidently — surfacing for you to look at.",
         load_ref=item.load_ref, confidence=0.3, rationale="no confident deterministic match",
     )
@@ -153,8 +153,8 @@ def build_inbox_classifier(complete=None):
     """Return a ``classify(trigger) -> dict`` compatible with ``BrainOperator``'s inbound seam.
 
     The dict is intentionally proposal-shaped (``actionable``/``summary``/``capability``): the Brain
-    turns an actionable inbound item into a PROPOSE decision (human approval), and a graduated lane is
-    what may later let that proposal run unattended — the email content never self-authorizes anything.
+    turns an actionable inbound item into a PROPOSE decision (human approval), and a graduated action
+    class is what may later let that proposal run unattended — the email content never self-authorizes anything.
     """
 
     def classify(trigger) -> dict:
@@ -172,7 +172,7 @@ def build_inbox_classifier(complete=None):
             "actionable": a.actionable,
             "reason": a.rationale,
             "summary": a.suggested_action,
-            "capability": a.suggested_lane,
+            "capability": a.suggested_action_class,
             "thread_state": a.thread_state.value,
             "confidence": a.confidence,
         }
@@ -202,7 +202,7 @@ def _assess_with_model(item: InboxItem, complete) -> InboxAssessment | None:
     return InboxAssessment(
         state,
         actionable=state not in (ThreadState.INFORMATIONAL, ThreadState.UNKNOWN),
-        suggested_lane=LANE_FOR_STATE.get(state),
+        suggested_action_class=ACTION_CLASS_FOR_STATE.get(state),
         suggested_action=str(parsed.get("action", "")) or "see assessment",
         load_ref=item.load_ref,
         confidence=float(parsed.get("confidence", 0.5) or 0.5),

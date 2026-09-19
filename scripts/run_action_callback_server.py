@@ -21,7 +21,7 @@ from freight_recon.delivery_dispatch import SlackApiPoster  # noqa: E402
 from freight_recon.screen_discovery import openai_completer  # noqa: E402
 # P4 EP-1 ADAPTER CONTAINMENT (R-07): this entry point deliberately imports NO effect-capable
 # adapter. It used to import `cdp_actuator.CdpActuator`, `cdp_session.CdpBrowserSession`,
-# `operation_router.OperationRouter`/`freight_lanes` and `operator_agent.OperatorAgent` to build a
+# `operation_router.OperationRouter`/`freight_routes` and `operator_agent.OperatorAgent` to build a
 # live browser-write agent (the OperationRouter -> OperatorAgent autonomous write, the live R-07
 # write). That construction site is DELETED, not disabled. The only remaining external-write
 # construction and execution path in the whole system is the canonical effect-capable adapter reached

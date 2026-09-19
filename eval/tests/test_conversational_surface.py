@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from freight_recon.action_callback import route_conversational_message  # noqa: E402
 from freight_recon.delivery import DeliverySigner  # noqa: E402
-from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_routes  # noqa: E402
 from freight_recon.ops_control import OpsControl  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
 
@@ -20,7 +20,7 @@ _SIGNER = DeliverySigner(b"bridge-secret")
 
 
 def _router():
-    return OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    return OperationRouter(routes=freight_routes(), build_agent=lambda **_: None)
 
 
 def _config(*, nl_completer=None):
@@ -179,7 +179,7 @@ def test_batch_background_run_fences_each_item_and_posts_one_consolidated_receip
         posts.append(payload)
 
     store = WorkflowStore(str(tmp_path / "w.sqlite3"), tenant="tenant-fixture-a"); store.close()
-    batch = {"action_id": "batch1", "lane": "raise_invoice", "items": [
+    batch = {"action_id": "batch1", "action_class": "raise_invoice", "items": [
         {"load_ref": "103", "customer": "Acme", "amount": "2500.00"},
         {"load_ref": "104", "customer": "Echo", "amount": "1200.00"},
     ]}
@@ -251,17 +251,17 @@ def test_who_owes_us_the_most_ranks_by_customer(tmp_path):
 
 def test_typed_operation_binds_the_named_record_and_asks_when_missing(tmp_path):
     # LIVE-FOUND: owner said "raise_invoice 100" and the agent drove load 101 — the proposal never
-    # carried the record. The named ref must bind into the intent; a record lane with no ref must ASK.
+    # carried the record. The named ref must bind into the intent; a record action class with no ref must ASK.
     from freight_recon.action_callback import _build_operation_command_proposal, _verify_operation_approval_value
-    from freight_recon.operation_router import OperationRouter, freight_lanes
+    from freight_recon.operation_router import OperationRouter, freight_routes
 
-    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    router = OperationRouter(routes=freight_routes(), build_agent=lambda **_: None)
     msg = _build_operation_command_proposal("raise_invoice 100 amount 2850.00",
                                             signer=_SIGNER, router=router, channel_id="C")
     btn = next(b for b in msg["blocks"] if b["type"] == "actions")["elements"][0]
     approval = _verify_operation_approval_value(btn["value"], _SIGNER)
     assert approval.intent.params["load_ref"] == "100"             # anchored to what the owner NAMED
-    assert approval.intent.params["lane"] == "raise_invoice"
+    assert approval.intent.params["action_class"] == "raise_invoice"
 
     ask = _build_operation_command_proposal("invoice the customer amount 500.00",
                                             signer=_SIGNER, router=router, channel_id="C")
@@ -270,11 +270,11 @@ def test_typed_operation_binds_the_named_record_and_asks_when_missing(tmp_path):
 
 def test_non_money_lane_proposal_needs_no_amount(tmp_path):
     # LIVE-FOUND: "…why are you attaching this to 101?" was answered with "I need an approved amount"
-    # for file_document — a non-money lane must propose without demanding a dollar figure.
+    # for file_document — a non-money action class must propose without demanding a dollar figure.
     from freight_recon.action_callback import _build_operation_command_proposal
-    from freight_recon.operation_router import OperationRouter, freight_lanes
+    from freight_recon.operation_router import OperationRouter, freight_routes
 
-    router = OperationRouter(lanes=freight_lanes(), build_agent=lambda **_: None)
+    router = OperationRouter(routes=freight_routes(), build_agent=lambda **_: None)
     msg = _build_operation_command_proposal("attach the POD to load 101",
                                             signer=_SIGNER, router=router, channel_id="C")
     assert msg.get("blocks"), msg                                  # a real proposal, not an amount nag
@@ -282,10 +282,10 @@ def test_non_money_lane_proposal_needs_no_amount(tmp_path):
 
 
 def test_challenge_in_a_pending_op_thread_gets_op_context_not_a_new_lane(tmp_path):
-    # LIVE-FOUND: the owner's complaint in the escalated thread was lane-matched into file_document.
+    # LIVE-FOUND: the owner's complaint in the escalated thread was action-class-matched into file_document.
     from freight_recon.action_callback import _render_pending_op_context
 
-    pending = {"lane": "raise_invoice", "status": "ESCALATED",
+    pending = {"action_class": "raise_invoice", "status": "ESCALATED",
                "summary": "Invoice the customer for 100",
                "note": "blocked: POD/BOL attachment file is required but no file is available to upload",
                "steps": [{"action": "CLICK", "target": "101", "ok": True},

@@ -763,9 +763,10 @@ expected_deprecated_terms:
     - src/freight_recon/commit_key.py
     - src/freight_recon/email_triage.py
     - src/freight_recon/inbox_brain.py
-    - src/freight_recon/lane_graduation.py
+    - src/freight_recon/action_class_graduation.py   # U8.5: renamed from lane_graduation.py
     - src/freight_recon/mailbox_workflow.py
     - src/freight_recon/migrations/phase2_tenant_first.py
+    - src/freight_recon/migrations/phase8_action_class.py   # U8.5 persistence migration (names the legacy column)
     - src/freight_recon/mock_tms_write_server.py
     - src/freight_recon/operation_proposal.py
     - src/freight_recon/operation_router.py
@@ -780,19 +781,34 @@ expected_deprecated_terms:
     - src/freight_recon/workflow.py
   terms:
     - term: lane
-      count: 225   # P4 cutover: was 234 (EP-6/7/9/10 delete -6), then 228; the EP-1 write cut +
-                   # propose_ar_from_tms read-only conversion removed 3 more `lane` occurrences
+      count: 78    # U8.5 LANDED: was 225. The operational-control `lane` is GONE from product
+                   # authority; the residual is migration code (phase2/phase8 + the retained
+                   # non-authoritative effect_grants mirror column), bounded one-directional compat
+                   # reads (`.get("lane")`), U8.5 vocabulary prose, and the genuine freight-domain
+                   # lane (origin->destination) in email_triage.py — the last is NOT migrated (a
+                   # future P9 Lane entity, out of U8.5 scope). The U8.5 mutation battery
+                   # (scripts/mutate_p8_action_class.py) is EXCLUDED from this count the same way the
+                   # Phase-0 guards are (it names the defect it injects; payload is data, not usage) —
+                   # see deprecated_probe._is_phase0_meta. ZERO operational-control occurrences remain,
+                   # proven mechanically by eval/phase0/action_class_migration.py (a semantic
+                   # detector with a positive control), not by this raw count.
       canonical: action_class | workflow_id | policy scope
       removed_by_phase: P8
       accountable_unit: U8.5
       note: >-
-        ADJUDICATED 2026-07-17 (U2.6A): +7, all inside migrations/phase2_tenant_first.py, which
-        must NAME the legacy tables and columns it migrates - a migration that cannot say
-        `workflow_runs` cannot migrate workflow_runs. The terms did not spread to any other file.
-        Three meanings in one word. The largest mechanical change in the plan, deliberately last.
-        PRODUCTION baseline @ d33f251 was 257; Phase 1 brought it to 227 - DOWN 30, because deleting
-        the amount-keyed derivation took its lane-shaped parameters with it. The new module
-        commit_key.py is lane-free apart from one comment naming the concept it will replace.
+        U8.5 COMPLETE (2026-09-19). The overloaded operational `lane` resolved, unanimously in this
+        repository, to `action_class` (WHAT consequential effect): OperationRouter's ActionClassRoute,
+        the graduation/autonomous-run scope, the effect_grants field and the CommandIntent param. The
+        `workflow_id` and `policy scope` arms of the canonical union had ZERO occurrences — the
+        graduation scope IS the action_class, and M11 evaluates its policy scope AS the action_class at
+        checkpoint step 6. Behaviour-free: no gate, cap, approval, rule, brake, or commit key changed
+        and no autonomy or live route was created. autonomous_run_counters.lane was renamed to
+        action_class (tenant-first PK preserved); effect_grants.lane is retained as a byte-identical
+        non-authoritative mirror with an action_class==lane invariant. The count fell 225 -> 88 because
+        the operational identifier is gone; what remains is migration/compat/prose/battery/freight and
+        is asserted resolved, per file, by the semantic detector. Earlier history: ADJUDICATED
+        2026-07-17 (U2.6A) at 225; Phase 1 brought a 257 baseline to 227 by deleting the amount-keyed
+        derivation and its lane-shaped parameters.
     - term: CommandIntent
       count: 57
       canonical: Proposal / Effect Request

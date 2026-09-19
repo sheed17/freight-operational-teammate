@@ -1,7 +1,7 @@
 """The bridge that closes the loop: an inbound proposal -> a Slack Approve button -> the live browser.
 
 This is the last wire of "email arrives -> Neyma asks in Slack -> you tap -> the agent executes". The
-Inbox Brain decides an inbound item is actionable on a bounded lane (e.g. READY_TO_BILL -> raise_invoice);
+Inbox Brain decides an inbound item is actionable on a bounded action class (e.g. READY_TO_BILL -> raise_invoice);
 this builds the Slack message that proposes it, carrying a **signed operation-approval token** as the
 button value. When the owner taps it, the action callback verifies the signature + authorization, then
 runs the OperationRouter (the money-fenced, gated live agent). Nothing executes from the email itself —
@@ -89,17 +89,17 @@ def proposal_from_assessment(
 ) -> dict | None:
     """Turn an actionable Inbox Brain assessment into a Slack operation-proposal message.
 
-    Returns ``None`` when the assessment has no bounded lane to run (e.g. MISSING_BACKUP -> chase a doc,
+    Returns ``None`` when the assessment has no bounded action class to run (e.g. MISSING_BACKUP -> chase a doc,
     DISPUTE_REPLY -> human path): those surface as plain FYIs elsewhere, not as an Approve-and-run button.
-    A money lane with no ``approved_amount`` also returns ``None`` — we never post a run button without a
+    A money action class with no ``approved_amount`` also returns ``None`` — we never post a run button without a
     human-approvable figure on it.
     """
-    if not assessment.actionable or not assessment.suggested_lane:
+    if not assessment.actionable or not assessment.suggested_action_class:
         return None
     if approved_amount in (None, ""):
         return None
     merged = dict(params or {})
-    merged.setdefault("lane", assessment.suggested_lane)
+    merged.setdefault("action_class", assessment.suggested_action_class)
     if assessment.load_ref:
         merged.setdefault("load_ref", assessment.load_ref)
     intent = CommandIntent(kind=CommandKind.OPERATE, summary=assessment.suggested_action, params=merged)
@@ -140,7 +140,7 @@ def proposals_for_clean_matches(
         intent = CommandIntent(
             kind=CommandKind.OPERATE,
             summary=f"Record the agreed payable to {carrier}" + (f" for {load_ref}" if load_ref else ""),
-            params={"lane": "record_payable", "carrier": carrier, "load_ref": load_ref},
+            params={"action_class": "record_payable", "carrier": carrier, "load_ref": load_ref},
         )
         message = build_operation_proposal_message(
             intent, signer, approved_amount=str(amount), channel_id=channel_id,
@@ -470,7 +470,7 @@ def proposals_for_ready_to_bill(
         intent = CommandIntent(
             kind=CommandKind.OPERATE,
             summary=f"Invoice {customer}" + (f" for {load_ref}" if load_ref else ""),
-            params={"lane": "raise_invoice", "customer": customer, "load_ref": load_ref},
+            params={"action_class": "raise_invoice", "customer": customer, "load_ref": load_ref},
         )
         message = build_operation_proposal_message(
             intent, signer, approved_amount=str(amount), channel_id=channel_id,
@@ -543,7 +543,7 @@ def build_ready_to_bill_digest(
             intent = CommandIntent(
                 kind=CommandKind.OPERATE,
                 summary=f"Invoice {r.get('customer') or 'the customer'} for {r['load_ref']}",
-                params={"lane": "raise_invoice", "customer": r.get("customer"), "load_ref": r["load_ref"]},
+                params={"action_class": "raise_invoice", "customer": r.get("customer"), "load_ref": r["load_ref"]},
             )
             value = build_slack_operation_approval_value(
                 intent, signer, approved_amount=str(r["amount"]), expected_channel_id=channel_id,

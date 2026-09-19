@@ -1,4 +1,4 @@
-"""Tests for the Inbox Brain: thread-state assessment, lane suggestion, injection-safe integration."""
+"""Tests for the Inbox Brain: thread-state assessment, action-class suggestion, injection-safe integration."""
 
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ def test_missing_pod_is_chased_not_billed():
                                 doc_types=["carrier_invoice"],
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice"]))
     assert a.thread_state == ThreadState.MISSING_BACKUP
-    assert "pod" in a.suggested_action.lower() and a.suggested_lane is None and a.actionable
+    assert "pod" in a.suggested_action.lower() and a.suggested_action_class is None and a.actionable
 
 
 def test_fully_documented_load_is_ready_to_bill_and_suggests_invoice_lane():
@@ -30,21 +30,21 @@ def test_fully_documented_load_is_ready_to_bill_and_suggests_invoice_lane():
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
     # carrier_invoice is not in THIS email, backup is complete -> ready to bill the customer.
     assert a.thread_state == ThreadState.READY_TO_BILL
-    assert a.suggested_lane == "raise_invoice" and a.actionable
+    assert a.suggested_action_class == "raise_invoice" and a.actionable
 
 
 def test_new_carrier_invoice_goes_to_reconcile_not_a_write_lane():
     a = assess_inbox_item(_item(load_ref="LD-3", subject="Carrier invoice – Load LD-3",
                                 doc_types=["carrier_invoice"],
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
-    assert a.thread_state == ThreadState.NEW_CARRIER_INVOICE and a.suggested_lane is None
+    assert a.thread_state == ThreadState.NEW_CARRIER_INVOICE and a.suggested_action_class is None
 
 
 def test_dispute_reply_is_flagged_for_human():
     a = assess_inbox_item(_item(load_ref="LD-4", subject="Re: short pay on LD-4",
                                 body="We are disputing the $250 detention deduction.",
                                 delivered_doc_types=["rate_confirmation", "carrier_invoice", "pod"]))
-    assert a.thread_state == ThreadState.DISPUTE_REPLY and a.suggested_lane is None and a.actionable
+    assert a.thread_state == ThreadState.DISPUTE_REPLY and a.suggested_action_class is None and a.actionable
 
 
 def test_ambiguous_item_uses_model_only_to_assess():

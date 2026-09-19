@@ -86,8 +86,8 @@ _HELP = (
     "• `learn <fact>` — teach it a fact, e.g. `learn Northbound is order #1002`\n"
     "• `sop <procedure>` — add a company procedure, e.g. `sop raise_invoice: always include the load reference`\n"
     "• `forget <id or words>` — correct or remove something it learned\n"
-    "• `autonomy` — which lanes run unattended, and their limits\n"
-    "• `graduate <lane> [$amount]` / `supervise <lane>` — full-auto a lane / put it back to staged\n"
+    "• `autonomy` — which action classes run unattended, and their limits\n"
+    "• `graduate <action_class> [$amount]` / `supervise <action_class>` — full-auto an action class / put it back to staged\n"
     "• `pause tms writes` / `resume tms writes` — the brake\n"
     "• `show unresolved` — open items waiting on you  ·  `status <LOAD-ID>` — one load's status"
 )
@@ -185,9 +185,15 @@ def handle_ops_command(
 
 
 def _graduation_for(store):
-    from .lane_graduation import LaneGraduation
+    from .action_class_graduation import ActionClassGraduation
 
-    return LaneGraduation(Path(store.db_path).parent / "lane_graduation.json")
+    parent = Path(store.db_path).parent
+    # U8.5: the canonical file is action_class_graduation.json; a pre-U8.5 lane_graduation.json is
+    # read one-directionally and migrated on first canonical write. Bounded and non-authoritative.
+    return ActionClassGraduation(
+        parent / "action_class_graduation.json",
+        legacy_path=parent / "lane_graduation.json",
+    )
 
 
 def _knowledge_for(store):
@@ -205,37 +211,37 @@ def _kb_tenant(store) -> str:
     return require_tenant(store.tenant, context="knowledge base")
 
 
-def _known_lane_names() -> set[str]:
-    from .operation_router import freight_lanes
+def _known_action_class_names() -> set[str]:
+    from .operation_router import freight_routes
 
-    return {lane.name for lane in freight_lanes()}
+    return {route.name for route in freight_routes()}
 
 
 def _handle_graduation(store, verb: str, arg: str, *, actor: str, tenant: str = "default") -> str:
-    """Flip a lane between supervised and autonomous from Slack, optionally with a dollar ceiling:
-    `graduate raise_invoice 2500`. Unknown lanes are refused, not created."""
+    """Flip an action class between supervised and autonomous from Slack, optionally with a dollar
+    ceiling: `graduate raise_invoice 2500`. Unknown action classes are refused, not created."""
     parts = arg.split()
-    lane = parts[0] if parts else ""
-    if lane not in _known_lane_names():
-        known = ", ".join(sorted(_known_lane_names()))
-        return f"Unknown lane `{lane}`. Known lanes: {known}."
+    action_class = parts[0] if parts else ""
+    if action_class not in _known_action_class_names():
+        known = ", ".join(sorted(_known_action_class_names()))
+        return f"Unknown action class `{action_class}`. Known action classes: {known}."
     grad = _graduation_for(store)
     if verb in ("graduate", "autonomous"):
         ceiling = parts[1].lstrip("$") if len(parts) > 1 else None
-        grad.graduate(tenant, lane, actor=actor, reason="graduated from Slack", max_amount=ceiling)
+        grad.graduate(tenant, action_class, actor=actor, reason="graduated from Slack", max_amount=ceiling)
         cap = f" up to ${ceiling}/run" if ceiling else " (no dollar ceiling set — consider adding one)"
-        return f":rocket: Lane *{lane}* is now *AUTONOMOUS*{cap} — I'll run approved work on it unattended."
-    grad.restrict(tenant, lane, actor=actor, reason="restricted from Slack")
-    return f":lock: Lane *{lane}* is back to *SUPERVISED* — it will ask for your approval before running."
+        return f":rocket: Action class *{action_class}* is now *AUTONOMOUS*{cap} — I'll run approved work on it unattended."
+    grad.restrict(tenant, action_class, actor=actor, reason="restricted from Slack")
+    return f":lock: Action class *{action_class}* is back to *SUPERVISED* — it will ask for your approval before running."
 
 
 def _render_autonomy(store, tenant: str = "default") -> str:
     grad = _graduation_for(store)
-    lanes = grad.autonomous_lanes(tenant)
-    if not lanes:
-        return ":lock: All lanes are *supervised* — nothing runs without your approval yet."
+    action_classes = grad.autonomous_action_classes(tenant)
+    if not action_classes:
+        return ":lock: All action classes are *supervised* — nothing runs without your approval yet."
     rows = []
-    for e in lanes:
+    for e in action_classes:
         limits = []
         if e.get("max_amount"):
             limits.append(f"≤ ${e['max_amount']}/run")
@@ -244,8 +250,8 @@ def _render_autonomy(store, tenant: str = "default") -> str:
         if e.get("daily_cap") is not None:
             limits.append(f"≤ {e['daily_cap']}/day")
         suffix = f" — {', '.join(limits)}" if limits else " — no limits set"
-        rows.append(f"• {e['lane']}{suffix}")
-    return "*Autonomous lanes* (run unattended on approved work):\n" + "\n".join(rows)
+        rows.append(f"• {e['action_class']}{suffix}")
+    return "*Autonomous action classes* (run unattended on approved work):\n" + "\n".join(rows)
 
 
 def _render_operational_status(

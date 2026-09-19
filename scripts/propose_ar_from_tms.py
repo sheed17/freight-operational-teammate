@@ -76,7 +76,7 @@ def _raise_invoice_intent(row: dict) -> CommandIntent:
         kind=CommandKind.OPERATE,
         summary=f"Invoice {row.get('customer')} for {row.get('load_ref')}",
         params={
-            "lane": "raise_invoice",
+            "action_class": "raise_invoice",
             "customer": row.get("customer"),
             "load_ref": row.get("load_ref"),
             "approved_amount": row.get("amount"),

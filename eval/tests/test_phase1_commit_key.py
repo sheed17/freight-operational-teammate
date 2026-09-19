@@ -35,7 +35,7 @@ from freight_recon.operation_router import (
     OperationRouter,
     _commit_reservation,
     _logical_effect,
-    freight_lanes,
+    freight_routes,
 )
 from freight_recon.operator_agent import OperatorAgent
 from freight_recon.slack_delegate import CommandIntent, CommandKind
@@ -47,7 +47,7 @@ def _operate(summary, params=None):
 
 
 def _lane(name):
-    return next(l for l in freight_lanes() if l.name == name)
+    return next(l for l in freight_routes() if l.name == name)
 
 
 def _key(**over):
@@ -239,12 +239,12 @@ def test_14_a_historical_old_format_identity_cannot_permit_recommitment(tmp_path
         # amount, so it does not match any canonical key.
         store.claim_operation_commit(
             commit_key="legacy_sha_of_acme_raise_invoice_LD-1_CUST_2850.00",
-            target_system="tms", lane="raise_invoice", load_ref="LD-1", party="CUST",
+            target_system="tms", action_class="raise_invoice", load_ref="LD-1", party="CUST",
             approved_amount="2850.00", payload={"status": "COMMITTED", "committed": True},
         )
         actuator = _Actuator()
         result = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent(actuator),
+            routes=freight_routes(), build_agent=_agent(actuator),
             approved_amount_for=lambda _i: "2850.00", tenant="acme", commit_store=store,
         ).run(_operate("invoice LD-1", {"load_ref": "LD-1", "customer": "CUST", "commit": True}),
               approve=lambda a: True)
@@ -263,13 +263,13 @@ def test_14b_two_legacy_rows_for_one_logical_effect_are_manual_review_not_a_merg
     try:
         for amount in ("2850.00", "3100.00"):
             store.claim_operation_commit(
-                commit_key=f"legacy_{amount}", target_system="tms", lane="raise_invoice",
+                commit_key=f"legacy_{amount}", target_system="tms", action_class="raise_invoice",
                 load_ref="LD-1", party="CUST", approved_amount=amount,
                 payload={"status": "COMMITTED"},
             )
         actuator = _Actuator()
         result = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent(actuator),
+            routes=freight_routes(), build_agent=_agent(actuator),
             approved_amount_for=lambda _i: "2850.00", tenant="acme", commit_store=store,
         ).run(_operate("invoice LD-1", {"load_ref": "LD-1", "customer": "CUST", "commit": True}),
               approve=lambda a: True)
@@ -419,7 +419,7 @@ def test_crash_after_reservation_blocks_a_blind_retry_across_a_restart(tmp_path)
     try:
         actuator = _Actuator()
         result = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent(actuator),
+            routes=freight_routes(), build_agent=_agent(actuator),
             approved_amount_for=lambda _i: "100.00", tenant="acme", commit_store=store,
         ).run(_operate("invoice LD-1", {"load_ref": "LD-1", "customer": "CUST", "commit": True}),
               approve=lambda a: True)
@@ -471,10 +471,10 @@ def test_logical_effect_is_frozen_so_identity_cannot_be_mutated_after_constructi
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 
-def _seed_legacy(store, load_ref, amounts, status="COMMITTED", lane="raise_invoice"):
+def _seed_legacy(store, load_ref, amounts, status="COMMITTED", action_class="raise_invoice"):
     for i, amt in enumerate(amounts):
         store.claim_operation_commit(
-            commit_key=f"legacy_{load_ref}_{i}", target_system="tms", lane=lane, load_ref=load_ref,
+            commit_key=f"legacy_{load_ref}_{i}", target_system="tms", action_class=action_class, load_ref=load_ref,
             party="CUST", approved_amount=amt, payload={"status": status},
         )
 

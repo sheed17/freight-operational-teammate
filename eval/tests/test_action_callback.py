@@ -28,7 +28,7 @@ from freight_recon.action_callback import (  # noqa: E402
     run_callback_server,
 )
 from freight_recon.delivery import DeliverySigner, build_delivery_message, record_delivery_message  # noqa: E402
-from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_routes  # noqa: E402
 from freight_recon.operator_agent import AgentResult  # noqa: E402
 from freight_recon.reconciliation import FreightLoadForReconciliation  # noqa: E402
 from freight_recon.review import build_review_payload, record_review_payload  # noqa: E402
@@ -76,7 +76,7 @@ def _noop_router():
         return None
 
     return OperationRouter(
-        lanes=freight_lanes(),
+        routes=freight_routes(),
         build_agent=build_agent,
         approved_amount_for=lambda intent: (intent.params or {}).get("approved_amount"),
     )
@@ -422,7 +422,7 @@ def _serve_with_operation_router(db_path, signer, loads, *, approved_amount="285
         return _FakeRouterAgent(calls, approve)
 
     router = OperationRouter(
-        lanes=freight_lanes(),
+        routes=freight_routes(),
         build_agent=build_agent,
         approved_amount_for=lambda intent: intent.params.get("approved_amount"),
     )

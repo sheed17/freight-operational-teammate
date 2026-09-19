@@ -70,7 +70,7 @@ class MailboxWorkflowPacketResult(BaseModel):
     delivery_created: bool = False
     skipped_reason: str | None = None
     # Inbox Brain's proactive read of this packet's thread state + the next step it suggests. This only
-    # surfaces a proposal — nothing auto-runs from it (that stays gated by approval/lane graduation).
+    # surfaces a proposal — nothing auto-runs from it (that stays gated by approval/action-class graduation).
     thread_state: str | None = None
     suggested_action: str | None = None
 

@@ -418,7 +418,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
             """Handle a Slack-approved bounded operation request, if this interaction is one.
 
             This is the Version-B callback bridge: Slack button approval -> authorized owner/channel
-            -> known OperationRouter lane -> agent receipt. Unknown button payloads fall through to
+            -> known OperationRouter action class -> agent receipt. Unknown button payloads fall through to
             the normal review-action handler.
             """
             try:
@@ -806,7 +806,8 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     return True
                 store.add_security_event(
                     "slack_batch_operation_started", actor=str(user_id or "unknown"),
-                    payload={"action_id": batch["action_id"], "lane": batch.get("lane"),
+                    payload={"action_id": batch["action_id"],
+                             "action_class": batch.get("action_class") or batch.get("lane"),
                              "items": batch["items"], "channel_id": channel_id, "thread_ts": thread_ts},
                 )
             finally:
@@ -903,7 +904,7 @@ def make_callback_handler(config: CallbackAppConfig) -> type[BaseHTTPRequestHand
                     config.operation_result_poster({
                         "channel_id": channel_id, "thread_ts": thread_ts,
                         "text": "👍 On it — resuming now…", "status": "RESUMING",
-                        "lane": resumable.get("lane"),
+                        "action_class": resumable.get("action_class") or resumable.get("lane"),
                     })
                 except Exception:  # noqa: BLE001 - the ack is best-effort
                     pass
@@ -1120,7 +1121,7 @@ def build_slack_batch_approval_value(
     items: list[dict],
     signer: DeliverySigner,
     *,
-    lane: str = "raise_invoice",
+    action_class: str = "raise_invoice",
     expected_channel_id: str | None = None,
     issued_at: datetime | None = None,
     ttl_seconds: int = DEFAULT_OPERATION_TOKEN_TTL_SECONDS,
@@ -1136,7 +1137,7 @@ def build_slack_batch_approval_value(
     claims = {
         "type": "operate_batch_approval",
         "action_id": action_id or uuid.uuid4().hex,
-        "lane": lane,
+        "action_class": action_class,
         "items": [
             {"load_ref": str(i["load_ref"]), "customer": str(i.get("customer") or ""),
              "amount": str(i["amount"])}
@@ -1272,7 +1273,7 @@ def _record_run_diagnosis(store, result, *, actor, channel_id, thread_ts) -> obj
         try:
             store.add_security_event("run_diagnosis", actor=actor, payload={
                 "channel_id": channel_id, "thread_ts": thread_ts,
-                "lane": getattr(result, "lane", None), "outcome": diag.outcome,
+                "action_class": getattr(result, "action_class", None), "outcome": diag.outcome,
                 "summary": diag.summary, "repeated_failures": diag.repeated_failures,
                 "dead_ends": diag.dead_ends, "suggested_fixes": diag.suggested_fixes,
                 "exhausted": diag.exhausted_steps,
@@ -1604,9 +1605,9 @@ def route_conversational_message(text, *, actor, channel_id, config, ops_control
 def _render_pending_op_context(pending_op: dict, reply_text: str) -> str:
     """Answer a question/challenge about the pending operation in this thread — what it did, why it
     stopped, and how to redirect it. LIVE-FOUND: the owner's complaint ("did i not say 100, why are you
-    attaching this to 101?") was keyword-routed into a NEW lane proposal instead of being answered."""
-    lane = pending_op.get("lane") or "operation"
-    summary = str(pending_op.get("summary") or lane)
+    attaching this to 101?") was keyword-routed into a NEW action-class proposal instead of being answered."""
+    action_class = pending_op.get("action_class") or pending_op.get("lane") or "operation"
+    summary = str(pending_op.get("summary") or action_class)
     note = str(pending_op.get("note") or "").strip()
     steps = [s for s in (pending_op.get("steps") or []) if isinstance(s, dict) and s.get("action")]
     lines = [f"About this run (*{summary}* — {pending_op.get('status', 'pending')}):"]
@@ -1629,9 +1630,9 @@ def _render_pending_op_context(pending_op: dict, reply_text: str) -> str:
 def _is_pending_op_challenge(text: str, pending_op: dict | None) -> bool:
     """Is this reply challenging/questioning the active operation rather than starting a new one?
 
-    This runs before generic lane matching. In a pending operation thread, phrases like "why are you
+    This runs before generic action-class matching. In a pending operation thread, phrases like "why are you
     attaching 101" must explain the active run, not become a fresh file_document proposal because the
-    word "attaching" matched a lane keyword.
+    word "attaching" matched an action-class keyword.
     """
     if pending_op is None:
         return False
@@ -1655,7 +1656,7 @@ def _is_pending_op_challenge(text: str, pending_op: dict | None) -> bool:
 def _respond_conversationally(*, text, actor, channel_id, thread_ts, config, pending_op: dict | None = None) -> None:
     """Route a non-resume owner thread reply through the conversational surface and post the result to
     the thread (an answer, or a proposal carrying its Approve button in blocks). When the thread has a
-    PENDING op and the reply isn't a clean read/control, answer about THAT op instead of lane-matching
+    PENDING op and the reply isn't a clean read/control, answer about THAT op instead of action-class-matching
     the owner's words into an unrelated new proposal."""
     if config.operation_result_poster is None or not (text or "").strip():
         return
@@ -1720,7 +1721,7 @@ def _start_batch_background_run(
 ) -> threading.Thread:
     """Run the digest's approved batch: each item through the SAME per-load fence + commit-once (a
     partial failure is contained — the rest still bill), then ONE consolidated receipt in-thread."""
-    lane = str(batch.get("lane") or "raise_invoice")
+    action_class = str(batch.get("action_class") or batch.get("lane") or "raise_invoice")
 
     def _run() -> None:
         outcomes: list[tuple[str, str, str]] = []  # (load_ref, status, note)
@@ -1729,7 +1730,7 @@ def _start_batch_background_run(
             intent = CommandIntent(
                 kind=CommandKind.OPERATE,
                 summary=f"Invoice {customer or 'the customer'} for {load_ref}",
-                params={"lane": lane, "customer": customer, "load_ref": load_ref,
+                params={"action_class": action_class, "customer": customer, "load_ref": load_ref,
                         "approved_amount": amount, "commit": True},
             )
             try:
@@ -1742,7 +1743,7 @@ def _start_batch_background_run(
             try:
                 store.add_security_event(
                     "slack_operation_applied", actor=actor,
-                    payload={"batch_action_id": batch["action_id"], "lane": lane, "load_ref": load_ref,
+                    payload={"batch_action_id": batch["action_id"], "action_class": action_class, "load_ref": load_ref,
                              "approved_amount": amount, "status": status, "note": note,
                              "channel_id": channel_id, "thread_ts": thread_ts,
                              "summary": f"Invoice {customer} for {load_ref}"},
@@ -1759,7 +1760,7 @@ def _start_batch_background_run(
                 lines.append(f"  ✋ {ref}: {s} — {note[:120]}")
             try:
                 poster({"channel_id": channel_id, "thread_ts": thread_ts,
-                        "text": "\n".join(lines), "status": "BATCH_DONE", "lane": lane})
+                        "text": "\n".join(lines), "status": "BATCH_DONE", "action_class": action_class})
             except Exception:  # noqa: BLE001 - the receipt is best-effort; the audit log has the truth
                 pass
 
@@ -1827,7 +1828,7 @@ def _start_operation_background_run(
                         "thread_ts": thread_ts,
                         "text": _receipt_text(result, approval.approved_amount, diag),
                         "status": result.status,
-                        "lane": result.lane,
+                        "action_class": result.action_class,
                     }
                 )
             except Exception:
@@ -1887,7 +1888,7 @@ def _start_resume_background_run(
             try:
                 result = router.run(intent, approve=_single_consequential_approval())
                 event_type, extra = "slack_operation_applied", {
-                    "params": intent.params, "lane": result.lane, "status": result.status,
+                    "params": intent.params, "action_class": result.action_class, "status": result.status,
                     "note": result.note, "steps": result.steps,
                 }
             except Exception as exc:  # noqa: BLE001 - a resume failure must still receipt
@@ -1909,7 +1910,7 @@ def _start_resume_background_run(
                 poster({
                     "channel_id": channel_id, "thread_ts": thread_ts,
                     "text": _receipt_text(result, amount, diag),
-                    "status": result.status, "lane": result.lane,
+                    "status": result.status, "action_class": result.action_class,
                 })
             except Exception:  # noqa: BLE001
                 return
@@ -1935,7 +1936,7 @@ def _operation_receipt_payload(
         "approved_amount": approval.approved_amount,
         "summary": approval.intent.summary,
         "params": approval.intent.params,
-        "lane": result.lane,
+        "action_class": result.action_class,
         "status": result.status,
         "note": result.note,
         "steps": result.steps,
@@ -1950,11 +1951,11 @@ def _build_operation_command_proposal(
     channel_id: str | None,
     amount_source_text: str | None = None,
 ) -> dict | None:
-    # Only treat this as an operation request if it actually matches a known lane (e.g. "invoice ...",
+    # Only treat this as an operation request if it actually matches a known action class (e.g. "invoice ...",
     # "record payable ..."). Otherwise it's just an unrecognized command -> return None so the caller
     # shows the help, instead of nagging about an approved amount.
-    lane = router.lane_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
-    if lane is None:
+    route = router.route_for(CommandIntent(kind=CommandKind.OPERATE, summary=text, params={}))
+    if route is None:
         return None
     # Anchor the operation to the record the owner NAMED. Without this the goal says "...the delivered
     # load" and the agent picks a record itself — live-found: owner said load 100, agent drove 101.
@@ -1963,28 +1964,28 @@ def _build_operation_command_proposal(
     load_ref = _extract_load_ref(amount_source_text) if amount_source_text is not None else None
     if load_ref is None:
         load_ref = _extract_load_ref(text)
-    if load_ref is None and lane.name != "create_load":  # every other lane acts ON a specific record
+    if load_ref is None and route.name != "create_load":  # every other action class acts ON a specific record
         return {
             "response_type": "ephemeral",
-            "text": f"To run *{lane.name}* I need to know which load/invoice. "
+            "text": f"To run *{route.name}* I need to know which load/invoice. "
                     "Name the record, e.g. `bill load 102` or `record a payment on invoice 560009`.",
         }
-    params: dict = {"lane": lane.name}
+    params: dict = {"action_class": route.name}
     if load_ref is not None:
         params["load_ref"] = load_ref
     customer = _extract_customer(text)
     if customer:
         params["customer"] = customer
-    elif lane.name == "raise_invoice" and load_ref is not None:
+    elif route.name == "raise_invoice" and load_ref is not None:
         # AR invoice requests often arrive as "bill load 100 amount 2850". The browser can read the
         # bill-to from the load, but commit-once still needs a stable party dimension. Use an explicit
         # load-scoped placeholder rather than leaving the commit identity unprotected.
         params["party"] = f"customer_on_load:{load_ref}"
     amount = _extract_command_amount(amount_source_text if amount_source_text is not None else text)
-    if lane.requires_amount and amount is None:
+    if route.requires_amount and amount is None:
         return {
             "response_type": "ephemeral",
-            "text": f"To run *{lane.name}* on {load_ref or 'that record'} I need an approved amount — "
+            "text": f"To run *{route.name}* on {load_ref or 'that record'} I need an approved amount — "
                     "add it like `amount 2400.00` (or name a load and I'll fetch its total from the TMS).",
         }
     if amount is not None:
@@ -1998,8 +1999,8 @@ def _build_operation_command_proposal(
     )
     record_field = f"*Record*\n{load_ref}" if load_ref else "*Record*\n(new)"
     amount_field = f"*Approved amount*\n${amount}" if amount else "*Amount*\n(none — not a money action)"
-    button_label = f"Approve ${amount}" if amount else f"Approve {lane.name}"
-    headline = f"Neyma proposal: {lane.name}" + (f" on {load_ref}" if load_ref else "") + (f" for ${amount}" if amount else "")
+    button_label = f"Approve ${amount}" if amount else f"Approve {route.name}"
+    headline = f"Neyma proposal: {route.name}" + (f" on {load_ref}" if load_ref else "") + (f" for ${amount}" if amount else "")
     return {
         "response_type": "in_channel",
         "text": headline,
@@ -2008,7 +2009,7 @@ def _build_operation_command_proposal(
             {
                 "type": "section",
                 "fields": [
-                    {"type": "mrkdwn", "text": f"*Lane*\n{lane.name}"},
+                    {"type": "mrkdwn", "text": f"*Action class*\n{route.name}"},
                     {"type": "mrkdwn", "text": record_field},
                     {"type": "mrkdwn", "text": amount_field},
                 ],
@@ -2050,7 +2051,7 @@ def _extract_customer(text: str) -> str | None:
     """Best-effort deterministic customer capture from typed owner commands.
 
     This is not allowed to invent a party. It only binds clear phrases such as
-    ``invoice LD-9001 for Acme amount 2850`` or ``customer Acme``. If absent, the AR lane uses the
+    ``invoice LD-9001 for Acme amount 2850`` or ``customer Acme``. If absent, the AR action class uses the
     load-scoped party fallback above and lets the TMS load supply the bill-to.
     """
     t = (text or "").strip()

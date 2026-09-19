@@ -51,7 +51,7 @@ def report(db: str, *, tenant: str) -> dict:
     try:
         rows = [
             {
-                "commit_key": r["commit_key"], "tenant": r["tenant"], "lane": r["lane"],
+                "commit_key": r["commit_key"], "tenant": r["tenant"], "action_class": r["action_class"],
                 "load_ref": r["load_ref"], "party": r["party"],
                 "approved_amount": r["approved_amount"],
                 "payload": json.loads(r["payload_json"]), "created_at": r["created_at"],
@@ -69,11 +69,11 @@ def report(db: str, *, tenant: str) -> dict:
 
     groups = collections.defaultdict(list)
     for r in rows:
-        groups[(r["tenant"], r["lane"], r["load_ref"], r["party"])].append(r)
+        groups[(r["tenant"], r["action_class"], r["load_ref"], r["party"])].append(r)
 
     findings = [
         {
-            "logical_effect": dict(zip(("tenant", "lane", "load_ref", "party"), k)),
+            "logical_effect": dict(zip(("tenant", "action_class", "load_ref", "party"), k)),
             "legacy_rows": len(v),
             "disposition": classify(v),
             "amounts": [r["approved_amount"] for r in v],

@@ -837,7 +837,7 @@ class WorkflowStore:
     def legacy_commit_rows(
         self,
         *,
-        lane: str,
+        action_class: str,
         load_ref: str,
         party: str,
         canonical_commit_key: str,
@@ -873,13 +873,17 @@ class WorkflowStore:
         operation as historical double-commit evidence.
         """
         self._require_schema_ready()
+        # U8.5: the lookup predicate is the canonical `action_class` column, not the legacy `lane`
+        # mirror. Byte-equivalent — this legacy path writes action_class == lane byte-for-byte (below)
+        # — so it changes no row this method returns; it only moves the decision off the deprecated
+        # field onto the one that is authority. (M3/P3 grants populate action_class and leave lane '').
         rows = self.conn.execute(
             f"""
             SELECT * FROM effect_grants
-            WHERE tenant = ? AND lane = ? AND load_ref = ? AND party = ? AND commit_key != ?
+            WHERE tenant = ? AND action_class = ? AND load_ref = ? AND party = ? AND commit_key != ?
               AND {_LEGACY_OWNED_SQL}
             """,
-            (self._tenant, lane, load_ref, party, canonical_commit_key),
+            (self._tenant, action_class, load_ref, party, canonical_commit_key),
         ).fetchall()
         return [self._grant_to_claim(r) for r in rows]
 
@@ -888,7 +892,7 @@ class WorkflowStore:
         *,
         commit_key: str,
         target_system: str,
-        lane: str,
+        action_class: str,
         load_ref: str,
         party: str,
         approved_amount: str = "",
@@ -931,16 +935,20 @@ class WorkflowStore:
                     self._tenant,
                     commit_key,
                     commit_key,
-                    lane,
+                    action_class,
                     target_system,
                     f"{load_ref}|{party}",
-                    lane,
+                    action_class,
                     "GRANTED",
                     approved_amount,
                     # Material Facts stay SEPARATE from identity, by construction. The amount is
                     # preserved so drift stays auditable; it may never key a row again.
                     json.dumps({"approved_amount": approved_amount}, sort_keys=True),
-                    lane,
+                    # U8.5: the legacy `lane` column is written = action_class purely so pre-migration
+                    # history stays attributable. It is NEVER read as authority (the lookup above uses
+                    # the action_class column); test_phase8_action_class_migration asserts this write
+                    # keeps lane == action_class, so the mirror can never diverge into a second field.
+                    action_class,
                     load_ref,
                     party,
                     json.dumps(payload, sort_keys=True),
@@ -1021,12 +1029,18 @@ class WorkflowStore:
     def claim_autonomous_run(
         self,
         tenant: str,
-        lane: str,
+        action_class: str,
         *,
         cap: int,
         day: str | None = None,
     ) -> tuple[bool, int]:
-        """Atomically reserve one autonomous run within the daily cap."""
+        """Atomically reserve one autonomous run within the daily cap.
+
+        U8.5: the counter is keyed by (tenant, action_class, day). The identifier was mechanically
+        determined to be an action_class (it is `route.name`, the WHAT-effect), not a policy scope
+        distinct from it, and the column was renamed accordingly. The BEGIN IMMEDIATE + read-then-cap
+        + upsert atomicity that enforces the cap is unchanged.
+        """
         if cap < 1:
             return False, 0
         run_day = day or datetime.now(timezone.utc).date().isoformat()
@@ -1035,9 +1049,9 @@ class WorkflowStore:
             row = self.conn.execute(
                 """
                 SELECT runs FROM autonomous_run_counters
-                WHERE tenant = ? AND lane = ? AND day = ?
+                WHERE tenant = ? AND action_class = ? AND day = ?
                 """,
-                (tenant, lane, run_day),
+                (tenant, action_class, run_day),
             ).fetchone()
             current = int(row["runs"]) if row else 0
             if current >= cap:
@@ -1046,12 +1060,12 @@ class WorkflowStore:
             updated = current + 1
             self.conn.execute(
                 """
-                INSERT INTO autonomous_run_counters (tenant, lane, day, runs, updated_at)
+                INSERT INTO autonomous_run_counters (tenant, action_class, day, runs, updated_at)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(tenant, lane, day)
+                ON CONFLICT(tenant, action_class, day)
                 DO UPDATE SET runs = excluded.runs, updated_at = excluded.updated_at
                 """,
-                (tenant, lane, run_day, updated, utc_now()),
+                (tenant, action_class, run_day, updated, utc_now()),
             )
             self.conn.commit()
             return True, updated
@@ -1059,14 +1073,14 @@ class WorkflowStore:
             self.conn.rollback()
             raise
 
-    def autonomous_runs_today(self, tenant: str, lane: str, *, day: str | None = None) -> int:
+    def autonomous_runs_today(self, tenant: str, action_class: str, *, day: str | None = None) -> int:
         run_day = day or datetime.now(timezone.utc).date().isoformat()
         row = self.conn.execute(
             """
             SELECT runs FROM autonomous_run_counters
-            WHERE tenant = ? AND lane = ? AND day = ?
+            WHERE tenant = ? AND action_class = ? AND day = ?
             """,
-            (tenant, lane, run_day),
+            (tenant, action_class, run_day),
         ).fetchone()
         return int(row["runs"]) if row else 0
 
@@ -1195,7 +1209,9 @@ class WorkflowStore:
         return {
             "commit_key": row["commit_key"],
             "tenant": row["tenant"],
-            "lane": row["lane"],
+            # U8.5: the canonical WHAT-effect field. Projected from the action_class column (the legacy
+            # `lane` column mirrors it byte-for-byte and is not read here).
+            "action_class": row["action_class"],
             "load_ref": row["load_ref"],
             "party": row["party"],
             "approved_amount": row["approved_amount"],

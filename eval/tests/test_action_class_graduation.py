@@ -1,4 +1,4 @@
-"""Tests for per-(tenant, lane) supervised->autonomous graduation + its effect on the router."""
+"""Tests for per-(tenant, action_class) supervised->autonomous graduation + its effect on the router."""
 
 import json
 import sys
@@ -8,8 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from concurrency_kit import BARRIER_TIMEOUT, run_race  # noqa: E402
-from freight_recon.lane_graduation import LaneGraduation  # noqa: E402
-from freight_recon.operation_router import OperationRouter, freight_lanes  # noqa: E402
+from freight_recon.action_class_graduation import ActionClassGraduation  # noqa: E402
+from freight_recon.operation_router import OperationRouter, freight_routes  # noqa: E402
 from freight_recon.operator_agent import OperatorAgent  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
@@ -50,11 +50,11 @@ def _agent_factory(llm):
 
 
 def test_defaults_to_supervised_and_is_audited(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     assert grad.is_autonomous("acme", "raise_invoice") is False  # fail-safe default
     grad.graduate("acme", "raise_invoice", actor="R", reason="proven over 20 runs")
     assert grad.is_autonomous("acme", "raise_invoice") is True
-    # per (tenant, lane): says nothing about another tenant or lane
+    # per (tenant, action_class): says nothing about another tenant or action class
     assert grad.is_autonomous("beta", "raise_invoice") is False
     assert grad.is_autonomous("acme", "record_payable") is False
     grad.restrict("acme", "raise_invoice", actor="R", reason="saw an error")
@@ -63,19 +63,19 @@ def test_defaults_to_supervised_and_is_audited(tmp_path):
     assert [h["autonomous"] for h in history] == [True, False]
 
 
-def test_supervised_lane_escalates_without_human_approval(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")  # nothing graduated
+def test_supervised_action_class_escalates_without_human_approval(tmp_path):
+    grad = ActionClassGraduation(tmp_path / "grad.json")  # nothing graduated
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(_scripted_llm([])),
+        routes=freight_routes(), build_agent=_agent_factory(_scripted_llm([])),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
-    # No human approve passed and the lane is supervised -> it must stop and ask, not run.
+    # No human approve passed and the action class is supervised -> it must stop and ask, not run.
     res = router.run(_operate("invoice the load for Acme"))
     assert res.status == "ESCALATED" and "supervised" in res.note
 
 
-def test_graduated_lane_runs_unattended(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")
+def test_graduated_action_class_runs_unattended(tmp_path):
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R")
     llm = _scripted_llm([
         {"action": "CLICK", "target": "Save invoice"},
@@ -83,18 +83,18 @@ def test_graduated_lane_runs_unattended(tmp_path):
         {"action": "DONE", "why": "invoice INV-1 created"},
     ])
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        routes=freight_routes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
     res = router.run(_operate("invoice the load for Acme"))  # no human approval
-    assert res.status == "DONE" and res.lane == "raise_invoice"
+    assert res.status == "DONE" and res.action_class == "raise_invoice"
 
 
 def test_human_approval_still_works_regardless_of_graduation(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")  # supervised
+    grad = ActionClassGraduation(tmp_path / "grad.json")  # supervised
     llm = _scripted_llm([])
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        routes=freight_routes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
     # An explicit human approval (the Slack-button path) runs even when not graduated.
@@ -103,11 +103,11 @@ def test_human_approval_still_works_regardless_of_graduation(tmp_path):
 
 
 def test_guardrails_block_over_ceiling_and_record_within_limit(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "record_payable", actor="R", max_amount="2500.00", daily_cap=2)
     llm = _scripted_llm([])
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        routes=freight_routes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda i: i.params.get("amount", "1000.00"),
         graduation=grad, tenant="acme",
     )
@@ -122,11 +122,11 @@ def test_guardrails_block_over_ceiling_and_record_within_limit(tmp_path):
 
 
 def test_guardrails_enforce_party_allowlist_and_daily_cap(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", allowed_parties=["Acme Corp"], daily_cap=1)
     llm = _scripted_llm([])
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        routes=freight_routes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
     # Party not on the allowlist -> escalates.
@@ -162,7 +162,7 @@ def test_sqlite_autonomous_daily_cap_claim_is_atomic(tmp_path):
 
 
 def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
     db_path = tmp_path / "w.sqlite3"
     WorkflowStore(db_path, tenant="acme").close()
@@ -173,7 +173,7 @@ def test_router_uses_sqlite_daily_cap_for_concurrent_autonomous_runs(tmp_path):
         store = WorkflowStore(db_path, tenant="acme")
         try:
             router = OperationRouter(
-                lanes=freight_lanes(),
+                routes=freight_routes(),
                 build_agent=_agent_factory(_scripted_llm([])),
                 approved_amount_for=lambda _i: "100.00",
                 graduation=grad,
@@ -201,12 +201,12 @@ def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_id
     not cost the owner a slot from their daily autonomy cap. The oracle is unchanged from before
     Phase 1; only the reason text is (identity is no longer 'missing', it is UNCONSTRUCTIBLE, and
     the router says why)."""
-    grad = LaneGraduation(tmp_path / "grad.json")
+    grad = ActionClassGraduation(tmp_path / "grad.json")
     grad.graduate("acme", "raise_invoice", actor="R", daily_cap=1)
     store = WorkflowStore(tmp_path / "w.sqlite3", tenant="acme")
     try:
         router = OperationRouter(
-            lanes=freight_lanes(),
+            routes=freight_routes(),
             build_agent=_agent_factory(_scripted_llm([])),
             approved_amount_for=lambda _i: "100.00",
             graduation=grad,
@@ -224,12 +224,12 @@ def test_router_does_not_consume_sqlite_daily_cap_when_the_effect_has_no_safe_id
         store.close()
 
 
-def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):
-    grad = LaneGraduation(tmp_path / "grad.json")  # present but nothing graduated -> supervised
+def test_supervised_action_class_prepares_and_a_commit_reply_finishes(tmp_path):
+    grad = ActionClassGraduation(tmp_path / "grad.json")  # present but nothing graduated -> supervised
     # The agent fills, then reaches the committing Save.
     llm = _scripted_llm([{"action": "CLICK", "target": "Save invoice"}, {"action": "DONE", "why": "ok"}])
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm),
+        routes=freight_routes(), build_agent=_agent_factory(llm),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
     # Human tapped Approve, but supervised -> PREPARE: fill everything, stop before Save.
@@ -243,7 +243,7 @@ def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):
         {"action": "DONE", "why": "saved"},
     ])
     router2 = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(llm2),
+        routes=freight_routes(), build_agent=_agent_factory(llm2),
         approved_amount_for=lambda _i: "100.00", graduation=grad, tenant="acme",
     )
     done = router2.run(_operate("invoice the load for Acme", {"commit": True}), approve=lambda a: True)
@@ -251,9 +251,9 @@ def test_supervised_lane_prepares_and_a_commit_reply_finishes(tmp_path):
 
 
 def test_no_graduation_policy_keeps_old_behavior(tmp_path):
-    # Backward compat: without a graduation policy, a no-approval money lane still escalates (supervised).
+    # Backward compat: without a graduation policy, a no-approval money action class still escalates (supervised).
     router = OperationRouter(
-        lanes=freight_lanes(), build_agent=_agent_factory(_scripted_llm([])),
+        routes=freight_routes(), build_agent=_agent_factory(_scripted_llm([])),
         approved_amount_for=lambda _i: "100.00",
     )
     res = router.run(_operate("invoice the load for Acme"))

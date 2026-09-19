@@ -8,7 +8,7 @@ a stub that agrees with itself.
 
 THE DEFECT THEY EXIST FOR (deleted in Phase 1):
 
-    def _commit_identity(tenant, lane, intent, amount):
+    def _commit_identity(tenant, action_class, intent, amount):
         if not amount:
             return None                                    # (B) non-money => NO identity at all
         ...
@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from freight_recon.commit_key import LogicalEffect, UnidentifiableEffect, occurrence_key_for
-from freight_recon.operation_router import OperationRouter, _commit_reservation, freight_lanes
+from freight_recon.operation_router import OperationRouter, _commit_reservation, freight_routes
 from freight_recon.operator_agent import OperatorAgent
 from freight_recon.slack_delegate import CommandIntent, CommandKind
 from freight_recon.workflow import WorkflowStore
@@ -80,7 +80,7 @@ def _operate(summary, params):
 
 
 def _lane(name):
-    return next(l for l in freight_lanes() if l.name == name)
+    return next(l for l in freight_routes() if l.name == name)
 
 
 # ------------------------------------------------------------------ AC-SAFE-012 (FINANCIAL_CORRECTNESS)
@@ -114,7 +114,7 @@ def test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice(tmp_path):
         params = {"load_ref": "LD-560010", "customer": "ACME", "commit": True}
 
         first = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent_factory(actuator),
+            routes=freight_routes(), build_agent=_agent_factory(actuator),
             approved_amount_for=lambda _i: "2850.00", tenant="tenant_a", commit_store=store,
         ).run(_operate("invoice LD-560010", params), approve=lambda a: True)
 
@@ -123,7 +123,7 @@ def test_ac_safe_012_end_to_end_two_amounts_raise_exactly_one_invoice(tmp_path):
         # The SAME logical invoice, re-read at a different figure. Under the defect this was a
         # different key and committed again. It must now converge and refuse.
         second = OperationRouter(
-            lanes=freight_lanes(), build_agent=_agent_factory(actuator),
+            routes=freight_routes(), build_agent=_agent_factory(actuator),
             approved_amount_for=lambda _i: "3100.00", tenant="tenant_a", commit_store=store,
         ).run(_operate("invoice LD-560010", params), approve=lambda a: True)
 
@@ -167,7 +167,7 @@ def test_ac_safe_013_filing_the_same_pod_twice_attaches_it_once(tmp_path):
 
         def router():
             return OperationRouter(
-                lanes=freight_lanes(), build_agent=_agent_factory(actuator),
+                routes=freight_routes(), build_agent=_agent_factory(actuator),
                 document_for=lambda _i: str(pod), tenant="tenant_a", commit_store=store,
             )
 
@@ -225,7 +225,7 @@ def test_a_consequential_effect_without_identity_fails_closed_and_never_returns_
 
 
 def test_a_new_consequential_operation_without_an_occurrence_rule_fails_closed():
-    """A new lane must declare whether repetition is legitimate before it may ever run."""
+    """A new action class must declare whether repetition is legitimate before it may ever run."""
     with pytest.raises(UnidentifiableEffect, match="declares no occurrence rule"):
         occurrence_key_for("some_brand_new_lane")
 

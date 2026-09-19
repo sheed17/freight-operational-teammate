@@ -18,7 +18,7 @@ exactly the way P0 landed the anti-false-green infrastructure before the code it
 
 ### WHY THIS RE-RUNS THE AUTHORITATIVE GUARDS RATHER THAN REIMPLEMENTING THEM.
 An independently-authored substring/name sweep for a "prohibited surface" false-positives here: a
-tree-wide search for an autonomy "graduat"-ion engine flags the LEGACY `lane_graduation.py` and
+tree-wide search for an autonomy "graduat"-ion engine flags the LEGACY `action_class_graduation.py` and
 `ops_control.py`, which are not the P8 autonomy engine at all. That is precisely the
 filename/substring blind spot CLAUDE.md sec 6 says this repository produced four separate times. So
 `P7-AC-1` re-runs the calibrated guards that already discover their populations and print their

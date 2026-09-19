@@ -24,7 +24,7 @@ versioning, activation, precedence and conflict resolution, richer action-class 
 autonomy runtime, and the expectation/exception/compensation systems. Startup-time registration
 arrives with those.
 
-Also still true, and still the reason a "safe default" is not a substitute: `lane_graduation`'s
+Also still true, and still the reason a "safe default" is not a substitute: `action_class_graduation`'s
 `is_autonomous()` returns a FAIL-SAFE DEFAULT when no graduation exists. A default says "nobody
 decided, so we picked the safe answer"; the canonical rule says "nobody decided, so REFUSE TO
 START". The first is safe today and silently wrong tomorrow.
@@ -284,15 +284,15 @@ def test_only_the_checkpoint_kernel_may_MINT_a_gate_decision():
 
 def test_the_current_model_is_a_fail_safe_default_not_a_not_null_gate():
     """The distinction that makes U0.3 impossible at Phase 0."""
-    from freight_recon.lane_graduation import LaneGraduation
+    from freight_recon.action_class_graduation import ActionClassGraduation
 
-    grad = LaneGraduation(Path("/tmp/phase0-nonexistent-graduation.json"))
+    grad = ActionClassGraduation(Path("/tmp/phase0-nonexistent-graduation.json"))
     assert grad.is_autonomous("tenant_a", "raise_invoice") is False, (
-        "absent an explicit graduation the lane must be supervised (fail-safe). If this changed, the "
+        "absent an explicit graduation the action class must be supervised (fail-safe). If this changed, the "
         "current model got MORE dangerous, not less."
     )
-    source = Path(LaneGraduation.__module__.replace(".", "/"))
-    assert "is_autonomous" in LaneGraduation.__dict__
+    source = Path(ActionClassGraduation.__module__.replace(".", "/"))
+    assert "is_autonomous" in ActionClassGraduation.__dict__
 
 
 def test_ac_ckpt_6_missing_is_deferred_by_dependency_not_waived():

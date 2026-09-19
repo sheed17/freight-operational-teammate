@@ -33,9 +33,9 @@ from .workflow import WorkflowStore
 
 APPLIED_EVENT = "slack_operation_applied"
 
-# Which value bucket each known lane contributes to (mirrors operation_router.freight_lanes()).
-_INVOICE_LANES = {"raise_invoice"}
-_PAYABLE_LANES = {"record_payable"}
+# Which value bucket each known action class contributes to (mirrors operation_router.freight_routes()).
+_INVOICE_ACTION_CLASSES = {"raise_invoice"}
+_PAYABLE_ACTION_CLASSES = {"record_payable"}
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class MinutesPerTask:
 class OperationReceipt(BaseModel):
     """One agent-operation run, rendered as the owner sees it."""
 
-    lane: str | None
+    action_class: str | None
     status: str  # DONE | ESCALATED | FAILED | REFUSED
     amount: str | None = None
     proof: str | None = None  # the verifiable artifact (invoice #, record id)
@@ -96,7 +96,9 @@ def build_operation_receipts(store: WorkflowStore) -> list[OperationReceipt]:
         proof, verified = _extract_proof(str(payload.get("note", "")), steps)
         receipts.append(
             OperationReceipt(
-                lane=payload.get("lane"),
+                # U8.5 bounded compat: read the canonical action_class, accepting a legacy `lane`
+                # key from a pre-migration persisted event ONCE. New events write action_class only.
+                action_class=payload.get("action_class") or payload.get("lane"),
                 status=str(payload.get("status", "")) or "UNKNOWN",
                 amount=_amount_str(payload.get("approved_amount")),
                 proof=proof,
@@ -129,10 +131,10 @@ def build_value_digest(
     for r in receipts:
         if r.status == "DONE":
             done += 1
-            if r.lane in _INVOICE_LANES:
+            if r.action_class in _INVOICE_ACTION_CLASSES:
                 invoices_raised += 1
                 invoiced += _to_decimal(r.amount)
-            elif r.lane in _PAYABLE_LANES:
+            elif r.action_class in _PAYABLE_ACTION_CLASSES:
                 payables_recorded += 1
                 payables += _to_decimal(r.amount)
         elif r.status == "ESCALATED":
@@ -193,13 +195,14 @@ def build_run_trace(steps) -> list[str]:
 
 
 def receipt_from_result(result, *, amount: str | None = None) -> OperationReceipt:
-    """Build an owner receipt straight from an OperationRouter result (duck-typed: lane/status/note/
-    steps), so the live Slack post can be proof-carrying without re-reading the audit log."""
+    """Build an owner receipt straight from an OperationRouter result (duck-typed:
+    action_class/status/note/steps), so the live Slack post can be proof-carrying without re-reading
+    the audit log."""
     note = str(getattr(result, "note", "") or "")
     steps = getattr(result, "steps", None) or []
     proof, verified = _extract_proof(note, steps)
     return OperationReceipt(
-        lane=getattr(result, "lane", None),
+        action_class=getattr(result, "action_class", None),
         status=str(getattr(result, "status", "")) or "UNKNOWN",
         amount=_amount_str(amount),
         proof=proof,
@@ -215,7 +218,7 @@ def render_operation_receipt(receipt: OperationReceipt, *, show_trace: bool = Tr
     took real steps, an owner-legible trace (read → clicked → filled → committed → verified) is appended
     so the owner can audit exactly what Neyma did, not just the outcome."""
     money = f" · ${receipt.amount}" if receipt.amount else ""
-    what = _lane_label(receipt.lane)
+    what = _action_class_label(receipt.action_class)
     if receipt.status == "DONE":
         proof = f" — {receipt.proof}" if receipt.proof else ""
         tag = (" (verified)" if receipt.verified else " (reported by agent)") if receipt.proof else ""
@@ -304,12 +307,12 @@ def _extract_proof(note: str, steps: list) -> tuple[str | None, bool]:
     return None, False
 
 
-def _lane_label(lane: str | None) -> str:
-    if lane in _INVOICE_LANES:
+def _action_class_label(action_class: str | None) -> str:
+    if action_class in _INVOICE_ACTION_CLASSES:
         return "customer invoice"
-    if lane in _PAYABLE_LANES:
+    if action_class in _PAYABLE_ACTION_CLASSES:
         return "carrier payable"
-    return lane or "operation"
+    return action_class or "operation"
 
 
 def _amount_str(value) -> str | None:

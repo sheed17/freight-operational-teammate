@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Client-1 (owner-operated, SUPERVISED) launch — the everyday "always running" command.
-# Supervised = Neyma proposes every money write and waits for your tap. No lane runs unattended
+# Supervised = Neyma proposes every money write and waits for your tap. No action class runs unattended
 # (no --ar-autonomous) until you graduate it in Slack once you trust it: `/neyma graduate raise_invoice 5000`.
 #
 # Prereqs: Chrome up on :9222 logged into the target TMS; .env present; Slack Events URL set once.

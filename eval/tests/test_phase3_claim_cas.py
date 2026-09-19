@@ -262,7 +262,7 @@ def test_a_legacy_phase2_reservation_is_not_a_claimable_capability(tmp_path):
     are reservations, not capabilities: a handle over one must refuse with GrantWithoutWitness."""
     store, kernel, clock, effect, outcome = _authorized(tmp_path)
     assert store.claim_operation_commit(
-        commit_key="legacy-ck-1", target_system="tms:truckingoffice", lane="record_payable",
+        commit_key="legacy-ck-1", target_system="tms:truckingoffice", action_class="record_payable",
         load_ref="load:legacy", party="Carrier X", payload={})
     row = store.conn.execute(
         "SELECT grant_id FROM effect_grants WHERE commit_key = 'legacy-ck-1'").fetchone()

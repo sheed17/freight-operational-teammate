@@ -26,7 +26,7 @@ def _escalate(store, *, thread_ts, summary="Record the payable to TQL for LD-1",
     store.add_security_event("slack_operation_applied", actor="U_OWNER", payload={
         "action_id": action_id,
         "thread_ts": thread_ts, "status": status, "summary": summary,
-        "params": params or {"lane": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
+        "params": params or {"action_class": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
         "approved_amount": amount,
         "token_fingerprint": token_fingerprint,
         "steps": steps or [],
@@ -73,7 +73,7 @@ def test_find_resumable_requires_action_scope_when_thread_has_multiple_open_oper
             action_id="action-2",
             token_fingerprint="tok-2",
             amount="3100.00",
-            params={"lane": "record_payable", "carrier": "RXO", "load_ref": "LD-2"},
+            params={"action_class": "record_payable", "carrier": "RXO", "load_ref": "LD-2"},
         )
 
         assert find_resumable_operation(store, "T1") is None
@@ -97,21 +97,21 @@ def test_find_resumable_excludes_already_committed_operation(tmp_path):
 
 def test_intent_from_resumable_adds_guidance_keeps_amount():
     intent = intent_from_resumable(
-        {"summary": "Record payable", "params": {"lane": "record_payable", "carrier": "TQL"},
+        {"summary": "Record payable", "params": {"action_class": "record_payable", "carrier": "TQL"},
          "approved_amount": "2700.00"},
         "I'm logged in now, proceed",
     )
     assert intent.kind == CommandKind.OPERATE
     assert intent.params["operator_guidance"] == "I'm logged in now, proceed"
     assert intent.params["approved_amount"] == "2700.00"  # amount carried, never from the reply
-    assert intent.params["lane"] == "record_payable"
+    assert intent.params["action_class"] == "record_payable"
 
 
 def test_intent_from_committed_resumable_is_verify_only_not_commit():
     intent = intent_from_resumable(
         {
             "summary": "Record payable",
-            "params": {"lane": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
+            "params": {"action_class": "record_payable", "carrier": "TQL", "load_ref": "LD-1"},
             "approved_amount": "2700.00",
             "steps": [{"committed": True, "commit_key": "abc"}],
         },
@@ -159,10 +159,10 @@ def test_handle_thread_reply_ignores_unauthorized_or_empty_or_untied(tmp_path):
 
 
 def test_lane_goal_includes_operator_guidance():
-    from freight_recon.operation_router import freight_lanes
+    from freight_recon.operation_router import freight_routes
 
-    lanes = {l.name: l for l in freight_lanes()}
+    routes = {r.name: r for r in freight_routes()}
     intent = CommandIntent(CommandKind.OPERATE, "Record payable",
-                           {"lane": "record_payable", "carrier": "TQL", "operator_guidance": "I'm logged in, proceed"})
-    goal = lanes["record_payable"].build_goal(intent)
+                           {"action_class": "record_payable", "carrier": "TQL", "operator_guidance": "I'm logged in, proceed"})
+    goal = routes["record_payable"].build_goal(intent)
     assert "I'm logged in, proceed" in goal and "guidance" in goal.lower()
