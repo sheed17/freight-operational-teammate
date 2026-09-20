@@ -463,7 +463,13 @@ jobs:
         python-version: ["3.11", "3.12"]
         shard: ${{ fromJSON(needs.partition.outputs.suite_shards) }}
     steps:
+      # Some tests in the canonical population compare the working tree against a committed
+      # historical baseline (`git show <commit>:<path>`) and fail closed when that commit is
+      # unreadable. The default shallow clone has no such history, so this shard checks out
+      # full history — the same convention `risk-radar` already uses.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
