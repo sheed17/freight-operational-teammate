@@ -319,3 +319,67 @@ def test_legacy_router_and_graduation_gate_guard_fires_on_a_planted_gate():
             f"a planted register_gate(...) in {rel} was NOT caught — the gate-carrier guard is vacuous")
         assert gate_registration_sites(planted_registry, label=rel), (
             f"a planted non-empty GateRegistry in {rel} was NOT caught — the guard is vacuous")
+
+
+# ------------------------ VG-1d9769717c: the legacy-gate-carrier obligation, closed like R4 was
+
+def _gate_carrier_sources() -> dict:
+    """The source text of each legacy file that must carry no production gate. A SEAM: a `_catches_`
+    control monkeypatches this to reintroduce the forbidden state and drive the guard RED WITHOUT
+    editing the real file on disk — the same shape R4's control uses on the gate-rank map."""
+    return {rel: (_REPO_ROOT / rel).read_text(encoding="utf-8") for rel in _GATE_CARRIER_PATHS}
+
+
+def test_vg_1d9769717c_legacy_router_and_graduation_are_not_gate_carriers():
+    """### VG-1d9769717c (legacy-gate-carrier [P1] risk). THE hostile case, realised: neither
+    operation_router.py nor action_class_graduation.py may become a live ADR-010 gate carrier / a
+    second gate authority / a more-live legacy router. This guard FAILS (raises AssertionError) the
+    moment either registers a production gate, or the production GateRegistry stops being empty, or the
+    deployed callback server stops wiring the router dark. Its RED-ability is proven by the two
+    `_catches_` controls beside it, which reintroduce a planted gate and INVOKE THIS guard.
+
+    Authority: pr-sequence.md U8.5 (no new production importer/live route; production GateRegistry
+    remains empty; no second policy/gate authority) and CLAUDE.md §10 (ship-dark, empty registry)."""
+    from phase0.gate_scan import gate_registration_sites
+    # (a) neither legacy file registers a production gate — no register_gate, no non-empty GateRegistry.
+    for rel, text in sorted(_gate_carrier_sources().items()):
+        sites = gate_registration_sites(text, label=rel)
+        assert sites == [], f"{rel} registers a production gate — a second gate authority: {sites}"
+    # (b) the production GateRegistry stays EMPTY: NO production module anywhere registers a gate, so
+    #     checkpoint.py remains the sole gate minter and no second authority appeared (R-07, §10).
+    src = _REPO_ROOT / "src" / "freight_recon"
+    offenders = {}
+    for p in sorted(src.rglob("*.py")):
+        if "__pycache__" in p.parts:
+            continue
+        found = gate_registration_sites(p.read_text(encoding="utf-8"), label=str(p))
+        if found:
+            offenders[str(p)] = found
+    assert offenders == {}, f"a production module registered a gate — the GateRegistry is not empty: {offenders}"
+    # (c) the deployed callback server wires NO live router — the rename made it no more live.
+    server = (_REPO_ROOT / "scripts" / "run_action_callback_server.py").read_text(encoding="utf-8")
+    assert "operation_router = None" in server, (
+        "the deployed callback server no longer wires the OperationRouter dark (operation_router=None) "
+        "— the legacy router became more live")
+
+
+def test_vg_1d9769717c_control_catches_a_planted_register_gate(monkeypatch):
+    """### CONTROL proving the VG-1d9769717c guard goes RED. Reintroduce the forbidden state — a
+    planted `register_gate(...)` in each legacy file's source (via the seam, not the real file) — then
+    INVOKE the guard; it must FAIL. Mirrors test_r4_control_catches_a_shifted_gate_ordering."""
+    planted = {rel: text + '\n_PLANTED = register_gate("raise_invoice", 1)\n'
+               for rel, text in _gate_carrier_sources().items()}
+    monkeypatch.setattr(sys.modules[__name__], "_gate_carrier_sources", lambda: planted)
+    with pytest.raises(AssertionError):
+        test_vg_1d9769717c_legacy_router_and_graduation_are_not_gate_carriers()
+
+
+def test_vg_1d9769717c_control_catches_a_planted_nonempty_gate_registry(monkeypatch):
+    """### CONTROL proving the VG-1d9769717c guard goes RED for the other registration form — a
+    NON-EMPTY `GateRegistry({...})` planted in each legacy file's source (an empty registry registers
+    nothing — R-07). INVOKE the guard; it must FAIL."""
+    planted = {rel: text + '\n_PLANTED = GateRegistry({"raise_invoice": 1}, policy_version="x")\n'
+               for rel, text in _gate_carrier_sources().items()}
+    monkeypatch.setattr(sys.modules[__name__], "_gate_carrier_sources", lambda: planted)
+    with pytest.raises(AssertionError):
+        test_vg_1d9769717c_legacy_router_and_graduation_are_not_gate_carriers()
