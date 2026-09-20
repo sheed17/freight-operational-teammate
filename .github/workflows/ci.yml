@@ -647,6 +647,66 @@ jobs:
           test -z "$(git status --porcelain -- src eval scripts)" \
             || { echo "the mutation battery left the tree dirty:"; git status --porcelain; exit 1; }
 
+  proposal:
+    # P8/U8.6 (CommandIntent -> Proposal). The inert `ProposedIntent` boundary and the proposal -> M2
+    # seam ship dark, so their behavioural guarantees live in a probe and a mutation battery that the
+    # `suite` shards' pytest run does NOT invoke - the same shape as the M3/M13 jobs above. Running
+    # them HERE makes the probe's "0 wrong" and the battery's "every mutant caught" verified by the
+    # source-of-truth authority on every push, not a self-report a build session hand-quoted. The
+    # three P0/P1 risks (MODEL_INFERRED promotion, a token treated as approval, PROPOSED auto-advance)
+    # each have a mutant here that realizes the forbidden state against the real seam and must be caught.
+    name: P8/U8.6 proposal probe + mutation
+    # Same rationale as the M3/M13 jobs: this certification must be visible on the pull request itself,
+    # so it runs on branch pushes AND same-repo PRs; untrusted fork PRs still skip it.
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Verify the interpreter floor
+        run: python scripts/check_env.py
+
+      - name: Install declared dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: The deterministic proposal probe behaves as specified (0 wrong)
+        run: |
+          set -o pipefail
+          python scripts/probe_phase8_proposal.py 2>&1 | tee probe.log
+          # Exit 0 is necessary but not sufficient: assert the "0 wrong" line is actually printed, so
+          # a probe that silently degraded to checking nothing cannot pass as green (M-9).
+          grep -qx "behaviours as specified, 0 wrong" probe.log \
+            || { echo "the proposal probe did not report 0 wrong"; exit 1; }
+          rm -f probe.log
+
+      - name: The mutation battery catches every reintroduced defect (incl. the 3 P0/P1 risks)
+        run: |
+          set -o pipefail
+          python scripts/mutate_phase8_proposal.py 2>&1 | tee mutation.log
+          grep -qE "^[0-9]+ mutants caught, 0 escaped$" mutation.log \
+            || { echo "a proposal mutant escaped"; exit 1; }
+          rm -f mutation.log
+          # The battery restores every file from memory rather than from git; a dirty tree here means
+          # a mutation was NOT restored and every step after it ran against mutated source.
+          test -z "$(git status --porcelain -- src eval scripts)" \
+            || { echo "the mutation battery left the tree dirty:"; git status --porcelain; exit 1; }
+
+      - name: The proposal guard + refusal controls run under the source-of-truth authority
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            eval/tests/test_phase8_proposal.py \
+            eval/tests/test_phase8_command_intent_to_proposal.py
+
   risk-radar:
     # Advisory, never blocking. It tells the reviewer WHICH safety surface a pull request touches,
     # so the review policy can be applied by a human instead of by a ritual applied to everything.
@@ -707,7 +767,7 @@ jobs:
     # exact thing that made the last landing's run unusable as evidence.
     name: CI verdict
     if: always()
-    needs: [partition, suite-completeness, safety, suite, effect-grant, brake]
+    needs: [partition, suite-completeness, safety, suite, effect-grant, brake, proposal]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

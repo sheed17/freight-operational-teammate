@@ -155,6 +155,12 @@ from .work_item import (  # noqa: E402  — grouped here because it is a REUSE s
     resolve_decision_ref,
 )
 
+# U8.6 — the inert canonical proposal. Imported HERE (not the reverse) so `proposal.py` never
+# imports M2 and M2 keeps its zero-production-importer dark posture: the proposal → M2 seam
+# (`open_pipeline_for_proposal`, at the foot of this module) is the ONE consequential consumer of a
+# `ProposedIntent`, and it lives on M2's side of the boundary.
+from .proposal import OwnerlessProposal, ProposedIntent  # noqa: E402
+
 
 class PipelineError(RuntimeError):
     """This machine will not do what was asked. Never degraded into a partial transition."""
@@ -2569,6 +2575,70 @@ def _row_to_pipeline(row: Any) -> PipelineInstance:
         unknown_outcome_ref=row["unknown_outcome_ref"], recheck_at=row["recheck_at"],
         decision_ref=row["decision_ref"], decision_ref_kind=row["decision_ref_kind"],
         created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+# ============================================================ U8.6 — the proposal → M2 seam
+#
+# ### THE ONE CONSEQUENTIAL CONSUMER OF A `ProposedIntent`, AND THE ONLY BRIDGE FROM A PROPOSAL TO
+# AN ATTEMPT. A consequential proposal mature enough to become an attempt enters through the ONE
+# existing `PipelineMachine.propose` / `IntentProposed` path — never a second command object, never
+# a second reservation, never a second idempotency key, never an alternate effect identity. It
+# consumes the CANONICAL structured proposal (its derived `LogicalEffect`), never a free-form
+# interpretation DTO: this seam's signature takes only a `ProposedIntent`, which
+# `test_phase8_command_intent_to_proposal.py` asserts by AST.
+#
+# It mints nothing. `propose` lands the attempt in `PROPOSED` (PL-1) or absorbs a duplicate onto the
+# live holder (PL-1b); it does NOT advance to `POLICY_CHECKED` or beyond, evaluate a policy, mint a
+# gate, request an approval, mint a witness or grant, or call an adapter. All of that is later
+# machinery driven by `apply(...)`, and it stays dark.
+
+def open_pipeline_for_proposal(
+    machine: "PipelineMachine",
+    proposal: ProposedIntent,
+    *,
+    pipeline_instance_id: str,
+    actor_type: str,
+    actor_id: str,
+    proposal_ref: str | None = None,
+    supersedes: str | None = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
+    trace_id: str | None = None,
+    event_id: str | None = None,
+) -> ProposalOutcome:
+    """Enter M2 from a mature `ProposedIntent`, creating ONE `PROPOSED` Pipeline Instance or
+    absorbing an equivalent duplicate onto the live holder (PL-1b).
+
+    Refuses at this boundary:
+      * a proposal with no accountable Work Item (`OwnerlessProposal`) — the owner is resolved from
+        the Work Item, so an ownerless proposal cannot become an attempt (rule 13, §5);
+      * an immature proposal whose identity is incomplete — `logical_effect()` raises
+        `UnidentifiableEffect`, the fail-closed direction (a model may not invent the target).
+
+    `propose` itself refuses a `model` actor (GR-7 / §40), refuses a cross-tenant effect, and
+    resolves + requires the accountable owner. `proposal_ref` defaults to the instance id and is the
+    identity PL-1b absorbs on, so REDELIVERING THE SAME proposal is one logical attempt, not two.
+    """
+    if proposal.work_item_id is None:
+        raise OwnerlessProposal(
+            "a proposal cannot become an attempt without an accountable Work Item: the pipeline's "
+            "owner is resolved from the Work Item (rule 13). Bind the proposal to a same-tenant Work "
+            "Item before opening a pipeline for it."
+        )
+    effect = proposal.logical_effect()   # UnidentifiableEffect if the proposal is immature
+    return machine.propose(
+        pipeline_instance_id=pipeline_instance_id,
+        work_item_id=proposal.work_item_id,
+        effect=effect,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        proposal_ref=proposal_ref or pipeline_instance_id,
+        supersedes=supersedes,
+        correlation_id=correlation_id,
+        causation_id=causation_id,
+        trace_id=trace_id,
+        event_id=event_id,
     )
 
 

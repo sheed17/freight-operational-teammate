@@ -771,6 +771,7 @@ expected_deprecated_terms:
     - src/freight_recon/operation_proposal.py
     - src/freight_recon/operation_router.py
     - src/freight_recon/operator_agent.py
+    - src/freight_recon/proposal.py   # U8.6: the CommandIntent -> Proposal boundary (the one new owner)
     - src/freight_recon/ops_control.py
     - src/freight_recon/roi_ledger.py
     - src/freight_recon/schema.py
@@ -810,13 +811,33 @@ expected_deprecated_terms:
         2026-07-17 (U2.6A) at 225; Phase 1 brought a 257 baseline to 227 by deleting the amount-keyed
         derivation and its lane-shaped parameters.
     - term: CommandIntent
-      count: 57
-      canonical: Proposal / Effect Request
+      count: 69    # U8.6 LANDED: was 57. Net +12 = the new proposal.py boundary (+10) and the
+                   # action_callback.py token migration (+2). See the note: U8.6 did NOT rename
+                   # CommandIntent to zero — the founder decision (this unit) RETAINS it as the
+                   # interpretation/input DTO and moves consequential AUTHORITY to ProposedIntent.
+      canonical: ProposedIntent (the canonical inert Proposal) for AUTHORITY; CommandIntent RETAINED as the interpretation/input DTO
       removed_by_phase: P8
       accountable_unit: U8.6
       note: >-
         PRODUCTION baseline @ d33f251 was 56; Phase 1 made it 57 (+1, in operation_router.py, whose
-        types ARE CommandIntent-based until P8 renames them - out of Phase-1 scope). ADJUDICATED.
+        types ARE CommandIntent-based - out of Phase-1 scope). ADJUDICATED.
+
+        U8.6 LANDED (2026-09-20). The roadmap assumed U8.6 would RENAME CommandIntent to Proposal and
+        drive its count to 0. That assumption is SUPERSEDED by the founder decision recorded in the
+        U8.6 task: "Do not ban the CommandIntent class where legitimate interpretation or UI
+        boundaries still require it; ban authoritative consequential consumption. Treat CommandIntent
+        as an interpretation and input DTO only." So U8.6 introduces `ProposedIntent` (the canonical
+        INERT Proposal, in proposal.py) as the ONE structured boundary a consequential OPERATE request
+        crosses, and REMOVES CommandIntent from every consequential AUTHORITY: the M2 entry
+        (open_pipeline_for_proposal / PipelineMachine.propose consume a ProposedIntent / LogicalEffect,
+        never a CommandIntent — asserted by test_phase8_command_intent_to_proposal.py) and the signed
+        Slack token (SlackOperationApproval now carries a ProposedIntent; its `.intent` is a derived,
+        non-authoritative view). CommandIntent survives only as interpretation input and as a rendering
+        projection. Containment holds: the ONLY new owning file is proposal.py, the boundary itself;
+        every other reference is in a file that already owned the term. The deletion_condition's
+        "reach 0" no longer applies to CommandIntent (the class is retained by design); the ratchet's
+        living rule — never spread to an unowned file, never grow unaccountably — still holds, with
+        this growth accounted for here at the accountable unit.
     - term: MockTmsWriteLedger
       count: 13   # P4/U4.10: 14 -> 13. The relocated BrowserUseWriteLedger docstring now names the
                   # mock ledger's MODULE rather than the ratcheted class name. The ratchet is

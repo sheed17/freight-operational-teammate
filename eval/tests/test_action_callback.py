@@ -491,7 +491,7 @@ def test_slack_operation_approval_runs_router_and_returns_receipt(tmp_path):
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+        params={"action_class": "raise_invoice", "approved": True, "customer": "Acme", "load_ref": "LD-9001"},
     )
     value = build_slack_operation_approval_value(
         intent,
@@ -538,7 +538,7 @@ def test_slack_operation_approval_token_is_single_use(tmp_path):
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+        params={"action_class": "raise_invoice", "approved": True, "customer": "Acme", "load_ref": "LD-9001"},
     )
     value = build_slack_operation_approval_value(
         intent,
@@ -620,7 +620,7 @@ def test_slack_operation_approval_rejects_unauthorized_user_before_router(tmp_pa
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True},
+        params={"action_class": "raise_invoice", "approved": True},
     )
     body = _slack_operation_body(
         build_slack_operation_approval_value(intent, signer, approved_amount="2850.00"),
@@ -657,7 +657,7 @@ def test_slack_operation_approval_rejects_wrong_message_context_before_router(tm
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+        params={"action_class": "raise_invoice", "approved": True, "customer": "Acme", "load_ref": "LD-9001"},
     )
     value = build_slack_operation_approval_value(
         intent,
@@ -697,7 +697,7 @@ def test_slack_operation_router_exception_returns_receipt_and_audits(tmp_path):
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True, "customer": "Acme", "load_ref": "LD-9001"},
+        params={"action_class": "raise_invoice", "approved": True, "customer": "Acme", "load_ref": "LD-9001"},
     )
     value = build_slack_operation_approval_value(intent, signer, approved_amount="2850.00")
     body = _slack_operation_body(value)
@@ -740,7 +740,7 @@ def test_slack_operation_approval_refuses_unapproved_money_lane_without_agent(tm
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": False},
+        params={"action_class": "raise_invoice", "approved": False},
     )
     body = _slack_operation_body(build_slack_operation_approval_value(intent, signer))
     server, thread, calls = _serve_with_operation_router(db_path, signer, loads)
@@ -770,7 +770,7 @@ def test_slack_operation_forged_signature_does_not_run_router(tmp_path):
     intent = CommandIntent(
         kind=CommandKind.OPERATE,
         summary="invoice the delivered load for Acme",
-        params={"approved": True},
+        params={"action_class": "raise_invoice", "approved": True},
     )
     body = _slack_operation_body(build_slack_operation_approval_value(intent, signer, approved_amount="2850.00"))
     server, thread, calls = _serve_with_operation_router(db_path, signer, loads)

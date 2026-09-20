@@ -39,6 +39,12 @@ from .operation_router import OperationResult
 from .reconciliation import FreightLoadForReconciliation
 from .slack_adapter import SlackDeliveryAdapter, SlackError, SlackSignatureError, verify_slack_signature
 from .slack_delegate import CommandIntent, CommandKind, authorize_command
+from .proposal import (
+    ProposalError,
+    ProposedFact,
+    ProposedIntent,
+    proposed_intent_from_command_intent,
+)
 from .thread_reply import find_resumable_operation, intent_from_resumable
 from .governed_approval import GovernedApprovalError
 from .tenant import require_tenant
@@ -1080,14 +1086,33 @@ def run_callback_server(
 
 
 class SlackOperationApproval(BaseModel):
+    # ### U8.6 — THE TOKEN CARRIES THE CANONICAL INERT PROPOSAL, NOT A FREE-FORM CommandIntent.
+    # A signed Slack button is a SURFACE over a proposal, not the proposal authority itself; the
+    # authoritative structured payload is `proposal` (a `ProposedIntent` wire form). `.intent` is a
+    # NON-AUTHORITATIVE projection derived from it for rendering and for the legacy execution bridge
+    # whose signature predates proposals — there is one authority (the proposal), not two. Signing,
+    # serializing, deserializing or redelivering this token grants zero authority: the human tap at
+    # the callback boundary is what authorises, and the effect still runs through the full pipeline.
     type: str = "operate_approval"
-    intent: CommandIntent
+    proposal: dict
     action_id: str
     approved_amount: str | None = None
     expected_channel_id: str | None = None
     expected_thread_ts: str | None = None
     issued_at: float
     expires_at: float
+
+    @property
+    def proposed_intent(self) -> ProposedIntent:
+        """Rebuild + RE-VALIDATE the canonical proposal (registered action class, canonical
+        provenance). A tampered wire form is refused here even though the HMAC already protects it."""
+        return ProposedIntent.from_wire(self.proposal)
+
+    @property
+    def intent(self) -> CommandIntent:
+        """A non-authoritative `CommandIntent` view of the proposal, so existing renderers/audit
+        reads and the legacy bridge keep working while the *authority* is the proposal."""
+        return self.proposed_intent.to_command_intent()
 
 
 def build_slack_operation_approval_value(
@@ -1101,12 +1126,23 @@ def build_slack_operation_approval_value(
     ttl_seconds: int = DEFAULT_OPERATION_TOKEN_TTL_SECONDS,
     action_id: str | None = None,
 ) -> str:
-    """Encode a bounded operation approval payload for a Slack button value."""
+    """Encode a bounded operation approval as a Slack button value, carrying the canonical inert
+    proposal derived from the request.
+
+    The intent is an interpretation INPUT; it is converted here into a `ProposedIntent` — the one
+    structured boundary — whose action class must be REGISTERED, whose money is canonical minor
+    units (a float is refused), and whose provenance a model can never promote. The proposal is
+    tenant-less at this rendering surface: the tenant is bound from the authenticated store context
+    when (and only when) the proposal matures into an attempt (`Tenant is never inferred`)."""
     if intent.kind != CommandKind.OPERATE:
         raise ValueError("Slack operation approvals require an OPERATE intent")
+    money = ProposedFact.money_from_amount(approved_amount) if approved_amount not in (None, "") else None
+    proposal = proposed_intent_from_command_intent(
+        intent, tenant="", authenticated=True, approved_money=money,
+    )
     issued = issued_at or datetime.now(timezone.utc)
     claims = SlackOperationApproval(
-        intent=intent,
+        proposal=proposal.to_wire(),
         action_id=action_id or uuid.uuid4().hex,
         approved_amount=approved_amount,
         expected_channel_id=expected_channel_id,
@@ -1218,9 +1254,16 @@ def _parse_operation_approval_value(value: str | None, signer: DeliverySigner) -
         return None
     try:
         approval = SlackOperationApproval.model_validate(raw)
+        # DESERIALIZATION IS A VALIDATING BOUNDARY (U8.6): rebuild the canonical proposal so a
+        # tampered wire form naming an unregistered action class or a non-canonical provenance is
+        # refused HERE, not silently trusted downstream. (The HMAC already protects integrity; this
+        # is the belt to that braces.)
+        _intent = approval.intent
+    except ProposalError as exc:
+        raise SlackError("Slack operation approval carries an invalid proposal") from exc
     except Exception as exc:  # noqa: BLE001 - malformed operation approval falls through as malformed
         raise SlackError("Slack operation approval payload is malformed") from exc
-    if approval.intent.kind != CommandKind.OPERATE:
+    if _intent.kind != CommandKind.OPERATE:
         raise SlackError("Slack operation approval must carry an OPERATE intent")
     if datetime.now(timezone.utc).timestamp() > approval.expires_at:
         raise SlackError("Slack operation approval is expired")
