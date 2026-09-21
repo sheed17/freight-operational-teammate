@@ -64,9 +64,11 @@ def _seed(tmp_path: Path):
     return store, machine(store)
 
 
-def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
-    """THE GUARD. The seam lands the attempt in PROPOSED and advances NOTHING past policy; it mints
-    no witness or grant. Fails (red) if it auto-advances to POLICY_CHECKED or later."""
+def _no_auto_advance_oracle(tmp_path: Path) -> None:
+    """THE R10 ORACLE. The seam lands the attempt in PROPOSED and advances NOTHING past policy — no
+    policy/approval/checkpoint/grant/claim stage traversed, no witness/grant minted. Raises
+    AssertionError (RED) the moment the seam auto-advances. The guard and its control invoke this one
+    oracle, so the control speaks for exactly the assertions the guard makes (the R8 pattern)."""
     store, m = _seed(tmp_path)
     outcome = open_pipeline_for_proposal(
         m, _mature(), pipeline_instance_id="pl-1", proposal_ref="prop-A", **SYS)
@@ -94,6 +96,13 @@ def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
     assert witnesses(store) == [] and ledger(store) == []   # even POLICY_CHECKED mints no witness/grant
 
 
+def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
+    """THE GUARD. Fails (red) if the seam auto-advances the new PROPOSED attempt to POLICY_CHECKED or
+    later. Direct measurement of R10, delegating to the shared oracle so its control is bound to
+    exactly these assertions."""
+    _no_auto_advance_oracle(tmp_path)
+
+
 def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
     """THE CONTROL, BOUND TO THE STRENGTHENED GUARD'S OWN NODE. Reintroduce the M9 defect in-process
     — a seam that auto-advances the new PROPOSED attempt past policy (drives PL-2 with a fabricated
@@ -117,7 +126,9 @@ def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
     monkeypatch.setattr(sys.modules[__name__], "open_pipeline_for_proposal", _auto_advancing)
     with pytest.raises(AssertionError) as exc_info:
         test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path)
-    # BOUND to the strengthened guard: the RED must be the auto-advance the guard's own assertions
-    # detect (the reintroduced PL-2 advanced the attempt past PROPOSED), never an incidental error.
-    assert "auto-advanced" in str(exc_info.value), \
+    # BOUND to the strengthened guard's own assertions: the RED must be the auto-advance the guard
+    # detects — either its state check ("auto-advanced to ...") or one of its stage-field checks
+    # ("... instead of stopping at PROPOSED") — never an incidental error.
+    msg = str(exc_info.value)
+    assert ("auto-advanced" in msg) or ("stopping at PROPOSED" in msg), \
         f"the guard went red for an unexpected reason, not the auto-advance: {exc_info.value!r}"
