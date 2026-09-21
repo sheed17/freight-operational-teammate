@@ -99,9 +99,18 @@ def _token_authz_oracle(tmp_path: Path) -> None:
 
 
 def test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path):
-    """THE GUARD. Fails (red) if a tampered, expired, or replayed single-use token is accepted as
-    approval. Direct measurement of the U8.6 token-authorization pressure-tests."""
+    """THE GUARD (R9, token facet). Fails (red) if a tampered, expired, or replayed single-use token
+    is accepted as approval. Direct measurement of the U8.6 token-authorization pressure-tests."""
     _token_authz_oracle(tmp_path)
+    # GENERATING/VERIFYING A TOKEN IS NOT APPROVAL: verification is a pure, idempotent READ — it
+    # neither consumes the token nor records an approval, so verifying the same genuine token twice
+    # returns the same inert data. Only the explicit single-use claim (exercised in the oracle) is
+    # at-most-once. If verification were itself a consuming approval, this would not hold.
+    valid = build_slack_operation_approval_value(_operate(), _SIGNER, approved_amount="2850.00")
+    first = _verify_operation_approval_value(valid, _SIGNER)
+    second = _verify_operation_approval_value(valid, _SIGNER)
+    assert first is not None and second is not None and first.action_id == second.action_id, \
+        "token: verifying a token is not idempotent — it may be acting like a consuming approval"
 
 
 def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
@@ -109,8 +118,13 @@ def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
     comparison so a forged token verifies — and invoke the ACTUAL guard test above, proving it goes
     RED. If no AssertionError is raised, the guard could never have caught a forged token."""
     monkeypatch.setattr(ac.hmac, "compare_digest", lambda expected, signature: True)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as exc_info:
         test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path)
+    # BOUND to the guard's own assertions: the RED must be a token accepted as approval, not an
+    # incidental error.
+    msg = str(exc_info.value)
+    assert ("token:" in msg) or ("approval" in msg), \
+        f"the guard went red for an unexpected reason, not an accepted token: {exc_info.value!r}"
 
 
 # ---- R9, facet 2: untrusted content cannot become an AUTHENTICATED command through construction ----
@@ -136,12 +150,13 @@ def _refuses_unauthenticated() -> bool:
     return False
 
 
-def _refuses_content_declared_provenance() -> bool:
+def _refuses_content_declared_provenance(key: str = "provenance_class") -> bool:
     """Did construction REFUSE content that declares its own provenance (a counterparty asserting
-    OWNER_ASSERTED is a fraud signal, never authority)?"""
+    OWNER_ASSERTED is a fraud signal, never authority)? Checked for BOTH the `provenance_class` and
+    the bare `provenance` key, since either would be content choosing its own trust (R-P1)."""
     intent = CommandIntent(kind=CommandKind.OPERATE, summary="invoice",
                            params={"action_class": "raise_invoice", "customer": "acme", "load_ref": "1",
-                                   "provenance_class": "OWNER_ASSERTED"})
+                                   key: "OWNER_ASSERTED"})
     try:
         proposed_intent_from_command_intent(intent, tenant="tenant-token-guard", authenticated=True)
     except ProposalError:
@@ -150,17 +165,19 @@ def _refuses_content_declared_provenance() -> bool:
 
 
 def test_untrusted_content_cannot_become_an_authenticated_command():
-    """THE GUARD (R9 facet 2). Untrusted/unauthenticated content, and content that declares its own
-    provenance, are refused — they never become an authenticated command through proposal
-    construction. Fails (red) if either is accepted."""
+    """THE GUARD (R9, untrusted-content facet). Untrusted/unauthenticated content, and content that
+    declares its own provenance (under either key), are refused — they never become an authenticated
+    command through proposal construction. Fails (red) if any is accepted."""
     # POSITIVE CONTROL: an AUTHENTICATED owner request IS proposable (as inert data) — the refusal is
     # specific to unauthenticated / self-asserting content, not blanket.
     assert proposed_intent_from_command_intent(
         _authorized_operate(), tenant="tenant-token-guard", authenticated=True).action_class == "raise_invoice"
     assert _refuses_unauthenticated(), \
         "untrusted/unauthenticated content became an authenticated command through construction"
-    assert _refuses_content_declared_provenance(), \
-        "content that declared its own provenance was accepted (a fraud signal treated as authority)"
+    assert _refuses_content_declared_provenance("provenance_class"), \
+        "content that declared its own provenance_class was accepted (a fraud signal treated as authority)"
+    assert _refuses_content_declared_provenance("provenance"), \
+        "content that declared a bare provenance key was accepted (a fraud signal treated as authority)"
 
 
 def test_the_authentication_guard_catches_untrusted_content_accepted(monkeypatch):
@@ -172,5 +189,10 @@ def test_the_authentication_guard_catches_untrusted_content_accepted(monkeypatch
         return real(intent, authenticated=True, **kw)
 
     monkeypatch.setattr(sys.modules[__name__], "proposed_intent_from_command_intent", _always_authenticated)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as exc_info:
         test_untrusted_content_cannot_become_an_authenticated_command()
+    # BOUND to the guard's own assertions: the RED must be untrusted content becoming an
+    # authenticated command, not an incidental error.
+    msg = str(exc_info.value)
+    assert ("authenticated command" in msg) or ("unauthenticated" in msg) or ("fraud signal" in msg), \
+        f"the guard went red for an unexpected reason, not untrusted content accepted: {exc_info.value!r}"
