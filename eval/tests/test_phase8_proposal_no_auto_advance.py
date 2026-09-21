@@ -95,10 +95,12 @@ def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
 
 
 def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
-    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce the M9 defect in-process — a seam that
-    auto-advances the new PROPOSED attempt past policy (drives PL-2 with a fabricated PERMIT) — and
-    invoke the ACTUAL guard test above, proving it goes RED. If no AssertionError is raised, the
-    guard could never have caught an auto-advance."""
+    """THE CONTROL, BOUND TO THE STRENGTHENED GUARD'S OWN NODE. Reintroduce the M9 defect in-process
+    — a seam that auto-advances the new PROPOSED attempt past policy (drives PL-2 with a fabricated
+    PERMIT) — and invoke the ACTUAL strengthened guard test above (the one that now also asserts none
+    of policy_version/gate_decision/approval_id/checkpoint_id/grant_id/claimed_at is set), proving
+    THAT node goes RED. If no AssertionError is raised, the strengthened guard could never have caught
+    an auto-advance."""
     real = pi.open_pipeline_for_proposal
 
     def _auto_advancing(m, proposal, *, pipeline_instance_id, actor_type, actor_id, **kw):
@@ -113,5 +115,9 @@ def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
 
     # Patch the name the guard test resolves at call time, so its own call auto-advances.
     monkeypatch.setattr(sys.modules[__name__], "open_pipeline_for_proposal", _auto_advancing)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as exc_info:
         test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path)
+    # BOUND to the strengthened guard: the RED must be the auto-advance the guard's own assertions
+    # detect (the reintroduced PL-2 advanced the attempt past PROPOSED), never an incidental error.
+    assert "auto-advanced" in str(exc_info.value), \
+        f"the guard went red for an unexpected reason, not the auto-advance: {exc_info.value!r}"
