@@ -29,6 +29,8 @@ import freight_recon.action_callback as ac  # noqa: E402  (for the control's nar
 import freight_recon.proposal as proposal_mod  # noqa: E402  (for the authentication control's reintroduction)
 from freight_recon.action_callback import (  # noqa: E402
     build_slack_operation_approval_value,
+    _decode_operation_approval,
+    _encode_operation_approval,
     _verify_operation_approval_value,
 )
 from freight_recon.delivery import DeliverySigner  # noqa: E402
@@ -112,6 +114,16 @@ def test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_p
     assert first is not None and second is not None and first.action_id == second.action_id, \
         "token: verifying a token is not idempotent — it may be acting like a consuming approval"
 
+    # R9-w3 (the changed action_callback.py PARSE path): a CORRECTLY SIGNED token whose carried
+    # proposal is invalid (an unregistered action_class smuggled into the proposal, then re-signed
+    # with the real key) is STILL refused — action_callback's parse re-validates the proposal via
+    # ProposedIntent.from_wire, so a signature alone can never make a bad proposal an approval.
+    claims = _decode_operation_approval(valid, _SIGNER)
+    claims["proposal"]["action_class"] = "wire_money_to_nigeria"
+    resigned = _encode_operation_approval(claims, _SIGNER)   # validly signed, invalid proposal
+    assert _refused(resigned), \
+        "token: a signed token carrying an unregistered-action_class proposal was accepted as approval"
+
 
 def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
     """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce acceptance — disable the signature
@@ -120,10 +132,11 @@ def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
     monkeypatch.setattr(ac.hmac, "compare_digest", lambda expected, signature: True)
     with pytest.raises(AssertionError) as exc_info:
         test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path)
-    # BOUND to the guard's own assertions: the RED must be a token accepted as approval, not an
+    # BOUND to the guard's own assertions: the RED must be a token accepted as approval — a forged
+    # signature, or (R9-w3) a signed token whose invalid proposal slipped the parse path — never an
     # incidental error.
     msg = str(exc_info.value)
-    assert ("token:" in msg) or ("approval" in msg), \
+    assert ("token:" in msg) or ("approval" in msg) or ("signed token" in msg), \
         f"the guard went red for an unexpected reason, not an accepted token: {exc_info.value!r}"
 
 
