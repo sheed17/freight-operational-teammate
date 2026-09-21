@@ -1,0 +1,107 @@
+"""P8 / U8.6 — a signed operation-approval token is NEVER treated as approval when it is tampered,
+expired, or replayed (single-use).
+
+Task mandate (U8.6): "tampered signed proposal or button payload refuses; expired or replayed
+single-use approval payload cannot execute", and "generating a token is not approval". A Slack
+button value is a SURFACE over an inert proposal; its authority is its HMAC signature, its freshness
+is its TTL, and its at-most-once property is the single-use claim. None of tamper/expiry/replay may
+be accepted as approval.
+
+The guard below realises all three hostile cases against the REAL verification path
+(`_verify_operation_approval_value` / `SlackOperationApproval` parse, and `claim_operation_action`
+for single-use), and FAILS (red) if any is accepted. The control beside it reintroduces acceptance
+(disables the signature check) and invokes THIS guard's own node, proving it goes red. It changes no
+product code — it observes the existing fail-closed behaviour, it does not create it.
+"""
+
+from __future__ import annotations
+
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+import freight_recon.action_callback as ac  # noqa: E402  (for the control's narrow signature-check patch)
+from freight_recon.action_callback import (  # noqa: E402
+    build_slack_operation_approval_value,
+    _verify_operation_approval_value,
+)
+from freight_recon.delivery import DeliverySigner  # noqa: E402
+from freight_recon.slack_adapter import SlackError  # noqa: E402
+from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
+from freight_recon.workflow import WorkflowStore  # noqa: E402
+
+_SIGNER = DeliverySigner(b"u86-token-guard-secret")
+
+
+def _operate():
+    return CommandIntent(kind=CommandKind.OPERATE, summary="invoice acme for LD-9",
+                         params={"action_class": "raise_invoice", "customer": "acme", "load_ref": "LD-9"})
+
+
+def _refused(value: str) -> bool:
+    """Did verification REFUSE this token as approval? (plain try/except -> bool, so the oracle's only
+    failure mode is a clean AssertionError, which is what the control reintroduces.)"""
+    try:
+        _verify_operation_approval_value(value, _SIGNER)
+    except SlackError:
+        return True
+    return False
+
+
+def _token_authz_oracle(tmp_path: Path) -> None:
+    """THE TOKEN-AUTHORIZATION ORACLE. A tampered, expired, or replayed single-use token is never
+    treated as approval. Raises AssertionError (RED) the moment one is accepted."""
+    valid = build_slack_operation_approval_value(_operate(), _SIGNER, approved_amount="2850.00")
+
+    # POSITIVE CONTROL: a genuine token verifies to inert DATA (a proposal), not to execution — and
+    # verifying it performs no effect. The refusals below are therefore specific, not blanket.
+    approval = _verify_operation_approval_value(valid, _SIGNER)
+    assert approval is not None, "a genuine signed token failed to verify"
+    assert approval.proposed_intent.action_class == "raise_invoice"
+
+    body, sig = valid.split(".", 1)
+
+    # 1. TAMPERED — a FORGED SIGNATURE over a genuine body is refused (the HMAC is the token's authority).
+    forged = body + "." + (sig[:-1] + ("a" if sig[-1] != "a" else "b"))
+    assert _refused(forged), "token: a FORGED SIGNATURE was accepted as approval"
+
+    # 2. TAMPERED — a mutated payload body is refused.
+    tampered_body = (body[:-1] + ("A" if body[-1] != "A" else "B")) + "." + sig
+    assert _refused(tampered_body), "token: a TAMPERED BODY was accepted as approval"
+
+    # 3. EXPIRED — a token past its TTL is refused (freshness is enforced, not decorative).
+    expired = build_slack_operation_approval_value(
+        _operate(), _SIGNER, approved_amount="2850.00",
+        issued_at=datetime(2020, 1, 1, tzinfo=timezone.utc), ttl_seconds=1)
+    assert _refused(expired), "token: an EXPIRED token was accepted as approval"
+
+    # 4. REPLAYED — the single-use claim executes at most ONCE per action id (a replayed tap no-ops).
+    store = WorkflowStore(tmp_path / "wf.sqlite3", tenant="tenant-token-guard")
+    try:
+        aid = approval.action_id
+        assert store.claim_operation_action(aid, actor="owner", payload={"n": 1}) is True, \
+            "the first single-use claim was refused"
+        assert store.claim_operation_action(aid, actor="owner", payload={"n": 2}) is False, \
+            "token: a REPLAYED single-use approval executed twice"
+    finally:
+        store.close()
+
+
+def test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path):
+    """THE GUARD. Fails (red) if a tampered, expired, or replayed single-use token is accepted as
+    approval. Direct measurement of the U8.6 token-authorization pressure-tests."""
+    _token_authz_oracle(tmp_path)
+
+
+def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
+    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce acceptance — disable the signature
+    comparison so a forged token verifies — and invoke the ACTUAL guard test above, proving it goes
+    RED. If no AssertionError is raised, the guard could never have caught a forged token."""
+    monkeypatch.setattr(ac.hmac, "compare_digest", lambda expected, signature: True)
+    with pytest.raises(AssertionError):
+        test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path)

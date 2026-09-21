@@ -108,9 +108,11 @@ def test_model_inferred_material_fact_is_never_promoted_to_gate_readable_by_prop
 
 
 def test_the_guard_catches_a_model_inferred_promotion(monkeypatch):
-    """THE CONTROL. Reintroduce the forbidden behaviour — make MODEL_INFERRED facts report
-    gate-readable (a promotion) — and prove the guard's own oracle goes RED. If this raises no
+    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce the forbidden behaviour — make
+    MODEL_INFERRED facts report gate-readable (a promotion) — and invoke the ACTUAL guard test
+    function above, proving THAT node goes RED. It calls the guard test itself, not a private copy of
+    the oracle, so the control speaks for exactly the node the evaluator binds. If this raises no
     AssertionError, the guard above is a decoration that could never have caught the defect."""
     monkeypatch.setattr(ProposedFact, "gate_readable", property(lambda self: True))
     with pytest.raises(AssertionError):
-        _r8_oracle_model_inferred_is_never_gate_readable()
+        test_model_inferred_material_fact_is_never_promoted_to_gate_readable_by_proposal_construction()
