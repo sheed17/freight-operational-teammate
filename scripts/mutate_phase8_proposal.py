@@ -31,6 +31,7 @@ AC = "src/freight_recon/action_callback.py"
 
 TP = "eval/tests/test_phase8_proposal.py"
 TG = "eval/tests/test_phase8_command_intent_to_proposal.py"
+TAC = "eval/tests/test_phase8_action_class_registered.py"
 
 
 def purge_pycache() -> None:
@@ -52,7 +53,7 @@ TEXT_CASES = [
      PROP,
      "        if self.action_class not in ACTION_CLASS_POPULATION:",
      "        if False and self.action_class not in ACTION_CLASS_POPULATION:  # MUTANT",
-     f"{TP}::test_an_unregistered_action_class_is_refused_not_invented"),
+     f"{TAC}::test_an_unregistered_action_class_is_refused_not_invented_at_construction"),
 
     ("M10 a MISSING action class is INVENTED (defaulted) instead of refused, so a request that never "
      "said what kind of effect it proposes is silently built as a raise_invoice — the 'a model may "
@@ -60,7 +61,7 @@ TEXT_CASES = [
      PROP,
      '    action_class = params.get("action_class")',
      '    action_class = params.get("action_class") or "raise_invoice"  # MUTANT: invent a default',
-     f"{TP}::test_a_missing_action_class_is_ambiguous_and_refused"),
+     f"{TAC}::test_a_missing_action_class_is_refused_not_invented_at_construction"),
 
     ("M2  a MODEL_INFERRED material fact becomes gate-readable, so a guess can gate a consequential "
      "action (GR-8 / AC-SAFE-015, at any confidence) — and it is no longer excluded from a gate's "

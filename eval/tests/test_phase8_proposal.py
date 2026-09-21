@@ -65,7 +65,6 @@ from freight_recon.pipeline_instance import (  # noqa: E402
 )
 from freight_recon.slack_adapter import SlackError  # noqa: E402
 from freight_recon.proposal import (  # noqa: E402
-    AmbiguousProposal,
     OwnerlessProposal,
     ProposalError,
     ProposedFact,
@@ -120,32 +119,15 @@ def test_constructing_a_proposal_mints_nothing(tmp_path):
 
 
 # ============================================================ B. the action class must be REGISTERED
-
-def test_an_unregistered_action_class_is_refused_not_invented():
-    # POSITIVE CONTROL: the refusal is not blanket — a REGISTERED class is accepted...
-    assert build_proposed_intent(tenant=T_A, action_class="raise_invoice").action_class == "raise_invoice"
-    assert proposed_intent_from_command_intent(
-        _operate("raise_invoice", load_ref="1", customer="x"), tenant=T_A, authenticated=True
-    ).action_class == "raise_invoice"
-    # ...and ONLY the forbidden (unregistered) state is refused.
-    with pytest.raises(UnregisteredActionClass):
-        build_proposed_intent(tenant=T_A, action_class="wire_money_to_nigeria")
-    with pytest.raises(UnregisteredActionClass):
-        proposed_intent_from_command_intent(
-            _operate("wire_money_to_nigeria", load_ref="1", customer="x"),
-            tenant=T_A, authenticated=True)
-
-
-def test_a_missing_action_class_is_ambiguous_and_refused():
-    # POSITIVE CONTROL: an intent that DOES name an action class builds fine...
-    assert proposed_intent_from_command_intent(
-        _operate("raise_invoice", load_ref="1", customer="x"), tenant=T_A, authenticated=True
-    ).action_class == "raise_invoice"
-    # ...and ONLY the missing-action-class state is refused.
-    intent = CommandIntent(kind=CommandKind.OPERATE, summary="do something", params={"load_ref": "1"})
-    with pytest.raises(AmbiguousProposal):
-        proposed_intent_from_command_intent(intent, tenant=T_A, authenticated=True)
-
+#
+# ### THE UNREGISTERED / MISSING action_class REFUSALS MOVED TO A DEDICATED, DISCRIMINATING GUARD.
+# `test_an_unregistered_action_class_is_refused_not_invented` and
+# `test_a_missing_action_class_is_ambiguous_and_refused` were removed from here (CLAUDE.md §5 rule
+# 20: a green absence-assertion with no adjacent control that can be seen to fire is a defect with a
+# passing status). Their exact hostile cases are now measured by
+# `test_phase8_action_class_registered.py`, where each refusal has a node-bound `..._catches_...`
+# control observed to make the guard go RED when an unregistered/missing class is accepted/invented.
+# The positive population check below is kept: it is an acceptance, not a non-discriminating absence.
 
 def test_all_eight_registered_action_classes_are_proposable():
     from freight_recon.product_policy import ACTION_CLASS_POPULATION
