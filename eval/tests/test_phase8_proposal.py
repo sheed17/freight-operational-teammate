@@ -93,6 +93,31 @@ def _mature_proposal(*, tenant=T_A, work_item_id=WORK_ITEM, owner=OWNER, resourc
     )
 
 
+# --- fire-proofs (CLAUDE.md §5 rule 20 / §6) -----------------------------------------------------
+# A guard that asserts an absence proves nothing until something is observed to make it FIRE. Each
+# `..._catches_...` control in this file reintroduces exactly ONE forbidden state (via monkeypatch,
+# which pytest auto-undoes) and asserts the paired guard goes RED. A guard's refusal is expressed as
+# `pytest.raises`, so when the forbidden state is realised the guard surfaces pytest's `Failed`
+# (a BaseException, NOT an Exception — this was learned the hard way), while a plain-assert guard
+# surfaces AssertionError; `_guard_fires` treats EITHER as "the guard fired" and fails, bound, only
+# when the guard PASSED though the defect was live. It invokes the real guard function, so the
+# control cannot drift away from what it protects.
+try:
+    from _pytest.outcomes import Failed as _Failed  # pytest's "DID NOT RAISE ..." outcome  # noqa: E402
+except Exception:  # pragma: no cover - pytest internals moved
+    _Failed = AssertionError
+
+
+def _guard_fires(guard, *args, binding):
+    try:
+        guard(*args)
+    except (AssertionError, _Failed):
+        return
+    raise AssertionError(
+        f"{binding}: the guard PASSED while the forbidden state was realised — a guard that cannot "
+        f"fail is a decoration, not a guard")
+
+
 # ============================================================ A. a proposal is INERT
 
 def test_constructing_a_proposal_mints_nothing(tmp_path):
@@ -161,15 +186,30 @@ def test_an_operate_intent_does_produce_a_proposal():
 
 @pytest.mark.parametrize("kind", [CommandKind.QUERY, CommandKind.CONTROL, CommandKind.UNKNOWN])
 def test_non_operate_intents_do_not_produce_a_proposal(kind):
+    # FIRE-PROOF: test_the_non_operate_guard_catches_a_read_intent_that_proposes reintroduces the
+    # defect (interpretation builds a proposal for a non-OPERATE intent) and observes THIS go RED.
     intent = CommandIntent(kind=kind, summary="what's outstanding?",
                            params={"action_class": "raise_invoice"})
     with pytest.raises(ProposalError):
         proposed_intent_from_command_intent(intent, tenant=T_A, authenticated=True)
 
 
+def test_the_non_operate_guard_catches_a_read_intent_that_proposes(monkeypatch):
+    """CONTROL: if interpretation stopped restricting proposals to OPERATE (a QUERY/CONTROL/UNKNOWN
+    silently built a proposal), the guard above must go RED. Reintroduce exactly that and observe it."""
+    def _kindless(intent, **kw):                      # a builder that ignores the command kind
+        return build_proposed_intent(tenant=kw.get("tenant") or T_A,
+                                     action_class=intent.params["action_class"])
+    monkeypatch.setattr(sys.modules[__name__], "proposed_intent_from_command_intent", _kindless)
+    _guard_fires(test_non_operate_intents_do_not_produce_a_proposal, CommandKind.QUERY,
+                 binding="non-OPERATE proposes")
+
+
 # ============================================================ E. money is canonical minor units
 
 def test_a_float_money_amount_is_refused():
+    # FIRE-PROOF: test_the_float_money_guard_catches_a_float_accepted reintroduces the defect (a
+    # binary float is parsed into money) and observes THIS guard go RED.
     # POSITIVE CONTROL: an exact decimal string / minor-unit int is accepted...
     assert ProposedFact.money_from_amount("2850.00") == Money(285000, "USD")
     assert ProposedFact(field="approved_amount", value="285000|USD",
@@ -181,6 +221,14 @@ def test_a_float_money_amount_is_refused():
         ProposedFact(field="approved_amount", value=2850.0, provenance=ProvenanceClass.MODEL_EXTRACTED)
 
 
+def test_the_float_money_guard_catches_a_float_accepted(monkeypatch):
+    """CONTROL: if money parsing stopped refusing a binary float (parsing it as if it were exact),
+    the guard above must go RED. Reintroduce exactly that and observe it fire."""
+    monkeypatch.setattr(ProposedFact, "money_from_amount", staticmethod(
+        lambda amount, currency="USD": Money(int(float(str(amount).replace(",", "")) * 100), currency)))
+    _guard_fires(test_a_float_money_amount_is_refused, binding="float money accepted")
+
+
 def test_a_money_fact_is_canonical_minor_units():
     money = ProposedFact.money_from_amount("2,850.00")
     assert money == Money(285000, "USD")
@@ -190,13 +238,25 @@ def test_a_money_fact_is_canonical_minor_units():
 
 
 def test_sub_cent_precision_is_refused():
+    # FIRE-PROOF: test_the_sub_cent_guard_catches_sub_cent_precision_accepted reintroduces the defect
+    # (a sub-cent amount is rounded into money instead of refused) and observes THIS guard go RED.
     with pytest.raises(MoneyMustNotFloat):
         ProposedFact.money_from_amount("2850.001")
+
+
+def test_the_sub_cent_guard_catches_sub_cent_precision_accepted(monkeypatch):
+    """CONTROL: if money parsing rounded a sub-cent amount instead of refusing it, the guard above
+    must go RED. Reintroduce exactly that and observe it fire."""
+    monkeypatch.setattr(ProposedFact, "money_from_amount", staticmethod(
+        lambda amount, currency="USD": Money(round(float(str(amount).replace(",", "")) * 100), currency)))
+    _guard_fires(test_sub_cent_precision_is_refused, binding="sub-cent precision accepted")
 
 
 # ============================================================ F. a MODEL_INFERRED fact never gates
 
 def test_a_model_inferred_material_fact_is_carried_but_never_gate_readable():
+    # FIRE-PROOF: test_the_model_inferred_guard_catches_a_promoted_inferred_fact reintroduces the
+    # defect (a MODEL_INFERRED fact becomes gate-readable) and observes THIS guard go RED.
     # POSITIVE CONTROL: a non-inferred (MODEL_EXTRACTED) fact IS gate-readable — the quarantine is
     # specific to MODEL_INFERRED, not a blanket "nothing is readable".
     extracted = ProposedFact(field="approved_amount", value="285000|USD",
@@ -216,6 +276,17 @@ def test_a_model_inferred_material_fact_is_carried_but_never_gate_readable():
     # ...and it stays MODEL_INFERRED across a serialization round trip: construction never promotes it.
     again = ProposedIntent.from_wire(proposal.to_wire())
     assert again.fact("approved_amount").provenance is ProvenanceClass.MODEL_INFERRED
+
+
+def test_the_model_inferred_guard_catches_a_promoted_inferred_fact(monkeypatch):
+    """CONTROL: if the proposal's gate-forbidden set were emptied (a MODEL_INFERRED guess becomes
+    readable by a consequential gate), the guard above must go RED. Reintroduce exactly that and
+    observe it fire. This is the proposal-level counterpart to the dedicated fact-level guard in
+    test_phase8_model_inferred_not_promoted.py."""
+    import freight_recon.proposal as prop_mod
+    monkeypatch.setattr(prop_mod, "_GATE_FORBIDDEN", frozenset())
+    _guard_fires(test_a_model_inferred_material_fact_is_carried_but_never_gate_readable,
+                 binding="MODEL_INFERRED promoted to gate-readable")
 
 
 def test_proposal_gate_readability_matches_the_kernel_for_every_provenance_class():
@@ -255,6 +326,8 @@ def test_round_trip_preserves_action_class_resource_and_provenance():
 
 
 def test_a_tampered_wire_form_naming_an_unregistered_class_is_refused():
+    # FIRE-PROOF: test_the_unregistered_wire_guard_catches_an_unregistered_class_accepted
+    # reintroduces the defect (an unregistered action class survives deserialization) → THIS goes RED.
     wire = _mature_proposal().to_wire()
     # POSITIVE CONTROL: the UNtampered wire form round-trips fine...
     assert ProposedIntent.from_wire(wire).action_class == "raise_invoice"
@@ -264,7 +337,29 @@ def test_a_tampered_wire_form_naming_an_unregistered_class_is_refused():
         ProposedIntent.from_wire(wire)
 
 
+def test_the_unregistered_wire_guard_catches_an_unregistered_class_accepted(monkeypatch):
+    """CONTROL: if the registered-class population accepted everything (a tampered wire form naming
+    an invented effect deserializes), the guard above must go RED. Reintroduce exactly that."""
+    import freight_recon.proposal as prop_mod
+
+    class _AcceptAllClasses:
+        def __contains__(self, _item):
+            return True
+
+        def __iter__(self):
+            return iter(("raise_invoice",))
+
+        def __len__(self):
+            return 8
+
+    monkeypatch.setattr(prop_mod, "ACTION_CLASS_POPULATION", _AcceptAllClasses())
+    _guard_fires(test_a_tampered_wire_form_naming_an_unregistered_class_is_refused,
+                 binding="unregistered action class deserialized")
+
+
 def test_a_tampered_wire_form_with_a_noncanonical_provenance_is_refused():
+    # FIRE-PROOF: test_the_noncanonical_provenance_wire_guard_catches_a_bad_provenance_accepted
+    # reintroduces the defect (a seventh, non-canonical provenance is coerced in) → THIS goes RED.
     wire = _mature_proposal().to_wire()
     # POSITIVE CONTROL: a canonical provenance round-trips fine...
     assert ProposedIntent.from_wire(wire).fact("approved_amount").provenance is ProvenanceClass.MODEL_EXTRACTED
@@ -272,6 +367,16 @@ def test_a_tampered_wire_form_with_a_noncanonical_provenance_is_refused():
     wire["facts"][0]["provenance"] = "OWNER_SAID_SO_TRUST_ME"
     with pytest.raises(ProposalError):
         ProposedIntent.from_wire(wire)
+
+
+def test_the_noncanonical_provenance_wire_guard_catches_a_bad_provenance_accepted(monkeypatch):
+    """CONTROL: if provenance coercion invented a default for an unknown string instead of refusing
+    it (a wire form asserting its own seventh class), the guard above must go RED. Reintroduce it."""
+    import freight_recon.proposal as prop_mod
+    monkeypatch.setattr(prop_mod, "_as_provenance",
+                        lambda v: v if isinstance(v, ProvenanceClass) else ProvenanceClass.MODEL_EXTRACTED)
+    _guard_fires(test_a_tampered_wire_form_with_a_noncanonical_provenance_is_refused,
+                 binding="non-canonical provenance coerced")
 
 
 # ============================================================ H. commit-key identity (ADR-009)
@@ -294,6 +399,8 @@ def test_the_commit_key_is_derived_and_carries_no_amount():
 
 def test_an_immature_proposal_fails_closed_at_the_identity_boundary():
     """Unknown target ⇒ no identity ⇒ cannot enter M2. Refuse, never guess."""
+    # FIRE-PROOF: test_the_immature_guard_catches_an_unidentified_effect_accepted reintroduces the
+    # defect (identity derivation stops raising on an empty required field) and observes THIS go RED.
     # POSITIVE CONTROL: a MATURE proposal derives its identity fine...
     assert _mature_proposal().is_mature is True
     assert _mature_proposal().logical_effect().key()  # derives without raising
@@ -302,6 +409,16 @@ def test_an_immature_proposal_fails_closed_at_the_identity_boundary():
     assert p.is_mature is False
     with pytest.raises(UnidentifiableEffect):
         p.logical_effect()
+
+
+def test_the_immature_guard_catches_an_unidentified_effect_accepted(monkeypatch):
+    """CONTROL: if effect-identity derivation stopped raising on an empty required field (an immature
+    proposal is carried toward an attempt instead of failing closed), the guard above must go RED.
+    Reintroduce exactly that — a `key()` that never refuses — and observe it fire."""
+    from freight_recon import commit_key
+    monkeypatch.setattr(commit_key.LogicalEffect, "key", lambda self: "forced-identity")
+    _guard_fires(test_an_immature_proposal_fails_closed_at_the_identity_boundary,
+                 binding="immature proposal accepted at identity boundary")
 
 
 # ============================================================ I. the proposal → M2 boundary

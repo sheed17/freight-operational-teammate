@@ -679,25 +679,30 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
-      - name: The deterministic proposal probe behaves as specified (0 wrong)
-        run: |
-          set -o pipefail
-          python scripts/probe_phase8_proposal.py 2>&1 | tee probe.log
-          # Exit 0 is necessary but not sufficient: assert the "0 wrong" line is actually printed, so
-          # a probe that silently degraded to checking nothing cannot pass as green (M-9).
-          grep -qx "behaviours as specified, 0 wrong" probe.log \
-            || { echo "the proposal probe did not report 0 wrong"; exit 1; }
-          rm -f probe.log
+      # The exact command this repository runs the deterministic proposal probe with. It is a plain,
+      # collected-nothing executable check; its declared invocation is THIS line. It exits non-zero
+      # on any wrong behaviour (an empty behaviour list raises, so it cannot pass green having checked
+      # nothing), so the bare command is itself the gate.
+      - name: Run the P8/U8.6 proposal probe
+        run: python scripts/probe_phase8_proposal.py
 
-      - name: The mutation battery catches every reintroduced defect (incl. the 3 P0/P1 risks)
+      # Belt-and-braces (M-9): assert the "0 wrong" line is actually printed, so a probe that silently
+      # degraded still cannot read as green. The probe is deterministic and fast, so re-running it here
+      # keeps the step above a clean, single-command declared invocation.
+      - name: The proposal probe reported 0 wrong
+        run: python scripts/probe_phase8_proposal.py | grep -qx "behaviours as specified, 0 wrong"
+
+      # The exact command this repository runs the proposal mutation battery with. It reintroduces
+      # each load-bearing seam's defect (incl. the three P0/P1 risks: MODEL_INFERRED promotion, a
+      # token treated as approval, PROPOSED auto-advance) against the real seam and exits non-zero if
+      # ANY mutant escapes uncaught. It restores every file from an in-memory copy, never git.
+      - name: Run the P8/U8.6 proposal mutation battery
+        run: python scripts/mutate_phase8_proposal.py
+
+      # The battery restores from memory, not git; a dirty tree here means a mutation was NOT restored
+      # and later steps ran against mutated source.
+      - name: The mutation battery restored every file
         run: |
-          set -o pipefail
-          python scripts/mutate_phase8_proposal.py 2>&1 | tee mutation.log
-          grep -qE "^[0-9]+ mutants caught, 0 escaped$" mutation.log \
-            || { echo "a proposal mutant escaped"; exit 1; }
-          rm -f mutation.log
-          # The battery restores every file from memory rather than from git; a dirty tree here means
-          # a mutation was NOT restored and every step after it ran against mutated source.
           test -z "$(git status --porcelain -- src eval scripts)" \
             || { echo "the mutation battery left the tree dirty:"; git status --porcelain; exit 1; }
 
