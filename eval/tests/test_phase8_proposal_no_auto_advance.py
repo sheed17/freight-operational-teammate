@@ -98,9 +98,27 @@ def _no_auto_advance_oracle(tmp_path: Path) -> None:
 
 def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
     """THE GUARD. Fails (red) if the seam auto-advances the new PROPOSED attempt to POLICY_CHECKED or
-    later. Direct measurement of R10, delegating to the shared oracle so its control is bound to
-    exactly these assertions."""
+    later. Direct measurement of R10 (and R10-w2/R10-w3, the same obligation re-worded for the new
+    proposal->PipelineMachine.propose/IntentProposed entry in pipeline_instance.py), delegating to
+    the shared oracle so its control is bound to exactly these assertions."""
     _no_auto_advance_oracle(tmp_path)
+    # R10-w2/w3: the proposal -> M2 ENTRY in pipeline_instance.py structurally CANNOT auto-advance.
+    # Read off its own source: it calls only `propose` (IntentProposed / PL-1) and NEVER `.apply(`,
+    # and it names no POLICY_* transition or state — so reaching POLICY_CHECKED requires a separate,
+    # explicit, authenticated call the entry itself does not make.
+    import ast
+    import inspect
+    entry_src = inspect.getsource(pi.open_pipeline_for_proposal)
+    entry_ast = ast.parse(entry_src)
+    called_attrs = {n.func.attr for n in ast.walk(entry_ast)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert "apply" not in called_attrs, \
+        "the proposal->M2 entry calls .apply() — it can auto-advance past PROPOSED"
+    referenced = {n.attr for n in ast.walk(entry_ast) if isinstance(n, ast.Attribute)} | \
+                 {n.id for n in ast.walk(entry_ast) if isinstance(n, ast.Name)}
+    assert not any("POLICY" in token for token in referenced), \
+        "the proposal->M2 entry references a POLICY_* transition/state — it may auto-advance"
+    assert "propose" in called_attrs, "the proposal->M2 entry no longer calls PipelineMachine.propose"
 
 
 def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
@@ -127,8 +145,9 @@ def test_the_auto_advance_guard_catches_an_auto_advance(tmp_path, monkeypatch):
     with pytest.raises(AssertionError) as exc_info:
         test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path)
     # BOUND to the strengthened guard's own assertions: the RED must be the auto-advance the guard
-    # detects — either its state check ("auto-advanced to ...") or one of its stage-field checks
-    # ("... instead of stopping at PROPOSED") — never an incidental error.
+    # detects — its state check ("auto-advanced to ..."), one of its stage-field checks ("... instead
+    # of stopping at PROPOSED"), or its structural entry check ("... can auto-advance") — never an
+    # incidental error.
     msg = str(exc_info.value)
-    assert ("auto-advanced" in msg) or ("stopping at PROPOSED" in msg), \
+    assert any(s in msg for s in ("auto-advanced", "stopping at PROPOSED", "can auto-advance")), \
         f"the guard went red for an unexpected reason, not the auto-advance: {exc_info.value!r}"
