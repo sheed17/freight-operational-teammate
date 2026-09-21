@@ -74,6 +74,15 @@ def test_a_proposal_reaching_m2_proposed_does_not_auto_advance(tmp_path):
     inst = m.require("pl-1")
     assert inst.state is PipelineState.PROPOSED, f"the seam auto-advanced to {inst.state.value}"
     assert inst.state not in _ADVANCED_BEYOND_PROPOSED
+    # R10, read off the persisted row: NONE of the policy / checkpoint / approval / grant / claim
+    # stages was traversed by the seam. Each of these fields is set only when its stage runs, so all
+    # being unset is direct evidence the attempt reached PROPOSED and no further.
+    assert inst.policy_version is None and inst.gate_decision is None, \
+        "the seam evaluated policy (a gate) instead of stopping at PROPOSED"
+    assert inst.approval_id is None, "the seam bound an approval instead of stopping at PROPOSED"
+    assert inst.checkpoint_id is None and inst.grant_id is None, \
+        "the seam minted a checkpoint witness / grant instead of stopping at PROPOSED"
+    assert inst.claimed_at is None, "the seam claimed a grant instead of stopping at PROPOSED"
     assert witnesses(store) == [] and ledger(store) == [], "the seam minted a witness/grant"
 
     # POSITIVE SUB-CONTROL: advancement IS possible — but only via a SEPARATE, explicit,
