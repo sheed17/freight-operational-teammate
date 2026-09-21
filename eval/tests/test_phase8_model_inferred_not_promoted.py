@@ -103,8 +103,23 @@ def _r8_oracle_model_inferred_is_never_gate_readable() -> None:
 
 def test_model_inferred_material_fact_is_never_promoted_to_gate_readable_by_proposal_construction():
     """THE GUARD. Fails (red) if a MODEL_INFERRED amount or counterparty is promoted to gate-readable
-    anywhere in proposal construction. This is the direct measurement of R8."""
+    anywhere in proposal.py construction. Direct measurement of R8 (and R8-w2/R8-w3, the same
+    obligation re-worded for the proposal.py construction seam)."""
     _r8_oracle_model_inferred_is_never_gate_readable()
+    # And proposal construction cannot LAUNDER a fact's provenance via the proposal's OWN `source`:
+    # a MODEL_INFERRED amount and counterparty inside an OWNER_ASSERTED-source proposal stay guesses
+    # and stay gate-unreadable. The proposal's source is not a back door to promoting a fact.
+    laundered = build_proposed_intent(
+        tenant=_T, action_class="raise_invoice",
+        facts=(ProposedFact("approved_amount", "285000|USD", ProvenanceClass.MODEL_INFERRED),
+               ProposedFact("counterparty", "acme corp", ProvenanceClass.MODEL_INFERRED)),
+        source=ProvenanceClass.OWNER_ASSERTED)
+    assert laundered.fact("approved_amount").provenance is ProvenanceClass.MODEL_INFERRED, \
+        "R8: proposal construction promoted the amount's provenance via the proposal source"
+    assert laundered.fact("counterparty").provenance is ProvenanceClass.MODEL_INFERRED, \
+        "R8: proposal construction promoted the counterparty's provenance via the proposal source"
+    assert laundered.gate_readable_facts() == (), \
+        "R8: a MODEL_INFERRED fact became gate-readable inside an OWNER_ASSERTED-source proposal"
 
 
 def test_the_guard_catches_a_model_inferred_promotion(monkeypatch):
@@ -114,5 +129,10 @@ def test_the_guard_catches_a_model_inferred_promotion(monkeypatch):
     the oracle, so the control speaks for exactly the node the evaluator binds. If this raises no
     AssertionError, the guard above is a decoration that could never have caught the defect."""
     monkeypatch.setattr(ProposedFact, "gate_readable", property(lambda self: True))
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as exc_info:
         test_model_inferred_material_fact_is_never_promoted_to_gate_readable_by_proposal_construction()
+    # BOUND to the guard's own assertions: the RED must be a MODEL_INFERRED fact reading as
+    # gate-readable / being promoted, never an incidental error.
+    msg = str(exc_info.value)
+    assert ("MODEL_INFERRED" in msg) or ("gate-readable" in msg) or ("promoted" in msg), \
+        f"the guard went red for an unexpected reason, not a promotion: {exc_info.value!r}"
