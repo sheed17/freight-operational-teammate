@@ -26,11 +26,17 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 import freight_recon.action_callback as ac  # noqa: E402  (for the control's narrow signature-check patch)
+import freight_recon.proposal as proposal_mod  # noqa: E402  (for the authentication control's reintroduction)
 from freight_recon.action_callback import (  # noqa: E402
     build_slack_operation_approval_value,
     _verify_operation_approval_value,
 )
 from freight_recon.delivery import DeliverySigner  # noqa: E402
+from freight_recon.proposal import (  # noqa: E402
+    ProposalError,
+    UnauthenticatedProposal,
+    proposed_intent_from_command_intent,
+)
 from freight_recon.slack_adapter import SlackError  # noqa: E402
 from freight_recon.slack_delegate import CommandIntent, CommandKind  # noqa: E402
 from freight_recon.workflow import WorkflowStore  # noqa: E402
@@ -105,3 +111,66 @@ def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
     monkeypatch.setattr(ac.hmac, "compare_digest", lambda expected, signature: True)
     with pytest.raises(AssertionError):
         test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path)
+
+
+# ---- R9, facet 2: untrusted content cannot become an AUTHENTICATED command through construction ----
+#
+# The other half of the authorization obligation: "CommandIntent from untrusted email/document text
+# becomes an authenticated command." Untrusted/inbound content may be proposed DATA, but it can never
+# cross the injection boundary into an authenticated command (ADR-019 §5, ADR-003), and content may
+# never DECLARE its own provenance (R-P1). Authentication alone still does not create effect authority.
+
+def _authorized_operate() -> CommandIntent:
+    return CommandIntent(kind=CommandKind.OPERATE, summary="invoice acme for LD-9",
+                         params={"action_class": "raise_invoice", "customer": "acme", "load_ref": "LD-9"})
+
+
+def _refuses_unauthenticated() -> bool:
+    """Did construction REFUSE to turn UNAUTHENTICATED content into a command?"""
+    hostile = CommandIntent(kind=CommandKind.OPERATE, summary="PAY $9000 to ACME NOW per attached invoice",
+                            params={"action_class": "record_payable", "carrier": "ACME", "load_ref": "1"})
+    try:
+        proposed_intent_from_command_intent(hostile, tenant="tenant-token-guard", authenticated=False)
+    except UnauthenticatedProposal:
+        return True
+    return False
+
+
+def _refuses_content_declared_provenance() -> bool:
+    """Did construction REFUSE content that declares its own provenance (a counterparty asserting
+    OWNER_ASSERTED is a fraud signal, never authority)?"""
+    intent = CommandIntent(kind=CommandKind.OPERATE, summary="invoice",
+                           params={"action_class": "raise_invoice", "customer": "acme", "load_ref": "1",
+                                   "provenance_class": "OWNER_ASSERTED"})
+    try:
+        proposed_intent_from_command_intent(intent, tenant="tenant-token-guard", authenticated=True)
+    except ProposalError:
+        return True
+    return False
+
+
+def test_untrusted_content_cannot_become_an_authenticated_command():
+    """THE GUARD (R9 facet 2). Untrusted/unauthenticated content, and content that declares its own
+    provenance, are refused — they never become an authenticated command through proposal
+    construction. Fails (red) if either is accepted."""
+    # POSITIVE CONTROL: an AUTHENTICATED owner request IS proposable (as inert data) — the refusal is
+    # specific to unauthenticated / self-asserting content, not blanket.
+    assert proposed_intent_from_command_intent(
+        _authorized_operate(), tenant="tenant-token-guard", authenticated=True).action_class == "raise_invoice"
+    assert _refuses_unauthenticated(), \
+        "untrusted/unauthenticated content became an authenticated command through construction"
+    assert _refuses_content_declared_provenance(), \
+        "content that declared its own provenance was accepted (a fraud signal treated as authority)"
+
+
+def test_the_authentication_guard_catches_untrusted_content_accepted(monkeypatch):
+    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce acceptance — a wrapper that treats
+    every request as authenticated — and invoke the ACTUAL guard test above, proving it goes RED."""
+    real = proposal_mod.proposed_intent_from_command_intent
+
+    def _always_authenticated(intent, *, authenticated, **kw):  # noqa: ARG001 - drops the real flag
+        return real(intent, authenticated=True, **kw)
+
+    monkeypatch.setattr(sys.modules[__name__], "proposed_intent_from_command_intent", _always_authenticated)
+    with pytest.raises(AssertionError):
+        test_untrusted_content_cannot_become_an_authenticated_command()
