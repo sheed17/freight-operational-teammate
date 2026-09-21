@@ -54,6 +54,14 @@ TEXT_CASES = [
      "        if False and self.action_class not in ACTION_CLASS_POPULATION:  # MUTANT",
      f"{TP}::test_an_unregistered_action_class_is_refused_not_invented"),
 
+    ("M10 a MISSING action class is INVENTED (defaulted) instead of refused, so a request that never "
+     "said what kind of effect it proposes is silently built as a raise_invoice — the 'a model may "
+     "not invent a field to make the proposal executable' prohibition, realized",
+     PROP,
+     '    action_class = params.get("action_class")',
+     '    action_class = params.get("action_class") or "raise_invoice"  # MUTANT: invent a default',
+     f"{TP}::test_a_missing_action_class_is_ambiguous_and_refused"),
+
     ("M2  a MODEL_INFERRED material fact becomes gate-readable, so a guess can gate a consequential "
      "action (GR-8 / AC-SAFE-015, at any confidence) — and it is no longer excluded from a gate's "
      "readable facts",
@@ -188,6 +196,12 @@ def main() -> int:
     for label, verdict, note in results:
         mark = {"CAUGHT": "PASS", "MISS": "### MISS ###"}.get(verdict, verdict)
         print(f"  [{mark:>12}] {label}" + (f"  ({note})" if note else ""))
+    # A stable, per-mutant machine-readable line, so a pytest wrapper (and the Product Driver's own
+    # runner) can OBSERVE that each NAMED mutant — M1/M10 (unregistered/missing action_class
+    # accepted), M2 (MODEL_INFERRED promoted), M8 (forged token as approval), M9 (PROPOSED
+    # auto-advanced) — actually reintroduced its defect and was caught.
+    for label, verdict, _ in results:
+        print(f"MUTANT {label.split()[0]}: {verdict}")
     caught = sum(1 for _, v, _ in results if v == "CAUGHT")
     print(f"\n  {caught}/{len(results)} mutants caught")
     # A stable line CI can grep for, mirroring the M3/M13 batteries' "N mutations caught, 0 escaped".

@@ -705,7 +705,8 @@ jobs:
         run: |
           python -m pytest -q -p no:cacheprovider \
             eval/tests/test_phase8_proposal.py \
-            eval/tests/test_phase8_command_intent_to_proposal.py
+            eval/tests/test_phase8_command_intent_to_proposal.py \
+            eval/tests/test_phase8_model_inferred_not_promoted.py
 
   risk-radar:
     # Advisory, never blocking. It tells the reviewer WHICH safety surface a pull request touches,
