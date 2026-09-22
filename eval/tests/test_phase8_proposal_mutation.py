@@ -15,6 +15,7 @@ must leave the tree byte-identical; this wrapper asserts that too, mirroring the
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 import sys
@@ -46,3 +47,30 @@ def test_the_proposal_mutation_battery_catches_every_mutant():
     # NOT restored and the tree is now running mutated source.
     assert before == after, (
         f"the mutation battery left the tree dirty:\n--- before ---\n{before}\n--- after ---\n{after}")
+
+
+def test_the_battery_runs_its_guards_with_the_interpreter_that_launched_it(monkeypatch):
+    """### CI HERMETICITY (CI #52). The battery hard-coded `ROOT/.venv/bin/python`; a fresh GitHub
+    Actions checkout has no repository `.venv`, so every guard subprocess died before one mutant ran.
+    A guard must run under `sys.executable` — whatever interpreter launched the battery — read at CALL
+    time. Proven with a sentinel interpreter path that exists nowhere: a battery naming any other
+    interpreter (a repository `.venv`, a PATH `python`) launches something other than the sentinel."""
+    spec = importlib.util.spec_from_file_location("_mutate_phase8_proposal_under_test", _BATTERY)
+    battery = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(battery)
+
+    launched: list[list[str]] = []
+
+    def _record(argv, **_kw):
+        launched.append([str(a) for a in argv])
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    sentinel = str(ROOT / "no-such-interpreter-dir" / "sentinel-python")
+    monkeypatch.setattr(sys, "executable", sentinel)
+    monkeypatch.setattr(battery.subprocess, "run", _record)
+
+    assert battery.run_guard("eval/tests/test_phase8_proposal.py::test_a_float_money_amount_is_refused")
+    assert len(launched) == 1, f"expected exactly one guard subprocess, saw {launched}"
+    assert launched[0][0] == sentinel, (
+        f"the guard ran under {launched[0][0]!r}, not the interpreter that launched the battery")
+    assert launched[0][1:3] == ["-m", "pytest"]

@@ -24,9 +24,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from freight_recon.checkpoint import GateReadOfInferredFact, ProvenanceClass  # noqa: E402
-from freight_recon.commit_key import LogicalEffect, UnidentifiableEffect  # noqa: E402
+from freight_recon.commit_key import (  # noqa: E402
+    CanonicalOccurrence,
+    LogicalEffect,
+    UnidentifiableEffect,
+    UnresolvedCanonicalOccurrence,
+    occurrence_key_for,
+)
 from freight_recon.fingerprint import Money, MoneyMustNotFloat  # noqa: E402
 from freight_recon.proposal import (  # noqa: E402
+    ProposalError,
     ProposedFact,
     ProposedIntent,
     UnregisteredActionClass,
@@ -55,9 +62,15 @@ def raises(exc, fn, *a, **k) -> bool:
 def _mature(resource="load:4471|acme", amount_minor=285000, prov=ProvenanceClass.MODEL_EXTRACTED):
     return build_proposed_intent(
         tenant=T, action_class="raise_invoice", target_system="tms:truckingoffice",
-        target_resource_id=resource, target_operation="create_invoice", occurrence_key="",
+        target_resource_id=resource, target_operation="create_invoice",
         work_item_id="wi-1", accountable_owner="dana",
         facts=(ProposedFact.money("approved_amount", Money(amount_minor, "USD"), provenance=prov),))
+
+
+def _target(action_class, **kw):
+    return build_proposed_intent(
+        tenant=T, action_class=action_class, target_system="tms:truckingoffice",
+        target_resource_id="ld-9|acme", target_operation=action_class, **kw)
 
 
 def main() -> int:
@@ -65,12 +78,13 @@ def main() -> int:
     check("a mature proposal names a registered action_class and can derive its identity",
           p.action_class == "raise_invoice" and p.is_mature)
     check("the commit key is derived and carries no amount (ADR-009)",
-          p.commit_key() == LogicalEffect(
+          p.logical_effect().key() == LogicalEffect(
               tenant=T, action_class="raise_invoice", target_system="tms:truckingoffice",
               target_resource_id="load:4471|acme", target_operation="create_invoice",
               occurrence_key="").key())
     check("a different proposed amount is the SAME logical effect (amount is not identity)",
-          _mature(amount_minor=285000).commit_key() == _mature(amount_minor=310000).commit_key())
+          _mature(amount_minor=285000).logical_effect().key()
+          == _mature(amount_minor=310000).logical_effect().key())
 
     check("all eight registered action classes are proposable",
           len({build_proposed_intent(tenant=T, action_class=ac).action_class
@@ -104,7 +118,7 @@ def main() -> int:
     again = ProposedIntent.from_wire(_mature().to_wire())
     check("a serialization round trip preserves action_class, resource and provenance",
           again.action_class == "raise_invoice" and again.target_resource_id == "load:4471|acme"
-          and again.commit_key() == _mature().commit_key()
+          and again.logical_effect().key() == _mature().logical_effect().key()
           and again.fact("approved_amount").provenance is ProvenanceClass.MODEL_EXTRACTED)
     tampered = _mature().to_wire()
     tampered["action_class"] = "wire_money"
@@ -113,6 +127,32 @@ def main() -> int:
     check("an immature proposal fails closed at the identity boundary",
           raises(UnidentifiableEffect,
                  build_proposed_intent(tenant=T, action_class="raise_invoice").logical_effect))
+
+    # --- occurrence identity has ONE authority: commit_key.occurrence_key_for (P1) ---------------
+    declared = {**_mature().to_wire(), "occurrence_key": "retry-2"}   # a HOSTILE form, built here
+    check("a wire form that declares its own occurrence is refused",
+          raises(ProposalError, ProposedIntent.from_wire, declared))
+    check("no caller can hand a proposal an occurrence (there is no parameter for one)",
+          raises(TypeError, build_proposed_intent, tenant=T, action_class="raise_invoice",
+                 occurrence_key="retry-2"))
+    check("a SINGLE proposal's identity converges whatever occurrence inputs ride along",
+          len({_target("raise_invoice", **kw).logical_effect().key()
+               for kw in ({}, {"target_status": "DELIVERED"}, {"document_digest": "a" * 64})}) == 1)
+    check("a derived occurrence is exactly what the canonical authority returns",
+          _target("update_status", target_status="DELIVERED").logical_effect().occurrence_key
+          == occurrence_key_for("update_status", target_status="DELIVERED"))
+    check("an unresolved canonical occurrence fails closed (and the proposal is not mature)",
+          raises(UnresolvedCanonicalOccurrence, _target("record_payment").logical_effect)
+          and _target("record_payment").is_mature is False)
+    pa1 = CanonicalOccurrence(entity="Payment Application", occurrence_id="pa-1")
+    check("a correctly resolved canonical occurrence produces the ordinary canonical key",
+          _target("record_payment").logical_effect(resolved=pa1).key() == LogicalEffect(
+              tenant=T, action_class="record_payment", target_system="tms:truckingoffice",
+              target_resource_id="ld-9|acme", target_operation="record_payment",
+              occurrence_key=occurrence_key_for("record_payment", resolved=pa1)).key())
+    check("a raw string cannot stand in for a resolved canonical occurrence",
+          raises(ProposalError, _target("record_payment").logical_effect,
+                 resolved="payment application:pa-1"))
 
     wrong = [name for name, ok in _results if not ok]
     width = max(len(n) for n, _ in _results)

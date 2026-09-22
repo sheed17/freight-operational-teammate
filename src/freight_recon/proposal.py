@@ -32,6 +32,14 @@ the identity). Unknown or ambiguous material fields stay unknown: a model may no
 an amount or a counterparty to make a proposal executable, and a proposal that cannot derive a full
 `LogicalEffect` FAILS CLOSED at the M2 boundary rather than guessing one.
 
+### ONE COMMIT KEY AUTHORITY, ONE OCCURRENCE AUTHORITY (P1, restored at the CI #52 correction).
+This module defines no Commit Key derivation of its own: the key of a proposal's effect is
+`proposal.logical_effect().key()`, i.e. the canonical `commit_key.LogicalEffect.key()`. And a proposal
+holds NO occurrence discriminator: `logical_effect()` obtains it from `commit_key.occurrence_key_for`
+and nowhere else, so no interpretation param, model output, Slack token, wire form or
+`material_params` entry can vary it between retries. U8.6 first shipped a free-form
+`occurrence_key: str` field here — the exact escape hatch P1 closed, reopened.
+
 ### PROVENANCE IS CARRIED, NEVER PROMOTED.
 A `MODEL_INFERRED` material fact is carried (so it is auditable and correctable) but is NEVER
 readable by consequential gate evaluation and can NEVER be promoted to a gate-readable class by
@@ -46,6 +54,7 @@ zero-production-importer dark posture. Nothing in production calls that seam.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -57,7 +66,7 @@ from typing import TYPE_CHECKING
 # `checkpoint.GateReadOfInferredFact` is the one gate-read refusal. The single forbidden class below
 # mirrors the kernel's `ProvenancedFact.value` rule (AC-SAFE-015), it does not re-decide it.
 from .checkpoint import GateReadOfInferredFact, ProvenanceClass
-from .commit_key import LogicalEffect, occurrence_key_for
+from .commit_key import CanonicalOccurrence, LogicalEffect, UnidentifiableEffect, occurrence_key_for
 from .fingerprint import Money, MoneyMustNotFloat
 from .product_policy import ACTION_CLASS_POPULATION
 
@@ -67,6 +76,20 @@ if TYPE_CHECKING:  # the interpretation DTO — imported lazily at runtime to ke
 # AC-SAFE-015 / GR-8: the ONE class a consequential gate may not read — a guess. Mirrors the kernel's
 # `ProvenancedFact.value` rule exactly (proven consistent with it by the P8 proposal tests).
 _GATE_FORBIDDEN: frozenset[ProvenanceClass] = frozenset({ProvenanceClass.MODEL_INFERRED})
+
+# The shape `commit_key.document_digest` produces: a SHA-256 content digest. A file_document
+# occurrence derives from the actual document's digest, so nothing else may pose as one.
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+# ### THE WIRE SCHEMA IS CLOSED AND VERSIONED. prop_v1 (never on main) carried a free-form
+# `occurrence_key`; a v1 form is refused, not reinterpreted. Every key below maps to a constructor
+# field, and there is deliberately no key through which a form could declare its own identity.
+_WIRE_VERSION = "prop_v2"
+_WIRE_KEYS = frozenset({
+    "v", "tenant", "action_class", "target_system", "target_resource_id", "target_operation",
+    "document_digest", "target_status", "work_item_id", "accountable_owner", "facts",
+    "material_params", "summary", "source",
+})
 
 
 class ProposalError(RuntimeError):
@@ -225,11 +248,21 @@ class ProposedIntent:
     """The canonical INERT structured proposal. Data, not authority (see the module docstring).
 
     The identity fields (`tenant`, `action_class`, `target_system`, `target_resource_id`,
-    `target_operation`, `occurrence_key`) are the six that make a `LogicalEffect` — so a mature
-    proposal derives EXACTLY the commit key the canonical pipeline uses, and the amount is nowhere
-    among them. Any of the derivable identity fields may be `""` when it is genuinely unknown: an
-    immature proposal is legal data, it simply cannot enter M2 until its identity is complete
-    (`logical_effect()` fails closed on an empty field).
+    `target_operation`) are five of the six that make a `LogicalEffect`, and the amount is nowhere
+    among them. Any of them may be `""` when it is genuinely unknown: an immature proposal is legal
+    data, it simply cannot enter M2 until its identity is complete (`logical_effect()` fails closed).
+
+    ### THE SIXTH — WHICH LEGITIMATE REPETITION — IS DELIBERATELY NOT A FIELD. A proposal cannot carry,
+    accept or deserialize an occurrence discriminator. It carries only the typed INPUTS the canonical
+    rule reads, and `logical_effect()` hands them to `occurrence_key_for`:
+      * SINGLE classes — nothing; the occurrence is "" and a retry is the same effect;
+      * `document_digest` — the SHA-256 content digest of the document being filed
+        (DERIVED_DOCUMENT_DIGEST); anything that is not a digest is refused;
+      * `target_status` — the status the operation sets (DERIVED_TARGET_STATUS), read from the same
+        `status_value` the canonical router reads;
+      * a resolved `CanonicalOccurrence` passed to `logical_effect()` by a trusted resolver — never
+        stored on, serialized with or deserialized into a proposal (CANONICAL_OCCURRENCE_REQUIRED).
+        Without one, derivation fails closed exactly as `occurrence_key_for` does.
 
     `material_params` carries the ORIGINAL (un-normalised) values a surface renders and a legacy
     bridge reconstructs — display data with no authority. `facts` carries the provenance-tagged
@@ -242,7 +275,8 @@ class ProposedIntent:
     target_system: str = ""
     target_resource_id: str = ""
     target_operation: str = ""
-    occurrence_key: str = ""
+    document_digest: str | None = None
+    target_status: str | None = None
     work_item_id: str | None = None
     accountable_owner: str | None = None
     facts: tuple[ProposedFact, ...] = ()
@@ -272,30 +306,60 @@ class ProposedIntent:
                 raise ProposalError("each material fact must be a ProposedFact")
         object.__setattr__(self, "material_params",
                            {str(k): str(v) for k, v in dict(self.material_params or {}).items()})
+        digest = str(self.document_digest or "").strip().lower() or None
+        if digest is not None and not _SHA256_HEX.fullmatch(digest):
+            raise ProposalError(
+                f"document_digest {self.document_digest!r} is not a SHA-256 content digest. A "
+                f"file_document occurrence derives ONLY from the actual document's digest "
+                f"(commit_key.document_digest); a free-form string may not stand in for one."
+            )
+        object.__setattr__(self, "document_digest", digest)
+        object.__setattr__(self, "target_status", str(self.target_status or "").strip() or None)
 
     @property
     def is_mature(self) -> bool:
-        """Can this proposal derive a full `LogicalEffect`, i.e. is it ready to enter M2 as an
-        attempt? A proposal missing its target system/resource/operation is legal data but not yet
-        mature (its material identity is still unknown)."""
-        return all((str(self.tenant).strip(), str(self.target_system).strip(),
-                    str(self.target_resource_id).strip(), str(self.target_operation).strip()))
+        """Can this proposal, ON ITS OWN DATA, derive a full `LogicalEffect` — i.e. is it ready to enter
+        M2 as an attempt? Answered by the one derivation, never a parallel field check, so it cannot
+        disagree with the seam: a missing target, a file_document with no digest, an update_status with
+        no status, and every CANONICAL_OCCURRENCE_REQUIRED class (whose occurrence only a resolver can
+        supply) are all immature. No occurrence is invented to make a proposal mature."""
+        try:
+            self.logical_effect()
+        except UnidentifiableEffect:
+            return False
+        return True
 
-    def logical_effect(self) -> LogicalEffect:
-        """The canonical commit-key identity, derived from the row — never supplied and never
-        containing the amount (ADR-009, CLAUDE.md rule 8). Raises `UnidentifiableEffect` (via
-        `commit_key`) when a required field is unknown, which is the fail-closed direction: an
+    def logical_effect(self, *, resolved: CanonicalOccurrence | None = None) -> LogicalEffect:
+        """The canonical `LogicalEffect`, derived — never supplied and never containing the amount
+        (ADR-009, CLAUDE.md rule 8). Its Commit Key is `.key()`, the ONE derivation (commit_key.py);
+        this module deliberately has no commit-key function of its own.
+
+        The occurrence is whatever `occurrence_key_for` returns for this action class, from the typed
+        inputs this proposal carries. `resolved` is the only way a CANONICAL_OCCURRENCE_REQUIRED class
+        gets an occurrence: a `CanonicalOccurrence` from a resolver that proved it, passed in here and
+        never stored. A raw string, a dict or a look-alike object is refused — occurrence identity does
+        not enter from untyped data.
+
+        Raises `UnidentifiableEffect` when identity cannot be determined — an unknown target, a missing
+        digest/status, an unresolved canonical occurrence. That is the fail-closed direction: an
         ambiguous proposal must be clarified, not forced into an identity."""
+        if resolved is not None and not isinstance(resolved, CanonicalOccurrence):
+            raise ProposalError(
+                f"a canonical occurrence must be a resolved CanonicalOccurrence, not "
+                f"{type(resolved).__name__}. Occurrence identity never enters from a raw string or an "
+                f"untyped object (P1)."
+            )
+        occurrence = occurrence_key_for(
+            self.action_class, resolved=resolved,
+            document_digest=self.document_digest, target_status=self.target_status,
+        )
         effect = LogicalEffect(
             tenant=self.tenant, action_class=self.action_class, target_system=self.target_system,
             target_resource_id=self.target_resource_id, target_operation=self.target_operation,
-            occurrence_key=self.occurrence_key,
+            occurrence_key=occurrence,
         )
         effect.key()  # validate eagerly: an empty required field raises UnidentifiableEffect here,
         return effect  # so an immature proposal fails closed AT this seam, not deep inside propose.
-
-    def commit_key(self) -> str:
-        return self.logical_effect().key()
 
     def gate_readable_facts(self) -> tuple[ProposedFact, ...]:
         """The material facts a consequential gate MAY read — `MODEL_INFERRED` excluded. A
@@ -308,17 +372,20 @@ class ProposedIntent:
                 return f
         return None
 
-    # --- serialization: a round trip preserves identity + provenance and grants no authority ------
+    # --- serialization: a round trip preserves DATA + provenance and grants no authority ----------
+    # It carries the typed occurrence INPUTS, never an occurrence: identity is re-derived through
+    # `occurrence_key_for` on the far side, not read back from the wire.
 
     def to_wire(self) -> dict:
         return {
-            "v": "prop_v1",
+            "v": _WIRE_VERSION,
             "tenant": self.tenant,
             "action_class": self.action_class,
             "target_system": self.target_system,
             "target_resource_id": self.target_resource_id,
             "target_operation": self.target_operation,
-            "occurrence_key": self.occurrence_key,
+            "document_digest": self.document_digest,
+            "target_status": self.target_status,
             "work_item_id": self.work_item_id,
             "accountable_owner": self.accountable_owner,
             "facts": [f.to_wire() for f in self.facts],
@@ -332,16 +399,34 @@ class ProposedIntent:
         """Reconstruct and RE-VALIDATE. Deserialization is a validating boundary: a wire form naming
         an unregistered action class or a non-canonical provenance is refused, so a redelivered or
         tampered payload cannot smuggle in a proposal the construction path would have refused.
-        Signing/serializing/deserializing grants no authority — this only rebuilds the data."""
+        Signing/serializing/deserializing grants no authority — this only rebuilds the data.
+
+        ### A WIRE FORM MAY NOT DECLARE ITS OWN IDENTITY. The schema is closed: a key construction has
+        no field for — an `occurrence_key` (the P1 escape hatch), a `commit_key`, a "resolved"
+        occurrence — is refused rather than silently dropped, so a tampered or stale form is detected,
+        not half-accepted. A form of any other version is refused too."""
         if not isinstance(data, Mapping):
             raise ProposalError("a proposal wire form is an object")
+        unknown = sorted(set(map(str, data)) - _WIRE_KEYS)
+        if unknown:
+            raise ProposalError(
+                f"a proposal wire form carried {unknown}, which no proposal field accepts. A wire form "
+                f"may not declare its own identity: the occurrence is derived by "
+                f"commit_key.occurrence_key_for, never read from a payload (P1)."
+            )
+        if data.get("v") != _WIRE_VERSION:
+            raise ProposalError(
+                f"proposal wire version {data.get('v')!r} is not {_WIRE_VERSION!r}; refusing to "
+                f"reinterpret it (prop_v1 carried a free-form occurrence string)."
+            )
         return cls(
             tenant=str(data.get("tenant") or ""),
             action_class=str(data.get("action_class") or ""),
             target_system=str(data.get("target_system") or ""),
             target_resource_id=str(data.get("target_resource_id") or ""),
             target_operation=str(data.get("target_operation") or ""),
-            occurrence_key=str(data.get("occurrence_key") or ""),
+            document_digest=(str(data["document_digest"]) if data.get("document_digest") else None),
+            target_status=(str(data["target_status"]) if data.get("target_status") else None),
             work_item_id=(str(data["work_item_id"]) if data.get("work_item_id") else None),
             accountable_owner=(str(data["accountable_owner"]) if data.get("accountable_owner") else None),
             facts=tuple(ProposedFact.from_wire(f) for f in (data.get("facts") or [])),
@@ -354,7 +439,7 @@ class ProposedIntent:
         """A NON-AUTHORITATIVE `CommandIntent` projection, for rendering and for a legacy bridge
         whose signature predates proposals. The params are the ORIGINAL material values plus the
         registered `action_class`; the effect identity a consequential consumer trusts is
-        `logical_effect()`, derived here and validated at construction — not these free-form params."""
+        `logical_effect()`, derived through the canonical authorities — not these free-form params."""
         from .slack_delegate import CommandIntent, CommandKind
 
         params = dict(self.material_params)
@@ -371,7 +456,8 @@ def build_proposed_intent(
     target_system: str = "",
     target_resource_id: str = "",
     target_operation: str = "",
-    occurrence_key: str = "",
+    document_digest: str | None = None,
+    target_status: str | None = None,
     work_item_id: str | None = None,
     accountable_owner: str | None = None,
     facts: tuple[ProposedFact, ...] = (),
@@ -379,12 +465,13 @@ def build_proposed_intent(
     summary: str = "",
     source: ProvenanceClass = ProvenanceClass.MODEL_EXTRACTED,
 ) -> ProposedIntent:
-    """Build an inert `ProposedIntent`. The registration and provenance invariants are enforced by
-    `ProposedIntent` itself, so there is one place they hold. Grants zero authority."""
+    """Build an inert `ProposedIntent`. The registration, provenance and digest invariants are enforced
+    by `ProposedIntent` itself, so there is one place they hold. Grants zero authority. There is no
+    occurrence parameter: the occurrence is derived by `logical_effect()`, never supplied."""
     return ProposedIntent(
         tenant=tenant, action_class=action_class, target_system=target_system,
         target_resource_id=target_resource_id, target_operation=target_operation,
-        occurrence_key=occurrence_key, work_item_id=work_item_id,
+        document_digest=document_digest, target_status=target_status, work_item_id=work_item_id,
         accountable_owner=accountable_owner, facts=tuple(facts),
         material_params=dict(material_params or {}), summary=summary, source=source,
     )
@@ -429,10 +516,15 @@ def proposed_intent_from_command_intent(
       * a non-OPERATE intent — QUERY/CONTROL/UNKNOWN do not propose effects;
       * a missing / unregistered action class (`UnregisteredActionClass`).
 
-    Derives the identity fields BEST-EFFORT from the request's own values: when a load reference and
-    a counterparty are present, `target_resource_id` and the occurrence key are derived exactly as
-    the canonical pipeline does; when they are not, they stay `""` and the proposal is legal but
-    immature. A model may NOT invent them to make the proposal executable.
+    Derives the target BEST-EFFORT from the request's own values: when a load reference and a
+    counterparty are present, `target_resource_id` is derived exactly as the canonical pipeline does;
+    when they are not, it stays `""` and the proposal is legal but immature. A model may NOT invent
+    it to make the proposal executable.
+
+    No occurrence is derived or accepted here. The proposal carries only the typed inputs the
+    canonical rule reads — `document_digest` from the trusted caller (never from `params`) and the
+    status the operation sets — and `logical_effect()` turns them into the occurrence through
+    `occurrence_key_for`. A `params["occurrence_key"]` is display data that reaches no identity.
     """
     from .slack_delegate import CommandKind
 
@@ -473,15 +565,10 @@ def proposed_intent_from_command_intent(
     load_ref = _first(params, _LOAD_REF_KEYS)
     party = _first(params, _PARTY_KEYS)
     target_resource_id = ""
-    occurrence_key = ""
     if load_ref and party:
         # Normalise each component BEFORE joining, exactly as the canonical pipeline does, so two
         # readings of one effect converge no matter how the parser spaced or cased them.
         target_resource_id = f"{str(load_ref).strip().lower()}|{str(party).strip().lower()}"
-        occurrence_key = occurrence_key_for(
-            action_class, resolved=None,
-            document_digest=document_digest, target_status=target_status or params.get("status_value"),
-        )
 
     facts: list[ProposedFact] = []
     if approved_money is not None:
@@ -491,7 +578,11 @@ def proposed_intent_from_command_intent(
         tenant=tenant, action_class=action_class, target_system=target_system,
         target_resource_id=target_resource_id,
         target_operation=action_class if target_resource_id else "",
-        occurrence_key=occurrence_key, work_item_id=work_item_id,
+        document_digest=document_digest,
+        # The status an update_status SETS — the same `status_value` the canonical router reads, so
+        # the two derive one identity from one request. Only DERIVED_TARGET_STATUS reads it.
+        target_status=target_status or params.get("status_value"),
+        work_item_id=work_item_id,
         accountable_owner=accountable_owner, facts=tuple(facts),
         material_params=params, summary=str(intent.summary or ""), source=source,
     )

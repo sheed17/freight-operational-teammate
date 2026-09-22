@@ -53,7 +53,7 @@ _ADVANCED_BEYOND_PROPOSED = frozenset(s for s in PipelineState if s is not Pipel
 def _mature():
     return build_proposed_intent(
         tenant=T_A, action_class="raise_invoice", target_system="tms:truckingoffice",
-        target_resource_id="load:4471|acme", target_operation="create_invoice", occurrence_key="",
+        target_resource_id="load:4471|acme", target_operation="create_invoice",
         work_item_id=WORK_ITEM, accountable_owner=OWNER)
 
 

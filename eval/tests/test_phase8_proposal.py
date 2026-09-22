@@ -17,12 +17,15 @@ it is:
     a proposal bypasses M2              it does not enter PipelineMachine.propose                 (§ I)
     a duplicate bills twice             redelivery/equivalence is not absorbed under Layer-1      (§ I)
     the token IS the authority          a signed button trusts free-form CommandIntent           (§ J)
+    a caller splits one effect in two   an occurrence string enters identity (the P1 hatch)      (§ K)
 
 ### THIS IS THE IMPLEMENTING SESSION'S BATTERY, NOT AN INDEPENDENT REVIEW.
 """
 
 from __future__ import annotations
 
+import ast
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -53,7 +56,13 @@ from freight_recon.action_callback import (  # noqa: E402
     _verify_operation_approval_value,
 )
 from freight_recon.checkpoint import GateDecision, GateReadOfInferredFact, ProvenanceClass  # noqa: E402
-from freight_recon.commit_key import LogicalEffect, UnidentifiableEffect  # noqa: E402
+from freight_recon.commit_key import (  # noqa: E402
+    CanonicalOccurrence,
+    LogicalEffect,
+    UnidentifiableEffect,
+    UnresolvedCanonicalOccurrence,
+    occurrence_key_for,
+)
 from freight_recon.delivery import DeliverySigner  # noqa: E402
 from freight_recon.fingerprint import Money, MoneyMustNotFloat  # noqa: E402
 from freight_recon.pipeline_instance import (  # noqa: E402
@@ -82,10 +91,11 @@ def _operate(action_class="raise_invoice", **params):
 
 
 def _mature_proposal(*, tenant=T_A, work_item_id=WORK_ITEM, owner=OWNER, resource="load:4471|acme"):
-    """A proposal complete enough to enter M2 as an attempt (all six identity fields present)."""
+    """A proposal complete enough to enter M2 as an attempt (a SINGLE class with a full target, so
+    its occurrence derives canonically as "")."""
     return build_proposed_intent(
         tenant=tenant, action_class="raise_invoice", target_system="tms:truckingoffice",
-        target_resource_id=resource, target_operation="create_invoice", occurrence_key="",
+        target_resource_id=resource, target_operation="create_invoice",
         work_item_id=work_item_id, accountable_owner=owner,
         facts=(ProposedFact.money("approved_amount", Money(285000, "USD"),
                                   provenance=ProvenanceClass.MODEL_EXTRACTED),),
@@ -135,7 +145,7 @@ def test_constructing_a_proposal_mints_nothing(tmp_path):
     )
     wire = proposal.to_wire()
     round_tripped = ProposedIntent.from_wire(wire)
-    _ = round_tripped.commit_key()  # deriving identity is pure
+    _ = round_tripped.logical_effect().key()  # deriving identity is pure
 
     assert state_digest(store) == before, "constructing/serializing a proposal changed durable state"
     assert witnesses(store) == [] and ledger(store) == []
@@ -316,13 +326,25 @@ def test_proposal_gate_readability_matches_the_kernel_for_every_provenance_class
 
 # ============================================================ G. serialization preserves identity + provenance
 
-def test_round_trip_preserves_action_class_resource_and_provenance():
+def test_round_trip_preserves_proposal_data_and_re_derives_the_same_identity():
+    """### RE-ADJUDICATED at the CI #52 correction. A round trip preserves the proposal's DATA — action
+    class, target, the typed occurrence INPUTS, provenance — and so RE-DERIVES the same identity
+    through the canonical authority. It does not carry an occurrence: the wire form has no field for
+    one and refuses a form that declares one (§ K). What survives the wire is information, never
+    identity authority."""
     p = _mature_proposal()
     again = ProposedIntent.from_wire(p.to_wire())
+    assert again == p, "a round trip changed the proposal's data"
     assert again.action_class == "raise_invoice"
     assert again.target_resource_id == "load:4471|acme"
-    assert again.commit_key() == p.commit_key()
+    assert again.logical_effect().key() == p.logical_effect().key()
     assert again.fact("approved_amount").provenance is ProvenanceClass.MODEL_EXTRACTED
+    # the typed derivation inputs survive, and re-derive the same DERIVED occurrence
+    for derived in (_targeted("update_status", target_status="DELIVERED"),
+                    _targeted("file_document", document_digest=_DIGEST_A)):
+        back = ProposedIntent.from_wire(derived.to_wire())
+        assert back == derived
+        assert back.logical_effect() == derived.logical_effect()
 
 
 def test_a_tampered_wire_form_naming_an_unregistered_class_is_refused():
@@ -386,12 +408,12 @@ def test_the_commit_key_is_derived_and_carries_no_amount():
     # a DIFFERENT proposed amount is the SAME logical effect (the amount is a material fact, not identity)
     p2 = build_proposed_intent(
         tenant=T_A, action_class="raise_invoice", target_system="tms:truckingoffice",
-        target_resource_id="load:4471|acme", target_operation="create_invoice", occurrence_key="",
+        target_resource_id="load:4471|acme", target_operation="create_invoice",
         work_item_id=WORK_ITEM, accountable_owner=OWNER,
         facts=(ProposedFact("approved_amount", "310000|USD", ProvenanceClass.MODEL_EXTRACTED),),
     )
-    assert p1.commit_key() == p2.commit_key()
-    assert p1.commit_key() == LogicalEffect(
+    assert p1.logical_effect().key() == p2.logical_effect().key()
+    assert p1.logical_effect().key() == LogicalEffect(
         tenant=T_A, action_class="raise_invoice", target_system="tms:truckingoffice",
         target_resource_id="load:4471|acme", target_operation="create_invoice", occurrence_key="",
     ).key()
@@ -438,7 +460,7 @@ def test_a_mature_proposal_opens_exactly_one_proposed_instance(tmp_path):
     inst = m.require("pl-1")
     assert inst.state is PipelineState.PROPOSED
     assert inst.owner_id == OWNER
-    assert inst.commit_key == _mature_proposal().commit_key()
+    assert inst.commit_key == _mature_proposal().logical_effect().key()
     # ### IT DOES NOT AUTO-ADVANCE, AND IT MINTS NOTHING.
     assert inst.state is PipelineState.PROPOSED
     assert witnesses(store) == [] and ledger(store) == []
@@ -466,7 +488,7 @@ def test_a_redelivered_equivalent_proposal_is_absorbed_as_one_attempt(tmp_path):
     again = open_pipeline_for_proposal(m, _mature_proposal(), pipeline_instance_id="pl-2",
                                        proposal_ref="prop-B", **SYS)
     assert again.absorbed is not None and again.absorbed.already_absorbed
-    live = [r for r in m.attempts_for(_mature_proposal().commit_key())]
+    live = [r for r in m.attempts_for(_mature_proposal().logical_effect().key())]
     assert len(live) == 1
 
 
@@ -560,3 +582,336 @@ def test_a_tampered_token_is_refused():
     tampered_body = body[:-1] + ("A" if body[-1] != "A" else "B")
     with pytest.raises(SlackError):
         _verify_operation_approval_value(tampered_body + "." + sig, _SIGNER)
+
+
+# ============================================================ K. occurrence identity has ONE authority
+#
+# CI #52 found that U8.6 had re-opened the exact escape hatch P1 closed: `ProposedIntent.occurrence_key`
+# was a free-form string any caller could set and the wire round-tripped, so varying it between retries
+# minted a new logical effect every time — the amount defect under another field name. A proposal now
+# holds NO occurrence of its own. `logical_effect()` derives it through the one canonical authority,
+# `commit_key.occurrence_key_for`, from typed INPUTS (the document's SHA-256 content digest; the status
+# the operation sets) or from a resolved `CanonicalOccurrence` handed in by a trusted resolver — never
+# stored, serialized or deserialized. Each test is one way that could be wrong; mutants M11–M17 in
+# `scripts/mutate_phase8_proposal.py` reintroduce each defect and are observed to turn these RED.
+
+_DIGEST_A = "a" * 64
+_DIGEST_B = "b" * 64
+_PA_1 = CanonicalOccurrence(entity="Payment Application", occurrence_id="pa-1")
+_PA_2 = CanonicalOccurrence(entity="Payment Application", occurrence_id="pa-2")
+
+
+def _targeted(action_class, **kw):
+    """A proposal with a complete target for `action_class`; occurrence inputs ride in `kw`."""
+    return build_proposed_intent(
+        tenant=T_A, action_class=action_class, target_system="tms:truckingoffice",
+        target_resource_id="ld-9|acme", target_operation=action_class,
+        work_item_id=WORK_ITEM, accountable_owner=OWNER, **kw)
+
+
+def _key(proposal, **derive):
+    return proposal.logical_effect(**derive).key()
+
+
+def test_no_caller_path_can_hand_a_proposal_an_occurrence():
+    """Construction has no occurrence parameter at all — not on the dataclass, not on the builder — so
+    there is nothing for a CommandIntent, a model or an untyped caller to set."""
+    assert "occurrence_key" not in {f.name for f in dataclasses.fields(ProposedIntent)}
+    with pytest.raises(TypeError):
+        build_proposed_intent(tenant=T_A, action_class="raise_invoice", occurrence_key="retry-2")
+    with pytest.raises(TypeError):
+        ProposedIntent(tenant=T_A, action_class="raise_invoice", occurrence_key="retry-2")
+
+
+def test_a_wire_payload_cannot_declare_its_own_occurrence():
+    wire = _mature_proposal().to_wire()
+    # POSITIVE CONTROL: the untampered wire form deserializes and derives the ordinary key...
+    assert _key(ProposedIntent.from_wire(wire)) == _key(_mature_proposal())
+    assert "occurrence_key" not in wire, "the wire form still emits an occurrence discriminator"
+    # ...and ONLY a form that DECLARES an occurrence — or any identity authority — is refused, loudly,
+    # rather than half-accepted with the declaration silently dropped.
+    declarations = ({"occurrence_key": "retry-2"}, {"occurrence_key": ""},
+                    {"commit_key": "f" * 64},
+                    {"resolved": {"entity": "Payment Application", "occurrence_id": "pa-1"}})
+    for declared in declarations:
+        with pytest.raises(ProposalError):
+            ProposedIntent.from_wire({**wire, **declared})
+    # a prop_v1 form (which carried a free-form occurrence string) is never reinterpreted as v2
+    with pytest.raises(ProposalError):
+        ProposedIntent.from_wire({**wire, "v": "prop_v1"})
+
+
+@pytest.mark.parametrize("action_class, extra, derive", [
+    ("raise_invoice", {}, {}),                                  # SINGLE
+    ("update_status", {"status_value": "DELIVERED"}, {}),       # DERIVED_TARGET_STATUS
+    ("record_payment", {}, {"resolved": _PA_1}),                # CANONICAL, resolved
+])
+def test_two_retries_cannot_vary_an_occurrence_string_into_two_commit_keys(action_class, extra, derive):
+    """A retry is the SAME logical effect. Whatever occurrence string the CommandIntent's params, a
+    model or a redelivered wire form's `material_params` carries, it reaches no identity."""
+    keys, derived = set(), 0
+    for attempt in ("attempt-1", "attempt-2", "", "2026-09-21T10:00:00Z"):
+        p = proposed_intent_from_command_intent(
+            _operate(action_class, load_ref="LD-9", customer="Acme", occurrence_key=attempt, **extra),
+            tenant=T_A, authenticated=True, target_system="tms:truckingoffice",
+            work_item_id=WORK_ITEM, accountable_owner=OWNER)
+        keys.add(_key(p, **derive))
+        wire = p.to_wire()
+        wire["material_params"] = {**wire["material_params"], "occurrence_key": f"{attempt}-tampered"}
+        keys.add(_key(ProposedIntent.from_wire(wire), **derive))
+        derived += 2
+    assert derived == 8
+    assert len(keys) == 1, f"{derived} retries of ONE {action_class} minted {len(keys)} logical effects"
+
+
+def test_single_action_class_identity_converges():
+    """SINGLE: repetition is not legitimate. The occurrence is "" whatever typed inputs or resolved
+    occurrence ride along, so every re-proposal of one invoice is ONE effect."""
+    base = _targeted("raise_invoice")
+    keys = {_key(base),
+            _key(_targeted("raise_invoice", document_digest=_DIGEST_A)),
+            _key(_targeted("raise_invoice", document_digest=_DIGEST_B)),
+            _key(_targeted("raise_invoice", target_status="DELIVERED")),
+            _key(_targeted("raise_invoice", target_status="PICKED_UP")),
+            _key(base, resolved=_PA_1)}
+    assert base.logical_effect().occurrence_key == ""
+    assert keys == {LogicalEffect(
+        tenant=T_A, action_class="raise_invoice", target_system="tms:truckingoffice",
+        target_resource_id="ld-9|acme", target_operation="raise_invoice", occurrence_key="").key()}
+
+
+def test_derived_occurrences_derive_deterministically_from_their_canonical_inputs():
+    # update_status: the status being SET is the occurrence (normalised by the canonical rule)...
+    assert _key(_targeted("update_status", target_status="DELIVERED")) == \
+        _key(_targeted("update_status", target_status="  delivered "))
+    assert _key(_targeted("update_status", target_status="DELIVERED")) != \
+        _key(_targeted("update_status", target_status="PICKED_UP"))
+    # ...file_document: the document's content digest is the occurrence.
+    assert _key(_targeted("file_document", document_digest=_DIGEST_A)) == \
+        _key(_targeted("file_document", document_digest=_DIGEST_A.upper()))
+    assert _key(_targeted("file_document", document_digest=_DIGEST_A)) != \
+        _key(_targeted("file_document", document_digest=_DIGEST_B))
+    # The occurrence is exactly what the canonical authority returns — nothing proposal-local.
+    assert _targeted("update_status", target_status="DELIVERED").logical_effect().occurrence_key == \
+        occurrence_key_for("update_status", target_status="DELIVERED")
+    assert _targeted("file_document", document_digest=_DIGEST_A).logical_effect().occurrence_key == \
+        occurrence_key_for("file_document", document_digest=_DIGEST_A)
+    # A missing input fails closed — never a default — so the proposal is not mature.
+    for p in (_targeted("update_status"), _targeted("file_document")):
+        assert p.is_mature is False
+        with pytest.raises(UnidentifiableEffect):
+            p.logical_effect()
+    # A free-form string may not stand in for a content digest.
+    with pytest.raises(ProposalError):
+        _targeted("file_document", document_digest="retry-2")
+
+
+def test_the_proposal_derives_the_same_identity_as_the_canonical_router(tmp_path):
+    """### ONE REQUEST, ONE IDENTITY, TWO READERS. The proposal and the canonical router
+    (`operation_router._logical_effect`) derive the SAME `LogicalEffect` from the same request —
+    including a file_document whose digest is read from the ACTUAL file bytes. The commit-key semantics
+    are preserved, not re-decided."""
+    from freight_recon.commit_key import document_digest
+    from freight_recon.operation_router import _logical_effect, freight_routes
+
+    routes = {r.name: r for r in freight_routes()}
+    doc = tmp_path / "pod.pdf"
+    doc.write_bytes(b"%PDF-1.4 proof of delivery LD-9")
+    cases = [
+        ("raise_invoice", {}, {}, {}),
+        ("record_payable", {}, {}, {}),
+        ("update_status", {"status_value": "DELIVERED"}, {}, {}),
+        ("file_document", {}, {"document_digest": document_digest(str(doc))},
+         {"document_path": str(doc)}),
+    ]
+    checked = 0
+    for action_class, extra, proposal_kw, router_kw in cases:
+        intent = _operate(action_class, load_ref="LD-9", customer="Acme", **extra)
+        proposal = proposed_intent_from_command_intent(
+            intent, tenant=T_A, authenticated=True, target_system="tms:truckingoffice", **proposal_kw)
+        router = _logical_effect(T_A, "tms:truckingoffice", routes[action_class], intent, **router_kw)
+        assert proposal.logical_effect() == router, action_class
+        assert proposal.logical_effect().key() == router.key(), action_class
+        checked += 1
+    assert checked == len(cases) == 4
+
+
+@pytest.mark.parametrize("action_class", ["record_payment", "adjust_invoice", "check_call"])
+def test_an_unresolved_canonical_occurrence_fails_closed(action_class, tmp_path):
+    """CANONICAL_OCCURRENCE_REQUIRED: only a resolver can say WHICH occurrence this is. With none the
+    proposal is immature, derivation raises exactly as `occurrence_key_for` does, and the M2 seam opens
+    nothing. No occurrence is invented to make the proposal mature — not even from a CommandIntent that
+    names one."""
+    # POSITIVE CONTROL: the same target on a SINGLE class is mature and derives — the refusal is the
+    # occurrence rule's, not a broken target.
+    assert _targeted("raise_invoice").is_mature is True
+    p = _targeted(action_class)
+    assert p.is_mature is False
+    with pytest.raises(UnresolvedCanonicalOccurrence):
+        p.logical_effect()
+    named = proposed_intent_from_command_intent(
+        _operate(action_class, load_ref="LD-9", customer="Acme", occurrence_key="pa-1"),
+        tenant=T_A, authenticated=True, target_system="tms:truckingoffice",
+        work_item_id=WORK_ITEM, accountable_owner=OWNER)
+    with pytest.raises(UnresolvedCanonicalOccurrence):
+        named.logical_effect()
+    store, m = _seed(tmp_path)
+    with pytest.raises(UnresolvedCanonicalOccurrence):
+        open_pipeline_for_proposal(m, p, pipeline_instance_id="pl-1", **SYS)
+    assert m.get("pl-1") is None
+    assert store.conn.execute("SELECT COUNT(*) FROM pipeline_instances").fetchone()[0] == 0
+
+
+def test_a_correctly_resolved_canonical_occurrence_produces_the_ordinary_canonical_key():
+    p = _targeted("record_payment")
+    expected = LogicalEffect(
+        tenant=T_A, action_class="record_payment", target_system="tms:truckingoffice",
+        target_resource_id="ld-9|acme", target_operation="record_payment",
+        occurrence_key=occurrence_key_for("record_payment", resolved=_PA_1)).key()
+    assert _key(p, resolved=_PA_1) == expected
+    # the same occurrence, however spelled, is one effect; two occurrences are two partial payments
+    assert _key(p, resolved=CanonicalOccurrence("Payment Application", " PA-1 ")) == expected
+    assert _key(p, resolved=_PA_2) != expected
+    # a wrong-entity occurrence is refused by the canonical authority
+    with pytest.raises(UnidentifiableEffect):
+        p.logical_effect(resolved=CanonicalOccurrence("Compensation", "cm-1"))
+    # derivation never stores the occurrence: the proposal and its wire form carry no trace of it
+    assert p == _targeted("record_payment")
+    assert "pa-1" not in repr(p.to_wire())
+
+
+class _LookAlikeOccurrence:
+    """Duck-types `CanonicalOccurrence` without being one — what an untyped caller could build."""
+
+    entity = "Payment Application"
+    occurrence_id = "pa-1"
+
+    def key(self):
+        return "payment application:pa-1"
+
+
+def test_an_untyped_occurrence_stand_in_is_refused():
+    """Only the canonical resolved type may carry occurrence identity: a raw string, a deserialized
+    dict or a look-alike object is refused before it reaches the canonical authority."""
+    p = _targeted("record_payment")
+    # POSITIVE CONTROL: the canonical type derives.
+    assert _key(p, resolved=_PA_1)
+    for forged in ("payment application:pa-1",
+                   {"entity": "Payment Application", "occurrence_id": "pa-1"},
+                   _LookAlikeOccurrence()):
+        with pytest.raises(ProposalError):
+            p.logical_effect(resolved=forged)
+
+
+def test_a_mutable_amount_never_changes_the_logical_key_under_any_occurrence_rule():
+    cases = [("raise_invoice", {}, {}),
+             ("update_status", {"target_status": "DELIVERED"}, {}),
+             ("file_document", {"document_digest": _DIGEST_A}, {}),
+             ("record_payment", {}, {"resolved": _PA_1})]
+    for action_class, kw, derive in cases:
+        keys = [_key(_targeted(action_class, **kw,
+                               facts=(ProposedFact.money("approved_amount", Money(minor, "USD")),)),
+                     **derive)
+                for minor in (50000, 70000, 285000, 310000)]
+        assert len(keys) == 4 and len(set(keys)) == 1, f"{action_class}: the amount forked identity"
+
+
+# --- structural: one occurrence source, no second resolver ------------------------------------------
+
+_RULE_TABLE_NAMES = frozenset({
+    "OCCURRENCE_RULES", "CANONICAL_OCCURRENCE_SOURCES", "SINGLE", "DERIVED_DOCUMENT_DIGEST",
+    "DERIVED_TARGET_STATUS", "CANONICAL_OCCURRENCE_REQUIRED",
+})
+
+
+def _occurrence_source_offenders(tree: ast.AST) -> tuple[list[str], int]:
+    """(offenders, LogicalEffect constructions checked). Every `LogicalEffect(...)` must take its
+    `occurrence_key=` from a local name bound ONLY by calls to `occurrence_key_for`, and the module
+    must reference none of the rule tables a second resolver would dispatch on."""
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        names = []
+        if isinstance(node, ast.ImportFrom):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.Name):
+            names = [node.id]
+        elif isinstance(node, ast.Attribute):
+            names = [node.attr]
+        offenders += [f"references rule table {n} (a second occurrence resolver)"
+                      for n in names if n in _RULE_TABLE_NAMES]
+    checked = 0
+    for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        bound: dict[str, list[ast.AST]] = {}
+        for n in ast.walk(fn):
+            if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+                for t in targets:
+                    if isinstance(t, ast.Name):
+                        bound.setdefault(t.id, []).append(n.value)
+        for call in ast.walk(fn):
+            if not (isinstance(call, ast.Call)
+                    and getattr(call.func, "id", getattr(call.func, "attr", None)) == "LogicalEffect"):
+                continue
+            checked += 1
+            kw = next((k for k in call.keywords if k.arg == "occurrence_key"), None)
+            sources = bound.get(kw.value.id, []) if kw and isinstance(kw.value, ast.Name) else []
+            if not sources or not all(isinstance(v, ast.Call)
+                                      and getattr(v.func, "id", None) == "occurrence_key_for"
+                                      for v in sources):
+                offenders.append(f"{fn.name}:{call.lineno} LogicalEffect.occurrence_key does not "
+                                 f"come solely from occurrence_key_for")
+    return offenders, checked
+
+
+def test_the_proposal_module_has_one_occurrence_source_and_no_second_resolver():
+    """### STRUCTURAL, by AST, over the real module. The final `LogicalEffect` occurrence discriminator
+    comes through `occurrence_key_for` and nothing else, and proposal.py dispatches on no rule table of
+    its own. Paired with the positive control below, which proves the detector can go RED."""
+    tree = ast.parse((ROOT / "src" / "freight_recon" / "proposal.py").read_text(encoding="utf-8"))
+    offenders, checked = _occurrence_source_offenders(tree)
+    assert checked >= 1, "no LogicalEffect construction found in proposal.py — the guard parsed nothing"
+    assert not offenders, offenders
+
+
+def test_the_occurrence_source_guard_fires_on_a_reintroduced_escape_hatch():
+    """POSITIVE CONTROL: each shape of the escape hatch is flagged; the canonical shape is not."""
+    hostile = [
+        "def logical_effect(self):\n    return LogicalEffect(tenant=t, occurrence_key=self.occurrence_key)\n",
+        "def logical_effect(self):\n    occ = self.material_params.get('o') or occurrence_key_for(a)\n"
+        "    return LogicalEffect(occurrence_key=occ)\n",
+        "def logical_effect(self):\n    occ = occurrence_key_for(a)\n    if x:\n        occ = raw\n"
+        "    return LogicalEffect(occurrence_key=occ)\n",
+        "def logical_effect(self):\n    return LogicalEffect(tenant=t)\n",
+        "from .commit_key import OCCURRENCE_RULES\n",
+    ]
+    for src in hostile:
+        assert _occurrence_source_offenders(ast.parse(src))[0], f"the guard is blind to:\n{src}"
+    clean = ("def logical_effect(self):\n    occ = occurrence_key_for(a)\n"
+             "    return LogicalEffect(occurrence_key=occ)\n")
+    assert _occurrence_source_offenders(ast.parse(clean)) == ([], 1)
+
+
+def test_every_registered_action_class_renders_a_signed_proposal_and_identity_still_fails_closed():
+    """### A RENDERING SURFACE DERIVES NO IDENTITY (CI #52 correction). U8.6 first derived the occurrence
+    AT CONSTRUCTION, so the production Slack proposal button could not even be rendered for
+    file_document / record_payment / adjust_invoice / check_call — construction raised. A proposal is
+    inert data: it renders for every registered action class, and identity is derived — and fails
+    closed — only at `logical_effect()`, which is where the M2 seam asks for it."""
+    from freight_recon.product_policy import ACTION_CLASS_POPULATION
+
+    rendered = {}
+    for action_class in sorted(ACTION_CLASS_POPULATION):
+        approval = _verify_operation_approval_value(
+            _token(action_class=action_class, customer="Acme", load_ref="LD-9"), _SIGNER)
+        rendered[action_class] = approval.proposed_intent
+    assert len(rendered) == 8, f"expected all eight registered classes to render, got {sorted(rendered)}"
+    # The token's proposal is tenant-less (the tenant is bound when it matures), so it is immature.
+    assert all(p.is_mature is False for p in rendered.values())
+    # Bound to a tenant, the CANONICAL classes are still refused at the identity boundary...
+    for action_class in ("record_payment", "adjust_invoice", "check_call"):
+        bound = dataclasses.replace(rendered[action_class], tenant=T_A, target_system="tms:truckingoffice")
+        with pytest.raises(UnresolvedCanonicalOccurrence):
+            bound.logical_effect()
+    # ...while a SINGLE class, bound the same way, derives its ordinary identity.
+    assert dataclasses.replace(rendered["raise_invoice"], tenant=T_A,
+                               target_system="tms:truckingoffice").logical_effect().occurrence_key == ""

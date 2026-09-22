@@ -11,8 +11,14 @@ Doctrine (CLAUDE.md §6/§9), identical to the P3/P4/P5/M1/M2 batteries:
 ### WHAT THIS BATTERY IS FOR. U8.6's load-bearing new seams are: the inert proposal
 (registered-only action class; canonical minor-unit money; no MODEL_INFERRED promotion; fail-closed
 identity), the proposal → M2 boundary (accountable owner; no CommandIntent authority), and the
-signed-token authority (a proposal, not a bare CommandIntent). Each mutant removes one part of one
-of those and a guard must go red.
+signed-token authority (a proposal, not a bare CommandIntent), and — since the CI #52 correction —
+the ONE Commit Key / ONE occurrence authority (no proposal-side key derivation; no caller-, wire- or
+model-supplied occurrence entering identity). Each mutant removes one part of one of those and a
+guard must go red.
+
+### INTERPRETER-HERMETIC. Every guard runs under `sys.executable` — the interpreter that launched this
+battery — so it runs identically from a local venv, a CI runner's setup-python, or any other
+environment. CI #52: a hard-coded `ROOT/.venv/bin/python` does not exist on a fresh checkout.
 
 ### THIS IS NOT AN INDEPENDENT REVIEW. It was written by the session that implemented the unit.
 """
@@ -20,10 +26,10 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PY = ROOT / ".venv/bin/python"
 
 PROP = "src/freight_recon/proposal.py"
 PL = "src/freight_recon/pipeline_instance.py"
@@ -32,6 +38,22 @@ AC = "src/freight_recon/action_callback.py"
 TP = "eval/tests/test_phase8_proposal.py"
 TG = "eval/tests/test_phase8_command_intent_to_proposal.py"
 TAC = "eval/tests/test_phase8_action_class_registered.py"
+TP1 = "eval/tests/test_phase1_structural_guards.py"
+
+# The one line that hands the canonically derived occurrence to the LogicalEffect.
+_OCC_KW = "            occurrence_key=occurrence,\n"
+_OCC_CALL = ("        occurrence = occurrence_key_for(\n"
+             "            self.action_class, resolved=resolved,\n"
+             "            document_digest=self.document_digest, target_status=self.target_status,\n"
+             "        )\n")
+
+
+# M16 injects a second NAMED Commit Key derivation into proposal.py. The unchanged P1 guard reads
+# src/ AND scripts/ line by line for a definition whose name contains the canonical one, so writing
+# that definition literally here would report THIS fixture as a second derivation. The name is
+# assembled at runtime instead; once written into proposal.py it is a real definition, and the guard
+# must catch it there.
+_SECOND_KEY_DEF = "    def " + "commit" + "_key(self) -> str:  # MUTANT: a second named Commit Key surface\n"
 
 
 def purge_pycache() -> None:
@@ -41,7 +63,8 @@ def purge_pycache() -> None:
 
 
 def run_guard(nodeid: str) -> bool:
-    r = subprocess.run([str(PY), "-m", "pytest", nodeid, "-q", "-p", "no:cacheprovider"],
+    # sys.executable is read at CALL time: the guard runs under whatever launched the battery.
+    r = subprocess.run([sys.executable, "-m", "pytest", nodeid, "-q", "-p", "no:cacheprovider"],
                        cwd=ROOT, capture_output=True, text=True)
     return r.returncode == 0
 
@@ -148,6 +171,73 @@ TEXT_CASES = [
      "                      policy_decision='PERMIT', model_inferred_material_fact=False)\n"
      "    return _o",
      f"{TP}::test_a_mature_proposal_opens_exactly_one_proposed_instance"),
+
+    # ---- CI #52: ONE Commit Key authority, ONE occurrence authority ------------------------------
+    ("M11 a caller-authored occurrence string enters the proposal's identity (the P1 escape hatch, "
+     "via material_params): a retry that varies it mints a second logical effect — two invoices",
+     PROP, _OCC_KW,
+     '            occurrence_key=str(self.material_params.get("occurrence_key") or occurrence),  # MUTANT\n',
+     f"{TP}::test_two_retries_cannot_vary_an_occurrence_string_into_two_commit_keys"),
+
+    ("M12 an occurrence the canonical authority REFUSED is invented as '' instead of failing closed, "
+     "so an unresolved record_payment/adjust_invoice/check_call proposal becomes mature and opens an "
+     "M2 attempt with no proven occurrence",
+     PROP, _OCC_CALL,
+     "        try:  # MUTANT: invent an occurrence instead of failing closed\n"
+     "            occurrence = occurrence_key_for(\n"
+     "                self.action_class, resolved=resolved,\n"
+     "                document_digest=self.document_digest, target_status=self.target_status,\n"
+     "            )\n"
+     "        except UnidentifiableEffect:\n"
+     '            occurrence = ""\n',
+     f"{TP}::test_an_unresolved_canonical_occurrence_fails_closed"),
+
+    ("M13 a typed derivation input splits a SINGLE effect's identity: raise_invoice re-proposed with a "
+     "different target_status/document_digest becomes a second logical effect — two invoices",
+     PROP, _OCC_KW,
+     '            occurrence_key=occurrence or str(self.target_status or self.document_digest or ""),'
+     '  # MUTANT\n',
+     f"{TP}::test_single_action_class_identity_converges"),
+
+    ("M14 the validating deserializer silently accepts a wire form that DECLARES its own occurrence / "
+     "commit key / resolved occurrence (a form construction refuses) — a tampered or stale payload is "
+     "half-accepted instead of detected",
+     PROP, "        if unknown:\n", "        if False and unknown:  # MUTANT\n",
+     f"{TP}::test_a_wire_payload_cannot_declare_its_own_occurrence"),
+
+    ("M15 an untyped look-alike (not a resolved CanonicalOccurrence) is accepted as the canonical "
+     "occurrence, so occurrence identity enters from an object any caller can build",
+     PROP,
+     "        if resolved is not None and not isinstance(resolved, CanonicalOccurrence):\n",
+     "        if False and resolved is not None and not isinstance(resolved, CanonicalOccurrence):"
+     "  # MUTANT\n",
+     f"{TP}::test_an_untyped_occurrence_stand_in_is_refused"),
+
+    ("M16 a second NAMED Commit Key derivation surface returns on ProposedIntent (the exact CI #52 "
+     "Category-A regression) — the unchanged P1 guard must catch it",
+     PROP,
+     "    def gate_readable_facts(self) -> tuple[ProposedFact, ...]:\n",
+     _SECOND_KEY_DEF +
+     "        return self.logical_effect().key()\n\n"
+     "    def gate_readable_facts(self) -> tuple[ProposedFact, ...]:\n",
+     f"{TP1}::test_the_canonical_derivation_is_the_only_one"),
+
+    ("M17 the free-form occurrence read returns to proposal.py (the exact CI #52 Category-B "
+     "regression, M11's edit) — the unchanged P1 AST guard must catch it",
+     PROP, _OCC_KW,
+     '            occurrence_key=str(self.material_params.get("occurrence_key") or occurrence),  # MUTANT\n',
+     f"{TP1}::test_no_free_form_occurrence_key_is_readable_from_the_request_payload"),
+
+    ("M18 proposal.py grows a SECOND occurrence resolver dispatching on the rule table itself. "
+     "Behaviour-identical today; the defect is two resolvers that can drift apart — the structural "
+     "single-authority guard must catch it",
+     PROP, _OCC_CALL,
+     "        from .commit_key import OCCURRENCE_RULES  # MUTANT: a second occurrence resolver\n"
+     '        occurrence = "" if OCCURRENCE_RULES.get(self.action_class) == "SINGLE" else occurrence_key_for(\n'
+     "            self.action_class, resolved=resolved,\n"
+     "            document_digest=self.document_digest, target_status=self.target_status,\n"
+     "        )\n",
+     f"{TP}::test_the_proposal_module_has_one_occurrence_source_and_no_second_resolver"),
 ]
 
 # Covered by a STRONGER existing mutant, stated rather than duplicated (CLAUDE.md §9):
@@ -200,7 +290,8 @@ def main() -> int:
     # A stable, per-mutant machine-readable line, so a pytest wrapper (and the Product Driver's own
     # runner) can OBSERVE that each NAMED mutant — M1/M10 (unregistered/missing action_class
     # accepted), M2 (MODEL_INFERRED promoted), M8 (forged token as approval), M9 (PROPOSED
-    # auto-advanced) — actually reintroduced its defect and was caught.
+    # auto-advanced), M11–M18 (a second Commit Key / occurrence authority) — actually reintroduced
+    # its defect and was caught.
     for label, verdict, _ in results:
         print(f"MUTANT {label.split()[0]}: {verdict}")
     caught = sum(1 for _, v, _ in results if v == "CAUGHT")
