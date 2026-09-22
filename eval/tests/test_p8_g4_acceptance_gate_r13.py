@@ -91,7 +91,13 @@ def _g4_family_oracle_population_complete() -> dict[str, bool]:
     discriminate rather than answering True to everything."""
     safe_ids = set(re.findall(r"AC-SAFE-0\d\d", _text(SPEC / "platform-safety-acceptance.md")))
     ckpt_105 = "== 105" in _text(EVAL_TESTS / "test_phase3_checkpoint_matrix.py")
-    rec_oracles = re.findall(r"def test_ac_rec_00[1-5]", _text(EVAL_TESTS / "test_phase6_compensation.py"))
+    # Built from fragments on purpose. A node-id extractor binds the tests in a changed verification
+    # file by scanning for function-definition lines; spelling the AC-REC oracle name out in full
+    # here (in code OR a comment) would be mis-read as a definition and bind a PHANTOM node that does
+    # not exist, failing the whole bound-node run. Splitting the identifier keeps the oracle-count
+    # check exact while leaving only this file's three real tests extractable.
+    _rec_oracle_def = r"def\s+" + "test" + "_ac_rec_00[1-5]"
+    rec_oracles = re.findall(_rec_oracle_def, _text(EVAL_TESTS / "test_phase6_compensation.py"))
     sec_spec_ids = set(re.findall(r"AC-SEC-0\d\d", _text(SPEC / "security-and-tenancy-acceptance.md")))
     sec_oracle_ids = _ids_in_dir(EVAL_TESTS, r"AC-SEC-0\d\d")
     race_017_oracle = bool(_ids_in_dir(EVAL_TESTS, r"AC-RACE-017"))
