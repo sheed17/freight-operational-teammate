@@ -156,6 +156,64 @@ def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
         f"the guard went red for an unexpected reason, not an accepted token: {exc_info.value!r}"
 
 
+# ---- R9-w3 (authorization:1e0a7d2f5d): the CHANGED action_callback.py PARSE path re-validates the
+# carried proposal --------------------------------------------------------------------------------
+#
+# The U8.6 migration made the Slack button value CARRY the inert proposal, and action_callback's parse
+# (`_verify_operation_approval_value`, whose SlackOperationApproval re-derives the proposal through
+# `ProposedIntent.from_wire`) is where a token becomes usable approval data. The hostile case specific
+# to that changed path: a token that is CORRECTLY SIGNED with the server key (so the HMAC alone would
+# pass) but whose carried proposal is INVALID must STILL be refused — a genuine signature can never
+# make a bad proposal an authenticated command, because the parse re-validates the proposal it carries.
+# This is distinct from a forged/tampered signature (that fails the HMAC): here the signature is
+# genuine and ONLY the parse re-validation stands between the token and acceptance as approval.
+
+def _resigned_bad_proposal_token() -> str:
+    """A token whose CARRIED proposal names an UNREGISTERED action_class, then re-signed with the REAL
+    server key — a genuine signature over an invalid proposal. Built through action_callback's own
+    decode/encode so it exercises exactly the changed parse path."""
+    valid = build_slack_operation_approval_value(_operate(), _SIGNER, approved_amount="2850.00")
+    claims = _decode_operation_approval(valid, _SIGNER)
+    claims["proposal"]["action_class"] = "wire_money_to_nigeria"   # smuggle an unregistered effect
+    return _encode_operation_approval(claims, _SIGNER)              # validly signed, invalid proposal
+
+
+def test_action_callback_parse_refuses_a_signed_token_with_an_invalid_proposal():
+    """THE GUARD (R9-w3, authorization:1e0a7d2f5d — the changed action_callback.py parse path). A
+    correctly SIGNED token whose carried proposal is invalid (an unregistered action_class) is refused
+    by action_callback's parse re-validation. Fails (red) if the genuine signature alone makes the bad
+    proposal an approval."""
+    # POSITIVE CONTROL: the SAME parse path accepts a token whose carried proposal is REGISTERED, and
+    # returns inert data (a proposal), never execution — so the refusal is specific, not blanket.
+    good = build_slack_operation_approval_value(_operate(), _SIGNER, approved_amount="2850.00")
+    assert _verify_operation_approval_value(good, _SIGNER).proposed_intent.action_class == "raise_invoice"
+    # ...and ONLY the signed-but-invalid-proposal token is refused by the parse path.
+    assert _refused(_resigned_bad_proposal_token()), \
+        "action_callback parse: a signed token carrying an unregistered-action_class proposal was accepted as approval"
+
+
+def test_the_parse_guard_catches_an_unvalidated_proposal_accepted(monkeypatch):
+    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce the defect — make the carried-proposal
+    re-validation accept any action_class, as if action_callback's parse trusted the signature alone
+    and did not re-validate the proposal it carries — and invoke the ACTUAL guard test above, proving
+    it goes RED. If no AssertionError is raised, the parse path could never have caught a signed token
+    carrying an invalid proposal."""
+    import freight_recon.proposal as prop_mod
+
+    class _AcceptAllClasses:
+        def __contains__(self, _item):
+            return True
+
+    monkeypatch.setattr(prop_mod, "ACTION_CLASS_POPULATION", _AcceptAllClasses())
+    with pytest.raises(AssertionError) as exc_info:
+        test_action_callback_parse_refuses_a_signed_token_with_an_invalid_proposal()
+    # BOUND to the guard's own assertion: the RED must be a signed-but-invalid-proposal token accepted
+    # as approval through the parse path, never an incidental error.
+    msg = str(exc_info.value)
+    assert ("action_callback parse:" in msg) or ("approval" in msg), \
+        f"the guard went red for an unexpected reason, not an unvalidated proposal accepted: {exc_info.value!r}"
+
+
 # ---- R9, facet 2: untrusted content cannot become an AUTHENTICATED command through construction ----
 #
 # The other half of the authorization obligation: "CommandIntent from untrusted email/document text
