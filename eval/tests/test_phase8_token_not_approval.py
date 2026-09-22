@@ -82,6 +82,18 @@ def _token_authz_oracle(tmp_path: Path) -> None:
     tampered_body = (body[:-1] + ("A" if body[-1] != "A" else "B")) + "." + sig
     assert _refused(tampered_body), "token: a TAMPERED BODY was accepted as approval"
 
+    # 2b. FORGED UNDER AN ATTACKER'S KEY — the GENUINE body, re-signed with the attacker's OWN secret
+    # (a well-formed HMAC under the wrong key, not a corrupted byte), is refused: the token's
+    # authority is the SERVER's secret, never merely "some valid HMAC over this body". This is the
+    # forgery a single flipped signature byte does not model — it pins approval to the server's key.
+    attacker = DeliverySigner(b"attacker-controlled-secret-not-the-server-key")
+    genuine_claims = _decode_operation_approval(valid, _SIGNER)
+    forged_under_attacker_key = _encode_operation_approval(genuine_claims, attacker)
+    assert forged_under_attacker_key.split(".", 1)[0] == body, \
+        "test setup: re-signing the genuine claims must preserve the body (only the signature differs)"
+    assert _refused(forged_under_attacker_key), \
+        "token: a token FORGED UNDER AN ATTACKER'S KEY was accepted as approval"
+
     # 3. EXPIRED — a token past its TTL is refused (freshness is enforced, not decorative).
     expired = build_slack_operation_approval_value(
         _operate(), _SIGNER, approved_amount="2850.00",
@@ -101,8 +113,11 @@ def _token_authz_oracle(tmp_path: Path) -> None:
 
 
 def test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path):
-    """THE GUARD (R9, token facet). Fails (red) if a tampered, expired, or replayed single-use token
-    is accepted as approval. Direct measurement of the U8.6 token-authorization pressure-tests."""
+    """THE GUARD (R9, authorization:74af0dec37 — token facet). Fails (red) if a tampered (a forged
+    signature, a mutated body, or a token forged under an ATTACKER'S key), expired, or replayed
+    single-use token is accepted as approval. Direct measurement of the U8.6 token-authorization
+    pressure-tests: "tampered signed proposal or button payload refuses; expired or replayed
+    single-use approval payload cannot execute; generating a token is not approval"."""
     _token_authz_oracle(tmp_path)
     # GENERATING/VERIFYING A TOKEN IS NOT APPROVAL: verification is a pure, idempotent READ — it
     # neither consumes the token nor records an approval, so verifying the same genuine token twice
@@ -126,15 +141,16 @@ def test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_p
 
 
 def test_the_token_guard_catches_a_forged_token_accepted(tmp_path, monkeypatch):
-    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE. Reintroduce acceptance — disable the signature
-    comparison so a forged token verifies — and invoke the ACTUAL guard test above, proving it goes
-    RED. If no AssertionError is raised, the guard could never have caught a forged token."""
+    """THE CONTROL, BOUND TO THE GUARD'S OWN NODE (R9, authorization:74af0dec37). Reintroduce
+    acceptance — disable the HMAC comparison so EVERY forged token verifies, including one forged
+    under an attacker's key — and invoke the ACTUAL guard test above, proving it goes RED. If no
+    AssertionError is raised, the guard could never have caught a token accepted as approval."""
     monkeypatch.setattr(ac.hmac, "compare_digest", lambda expected, signature: True)
     with pytest.raises(AssertionError) as exc_info:
         test_a_tampered_expired_or_replayed_token_is_never_treated_as_approval(tmp_path)
     # BOUND to the guard's own assertions: the RED must be a token accepted as approval — a forged
-    # signature, or (R9-w3) a signed token whose invalid proposal slipped the parse path — never an
-    # incidental error.
+    # signature, a token forged under an attacker's key, or (R9-w3) a signed token whose invalid
+    # proposal slipped the parse path — never an incidental error.
     msg = str(exc_info.value)
     assert ("token:" in msg) or ("approval" in msg) or ("signed token" in msg), \
         f"the guard went red for an unexpected reason, not an accepted token: {exc_info.value!r}"
