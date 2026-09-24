@@ -8954,6 +8954,321 @@ units:
       observability_requirements: [gate decisions with named policy, brake state, expectation timer health]
       security_requirements: [policy changes attributable, brake engageable when the system is broken]
       readiness_target: LOCALLY_IMPLEMENTED
+    # ### THE P8 PHASE-ACCEPTANCE CONTRACT - frozen at iteration 5 under the founder decision that
+    # "phase closure requires an explicit frozen criterion contract". It is instantiated ONLY as a
+    # deterministic decomposition of requirements ALREADY BINDING on P8 and G4 - this unit's own
+    # acceptance_contract/rebaseline_contract, pr-sequence.md U8.1-U8.6, ADR-010/011 and the
+    # P8-relevant ADR-002/003/004/007/009/019, platform-safety / security-and-tenancy /
+    # recovery-and-compensation / foundational-machine acceptance, acceptance/registry.md and
+    # release-gates.md G4, and CLAUDE.md. No new product requirement, gate, weight, future-phase,
+    # freight-domain, deployment, live-effect or autonomy obligation was invented to fill it. The
+    # population was derived in full BEFORE scoring; criteria were not chosen to fit evidence.
+    # ### EVERY criterion is `required: true`, so every one must be PASS before P8 may be COMPLETE.
+    # Weights are retained and sum to exactly 100 for compatibility with the landed safety-wall guard
+    # (meta.status_model.phase_acceptance.weights; eval/tests/test_bootstrap_hermeticity.py::
+    # test_the_implementation_graph_is_consistent_and_protects_the_safety_wall); they are a DERIVED
+    # VIEW, never a partial-credit route - an accepted phase computes to 100/100 because every
+    # required result is PASS.
+    # ### RESULT OF THE INDEPENDENT PHASE REVIEW (iteration 5, session OUTSIDE P8's build/remediation
+    # lineage - it wrote no P8 product code; src/ is byte-identical to the CI #53 candidate 319debc):
+    # the contract was SCORED and P8 phase acceptance is **BLOCKED**. `P8-AC-13` (G4 qualification)
+    # does NOT pass on present executable evidence - G4 does not qualify: the AC-RACE-001..017
+    # population is incomplete (AC-RACE-017 has no oracle), the declared 10,000-interleaving-per-race
+    # depth is not established by any standing oracle (CI runs 250+1000), AC-SEC-002..014 carry no
+    # id-mapped oracle, and no enumerated crash-point matrix asserts a coverage denominator; and
+    # `P8-AC-11` (mutation anti-vacuity) is not fully standing (the mutate_p8_rule_admission and
+    # mutate_phase6_compensation batteries are never executed in CI/collected evidence). Therefore NO
+    # criterion is flipped to PASS, every `result` stays `PENDING`, and P8 stays
+    # READY/NOT_STARTED/NO_CHECKPOINT. Remediation belongs to a SEPARATE builder run followed by a
+    # FRESH phase review (CLAUDE.md sec 7 tier 1, sec 10). Full per-criterion scoring and G4 evidence:
+    # docs/implementation/p8-phase-acceptance-review-319debc.md.
+    # ### GUARDING. The safety-wall guard reads the weighted, fully-PASS contract of the READY
+    # SELECTOR'S DEPENDENCIES (P7) plus P3/P4/P5; it does NOT read the selector's OWN block, so
+    # nothing in the suite reads THIS one until P9 takes the selector - exactly the P7 precedent.
+    # Independently, the R13/R13-w2 acceptance-gate guards
+    # (eval/tests/test_p8_g4_acceptance_gate_r13.py, _r13w2.py) fail closed if P8 is ever set COMPLETE
+    # while a G4 family lacks a present/complete oracle or a load-bearing negative guard is never seen
+    # RED - they are the mechanical proof that this block cannot be flipped to PASS while G4 is
+    # under-evidenced. A session scoring this block may not cite a green suite as evidence that the
+    # block itself was checked.
+    acceptance_criteria:
+      - id: P8-AC-1
+        criterion: u81_action_class_gate_registration_integrated
+        weight: 8
+        required: true
+        result: PENDING
+        requirement: >-
+          Every registered P8 Action Class has exactly ONE positive typed gate decision;
+          null/default/unregistered classes REFUSE; incomplete registration FAILS STARTUP; the
+          evaluated registration population is NON-ZERO; U0.3 is honestly closed; no fail-safe default
+          masquerades as registration.
+        oracle: >-
+          product_policy.verify_registration_complete() runs at import (fail-startup over a non-zero
+          population discovered from commit_key.OCCURRENCE_RULES); eval/tests/test_p8_policy_admission.py
+          REQUIREMENT-1 block (exactly-one-gate, drop-each-member-fails-closed, empty-population-refused,
+          null-gate/prompt-refused, GateRegistry has no _DEFAULT); eval/tests/test_phase0_null_gate.py;
+          checkpoint.GateRegistry.gate_for raises UnclassifiedActionClass; scripts/mutate_p8_policy_admission.py.
+        authority: >-
+          pr-sequence.md U8.1 and the U0.3 DEFERRED_BY_DEPENDENCY obligation; ADR-010 sec 3.1;
+          platform-safety-acceptance.md AC-CKPT-6-*; CLAUDE.md sec 4.
+      - id: P8-AC-2
+        criterion: u82_compile_or_refuse_rules_real
+        weight: 7
+        required: true
+        result: PENDING
+        requirement: >-
+          Rules reference only MODELED, non-inferred fields; predicates are checkpoint-decidable; scope
+          is resolvable; conflicting rules fail closed rather than auto-merge; activation is
+          human-confirmed, versioned and effective-dated; a MODEL_INFERRED or unmodelled field refuses
+          to compile; models may PROPOSE text but never evaluate, resolve conflicts, activate or
+          reinterpret Rules; non-enforceable owner prose stays non-authoritative knowledge.
+        oracle: >-
+          eval/tests/test_p8_rule_admission.py (compile-or-refuse, unmodelled/model-inferred refused,
+          activation requires a named same-tenant ACTIVE human, one active rule per scope, stacked rules
+          conjunctive never auto-merged, an uncompilable instruction never claims a rule was installed);
+          eval/tests/test_phase6_rule.py; scripts/mutate_p8_rule_admission.py and mutate_phase6_rule.py.
+        authority: >-
+          ADR-010; pr-sequence.md U8.2; workflow-acceptance AC-WF10-005; CLAUDE.md sec 4 rules 1,2,5,18.
+      - id: P8-AC-3
+        criterion: u83_real_brake_admission_control
+        weight: 8
+        required: true
+        result: PENDING
+        requirement: >-
+          GLOBAL/TENANT/ACTION_CLASS/INTEGRATION scope behaviour is deterministic; version changes
+          invalidate stale authority; inability to read the brake FAILS CLOSED (never OFF); brake before
+          claim yields zero claimed rows and zero effects; brake after claim never kills a worker or
+          manufactures UNKNOWN_OUTCOME; automation may engage and widen but may never narrow or release;
+          a detector cannot clear its own brake.
+        oracle: >-
+          eval/tests/test_phase3_brake.py; eval/tests/test_p8_brake_scope.py; eval/tests/test_phase6_brake.py;
+          scripts/probe_phase6_brake.py (0 wrong); scripts/mutate_phase6_brake.py (CI-run); the claim CAS
+          revalidates both brake versions inside its own WHERE clause.
+        authority: >-
+          ADR-011; pr-sequence.md U8.3; platform-safety-acceptance.md AC-SAFE-006/007/027;
+          recovery-and-compensation-acceptance.md AC-RACE-002.
+      - id: P8-AC-4
+        criterion: u84_m7_m10_one_coherent_safety_layer
+        weight: 8
+        required: true
+        result: PENDING
+        requirement: >-
+          A material Conflict blocks dependent consequential work; healthy coverage may create OVERDUE
+          while absent/down/unknown coverage creates INDETERMINATE; Expectation expiry never becomes
+          silence; Exceptions carry named human ownership and cannot auto-close; CompensationFailed and
+          NOT_POSSIBLE stay loud, owned and carry exposure; UNKNOWN_OUTCOME is never treated as VERIFIED
+          to invent compensation; Compensation uses ordinary policy/checkpoint/brake/grant authority; a
+          same-tenant ACTIVE Rule decision_ref resolves and non-ACTIVE/missing/cross-tenant/model
+          authority refuses.
+        oracle: >-
+          eval/tests/test_p8_u84_seams.py; eval/tests/test_phase6_conflict.py, test_phase6_expectation.py,
+          test_phase6_exception.py, test_phase6_compensation.py; recovery-and-compensation AC-REC-001..005.
+        authority: >-
+          foundational-machine-acceptance.md (M7-M10); platform-safety-acceptance.md AC-SAFE-017/024;
+          recovery-and-compensation-acceptance.md AC-REC-*; ADR-006, ADR-007.
+      - id: P8-AC-5
+        criterion: u85_lane_migration_behavior_free
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Operational authority is expressed only as action_class, workflow_id or policy scope; no
+          ambiguous legacy lane is an independent authority; occurrence/effect identity, policy ordering,
+          brake matching and commit-key behaviour are unchanged; operation_router and
+          action_class_graduation did not become a second gate authority.
+        oracle: >-
+          eval/tests/test_phase8_action_class_migration.py; eval/tests/test_phase8_action_class_equivalence.py
+          (behaviour-free equivalence oracle and the legacy-router gate-carrier guard).
+        authority: >-
+          pr-sequence.md U8.5; ADR-013; ADR-009 (commit key).
+      - id: P8-AC-6
+        criterion: u86_one_inert_proposal_boundary
+        weight: 7
+        required: true
+        result: PENDING
+        requirement: >-
+          CommandIntent is an interpretation/input DTO only; a Proposal grants zero authority;
+          consequential maturity enters only through canonical PipelineMachine.propose / M2 PROPOSED;
+          proposal construction does not mint or evaluate a gate and does not auto-advance; MODEL_INFERRED
+          material facts remain unreadable by consequential gates; untrusted content and tampered/replayed
+          tokens never become authenticated approval; duplicate proposals converge through the existing
+          Layer-1 reservation; proposal occurrence identity comes only through canonical occurrence_key_for /
+          CanonicalOccurrence, with no raw occurrence_key escape hatch and no second Commit Key derivation.
+        oracle: >-
+          scripts/probe_phase8_proposal.py (23 behaviours, 0 wrong); scripts/mutate_phase8_proposal.py
+          (18/18 caught); eval/tests/test_phase8_proposal.py, test_phase8_command_intent_to_proposal.py,
+          test_phase8_model_inferred_not_promoted.py, test_phase8_token_not_approval.py,
+          test_phase8_proposal_no_auto_advance.py.
+        authority: >-
+          ADR-019; pr-sequence.md U8.6; ADR-009.
+      - id: P8-AC-7
+        criterion: u86_ci52_regressions_closed
+        weight: 5
+        required: true
+        result: PENDING
+        requirement: >-
+          The late U8.6 CI #52 regressions are closed on the candidate: unchanged P1 structural guards
+          prove exactly ONE Commit Key derivation authority and no free-form occurrence identity; proposal
+          mutation execution is interpreter-hermetic (restores from memory, tree stays clean); the
+          corrected tree is the exact tree CI #53 judged.
+        oracle: >-
+          eval/tests/test_phase1_structural_guards.py, test_phase1_commit_key.py,
+          test_phase1_occurrence_identity.py; scripts/mutate_phase8_proposal.py leaves src/eval/scripts clean.
+        authority: >-
+          ADR-009; P1 acceptance (AC-SAFE-012/013/014); CLAUDE.md sec 6.
+      - id: P8-AC-8
+        criterion: no_second_authority_composition
+        weight: 7
+        required: true
+        result: PENDING
+        requirement: >-
+          U8.1-U8.6 compose without creating a second effect authority, second policy authority, second
+          checkpoint, second reservation namespace, second rule resolver, or second orchestration system;
+          checkpoint.py remains the SOLE gate/witness authority where repository invariants require it;
+          effect execution still requires the ordinary witness/grant/claim boundary.
+        oracle: >-
+          AST sweep proving only checkpoint.py mints a GateDecision (the P6/P7 sole-minter scans over all
+          production modules); the no-second-authority assertions across the P8 test surface.
+        authority: >-
+          CLAUDE.md sec 4 rules 8,9,16,17; ADR-004; ADR-010, ADR-011.
+      - id: P8-AC-9
+        criterion: tenant_isolation_on_p8_surfaces
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Tenant isolation is intact on every P8 surface; cross-tenant references fail BEFORE foreign
+          business handling or existence leakage - a cross-tenant record reads as absent, not as a refusal
+          that discloses existence.
+        oracle: >-
+          eval/tests/test_ac_sec_001_registry.py (cross-tenant record indistinguishable from missing;
+          cross-tenant update changes nothing); cross-tenant refusal tests in test_p8_u84_seams.py,
+          test_phase6_compensation.py, test_p8_brake_scope.py; both T_A and T_B fixtures.
+        authority: >-
+          security-and-tenancy-acceptance.md AC-SEC-001; ADR-002/007 tenancy; acceptance/registry.md
+          (every case runs tenant-isolated).
+      - id: P8-AC-10
+        criterion: replay_inert
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          Replay may not mint policy authority, approval, witness, grant, claim, proposal authority or
+          external effect; replay is structurally inert.
+        oracle: >-
+          eval/tests/test_phase3_witness.py (a reconstructed pass from the stored witness mints nothing);
+          eval/tests/test_p5_replay_and_audit.py; eval/tests/test_phase6_external_effect.py replay-of-corpus
+          (zero grants, claims, effects).
+        authority: >-
+          platform-safety-acceptance.md AC-SAFE-019; ADR-008; CLAUDE.md sec 4 rules 10,11.
+      - id: P8-AC-11
+        criterion: mutation_anti_vacuity_standing
+        weight: 7
+        required: true
+        result: PENDING
+        requirement: >-
+          Every load-bearing negative P8 guard relied on for phase acceptance has a direct mutant/control
+          SEEN RED in standing evidence, or a stronger existing discriminating oracle; a green absence
+          assertion without a proven population/control does not pass.
+        oracle: >-
+          the P8 mutation batteries executed by standing evidence (a CI run step or a collected test that
+          actually runs them); the R13/R13-w2 acceptance-gate guards
+          (eval/tests/test_p8_g4_acceptance_gate_r13.py, test_p8_g4_acceptance_gate_r13w2.py) that measure
+          the coupling of a COMPLETE P8 to seen-RED standing controls.
+        authority: >-
+          CLAUDE.md sec 6; meta.status_model.phase_acceptance.
+      - id: P8-AC-12
+        criterion: ships_dark_no_enablement
+        weight: 6
+        required: true
+        result: PENDING
+        requirement: >-
+          P8 ships DARK after acceptance: the production GateRegistry stays EMPTY, operation_router is
+          non-live, the deployed governed route answers ROUTE_NOT_CONFIGURED, no production external effect
+          is enabled and no autonomy is granted. COMPLETE never means ENABLED. P12 remains the first
+          supervised live-effect phase and P14 remains bounded autonomy.
+        oracle: >-
+          eval/tests/test_phase0_null_gate.py (production GateRegistry emptiness); ships-dark AST scans;
+          the deployed governed-route refusal; the R-07 CONTAINED guard on phase-0-baseline-manifest.yaml.
+        authority: >-
+          CLAUDE.md sec 10; PHASE-OUTPUTS.md P8; phase-0-baseline-manifest.yaml; ADR-016.
+      - id: P8-AC-13
+        criterion: g4_qualification
+        weight: 10
+        required: true
+        result: PENDING
+        requirement: >-
+          G4 QUALIFIES at P8: 100% (zero-tolerance, no waiver) of AC-SAFE-001..028, the full 105 AC-CKPT
+          matrix, AC-RACE-001..017 (including the declared 10,000 interleavings per race and every required
+          crash-point matrix), AC-REC-* and AC-SEC-*, each mapped to a PRESENT executable oracle that
+          establishes a NON-EMPTY, COMPLETE population; GC-1 where required; brake engaged by default in
+          test; no autonomy. A green full suite is NOT a substitute.
+        oracle: >-
+          platform-safety-acceptance.md (AC-SAFE; the 7x15==105 checkpoint matrix in
+          eval/tests/test_phase3_checkpoint_matrix.py); recovery-and-compensation-acceptance.md (AC-REC-*,
+          AC-RACE-*); security-and-tenancy-acceptance.md (AC-SEC-*); the race oracles/probes and crash kits;
+          a per-family population-completeness proof. The R13/R13-w2 acceptance-gate guards mechanically
+          test the coupling of a COMPLETE P8 to a complete, seen-RED G4 oracle population.
+        authority: >-
+          release-gates.md G4; acceptance/registry.md (the ORACLE RULE); meta.status_model.phase_acceptance.gate_scoping.
+      - id: P8-AC-14
+        criterion: exact_tree_ci_success
+        weight: 3
+        required: true
+        result: PENDING
+        requirement: >-
+          CI on the exact candidate tree concluded SUCCESS with every required full-suite, safety, probe
+          and completeness job successful and no cancelled job; PR-only Risk Radar skipped on a push is not
+          a failure. CI is the provider oracle for CI success and is NEVER the independent phase review.
+        oracle: >-
+          GitHub Actions run #53 on head_sha 319debccfdcb2344edf34fc28cabd0f2e9312861 (provider evidence via
+          the REST API): status completed, conclusion success, 31 jobs success + 1 skipped (risk-radar,
+          pull_request-only per .github/workflows/ci.yml), CI verdict success.
+        authority: >-
+          .github/workflows/ci.yml (CI is the source of truth for whether the tree is green); CLAUDE.md sec 0.
+      - id: P8-AC-15
+        criterion: independent_non_builder_phase_review
+        weight: 3
+        required: true
+        result: PENDING
+        requirement: >-
+          A risk-scaled Tier-1 independent review of P8 AS A PHASE (not merely the U8.6 diff), by a session
+          that did not build or remediate any P8 product artifact it scores and that re-derives evidence
+          itself, SUPPORTS acceptance with no blocking finding. Builder reports and prior U8 independent
+          reviews are supporting lineage only, never a substitute.
+        oracle: >-
+          docs/implementation/p8-phase-acceptance-review-319debc.md, recorded by a session outside the P8
+          build/remediation lineage.
+        authority: >-
+          CLAUDE.md sec 7 tier 1, sec 10; meta.status_model.phase_acceptance.
+      - id: P8-AC-16
+        criterion: status_honesty_and_reconcilability
+        weight: 2
+        required: true
+        result: PENDING
+        requirement: >-
+          Status surfaces are truthful and mutually reconcilable; on acceptance the current-state prose must
+          not continue asserting obsolete P8 NOT_STARTED / U8.1-only facts; COMPLETE means phase acceptance
+          only and never deployed, enabled, pilot-ready, live-effect-ready or autonomous.
+        oracle: >-
+          eval/tests/test_current_status_reconciliation.py (the LIVE-STATUS projection equals the registry);
+          reconciliation of CURRENT.md and PHASE-OUTPUTS.md.
+        authority: >-
+          meta.status_model; CLAUDE.md sec 13.
+      - id: P8-AC-17
+        criterion: acceptance_supplied_from_outside_build_lineage
+        weight: 1
+        required: true
+        result: PENDING
+        requirement: >-
+          This phase acceptance is established by a session structurally OUTSIDE P8's build and remediation
+          lineage and is un-self-suppliable by anyone in that lineage; no session's own report on work it
+          built can accept P8.
+        oracle: >-
+          the reviewer identity/lineage statement in the phase-review document, corroborated by the commit
+          authorship record for the P8 product artifacts.
+        authority: >-
+          CLAUDE.md sec 7 tier 1, sec 10; meta.status_model.checkpoint_state.
     next_units_unlocked: [P9]
 
   - unit_id: P9
