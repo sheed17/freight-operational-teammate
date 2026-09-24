@@ -22,6 +22,7 @@ around every run so a same-length restore cannot leave poisoned bytecode and a f
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -53,9 +54,62 @@ def purge_shadow() -> None:
         shadow.unlink()
 
 
+_POISON_FINGERPRINTS = ("MUTANT", "compensation_shadow")  # this battery's own marks; absent from real source
+
+
+def _head_bytes(rel: str) -> bytes | None:
+    """The committed bytes of a target, used ONLY as a pristine reference to recover a tree a prior run
+    left poisoned. `git show` is a READ; it is not `git checkout/restore/stash/clean` (which CLAUDE.md
+    §6 forbids for undoing a mutation) and it never touches the index or the working tree itself."""
+    r = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=ROOT, capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def _heal_interrupted_start() -> None:
+    """Recover from an interrupted prior run BEFORE any in-memory baseline is captured.
+
+    This battery is slow (one subprocess-pytest per mutant), so a wrapper that hard-kills it (a
+    2-minute timeout; SIGKILL, which no `finally` or `atexit` can catch) can leave a target MUTATED on
+    disk. The next run used to capture that mutated file as its 'original' (`_run_edits` reads the
+    on-disk bytes), so it could never self-heal: it stacked mutations, reported a false 'escaped', and
+    left the checkout dirty — the exact discrepancy the product review recorded.
+
+    So: if a target still carries THIS battery's fingerprint, the prior run was killed mid-mutation;
+    restore it from its committed bytes and purge bytecode so the baseline captured below is pristine.
+    A target that differs from HEAD WITHOUT the fingerprint is genuine uncommitted work — refuse loudly
+    rather than clobber it (CLAUDE.md §6: never destroy uncommitted work to undo a mutation)."""
+    healed: list[str] = []
+    for rel in (M10, MIG, SCHEMA):
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        blob = _head_bytes(rel)
+        if blob is None or path.read_bytes() == blob:
+            continue
+        on_disk = path.read_text(encoding="utf-8", errors="replace")
+        if any(mark in on_disk for mark in _POISON_FINGERPRINTS):
+            path.write_bytes(blob)
+            healed.append(rel)
+        else:
+            raise SystemExit(
+                f"FATAL: {rel} differs from HEAD but carries no mutation fingerprint — it looks like "
+                f"uncommitted work, not battery poison. Refusing to run so it is not clobbered. "
+                f"Commit or restore it, then re-run.")
+    if healed:
+        purge_pycache()
+        print(f"  recovered a poisoned tree from an interrupted prior run: {healed}")
+
+
 def run_guard(nodeid: str) -> bool:
+    # ### PYTHONDONTWRITEBYTECODE in the guard subprocess: the guard imports the (mutated, then
+    # restored) compensation machine, and a `.pyc` written for a mutated import that outlives an
+    # interrupted run is the exact "restoring a .py is not restoring behaviour — poisoned bytecode,
+    # false green" failure mode (CLAUDE.md §6). Never writing one removes the failure class at the
+    # source; `purge_pycache()` around the run stays as belt-and-braces. CI already sets this globally,
+    # so this only hardens the ad-hoc / product-driver runs where it is not set.
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     r = subprocess.run([PY, "-m", "pytest", nodeid, "-q", "-p", "no:cacheprovider",
-                        "-p", "no:randomly"], cwd=ROOT, capture_output=True, text=True)
+                        "-p", "no:randomly"], cwd=ROOT, capture_output=True, text=True, env=env)
     return r.returncode == 0
 
 
@@ -411,6 +465,7 @@ def _run_shim() -> tuple[str, str]:
 
 def main() -> int:
     purge_shadow()  # start from a clean tree even if a prior run was interrupted
+    _heal_interrupted_start()  # recover a SIGKILL-poisoned target before capturing any baseline
     results = [(label, *_run_edits(edits, guard)) for label, edits, guard in CASES]
     results.append(("the machine is relocated behind a re-export shim — every corpus-scanning negative "
                     "assertion must turn red, proving it was scanning real content (anti-vacuity control)",
