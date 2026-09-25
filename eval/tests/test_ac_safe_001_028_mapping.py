@@ -222,6 +222,45 @@ def _function_body_src(path: Path, func: str) -> str | None:
     return None
 
 
+def _relevance_tokens(body: str) -> tuple[set[str], str]:
+    """From a function's source segment: (its identifier tokens, the concatenation of its
+    NON-docstring string literals). Comments are absent from the AST and the docstring is excluded,
+    so a symbol counts only if it appears in the function's CODE — never in prose or a comment."""
+    tree = ast.parse(body)
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    doc = ast.get_docstring(fn) if fn is not None else None
+    idents: set[str] = set()
+    strings: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            idents.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            idents.add(node.attr)
+        elif isinstance(node, ast.keyword) and node.arg:
+            idents.add(node.arg)
+        elif isinstance(node, ast.arg):
+            idents.add(node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            idents.add(node.name)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value != doc:
+                strings.append(node.value)
+    return idents, "\n".join(strings)
+
+
+def _symbol_is_present(body: str, symbol: str) -> bool:
+    """Whole-token presence of `symbol` in the function's CODE (CLAUDE.md §6: whole-token/AST
+    matching, NOT a raw substring): an EXACT identifier token, or a WORD-BOUNDARY match inside a
+    non-docstring string literal (so an event name like 'BRAKE_CHANGED' or a SQL-embedded table name
+    like 'pipeline_instances' counts, while a longer identifier that merely contains the symbol as a
+    substring does not)."""
+    idents, strings = _relevance_tokens(body)
+    if symbol in idents:
+        return True
+    return re.search(r"(?<!\w)" + re.escape(symbol) + r"(?!\w)", strings) is not None
+
+
 @functools.lru_cache(maxsize=1)
 def _collected_nodes() -> frozenset[tuple[str, str]]:
     """Run pytest `--collect-only` over the union of mapped files and return the set of collected
@@ -251,8 +290,8 @@ def _node_defect(fname: str, func: str, symbol: str,
         return f"{fname}::{func} does not exist (no such function)"
     if (f"eval/tests/{fname}", func) not in collected:
         return f"{fname}::{func} is not collected by pytest (not a runnable node)"
-    if symbol not in body:
-        return f"{fname}::{func} does not exercise the criterion (missing {symbol!r} in its body)"
+    if not _symbol_is_present(body, symbol):
+        return f"{fname}::{func} does not exercise the criterion (no whole-token {symbol!r} in its code)"
     return None
 
 
@@ -282,9 +321,11 @@ def test_the_ac_safe_population_is_derived_from_the_spec_and_equals_the_mapping_
 
 
 def test_every_ac_safe_criterion_maps_to_a_present_collected_oracle_that_exercises_it():
-    """(3) + (4): every mapped node exists, is collected by pytest, and its body carries the
-    criterion's distinctive symbol. No substring/file-level grep evidence counts — existence is AST,
-    runnability is a real `--collect-only`, and the symbol is scoped to the function body."""
+    """(3) + (4): every mapped node exists, is collected by pytest, and its CODE carries the
+    criterion's distinctive symbol as a WHOLE TOKEN. No substring/file-level grep evidence counts —
+    existence is AST, runnability is a real `--collect-only`, and the symbol is matched as an exact
+    identifier token or a word-boundary hit inside a non-docstring string literal (CLAUDE.md §6),
+    never as a raw substring and never in a comment or docstring."""
     collected = _collected_nodes()
     require_population(collected, "pytest-collected nodes across the mapped files")
     defects: list[str] = []
@@ -396,6 +437,26 @@ def test_the_node_checker_discriminates():
     assert _node_defect(real_file, real_func, "OrphanAdapterInvocation", collected)
     # (d) a real, collected function WITH its symbol is accepted (no false positive)
     assert _node_defect(real_file, real_func, "AsyncFunctionDef", collected) is None
+
+
+def test_the_symbol_matcher_is_whole_token_not_substring():
+    """RED control for the CLAUDE.md §6 substring blind spot: the matcher accepts an exact identifier
+    token and a word-boundary hit inside a string literal, but REJECTS a symbol that appears only as a
+    substring of a longer identifier, only inside a comment, or only inside the docstring."""
+    # an exact identifier token is accepted
+    assert _symbol_is_present("def f():\n    run_checkpoint(x)\n", "run_checkpoint")
+    # a token embedded in a SQL/string literal, on word boundaries, is accepted
+    assert _symbol_is_present("def f():\n    q = 'SELECT a FROM pipeline_instances WHERE b'\n",
+                              "pipeline_instances")
+    # a hyphenated string value is accepted as a whole token
+    assert _symbol_is_present("def f():\n    ref = 'rule-compiled'\n", "rule-compiled")
+    # a mere SUBSTRING of a longer identifier is REJECTED (the exact §6 blind spot)
+    assert not _symbol_is_present("def f():\n    run_checkpoint_extra(x)\n", "run_checkpoint")
+    # a symbol only in a comment is REJECTED (comments are absent from the AST)
+    assert not _symbol_is_present("def f():\n    x = 1  # BRAKE_CHANGED here\n", "BRAKE_CHANGED")
+    # a symbol only in the docstring is REJECTED (docstring is excluded)
+    assert not _symbol_is_present('def f():\n    "mentions ClaimRefused in prose"\n    x = 1\n',
+                                  "ClaimRefused")
 
 
 def test_the_guard_itself_goes_red_on_a_broken_mapping(monkeypatch):
