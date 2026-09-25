@@ -317,6 +317,52 @@ def test_the_collection_denominator_is_real_and_nonempty():
         "the collection subprocess did not collect a known real node — the collection check would be vacuous")
 
 
+# --------------------------------------------------------------------------- ships-dark self-proof
+# Product review correction 1 (ships_dark_no_enablement): the generated p8-r3-m11/m12 scenarios
+# hypothesised that THIS verifier might wire the M11 policy or M12 rule machine into a production or
+# out-of-package reach edge and quietly enable the dark layer. It does not, and these two functions
+# make that a STANDING fact. `_own_freight_recon_reach` reproduces the exact reachability notion the
+# product-driver scan uses (`from freight_recon.X import ...` / `import freight_recon.X` / a relative
+# `from . import X`), applied to THIS module's own AST. The AC-SAFE mapping reads oracles purely by
+# AST and by a `--collect-only` subprocess; it imports no product module and binds no gate, so it can
+# never appear in "files outside the package that reach policy/rule".
+def _own_freight_recon_reach(source: str) -> set[str]:
+    """The freight_recon submodules a source statically imports — the product-driver scan's own()."""
+    reach: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            if node.module and (node.level or node.module.startswith("freight_recon")):
+                reach.add(node.module.split(".")[-1])
+            if node.level and not node.module:
+                reach.update(a.name for a in node.names)
+        if isinstance(node, ast.Import):
+            reach.update(a.name.split(".")[-1] for a in node.names if a.name.startswith("freight_recon"))
+    return reach
+
+
+def test_this_verifier_ships_dark_it_reaches_no_production_policy_rule_or_effect():
+    """ships_dark_no_enablement for THIS file: the AC-SAFE bijection verifier statically imports no
+    product module, so it introduces NO production importer and NO out-of-package reach edge into the
+    M11 policy or M12 rule machine (or any freight_recon module). It reads oracles by AST and a
+    `--collect-only` subprocess only — it binds no gate, enables no route, and grants no autonomy."""
+    reach = _own_freight_recon_reach(Path(__file__).read_text(encoding="utf-8"))
+    assert reach == set(), (
+        f"the AC-SAFE verifier statically reaches freight_recon module(s) {sorted(reach)} — it must "
+        "stay inert (AST + --collect-only only), or it could become a production/out-of-package edge "
+        "into a dark machine (ships_dark_no_enablement)")
+
+
+def test_the_ships_dark_reach_detector_discriminates():
+    """RED control: the reach detector actually fires on a real freight_recon import (policy, rule,
+    checkpoint) and stays silent on stdlib — so the inertness assertion above is a measurement, not a
+    vacuous pass."""
+    assert _own_freight_recon_reach("from freight_recon.policy import M11Machine") == {"policy"}
+    assert _own_freight_recon_reach("from freight_recon.rule import M12Machine") == {"rule"}
+    assert _own_freight_recon_reach("import freight_recon.checkpoint as c") == {"checkpoint"}
+    assert _own_freight_recon_reach("from . import rule") == {"rule"}
+    assert _own_freight_recon_reach("import ast, subprocess, re") == set()
+
+
 # --------------------------------------------------------------------------- the RED controls
 def test_the_bijection_checker_discriminates():
     """RED control for facets (1)+(2): a missing id and an invented id are each caught, and the exact
