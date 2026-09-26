@@ -33,12 +33,18 @@ P8 stays `READY` / `NOT_STARTED` / `NO_CHECKPOINT`.
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
+PHASE_OUTPUTS = ROOT / "docs" / "implementation" / "PHASE-OUTPUTS.md"
+PR_SEQUENCE = ROOT / "docs" / "implementation" / "pr-sequence.md"
+REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
 
 _SIX_UNITS = ("U8.1", "U8.2", "U8.3", "U8.4", "U8.5", "U8.6")
 _HIST_PAREN = re.compile(r"\*\(.*?\)\*")           # CURRENT.md's verbatim-superseded-text convention
@@ -141,3 +147,180 @@ def test_control_the_guard_catches_a_reintroduced_obsolete_live_claim():
     assert obsolete_live_p8_claims(unwrapped), (
         "the historical exemption is vacuous — the phrase does not fire even when live"
     )
+
+
+# --------------------------------------------------------------------------------------------------
+# Correction 2: coverage across EVERY P8 status surface + a registry cross-check, and a discriminating
+# mutation battery bound to the guard node ids (drives them RED on the real files, GREEN on restore).
+# --------------------------------------------------------------------------------------------------
+
+_GUARD_OBSOLETE = "test_p8_current_state_prose_makes_no_obsolete_live_not_started_or_u81_only_claim"
+_GUARD_SURFACES = "test_all_p8_status_surfaces_are_reconciled_and_imply_no_acceptance"
+
+# Affirmative "this phase is done" predicates. 'is COMPLETE' / 'is now ACCEPTED' /
+# PHASE_ACCEPTANCE_COMPLETE / a 17/17 criteria tally are forbidden as LIVE claims about P8. The
+# negated 'is not COMPLETE' cannot match: 'not' breaks the 'is (now) COMPLETE' contiguity, so this
+# predicate needs no separate negation pass and cannot be fooled by a distant sibling negation.
+_ACCEPTED_COMPLETE = re.compile(
+    r"\bis\s+(?:now\s+)?(?:COMPLETE|ACCEPTED)\b"
+    r"|PHASE_ACCEPTANCE_COMPLETE"
+    r"|\b17\s*/\s*17\b",
+    re.I,
+)
+
+
+def implies_accepted_or_complete(region: str) -> list[str]:
+    """Every affirmative LIVE claim that P8 is ACCEPTED / COMPLETE / scored, in the region's live
+    text (superseded *(...)* history exempt)."""
+    live = _normalize(_live_region(region))
+    return [m.group(0) for m in _ACCEPTED_COMPLETE.finditer(live)]
+
+
+def _phase_outputs_p8_section() -> tuple[str, str]:
+    """The PHASE-OUTPUTS.md `## P8 …` section (heading through the next `## `), plus its heading line.
+    The heading carries the repo's own status token vocabulary (COMPLETE / IN PROGRESS / NOT STARTED)."""
+    lines = PHASE_OUTPUTS.read_text(encoding="utf-8").splitlines()
+    heads = [i for i, ln in enumerate(lines) if ln.startswith("## P8 ")]
+    assert len(heads) == 1, f"expected exactly one PHASE-OUTPUTS '## P8' heading, found {len(heads)}"
+    start = heads[0]
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end]), lines[start]
+
+
+def _pr_sequence_p8_line() -> str:
+    """The pr-sequence.md `**P8:**` plan row that enumerates the P8 units."""
+    rows = [ln.strip() for ln in PR_SEQUENCE.read_text(encoding="utf-8").splitlines()
+            if ln.strip().startswith("**P8:**")]
+    assert len(rows) == 1, f"expected exactly one pr-sequence '**P8:**' row, found {len(rows)}"
+    return rows[0]
+
+
+def _registry_phase_status() -> dict[str, tuple[str, str, str]]:
+    """Every top-level phase unit (`unit_id` = `Pn`) mapped to its lifecycle triple — the MACHINE
+    authority the human prose must agree with."""
+    units = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["units"]
+    phase = re.compile(r"P\d+")
+    out: dict[str, tuple[str, str, str]] = {}
+    for u in units:
+        uid = str(u.get("unit_id", ""))
+        if phase.fullmatch(uid):
+            out[uid] = (str(u["status"]), str(u["execution_state"]), str(u["checkpoint_state"]))
+    return out
+
+
+def _assert_registry_lifecycle(status: dict) -> None:
+    """P8 stands at READY/NOT_STARTED/NO_CHECKPOINT and P9..P14 are BLOCKED. Shared by the guard and
+    its in-process control so the cross-check's discrimination is itself proven."""
+    assert status.get("P8") == ("READY", "NOT_STARTED", "NO_CHECKPOINT"), (
+        f"registry P8 lifecycle is not READY/NOT_STARTED/NO_CHECKPOINT: {status.get('P8')}")
+    for p in ("P9", "P10", "P11", "P12", "P13", "P14"):
+        assert status.get(p, ("",))[0] == "BLOCKED", f"registry {p} is not BLOCKED: {status.get(p)}"
+
+
+def test_all_p8_status_surfaces_are_reconciled_and_imply_no_acceptance():
+    """GUARD (broadened). Every human-readable P8 status surface — CURRENT.md, PHASE-OUTPUTS.md,
+    pr-sequence.md — is free of an obsolete live P8 unit claim AND of an affirmative
+    accepted/COMPLETE/scored claim; the PHASE-OUTPUTS P8 heading still reads NOT STARTED; and all of it
+    agrees with the registry projection (P8 READY/NOT_STARTED/NO_CHECKPOINT; P9-P14 BLOCKED). The
+    live/history split is preserved: superseded text inside *(...)* is exempt everywhere."""
+    current = _p8_prose_cell()
+    po_section, po_heading = _phase_outputs_p8_section()
+    pr_line = _pr_sequence_p8_line()
+
+    surfaces = {"CURRENT.md": current, "PHASE-OUTPUTS.md": po_section, "pr-sequence.md": pr_line}
+    for name, region in surfaces.items():
+        assert obsolete_live_p8_claims(region) == [], (
+            f"{name} carries an obsolete live P8 unit claim: {obsolete_live_p8_claims(region)}")
+        assert implies_accepted_or_complete(region) == [], (
+            f"{name} implies P8 accepted/COMPLETE/scored (live): {implies_accepted_or_complete(region)}")
+
+    # the PHASE-OUTPUTS P8 heading token is the repo's own status vocabulary; it must read NOT STARTED.
+    assert "NOT STARTED" in po_heading, f"PHASE-OUTPUTS P8 heading lost its NOT STARTED token: {po_heading}"
+    assert "✅ COMPLETE" not in po_heading and "IN PROGRESS" not in po_heading, (
+        f"PHASE-OUTPUTS P8 heading implies acceptance/progress: {po_heading}")
+
+    # machine authority, and the human narrative agreeing with it.
+    _assert_registry_lifecycle(_registry_phase_status())
+    live = _normalize(_live_region(current))
+    for token in ("READY", "NOT_STARTED", "NO_CHECKPOINT"):
+        assert token in live, f"CURRENT.md P8 prose no longer states the {token} lifecycle enum"
+    assert "ships dark" in live.lower(), "CURRENT.md P8 prose no longer states the ship-dark posture"
+
+
+def _run_guard_node(node: str) -> int:
+    """Run ONE guard node id in a fresh pytest process against the tree on disk. 0 == GREEN, non-zero
+    == RED. Product Driver runs the guard the same way — by node id — so this measures the guard, not a
+    private copy of its logic."""
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", node, "-q", "-p", "no:cacheprovider", "-o", "addopts="],
+        cwd=str(ROOT), capture_output=True, text=True)
+    return proc.returncode
+
+
+_THIS = str(Path(__file__).resolve())
+
+
+def test_control_battery_drives_the_guards_red_on_each_reintroduced_claim_and_green_on_restore():
+    """CONTROL — the discriminating mutation battery, bound to the guard NODE IDS. For each forbidden
+    LIVE-claim shape it MUTATES THE REAL status document, runs the relevant guard by node id in a fresh
+    process, and requires RED; then it restores the file from an in-memory copy (never git) and requires
+    GREEN. A guard that stayed GREEN under a reintroduced claim would be a decorative oracle that proves
+    nothing (Founder context §8)."""
+    obsolete_node = f"{_THIS}::{_GUARD_OBSOLETE}"
+    surfaces_node = f"{_THIS}::{_GUARD_SURFACES}"
+
+    assert _run_guard_node(obsolete_node) == 0, "positive control failed: obsolete-claim guard not GREEN"
+    assert _run_guard_node(surfaces_node) == 0, "positive control failed: surfaces guard not GREEN"
+
+    mutants = [
+        (CURRENT, "the sole selected unit.",
+         "the sole selected unit. `U8.2`–`U8.6` are NOT STARTED.",
+         obsolete_node, "CURRENT: later units NOT STARTED (live)"),
+        (CURRENT, "the sole selected unit.",
+         "the sole selected unit. Only `U8.1` is landed; the rest are not.",
+         obsolete_node, "CURRENT: only U8.1 landed (live)"),
+        (CURRENT, "and is **not** `COMPLETE`", "and is now `COMPLETE`",
+         surfaces_node, "CURRENT: P8 is now COMPLETE (live)"),
+        (PHASE_OUTPUTS, "Compensation ⛔ NOT STARTED", "Compensation ✅ COMPLETE",
+         surfaces_node, "PHASE-OUTPUTS: P8 heading flipped to COMPLETE"),
+        (PR_SEQUENCE, "U8.2 ### **compile-or-refuse Rules**",
+         "U8.2 ### **compile-or-refuse Rules** are NOT STARTED",
+         surfaces_node, "pr-sequence: U8.2 NOT STARTED (live)"),
+    ]
+
+    caught = 0
+    for path, find, repl, node, label in mutants:
+        original = path.read_bytes()
+        try:
+            text = original.decode("utf-8")
+            assert find in text, f"mutation anchor not found for [{label}] in {path.name}: {find!r}"
+            path.write_text(text.replace(find, repl, 1), encoding="utf-8")
+            rc = _run_guard_node(node)
+            assert rc != 0, f"NON-DISCRIMINATING: a guard stayed GREEN under mutation [{label}]"
+            caught += 1
+        finally:
+            path.write_bytes(original)
+
+    assert _run_guard_node(obsolete_node) == 0, "obsolete-claim guard not GREEN after restore"
+    assert _run_guard_node(surfaces_node) == 0, "surfaces guard not GREEN after restore"
+    print(f"P8-AC-16 status-prose mutation battery: {caught}/{len(mutants)} mutants drove a guard RED; "
+          "0 escaped; files restored from an in-memory copy.")
+    assert caught == len(mutants)
+
+
+def test_control_the_registry_cross_check_catches_a_completed_or_unblocked_projection():
+    """CONTROL — proves the registry cross-check is discriminating WITHOUT mutating the real registry.
+    A synthetic projection that marks P8 COMPLETE, or unblocks P9, must fail the check; the true
+    projection must pass."""
+    good = {"P8": ("READY", "NOT_STARTED", "NO_CHECKPOINT")}
+    for p in ("P9", "P10", "P11", "P12", "P13", "P14"):
+        good[p] = ("BLOCKED", "NOT_STARTED", "NO_CHECKPOINT")
+    _assert_registry_lifecycle(good)  # true projection: must not raise
+
+    completed = dict(good, P8=("COMPLETE", "COMPLETE", "PHASE_ACCEPTANCE_COMPLETE"))
+    with pytest.raises(AssertionError):
+        _assert_registry_lifecycle(completed)
+
+    unblocked = dict(good, P9=("READY", "NOT_STARTED", "NO_CHECKPOINT"))
+    with pytest.raises(AssertionError):
+        _assert_registry_lifecycle(unblocked)
