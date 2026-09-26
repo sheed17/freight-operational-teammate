@@ -32,6 +32,7 @@ P8 stays `READY` / `NOT_STARTED` / `NO_CHECKPOINT`.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -45,6 +46,7 @@ CURRENT = ROOT / "docs" / "implementation" / "CURRENT.md"
 PHASE_OUTPUTS = ROOT / "docs" / "implementation" / "PHASE-OUTPUTS.md"
 PR_SEQUENCE = ROOT / "docs" / "implementation" / "pr-sequence.md"
 REGISTRY = ROOT / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
+EVENT_CONTRACTS = ROOT / "src" / "freight_recon" / "event_contracts_data.json"
 
 _SIX_UNITS = ("U8.1", "U8.2", "U8.3", "U8.4", "U8.5", "U8.6")
 _HIST_PAREN = re.compile(r"\*\(.*?\)\*")           # CURRENT.md's verbatim-superseded-text convention
@@ -156,6 +158,7 @@ def test_control_the_guard_catches_a_reintroduced_obsolete_live_claim():
 
 _GUARD_OBSOLETE = "test_p8_current_state_prose_makes_no_obsolete_live_not_started_or_u81_only_claim"
 _GUARD_SURFACES = "test_all_p8_status_surfaces_are_reconciled_and_imply_no_acceptance"
+_GUARD_MACHINE = "test_p8_ac16_prose_reconciles_with_the_canonical_machine_authorities"
 
 # Affirmative "this phase is done" predicates. 'is COMPLETE' / 'is now ACCEPTED' /
 # PHASE_ACCEPTANCE_COMPLETE / a 17/17 criteria tally are forbidden as LIVE claims about P8. The
@@ -247,6 +250,82 @@ def test_all_p8_status_surfaces_are_reconciled_and_imply_no_acceptance():
     assert "ships dark" in live.lower(), "CURRENT.md P8 prose no longer states the ship-dark posture"
 
 
+# --------------------------------------------------------------------------------------------------
+# R5-w3: the status prose is not merely READ but RECONCILED against the canonical MACHINE authorities
+# the approved toolset probes — the P8-AC-16 criterion itself ("ac_16") and event_contracts_data.json.
+# A guard that only scanned prose in isolation could not detect a conflict between the prose and the
+# machine truth, which is exactly the "conflicting_evidence" hazard this obligation names.
+# --------------------------------------------------------------------------------------------------
+
+_MEASURED_EVENTS = re.compile(r"event contracts, measured:\s*(\d+)", re.I)
+
+
+def _p8_ac16_criterion() -> dict:
+    """The P8-AC-16 acceptance criterion, read from the MACHINE authority (IMPLEMENTATION-REGISTRY.yaml
+    unit P8 `acceptance_criteria`). This is the "ac_16" artifact: the guard is provably about the exact
+    criterion whose deliverable is the reconciled prose."""
+    reg = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))
+    unit = next((u for u in reg["units"] if str(u.get("unit_id")) == "P8"), None)
+    assert unit is not None, "unit P8 not found in the registry"
+    crit = next((c for c in unit.get("acceptance_criteria", []) if str(c.get("id")) == "P8-AC-16"), None)
+    assert crit is not None, "P8-AC-16 criterion not found under unit P8 in the registry"
+    return crit
+
+
+def _assert_ac16_criterion(crit: dict) -> None:
+    """P8-AC-16 is the status-honesty criterion, is required, is still PENDING (this run scores
+    nothing), and its own oracle names the status reconciliation surfaces. Shared by the guard and its
+    in-process control."""
+    assert crit.get("criterion") == "status_honesty_and_reconcilability", (
+        f"P8-AC-16 is not the status-honesty criterion: {crit.get('criterion')!r}")
+    assert crit.get("required") is True, "P8-AC-16 is no longer required"
+    assert str(crit.get("result")) == "PENDING", (
+        f"P8-AC-16 must remain PENDING (this run scores nothing); found {crit.get('result')!r}")
+    oracle = str(crit.get("oracle", ""))
+    assert "test_current_status_reconciliation.py" in oracle and "CURRENT.md" in oracle, (
+        "P8-AC-16's own oracle no longer names the status reconciliation surfaces")
+
+
+def _canonical_event_contract_total() -> int:
+    """The canonical event-corpus total, from event_contracts_data.json (the mechanical projection of
+    events/registry.md §6). Self-consistency of the projection is asserted so the number the prose is
+    reconciled against is itself trustworthy."""
+    data = json.loads(EVENT_CONTRACTS.read_text(encoding="utf-8"))
+    contracts, counts = data["contracts"], data["_counts"]
+    assert len(contracts) == int(counts["total"]), (
+        f"event_contracts_data.json is internally inconsistent: len(contracts)={len(contracts)} "
+        f"vs _counts.total={counts['total']}")
+    return len(contracts)
+
+
+def _current_measured_event_contract_counts() -> list[int]:
+    """Every LIVE 'event contracts, measured: N' figure in CURRENT.md (superseded *(...)* history
+    exempt)."""
+    live = _HIST_PAREN.sub(" ", CURRENT.read_text(encoding="utf-8"))
+    return [int(x) for x in _MEASURED_EVENTS.findall(live)]
+
+
+def test_p8_ac16_prose_reconciles_with_the_canonical_machine_authorities():
+    """GUARD (R5-w3). The AC-16 status-prose deliverable is not scanned in isolation — it is RECONCILED
+    against the canonical machine authorities the approved toolset reads:
+
+      * ac_16 — the P8-AC-16 criterion is read from the registry; it exists, is required, is still
+        PENDING (this run scores nothing), and its own oracle names the reconciliation surfaces.
+      * event_contracts_data.json — the canonical event-corpus total is read (and proven internally
+        self-consistent), and CURRENT.md's LIVE 'event contracts, measured: N' figure must EQUAL it.
+        A prose figure that drifts from the machine source is exactly the status dishonesty this
+        criterion forbids."""
+    _assert_ac16_criterion(_p8_ac16_criterion())
+
+    canonical_total = _canonical_event_contract_total()
+    claimed = _current_measured_event_contract_counts()
+    assert claimed, "CURRENT.md no longer carries a measurable 'event contracts, measured: N' claim"
+    for value in claimed:
+        assert value == canonical_total, (
+            f"status dishonesty: CURRENT.md claims 'event contracts, measured: {value}' but "
+            f"event_contracts_data.json canonically holds {canonical_total} contracts")
+
+
 def _run_guard_node(node: str) -> int:
     """Run ONE guard node id in a fresh pytest process against the tree on disk. 0 == GREEN, non-zero
     == RED. Product Driver runs the guard the same way — by node id — so this measures the guard, not a
@@ -268,9 +347,11 @@ def test_control_battery_drives_the_guards_red_on_each_reintroduced_claim_and_gr
     nothing (Founder context §8)."""
     obsolete_node = f"{_THIS}::{_GUARD_OBSOLETE}"
     surfaces_node = f"{_THIS}::{_GUARD_SURFACES}"
+    machine_node = f"{_THIS}::{_GUARD_MACHINE}"
 
     assert _run_guard_node(obsolete_node) == 0, "positive control failed: obsolete-claim guard not GREEN"
     assert _run_guard_node(surfaces_node) == 0, "positive control failed: surfaces guard not GREEN"
+    assert _run_guard_node(machine_node) == 0, "positive control failed: machine-authorities guard not GREEN"
 
     mutants = [
         (CURRENT, "the sole selected unit.",
@@ -286,6 +367,8 @@ def test_control_battery_drives_the_guards_red_on_each_reintroduced_claim_and_gr
         (PR_SEQUENCE, "U8.2 ### **compile-or-refuse Rules**",
          "U8.2 ### **compile-or-refuse Rules** are NOT STARTED",
          surfaces_node, "pr-sequence: U8.2 NOT STARTED (live)"),
+        (CURRENT, "event contracts, measured: 118", "event contracts, measured: 999",
+         machine_node, "CURRENT: measured event-contract count contradicts event_contracts_data.json"),
     ]
 
     caught = 0
@@ -303,6 +386,7 @@ def test_control_battery_drives_the_guards_red_on_each_reintroduced_claim_and_gr
 
     assert _run_guard_node(obsolete_node) == 0, "obsolete-claim guard not GREEN after restore"
     assert _run_guard_node(surfaces_node) == 0, "surfaces guard not GREEN after restore"
+    assert _run_guard_node(machine_node) == 0, "machine-authorities guard not GREEN after restore"
     print(f"P8-AC-16 status-prose mutation battery: {caught}/{len(mutants)} mutants drove a guard RED; "
           "0 escaped; files restored from an in-memory copy.")
     assert caught == len(mutants)
@@ -324,3 +408,24 @@ def test_control_the_registry_cross_check_catches_a_completed_or_unblocked_proje
     unblocked = dict(good, P9=("READY", "NOT_STARTED", "NO_CHECKPOINT"))
     with pytest.raises(AssertionError):
         _assert_registry_lifecycle(unblocked)
+
+
+def test_control_the_ac16_criterion_check_catches_a_scored_or_unrequired_criterion():
+    """CONTROL — proves the 'ac_16' side of the machine-authorities guard is discriminating without
+    editing the registry: a synthetic P8-AC-16 that has been scored PASS, made not-required, or whose
+    oracle no longer names the reconciliation surfaces must fail the check; the true criterion passes."""
+    good = {
+        "id": "P8-AC-16",
+        "criterion": "status_honesty_and_reconcilability",
+        "required": True,
+        "result": "PENDING",
+        "oracle": "eval/tests/test_current_status_reconciliation.py (...); reconciliation of CURRENT.md and PHASE-OUTPUTS.md.",
+    }
+    _assert_ac16_criterion(good)  # true criterion: must not raise
+
+    with pytest.raises(AssertionError):
+        _assert_ac16_criterion(dict(good, result="PASS"))
+    with pytest.raises(AssertionError):
+        _assert_ac16_criterion(dict(good, required=False))
+    with pytest.raises(AssertionError):
+        _assert_ac16_criterion(dict(good, oracle="something that names no reconciliation surface"))
