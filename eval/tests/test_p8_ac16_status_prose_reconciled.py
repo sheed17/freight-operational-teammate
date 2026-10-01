@@ -230,6 +230,8 @@ def test_all_p8_status_surfaces_are_reconciled_and_imply_no_acceptance():
     po_section, po_heading = _phase_outputs_p8_section()
     pr_line = _pr_sequence_p8_line()
 
+    # FIXED-SPECIFICATION: NOT a discovered population — the exact, bounded set of human P8
+    # status/roadmap surfaces this AC-16 verification reconciles, each region already extracted above.
     surfaces = {"CURRENT.md": current, "PHASE-OUTPUTS.md": po_section, "pr-sequence.md": pr_line}
     for name, region in surfaces.items():
         assert obsolete_live_p8_claims(region) == [], (
