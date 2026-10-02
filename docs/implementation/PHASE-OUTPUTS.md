@@ -181,10 +181,11 @@ rather than hand-maintained.
 | **Acceptance gates** | **G1**; `AC-SAFE-015/016` |
 | **Next unlocked** | P8 |
 
-## P8 — Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation ⛔ NOT STARTED
+## P8 — Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation ✅ COMPLETE
 
 | | |
 |---|---|
+| **Phase acceptance** | **17/17 required criteria PASS** on `4ab694f`/`bcb864d` — recorded in [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) unit P8. **Accepted is not enabled: it ships dark**, and the row "Still prohibited" below is unchanged. *(Until the P8 acceptance commit this heading read "⛔ NOT STARTED" — TRUE WHEN WRITTEN, REPLACED rather than deleted.)* |
 | **Purpose** | Typed policy, compile-or-refuse rules, and a real brake |
 | **System capability after** | Admission control per action class with caps and time boxes |
 | **User-visible capability** | ### **Exceptions become a managed queue with owners** rather than things discovered late |

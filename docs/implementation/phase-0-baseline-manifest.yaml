@@ -823,15 +823,28 @@ expected_deprecated_terms:
         PRODUCTION baseline @ d33f251 was 56; Phase 1 made it 57 (+1, in operation_router.py, whose
         types ARE CommandIntent-based - out of Phase-1 scope). ADJUDICATED.
 
-        ### STATUS OF U8.6 (do not read this entry as completion). U8.6 IMPLEMENTATION IS PRESENT ON
-        THIS WORKING BRANCH (first landed 2026-09-20 on the branch) and is locally verified by its
-        guards, probe and mutation battery, but NOTHING is scored: no independent review, no phase
-        acceptance. P8 stays NOT_STARTED and accepting the U8.6 task does not move it (the machine
+        ### STATUS OF U8.6 - ACCEPTED WITH ITS PHASE (2026-10-01), AND THIS ENTRY IS STILL NOT THE
+        RECORD OF THAT. The whole phase is now COMPLETE / COMPLETE / PHASE_ACCEPTANCE_COMPLETE in
+        IMPLEMENTATION-REGISTRY.yaml (the machine authority; the human short form is CURRENT.md):
+        all seventeen of its criteria are PASS on 4ab694f88d5c/bcb864dcdb6a - including P8-AC-6, the
+        U8.6 proposal boundary - by an independent phase review outside the build lineage together
+        with exact-tree CI. This manifest is not a phase-status authority, and the count above is
+        still a token measurement, never the evidence of acceptance. ACCEPTED IS NOT ENABLED. It
+        still ships DARK: operation_router is None, the production GateRegistry population stays
+        EMPTY, the deployed governed route still answers ROUTE_NOT_CONFIGURED, and no external effect
+        and no autonomy are enabled.
+
+        HISTORY, QUOTED VERBATIM - TRUE WHEN WRITTEN, SUPERSEDED BY THE PARAGRAPH ABOVE. Until the
+        phase acceptance this note read: "### STATUS OF U8.6 (do not read this entry as completion).
+        U8.6 IMPLEMENTATION IS PRESENT ON THIS WORKING BRANCH (first landed 2026-09-20 on the branch)
+        and is locally verified by its guards, probe and mutation battery, but NOTHING is scored: no
+        independent review, no phase acceptance." It continued, in words that are no longer true -
+        SUPERSEDED: "P8 stays NOT_STARTED and accepting the U8.6 task does not move it (the machine
         authority is IMPLEMENTATION-REGISTRY.yaml; the human short form is CURRENT.md). It ships DARK:
         operation_router is None, the production GateRegistry population stays EMPTY, the deployed
         governed route still answers ROUTE_NOT_CONFIGURED, and no external effect and no autonomy are
         enabled. The count above is a token measurement, not evidence that any of this is accepted;
-        the design description below is intent, not a done record.
+        the design description below is intent, not a done record."
 
         The roadmap assumed U8.6 would RENAME CommandIntent to Proposal and drive its count to 0. That
         assumption is SUPERSEDED by the founder decision recorded in the U8.6 task: "Do not ban the

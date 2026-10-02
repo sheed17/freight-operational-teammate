@@ -8920,9 +8920,9 @@ units:
 
   - unit_id: P8
     name: Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation
-    status: READY
-    execution_state: NOT_STARTED
-    checkpoint_state: NO_CHECKPOINT
+    status: COMPLETE
+    execution_state: COMPLETE
+    checkpoint_state: PHASE_ACCEPTANCE_COMPLETE
     objective: "Typed policy, compile-or-refuse rules, the real brake. Gate G4 qualifies here."
     dependencies: [P7]
     unlocked_by: [P7]
@@ -8991,12 +8991,51 @@ units:
     # RED - they are the mechanical proof that this block cannot be flipped to PASS while G4 is
     # under-evidenced. A session scoring this block may not cite a green suite as evidence that the
     # block itself was checked.
+    # ### ADDED 2026-10-01 AT THE P8 PHASE ACCEPTANCE. NOTHING ABOVE IS EDITED: the iteration-5
+    # BLOCKED result is the true record of the review of candidate 319debc and it stands as history.
+    # ITS VERDICT IS SUPERSEDED. A FRESH independent phase review, outside the build and remediation
+    # lineage (session cd0af033-2522-4a0c-b96f-a5fb8b5461a8; it inherited no builder context),
+    # re-derived the evidence on the exact tree 4ab694f88d5c/bcb864dcdb6a and returned SUPPORTED with
+    # ZERO blocking findings: 14 criteria adjudicated PASS, with the two earlier blockers (`P8-AC-13`
+    # G4 qualification, `P8-AC-11` mutation anti-vacuity) closed on reproduced evidence; and 3
+    # established by structural gates rather than by the reviewer's own score - `P8-AC-14` by
+    # exact-tree CI (run #57, id 36921170243, conclusion SUCCESS, head_sha
+    # 4ab694f88d5cd1f1960000d08ddf37c90fd95573) and `P8-AC-15` / `P8-AC-17` by the independent-review
+    # gate. src/ is byte-identical between 319debc and 4ab694f. Every `adjudication_evidence` below is
+    # TRANSCRIBED from that closure run (Product Driver run 20261002-023126, criteria fingerprint
+    # bc13d5c4caece545a7c1d27183e12d13) in the wording of the P7 record; the session that wrote this
+    # record scored NOTHING and re-derived nothing it then relied on.
+    # ### WHY THE RECORD WAS NOT WRITTEN BY THE CLOSURE RUN ITSELF. It was written and rolled back,
+    # for record-consistency reasons only: (1) the status-prose guard
+    # (eval/tests/test_p8_ac16_status_prose_reconciled.py) hard-coded the PRE-acceptance state, and
+    # is now lifecycle-aware; (2) the materializer declined to advance P9 because P9 declares a
+    # `validation_blockers` entry, which left ZERO READY units and so vacated the selector
+    # (meta.status_model.status: a unit may leave READY only when a successor takes it IN THE SAME
+    # COMMIT) - `test_a_ready_unit_never_has_incomplete_dependencies` went red on its empty-population
+    # proof, not on an incomplete dependency, and is UNCHANGED; (3) one narrative sentence in
+    # phase-0-baseline-manifest.yaml still said P8 was not started. P9 takes the selector here by
+    # founder decision.
+    # ### ACCEPTED IS NOT ENABLED. P8 ships dark: production_enabled is false in the closure ledger,
+    # readiness_target stays LOCALLY_IMPLEMENTED, no external effect and no autonomy are enabled.
+    # ### THREE NONBLOCKING FINDINGS ARE CARRIED AS DEBT, none of which falsifies a criterion:
+    # `P8-REVIEW-01` (AC-CKPT-6-missing is still formally DEFERRED in phase-0-baseline-manifest.yaml
+    # although product_policy.verify_registration_complete enforces the U8.1 obligation; a stale
+    # `_DEFAULT` mention in a checkpoint.py docstring; test_phase8_action_class_registered.py is
+    # misnamed), `P8-REVIEW-02` (mutate_p8_rule_admission.py and probe_phase8_proposal.py were
+    # corroborated through CI rather than re-run by the reviewer) and `P8-REVIEW-03` (the stale
+    # BLOCKED note above, which this addition answers).
     acceptance_criteria:
       - id: P8-AC-1
         criterion: u81_action_class_gate_registration_integrated
         weight: 8
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_p8_policy_admission.py passed within a
+          186-test green run; the oracle (verify_registration_complete at import over a non-zero
+          population, GateRegistry.gate_for refusing unregistered classes, no _DEFAULT) is exercised by
+          that battery. Reproduced in-session.
         requirement: >-
           Every registered P8 Action Class has exactly ONE positive typed gate decision;
           null/default/unregistered classes REFUSE; incomplete registration FAILS STARTUP; the
@@ -9015,7 +9054,13 @@ units:
         criterion: u82_compile_or_refuse_rules_real
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_p8_rule_admission.py passed (in the
+          186-test run): compile-or-refuse, unmodelled/MODEL_INFERRED refusal, human-confirmed versioned
+          activation. mutate_p8_rule_admission CI-wired (ci.yml:756). Reproduced (tests) + corroborated
+          (mutation via CI).
         requirement: >-
           Rules reference only MODELED, non-inferred fields; predicates are checkpoint-decidable; scope
           is resolvable; conflicting rules fail closed rather than auto-merge; activation is
@@ -9033,7 +9078,13 @@ units:
         criterion: u83_real_brake_admission_control
         weight: 8
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_p8_brake_scope.py, test_phase3_brake.py,
+          test_phase6_brake.py all passed (264-test run); the AC-RACE qualification bridges the brake CAS
+          revalidation to the live BrakeStore/claim_grant_cas (engage-before refuses, engage-after wins).
+          Reproduced in-session.
         requirement: >-
           GLOBAL/TENANT/ACTION_CLASS/INTEGRATION scope behaviour is deterministic; version changes
           invalidate stale authority; inability to read the brake FAILS CLOSED (never OFF); brake before
@@ -9051,7 +9102,13 @@ units:
         criterion: u84_m7_m10_one_coherent_safety_layer
         weight: 8
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_p8_u84_seams.py,
+          test_phase6_compensation.py, test_phase6_conflict.py, test_phase6_expectation.py,
+          test_phase6_exception.py all passed; AC-REC covered by the compensation battery. Reproduced
+          in-session.
         requirement: >-
           A material Conflict blocks dependent consequential work; healthy coverage may create OVERDUE
           while absent/down/unknown coverage creates INDETERMINATE; Expectation expiry never becomes
@@ -9070,7 +9127,12 @@ units:
         criterion: u85_lane_migration_behavior_free
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_phase8_action_class_migration.py and
+          test_phase8_action_class_equivalence.py passed (201-test run): behaviour-free equivalence and
+          the legacy-router gate-carrier guard. Reproduced in-session.
         requirement: >-
           Operational authority is expressed only as action_class, workflow_id or policy scope; no
           ambiguous legacy lane is an independent authority; occurrence/effect identity, policy ordering,
@@ -9085,7 +9147,14 @@ units:
         criterion: u86_one_inert_proposal_boundary
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_phase8_proposal.py,
+          test_phase8_model_inferred_not_promoted.py, test_phase8_token_not_approval.py,
+          test_phase8_proposal_no_auto_advance.py all passed; proposal grants zero authority, no gate
+          minted, no auto-advance. Reproduced (tests); probe script outside my command set but
+          CI-corroborated.
         requirement: >-
           CommandIntent is an interpretation/input DTO only; a Proposal grants zero authority;
           consequential maturity enters only through canonical PipelineMachine.propose / M2 PROPOSED;
@@ -9105,7 +9174,13 @@ units:
         criterion: u86_ci52_regressions_closed
         weight: 5
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_phase1_structural_guards.py,
+          test_phase1_commit_key.py, test_phase1_occurrence_identity.py passed; git status --porcelain
+          empty after running mutate_phase6_compensation.py (interpreter-hermetic, tree clean). Reproduced
+          in-session.
         requirement: >-
           The late U8.6 CI #52 regressions are closed on the candidate: unchanged P1 structural guards
           prove exactly ONE Commit Key derivation authority and no free-form occurrence identity; proposal
@@ -9120,7 +9195,12 @@ units:
         criterion: no_second_authority_composition
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). AST sweep over 138 production modules shows only
+          checkpoint.py mints a GateDecision; compensation.py (M10) constructs no GateRegistry and touches
+          no brake. Reproduced in-session via the declared command.
         requirement: >-
           U8.1-U8.6 compose without creating a second effect authority, second policy authority, second
           checkpoint, second reservation namespace, second rule resolver, or second orchestration system;
@@ -9135,7 +9215,12 @@ units:
         criterion: tenant_isolation_on_p8_surfaces
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_ac_sec_001_registry.py passed (201-test
+          run): cross-tenant record indistinguishable from missing, cross-tenant update changes nothing;
+          T_A/T_B fixtures. Reproduced in-session.
         requirement: >-
           Tenant isolation is intact on every P8 surface; cross-tenant references fail BEFORE foreign
           business handling or existence leakage - a cross-tenant record reads as absent, not as a refusal
@@ -9151,7 +9236,13 @@ units:
         criterion: replay_inert
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_phase3_witness.py,
+          test_p5_replay_and_audit.py, test_phase6_external_effect.py plus the new
+          R8/R8w2/rreplay-authority/rreplay-mint guards passed (123-test run): reconstructed passes mint
+          nothing; replay-of-corpus yields zero grants/claims/effects. Reproduced in-session.
         requirement: >-
           Replay may not mint policy authority, approval, witness, grant, claim, proposal authority or
           external effect; replay is structurally inert.
@@ -9165,7 +9256,14 @@ units:
         criterion: mutation_anti_vacuity_standing
         weight: 7
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). Prior blocker closed: mutate_phase6_compensation.py
+          reproduced in-session at 36/36 caught, 0 escaped (incl. the anti-vacuity re-export-shim
+          control); both mutation batteries now CI-wired (ci.yml:756/766);
+          test_p8_g4_acceptance_gate_r13w2.py passes. Reproduced (compensation) + corroborated
+          (rule-admission via CI).
         requirement: >-
           Every load-bearing negative P8 guard relied on for phase acceptance has a direct mutant/control
           SEEN RED in standing evidence, or a stronger existing discriminating oracle; a green absence
@@ -9181,7 +9279,14 @@ units:
         criterion: ships_dark_no_enablement
         weight: 6
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_phase0_null_gate.py passed (production
+          GateRegistry empty); AST sweep shows no module mints a populated gate; ROUTE_NOT_CONFIGURED
+          present in production modules; no autonomy. Reproduced in-session (operation_router liveness
+          inspection was outside my approved set but the null-gate oracle and R-07 containment cover
+          emptiness).
         requirement: >-
           P8 ships DARK after acceptance: the production GateRegistry stays EMPTY, operation_router is
           non-live, the deployed governed route answers ROUTE_NOT_CONFIGURED, no production external effect
@@ -9196,7 +9301,16 @@ units:
         criterion: g4_qualification
         weight: 10
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). Prior G4 blocker closed and reproduced:
+          test_ac_race_interleaving_qualification.py qualifies AC-RACE-001..017 at >=10,000 distinct
+          schedules each with anti-vacuity + a model-vs-live-product bridge;
+          test_ac_race_017_atomic_handoff.py, test_crash_point_matrix.py (denominator derived from
+          canonical docs), test_ac_sec_002_014_mapping.py (RED-control self-tests),
+          test_ac_safe_001_028_mapping.py all pass; test_phase3_checkpoint_matrix.py = 106 passed
+          (7x15=105 + count). Reproduced in-session.
         requirement: >-
           G4 QUALIFIES at P8: 100% (zero-tolerance, no waiver) of AC-SAFE-001..028, the full 105 AC-CKPT
           matrix, AC-RACE-001..017 (including the declared 10,000 interleavings per race and every required
@@ -9215,7 +9329,11 @@ units:
         criterion: exact_tree_ci_success
         weight: 3
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Established on 4ab694f88d5c/bcb864dcdb6a by the external-verification gate
+          (exact_tree_ci_success: SUCCESS (SUCCESS) @ 4ab694f88d5c). The adjudication scored it
+          CANNOT_DETERMINE; recorded, not the authority over it.
         requirement: >-
           CI on the exact candidate tree concluded SUCCESS with every required full-suite, safety, probe
           and completeness job successful and no cancelled job; PR-only Risk Radar skipped on a push is not
@@ -9230,7 +9348,11 @@ units:
         criterion: independent_non_builder_phase_review
         weight: 3
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Established on 4ab694f88d5c/bcb864dcdb6a by the independent-review gate (session
+          cd0af033-2522-4a0c-b96f-a5fb8b5461a8, outside this run's builder lineage). The adjudication
+          scored it CANNOT_DETERMINE; recorded, not the authority over it.
         requirement: >-
           A risk-scaled Tier-1 independent review of P8 AS A PHASE (not merely the U8.6 diff), by a session
           that did not build or remediate any P8 product artifact it scores and that re-derives evidence
@@ -9245,7 +9367,14 @@ units:
         criterion: status_honesty_and_reconcilability
         weight: 2
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Adjudicated PASS on 4ab694f88d5c/bcb864dcdb6a by an independent session
+          (cd0af033-2522-4a0c-b96f-a5fb8b5461a8). eval/tests/test_current_status_reconciliation.py and
+          test_p8_ac16_status_prose_reconciled.py passed; CURRENT.md status table (line 96) records P8
+          READY/NOT_STARTED/NO_CHECKPOINT reconciling with the registry, and the prior N1 stale prose was
+          reconciled (commit 31f189f). The on-acceptance obligation to drop NOT_STARTED applies at the
+          acceptance flip, not before. Reproduced in-session.
         requirement: >-
           Status surfaces are truthful and mutually reconcilable; on acceptance the current-state prose must
           not continue asserting obsolete P8 NOT_STARTED / U8.1-only facts; COMPLETE means phase acceptance
@@ -9259,7 +9388,11 @@ units:
         criterion: acceptance_supplied_from_outside_build_lineage
         weight: 1
         required: true
-        result: PENDING
+        result: PASS
+        adjudication_evidence: >-
+          Established on 4ab694f88d5c/bcb864dcdb6a by the independent-review gate (session
+          cd0af033-2522-4a0c-b96f-a5fb8b5461a8, outside this run's builder lineage). The adjudication
+          scored it CANNOT_DETERMINE; recorded, not the authority over it.
         requirement: >-
           This phase acceptance is established by a session structurally OUTSIDE P8's build and remediation
           lineage and is un-self-suppliable by anyone in that lineage; no session's own report on work it
@@ -9273,7 +9406,7 @@ units:
 
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
-    status: BLOCKED
+    status: READY
     execution_state: NOT_STARTED
     checkpoint_state: NO_CHECKPOINT
     objective: >-
@@ -9296,6 +9429,12 @@ units:
     migration_requirements: "domain tables, tenant-first"
     legacy_dispositions_affected: [document_processing, reconciliation]
     rollback_posture: "Ships dark."
+    # ### P9 IS `READY` AND THIS BLOCKER STILL STANDS (added 2026-10-01 at the P8 phase acceptance).
+    # `status: READY` is the SELECTOR - it took the selector in the same commit that made P8 COMPLETE,
+    # as meta.status_model.status requires - and it validates nothing. P5 is the precedent for a unit
+    # that is selected while its `validation_blockers` are open. The entry below is UNCHANGED: no
+    # design-partner evidence was recorded, so a P9 session that reaches an unresolved domain rule
+    # stops and requests evidence (CLAUDE.md sec 5; docs/product/OPEN-VALIDATION-ITEMS.md).
     validation_blockers:
       - "SEVERAL DOMAIN RULES REQUIRE DESIGN-PARTNER VALIDATION. See OPEN-VALIDATION-ITEMS.md."
     completion_evidence: ["a phase-9 implementation review"]
