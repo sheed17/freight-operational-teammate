@@ -195,10 +195,11 @@ rather than hand-maintained.
 | **Acceptance gates** | ### **G4 QUALIFIES HERE — not at P4** |
 | **Next unlocked** | P9 |
 
-## P9 — Freight-domain projections, mappings and communications ingestion ⛔ NOT STARTED
+## P9 — Freight-domain projections, mappings and communications ingestion 🔄 IN PROGRESS — NOT COMPLETE
 
 | | |
 |---|---|
+| **Landed so far** | `P9-CP-1` — the freight-domain spine: External Entity Mapping, a canonical freight model projected from Observations and Identity Binding Claims with field-level provenance, Conflicts/Expectations/Exceptions through M7/M8/M9, a derived Operational Timeline and Financial Reconciliation Result, driven by twenty synthetic hostile load histories. **Implemented, not independently reviewed, not accepted, ships dark.** No model, no live ingestion, no external effect. *(Until `P9-CP-1` this heading read "⛔ NOT STARTED" — TRUE WHEN WRITTEN, REPLACED rather than deleted.)* |
 | **Purpose** | The 40 domain entities and External Entity Mapping with field-level authority |
 | **System capability after** | Freight concepts modelled canonically; per-field authoritative sources; ### **inbound email/SMS ingested as evidence (ADR-015) — correlated to tenants/loads/Work Items, commitments extracted with provenance, expected responses as Expectations** |
 | **User-visible capability** | None yet |

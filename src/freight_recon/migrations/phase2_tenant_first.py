@@ -1216,6 +1216,16 @@ def migrate(db: str, *, assertion: "OwnerAssertion | None" = None,
             _mark(conn, f"phase8pe:{step}")
         conn.commit()
 
+        # P9's EXTERNAL ENTITY MAPPING — ONE new table holding tenant-composite FKs into observations
+        # (M5, the Observation the mapping was read from) and tenant_humans (the human who asserted
+        # or corrected it). Created after both. A fresh database is built with it directly; this
+        # brings a P2-shaped database to the same shape. Idempotent. Ships dark.
+        from .phase9_external_entity_mappings import create_phase9_external_entity_mappings_schema
+
+        for step in create_phase9_external_entity_mappings_schema(conn, now=_now()):
+            _mark(conn, f"phase9xm:{step}")
+        conn.commit()
+
         # ---- THE COMPLETION MARKER COMES LAST, AND ONLY IF READINESS PASSES ----
         # A marker written before readiness is a claim about the past that outranks the present.
         # Structure decides; the marker only records what structure already proved.

@@ -407,6 +407,30 @@ def test_a_phase2_only_database_is_refused_until_the_phase3_migration_runs(tmp_p
     assert any(step == "create-trigger:trg_policy_epochs_no_delete"
                for step in p8pe_performed), p8pe_performed
     assert phase8_policy_epochs_readiness_problems(conn) == []
+
+    # ### P9's EXTERNAL ENTITY MAPPING — now the last step of the walk. Added when
+    # `external_entity_mappings` joined the canonical partition: a database without it cannot record
+    # which canonical load an outside reference names, so a P2..P8 database is still refused, and
+    # refused by name. The migration that closes the gap creates the one tenant-first table, the
+    # one-active-per-binding partial unique index, and the immutability and no-delete triggers that
+    # make "a correction retires, it never edits or deletes" a database fact.
+    from freight_recon.migrations.phase9_external_entity_mappings import (  # noqa: E402
+        create_phase9_external_entity_mappings_schema,
+        phase9_external_entity_mappings_readiness_problems,
+    )
+
+    assert any("external_entity_mappings" in p for p in schema_readiness_problems(conn)), \
+        schema_readiness_problems(conn)
+    p9xm_performed = create_phase9_external_entity_mappings_schema(conn, now=utc_now())
+    assert any(step == "create-table:external_entity_mappings" for step in p9xm_performed), \
+        p9xm_performed
+    assert any(step == "create-index:ix_xmap_one_active_per_binding"
+               for step in p9xm_performed), p9xm_performed
+    assert any(step == "create-trigger:trg_xmap_immutable" for step in p9xm_performed), \
+        p9xm_performed
+    assert any(step == "create-trigger:trg_xmap_no_delete" for step in p9xm_performed), \
+        p9xm_performed
+    assert phase9_external_entity_mappings_readiness_problems(conn) == []
     conn.close()
     migrated = WorkflowStore(db, tenant=T_A)   # now constructible
     fresh = make_store(tmp_path, name="fresh.db")

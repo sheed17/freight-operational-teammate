@@ -2624,31 +2624,27 @@ def test_nothing_in_production_calls_this_machine_yet(tmp_path):
         "the P6 entity layer no longer exists under these names — the permitted-importer set would "
         "be empty and this guard would confine nothing"
     )
-    importers: list[str] = []
-    inspected = 0
-    for path in sorted((ROOT / "src" / "freight_recon").rglob("*.py")) + \
-            sorted((ROOT / "scripts").rglob("*.py")):
-        if path.name == "work_item.py":
-            continue
-        inspected += 1
-        text = path.read_text(encoding="utf-8")
-        for node in ast.walk(ast.parse(text)):
-            if isinstance(node, ast.ImportFrom) and node.module and \
-                    node.module.split(".")[-1] == "work_item":
-                importers.append(path.name)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.split(".")[-1] == "work_item":
-                        importers.append(path.name)
-    assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
+    # ### P9 ADDS EXACTLY ONE IMPORTER, BY PATH (rule 20 — the set is extended deliberately, here).
+    # The freight-domain spine gives every Brokerage Load one accountable human from the moment the
+    # load exists (rule 13), and it does that THROUGH M1 rather than through a second ownership
+    # record. It reaches M1 only through its composition module, which
+    # `test_p9_freight_domain_ships_dark.py` proves is itself reached by nothing live — the same "the
+    # permitted importer must itself be dark" condition this guard applies to M2 below.
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    observed = importers_of("work_item", scripts=True)
     # `compensation_shadow.py` is the M10 mutation battery's transient re-export shadow (a byte-copy of
     # the dark machine that imports M1's resolver exactly as compensation.py does, removed in its own
     # finally) — tolerated alongside the entity layer, never a real caller.
-    tolerated = entity_layer | {"compensation_shadow.py"}
-    outside = sorted({name for name in importers if name not in tolerated})
+    permitted = {f"src/freight_recon/{name}" for name in entity_layer - {"work_item.py"}}
+    permitted.add(P9_FOUNDATION)
+    outside = sorted(observed - permitted - {"src/freight_recon/compensation_shadow.py"})
     assert not outside, (
-        f"M1 has acquired production callers outside the P6 entity layer: {outside}. P6 ships dark; "
-        f"a caller means the rollout posture in the registry is no longer true."
+        f"M1 has acquired production callers outside the P6 entity layer and the one P9 composition "
+        f"module: {outside}. A caller means the rollout posture in the registry is no longer true."
+    )
+    assert permitted <= observed, (
+        f"{sorted(permitted - observed)} no longer import(s) M1: the confinement would be vacuous."
     )
     # ### AND THE PERMITTED IMPORTER MUST ITSELF BE DARK, or "dark" would be one hop deep.
     from freight_recon.pipeline_instance import AGGREGATE_TYPE as M2_AGGREGATE  # noqa: F401

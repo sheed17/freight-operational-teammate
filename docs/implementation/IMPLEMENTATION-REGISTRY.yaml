@@ -9406,9 +9406,45 @@ units:
 
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
+    # ### P9 IS `READY` / `IN_PROGRESS` / `CHECKPOINT_IMPLEMENTED` (2026-10-01, P9 deep-end 1).
+    # `status` STAYS `READY`: it is the SELECTOR, and meta.status_model.status allows a unit to leave
+    # READY only when a successor takes it in the same commit (P5 is the precedent for READY +
+    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - one entry in
+    # `landed_checkpoints`, whose evidence exists on disk. `checkpoint_state` is CHECKPOINT_IMPLEMENTED
+    # and NOT higher: the work landed and NO independent review has been performed.
+    # ### THIS IS NOT ACCEPTANCE AND NOT ENABLEMENT. P9 carries no `acceptance_criteria` block, not
+    # one criterion is scored, the 40-entity model is partially exercised, and it ships dark. P10
+    # stays BLOCKED. No design-partner evidence was recorded and none is claimed.
     status: READY
-    execution_state: NOT_STARTED
-    checkpoint_state: NO_CHECKPOINT
+    execution_state: IN_PROGRESS
+    checkpoint_state: CHECKPOINT_IMPLEMENTED
+    landed_checkpoints:
+      - id: P9-CP-1
+        name: The freight-domain spine, driven by twenty hostile load histories
+        checkpoint_state: CHECKPOINT_IMPLEMENTED
+        summary: >-
+          A deterministic, executable slice of the freight domain. An inbound record becomes an
+          Observation (M5), is bound to a canonical Brokerage Load by an Identity Binding Claim (M6)
+          resolved exactly and tenant-scoped through the External Entity Mapping (domain entity #38,
+          the one new durable table), and the canonical entities - load, order, movement, leg, stop,
+          appointment, rate confirmation, document, message, tracking event, accessorial charge and
+          authorization, carrier payable - are a pure-read fold over those durable records with
+          field-level provenance. Disagreement is a Conflict (M7), a missing thing is an Expectation
+          (M8) whose missed deadline is OVERDUE only over proven channel coverage and INDETERMINATE
+          otherwise, and what a human must decide is an Exception (M9) with one named owner. An
+          Operational Timeline and a Financial Reconciliation Result are derived per load. Driven by
+          a synthetic corpus of twenty hostile histories across three brokerages in ONE database;
+          every labeled outcome is asserted. No model, no adapter, no external effect.
+        implementer_evidence: docs/implementation/p9-de1-freight-domain-spine-implementation-record.md
+        independent_review_report: null
+        independent_review_note: >-
+          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 surfaces
+          (CLAUDE.md sec 7): a migration, tenant isolation, and the REPLACEMENT of eleven ships-dark
+          guards. Each replaced guard carries a mutation proof that it can fail
+          (scripts/mutate_p9_freight_domain.py), but CLAUDE.md sec 7 still requires ONE focused
+          independent review by someone who did not write it BEFORE MERGE. That review is owed and
+          is not claimed here.
+        criteria_scored: []
     objective: >-
       The 40 domain entities, External Entity Mapping, field-level authority — plus inbound
       communications ingestion (ADR-015): email/SMS as evidence with provenance, correlated to
@@ -9435,6 +9471,16 @@ units:
     # that is selected while its `validation_blockers` are open. The entry below is UNCHANGED: no
     # design-partner evidence was recorded, so a P9 session that reaches an unresolved domain rule
     # stops and requests evidence (CLAUDE.md sec 5; docs/product/OPEN-VALIDATION-ITEMS.md).
+    # ### HOW P9-CP-1 BUILT WITHOUT ANSWERING THEM (founder direction, 2026-10-01): V-21 and V-14 are
+    # still OPEN. The spine applies each item's recorded SAFE INTERIM BEHAVIOUR and validates
+    # neither. V-21: Customer Order, Brokerage Load, Carrier Movement, Leg and Stop are distinct
+    # entities with the FK on the child, so a 1:N discovery is additive; the corpus exercises one
+    # load moved by two carriers and one order covering two loads. V-14: the rate confirmation is the
+    # only authoritative buy rate; a TMS carrier-pay field and a number agreed in a message are
+    # retained as MODEL_INFERRED observations that no consequential read can see. Customer-specific
+    # constants (which documents a load needs, by when, on which channel) are tenant configuration,
+    # and where a brokerage has configured none the requirement is `unknown`. Nothing here is
+    # design-partner evidence.
     validation_blockers:
       - "SEVERAL DOMAIN RULES REQUIRE DESIGN-PARTNER VALIDATION. See OPEN-VALIDATION-ITEMS.md."
     completion_evidence: ["a phase-9 implementation review"]

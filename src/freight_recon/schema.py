@@ -210,6 +210,16 @@ from .migrations.phase8_policy_epochs import (
     phase8_policy_epochs_readiness_problems,
     stamp_phase8_policy_epochs_version,
 )
+from .migrations.phase9_external_entity_mappings import (
+    P9XM_EXEMPT_TABLES,
+    P9XM_INDEXES,
+    P9XM_REPLACED_INDEXES,
+    P9XM_TARGET_SCHEMA,
+    P9XM_TENANT_TABLES,
+    create_phase9_external_entity_mappings_schema,
+    phase9_external_entity_mappings_readiness_problems,
+    stamp_phase9_external_entity_mappings_version,
+)
 from .migrations.phase8_action_class import (
     migrate_phase8_action_class,
     phase8_action_class_readiness_problems,
@@ -300,6 +310,11 @@ _ALL_TARGET_SCHEMA: dict[str, str] = {
     # `policies` referent exists. Append-only: the scalar the claim CAS revalidates must be
     # monotonic, and a table you can DELETE from is not.
     **P8PE_TARGET_SCHEMA,
+    # P9's External Entity Mapping (domain entity #38). New table, no override — merged after M5 and
+    # M1 so the `observations` and `tenant_humans` referents exist. It is the only durable table the
+    # freight-domain spine adds: the canonical entities themselves are a projection over Observations
+    # and Identity Binding Claims.
+    **P9XM_TARGET_SCHEMA,
 }
 
 # Tenant-owned tables across all four phases: the readiness loop validates every one identically.
@@ -314,6 +329,7 @@ ALL_TENANT_TABLES: tuple[str, ...] = (
     *P6CM_TENANT_TABLES, *P6PO_TENANT_TABLES, *P6RU_TENANT_TABLES,
     *P7EV_TENANT_TABLES,
     *P8PE_TENANT_TABLES,
+    *P9XM_TENANT_TABLES,
 )
 
 # Every table a canonical database is allowed to contain. A new table must be added here
@@ -354,6 +370,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     *P7EV_EXEMPT_TABLES,
     *P8PE_TENANT_TABLES,
     *P8PE_EXEMPT_TABLES,
+    *P9XM_TENANT_TABLES,
+    *P9XM_EXEMPT_TABLES,
 )
 
 
@@ -409,7 +427,7 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                                         **P6EX_INDEXES, **P6XC_INDEXES, **P6CM_INDEXES,
                                         **P6PO_INDEXES, **P6RU_INDEXES,
                                         **P6BR_INDEXES, **P7EV_INDEXES,
-                                        **P8PE_INDEXES}.items()
+                                        **P8PE_INDEXES, **P9XM_INDEXES}.items()
                       if n not in REPLACED_INDEXES and n not in P5_REPLACED_INDEXES
                       and n not in P6_REPLACED_INDEXES and n not in P6PI_REPLACED_INDEXES
                       and n not in P6EF_REPLACED_INDEXES and n not in P6AP_REPLACED_INDEXES
@@ -418,7 +436,8 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
                       and n not in P6XC_REPLACED_INDEXES and n not in P6CM_REPLACED_INDEXES
                       and n not in P6PO_REPLACED_INDEXES and n not in P6RU_REPLACED_INDEXES
                       and n not in P6BR_REPLACED_INDEXES and n not in P7EV_REPLACED_INDEXES
-                      and n not in P8PE_REPLACED_INDEXES}
+                      and n not in P8PE_REPLACED_INDEXES
+                      and n not in P9XM_REPLACED_INDEXES}
     for name, ddl in merged_indexes.items():
         table = ddl.split(" ON ")[1].split(" ")[0]
         if name not in existing_indexes and table in _tables(conn):
@@ -561,6 +580,15 @@ def create_canonical_schema(conn: sqlite3.Connection) -> None:
     create_phase8_policy_epochs_schema(conn, now=_now())
     if not phase8_policy_epochs_readiness_problems(conn):
         stamp_phase8_policy_epochs_version(conn, now=_now())
+    # ### P9's EXTERNAL ENTITY MAPPING: the `external_entity_mappings` table. Built AFTER M5
+    # (`observations`) and M1 (`tenant_humans`) because a mapping holds tenant-composite foreign keys
+    # into both — the Observation it was read from and the human who asserted or corrected it. On a
+    # fresh database the merged DDL already built the shape, so this only adds the immutability and
+    # no-delete triggers; on a migrated one it creates the table. Marker-last, like every phase.
+    # Ships dark — only the P9 freight-domain spine reaches it, and nothing live reaches the spine.
+    create_phase9_external_entity_mappings_schema(conn, now=_now())
+    if not phase9_external_entity_mappings_readiness_problems(conn):
+        stamp_phase9_external_entity_mappings_version(conn, now=_now())
     conn.commit()
 
     # U8.5 — THE lane -> action_class migration (persistence half). On a fresh database the merged
@@ -658,6 +686,7 @@ def schema_readiness_problems(conn: sqlite3.Connection) -> list[str]:
     problems.extend(phase6_brakes_readiness_problems(conn))
     problems.extend(phase7_evidence_readiness_problems(conn))
     problems.extend(phase8_action_class_readiness_problems(conn))
+    problems.extend(phase9_external_entity_mappings_readiness_problems(conn))
     problems.extend(_second_ledger_problems(conn, present))
     problems.extend(_enforcement_problems(conn))
     problems.extend(_version_problems(conn, present))

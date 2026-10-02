@@ -245,22 +245,22 @@ def test_the_f14_event_name_is_the_registered_contract_and_no_synonym():
 
 
 def test_the_identity_and_lineage_modules_ship_dark():
-    """P7 ships dark: nothing in production imports the linker or lineage modules. Discovered by AST
-    with the denominator printed."""
-    targets = {"linker", "lineage"}
-    importers = []
-    inspected = 0
-    for path in require_population(sorted(SRC.rglob("*.py")), "src modules"):
-        if path.stem in targets:
-            continue
-        inspected += 1
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[-1] in targets:
-                importers.append(f"{path.name} -> {node.module}")
-            if isinstance(node, ast.ImportFrom) and not node.module:
-                for a in node.names:
-                    if a.name in targets:
-                        importers.append(f"{path.name} -> {a.name}")
-    print(f"AC-15 (identity/lineage): inspected {inspected} src modules for a production importer")
-    assert inspected > 0
-    assert not importers, f"the identity/lineage modules have production importer(s): {importers}"
+    """### REPLACED AT P9 (CLAUDE.md sec 4 rule 20 — replaced, not deleted, not relaxed). This asserted
+    that nothing in production imported the linker or the lineage walker. P9 resolves which load an
+    inbound freight record belongs to THROUGH the deterministic linker — so the linker gains exactly
+    one production importer, the P9 composition module `freight_domain/foundation.py` (itself proved
+    dark by `test_p9_freight_domain_ships_dark.py`). The lineage walker still has none."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    linker_importers = importers_of("linker")
+    assert linker_importers == {P9_FOUNDATION}, (
+        f"the deterministic linker's production importers are {sorted(linker_importers)}; exactly "
+        f"one module decides a binding, and a second is a second linker.")
+    lineage_importers = importers_of("lineage")
+    assert lineage_importers == set(), (
+        f"the lineage walker has production importer(s): {sorted(lineage_importers)}")

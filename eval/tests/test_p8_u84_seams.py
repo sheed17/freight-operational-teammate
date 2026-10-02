@@ -535,19 +535,23 @@ def test_active_rule_decision_ref_is_accepted_and_model_closure_is_refused(tmp_p
 # ============================================================ ships dark
 
 def test_u84_ships_dark_no_production_module_invokes_the_consumer(tmp_path):
-    """The F8/F10 escalation is reachable only from tests and the probe. No module under
-    `src/freight_recon/` calls `consume_source_escalation` — U8.4 wires the seam without a production
-    entry point, notifier, queue or live channel."""
-    import ast
+    """### REPLACED AT P9 (CLAUDE.md sec 4 rule 20 — replaced, not deleted, not relaxed). Until P9 no
+    module under `src/freight_recon/` called `consume_source_escalation`: U8.4 wired the M8 -> M9 seam
+    with no caller. P9 is the first thing that makes an Expectation go overdue for a reason — a POD
+    that never came, a carrier that never called back — and it escalates each verdict THROUGH this
+    consumer rather than writing an Exception of its own. So the property is tightened to an EXACT
+    set: one caller, the P9 composition module, which `test_p9_freight_domain_ships_dark.py` proves is
+    reached by nothing live. There is still no production entry point, notifier, queue or live channel,
+    and a second caller still turns this RED."""
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, callers_of
 
-    src = ROOT / "src" / "freight_recon"
-    offenders = []
-    for path in src.rglob("*.py"):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr == "consume_source_escalation":
-                offenders.append(path.name)
-    assert offenders == [], f"a production module invokes the U8.4 consumer: {offenders}"
+    callers = callers_of("consume_source_escalation")
+    assert callers == {P9_FOUNDATION}, (
+        f"the U8.4 consumer's production callers are {sorted(callers)}; exactly one module "
+        f"escalates a missed deadline ({P9_FOUNDATION}).")
 
 
 # ### HOW THE CHANGED VERIFICATION THIS UNIT DELIVERED IS OPERATED (the product driver runs pytest and

@@ -779,26 +779,25 @@ def _emitted_event_names() -> set[str]:
 
 
 def test_m6_ships_dark():
-    """Nothing under src/freight_recon/ imports identity_binding_claim, and the only script that may
-    is the probe. Discovered by scanning, never by an enumerated file list."""
-    importers: list[str] = []
-    inspected = 0
-    for path in sorted((ROOT / "src" / "freight_recon").rglob("*.py")) + \
-            sorted((ROOT / "scripts").rglob("*.py")):
-        if path.name == "identity_binding_claim.py":
-            continue
-        inspected += 1
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and \
-                    node.module.split(".")[-1] == "identity_binding_claim":
-                importers.append(path.name)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.split(".")[-1] == "identity_binding_claim":
-                        importers.append(path.name)
-    assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
-    assert set(importers) <= {"probe_phase6_identity_binding_claim.py"}, (
-        f"M6 has importers outside the permitted probe: {sorted(set(importers))}. M6 ships dark.")
+    """### REPLACED AT P9 (CLAUDE.md sec 4 rule 20 — replaced, not deleted, not relaxed). This asserted
+    zero production importers of `identity_binding_claim`, true while M6 had no caller. P9 binds every
+    inbound freight artifact to a canonical entity THROUGH M6, so the property is tightened to an
+    exact set: the probe, and the one P9 composition module (`freight_domain/foundation.py`, itself
+    proved dark by `test_p9_freight_domain_ships_dark.py`). A second importer still turns this RED."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"scripts/probe_phase6_identity_binding_claim.py", P9_FOUNDATION}
+    observed = importers_of("identity_binding_claim", scripts=True)
+    assert observed - permitted == set(), (
+        f"M6 has importers outside the permitted set: {sorted(observed - permitted)}. One module "
+        f"composes identity binding; a second is a second linker.")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) M6: the confinement would be vacuous.")
 
 
 def test_m6_mints_no_gate_and_imports_no_effect_authority():

@@ -82,29 +82,48 @@ def _src_modules() -> list[Path]:
 # ----------------------------------------------------- clause 1: no production importer of a P7 surface
 
 
+#: The ONE module outside P7 entitled to import a P7 surface: the P9 freight-domain composition
+#: module. FIXED-SPECIFICATION: an architectural boundary named by path, not a population to discover
+#: — discovering it would mean asking the code who imports P7, which is the question.
+P9_COMPOSITION_MODULE = "src/freight_recon/freight_domain/foundation.py"
+
+
 def test_no_production_module_imports_any_p7_surface():
-    """`P7-AC-15` clause 1: over a DISCOVERED, printed denominator of every module under
-    src/freight_recon, no production module imports any of the four P7 surfaces. A P7 module importing
-    another P7 module (lineage->evidence/provenance, linker->provenance) is P7-INTERNAL composition,
-    not a production wiring, so the surfaces themselves are excluded from the importer population.
-    Importing the `phase7_evidence` MIGRATION is expected and is NOT a surface import."""
-    importers: list[str] = []
+    """`P7-AC-15` clause 1, REPLACED AT P9 (CLAUDE.md sec 4 rule 20 — replaced, not deleted, not
+    relaxed). Over a DISCOVERED, printed denominator of every module under src/freight_recon, the
+    importers of the four P7 surfaces are EXACTLY ONE module outside P7 — the P9 freight-domain
+    composition module — and it imports exactly the three surfaces freight uses (provenance, evidence,
+    linker). A P7 module importing another P7 module (lineage->evidence/provenance,
+    linker->provenance) is P7-INTERNAL composition, so the surfaces themselves are excluded from the
+    importer population. Importing the `phase7_evidence` MIGRATION is not a surface import.
+
+    Until P9 this asserted ZERO, and it was right: P7 landed as machinery with no caller. P9 assigns
+    every freight fact its provenance, retains every freight document as Evidence and decides every
+    binding through the linker, so "zero" is false now. What the guard protects is unchanged — a P7
+    surface must not be joined to a LIVE path — and `test_p9_freight_domain_ships_dark.py` proves the
+    one admitted importer is itself reached by nothing live. A second importer still turns this RED.
+    """
+    from dark_surface_kit import imported_modules
+
+    importers: dict[str, set[str]] = {}
     inspected = 0
     for path in _src_modules():
-        if path.stem in P7_SURFACE:
+        if path.stem in P7_SURFACE and path.parent == SRC:
             continue
         inspected += 1
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and \
-                    node.module.rsplit(".", 1)[-1] in P7_SURFACE:
-                importers.append(f"{path.name} -> {node.module}")
-            if isinstance(node, ast.ImportFrom) and not node.module:
-                for alias in node.names:
-                    if alias.name in P7_SURFACE:
-                        importers.append(f"{path.name} -> .{alias.name}")
+        reached = imported_modules(path.read_text(encoding="utf-8")) & set(P7_SURFACE)
+        if reached:
+            importers[path.relative_to(ROOT).as_posix()] = reached
     print(f"P7-AC-15 clause 1: inspected {inspected} src modules for a production importer of {P7_SURFACE}")
     assert inspected > 0, "the ship-dark sweep inspected nothing"
-    assert not importers, f"a P7 surface has production importer(s) — it is not dark: {importers}"
+    unexpected = sorted(set(importers) - {P9_COMPOSITION_MODULE})
+    assert not unexpected, (
+        f"a P7 surface has production importer(s) outside the one P9 composition module — it is "
+        f"joined to a second path: { {k: sorted(importers[k]) for k in unexpected} }")
+    assert importers.get(P9_COMPOSITION_MODULE) == {"provenance", "evidence", "linker"}, (
+        f"the P9 composition module imports {sorted(importers.get(P9_COMPOSITION_MODULE, set()))} "
+        f"of the P7 surfaces; the freight spine uses exactly provenance, evidence and linker, and "
+        f"a different set means either a new P7 dependency nobody decided or an unwired one.")
 
 
 # ----------------------------------------------------- clause 2: the production GateRegistry is empty
@@ -277,11 +296,20 @@ def test_the_ship_dark_populations_are_non_empty_and_the_importer_detector_can_f
     missing = [s for s in P7_SURFACE if not (SRC / f"{s}.py").exists()]
     assert not missing, f"P7 surface module(s) missing — clause 1/5 would inspect nothing: {missing}"
 
-    leaking = "from freight_recon.evidence import EvidenceStore\n"   # a real production wiring
-    lookalike = "from freight_recon.evidence_helpers import thing\n"  # a different module
-    hits = [n for n in ast.walk(ast.parse(leaking))
-            if isinstance(n, ast.ImportFrom) and n.module and n.module.rsplit(".", 1)[-1] in P7_SURFACE]
-    assert len(hits) == 1, "the importer detector failed to fire on a genuine P7-surface import"
-    misses = [n for n in ast.walk(ast.parse(lookalike))
-              if isinstance(n, ast.ImportFrom) and n.module and n.module.rsplit(".", 1)[-1] in P7_SURFACE]
-    assert not misses, "the importer detector fired on a lookalike module name"
+    from dark_surface_kit import imported_modules
+
+    # Every spelling a production module could use — including the subpackage form that three of the
+    # per-surface guards could not see before P9.
+    for leaking in ("from freight_recon.evidence import EvidenceStore\n",
+                    "from .evidence import EvidenceStore\n",
+                    "from ..evidence import EvidenceStore\n",
+                    "from . import evidence\n",
+                    "import freight_recon.evidence\n",
+                    "import importlib\nm = importlib.import_module('freight_recon.evidence')\n"):
+        assert imported_modules(leaking) & set(P7_SURFACE) == {"evidence"}, (
+            f"the importer detector failed to fire on a genuine P7-surface import: {leaking!r}")
+    for lookalike in ("from freight_recon.evidence_helpers import thing\n",
+                      "from .migrations.phase7_evidence import create_phase7_evidence_schema\n",
+                      "from .foundation import EvidenceCondition\n"):
+        assert not imported_modules(lookalike) & set(P7_SURFACE), (
+            f"the importer detector fired on a lookalike: {lookalike!r}")

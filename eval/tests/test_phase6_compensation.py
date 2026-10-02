@@ -905,11 +905,25 @@ def test_m1_through_m9_machines_are_unchanged():
 
     FIXED-SPECIFICATION: the exact M2..M8 machine runtimes; NOT a discovered population.
     """
+    # ### RULE 20 AT P9-CP-1: `expectation.py` (M8) LEFT this frozen set, by the same precedent that
+    # dropped `work_item.py` and `exception.py` at U8.4. P9 is the first phase to feed M8 REAL channel
+    # coverage records, and doing so exposed a defect in M8's coverage verdict: it took the first row
+    # spanning the window, so a `DOWN` outage recorded inside a `HEALTHY` month was ruled OVERDUE —
+    # blindness converted into a counterparty's fault (I8, M-32). The fix is strictly fail-closed (it
+    # can turn an OVERDUE into an INDETERMINATE, never the reverse) and is the whole of the M8 change.
+    # M8 is not left unguarded: it keeps its full battery in `test_phase6_expectation.py` and
+    # `scripts/mutate_phase6_expectation.py`, and the fix is asserted directly by
+    # `test_p9_freight_histories.py::test_an_outage_inside_a_healthy_window_is_blindness_not_lateness`
+    # with its own mutant in `scripts/mutate_p9_freight_domain.py`. *(Until P9-CP-1 this tuple carried
+    # `expectation.py`; TRUE while M8 had never been handed overlapping coverage, corrected per
+    # CLAUDE.md §4 rule 20.)*
+    # FIXED-SPECIFICATION: the exact landed machine runtimes that remain must-stay-byte-identical —
+    # NOT a discovered population; changing this list is a deliberate, reviewed edit.
     unchanged = (
         "src/freight_recon/pipeline_instance.py",
         "src/freight_recon/external_effect.py", "src/freight_recon/approval.py",
         "src/freight_recon/observation.py", "src/freight_recon/identity_binding_claim.py",
-        "src/freight_recon/conflict.py", "src/freight_recon/expectation.py",
+        "src/freight_recon/conflict.py",
     )
     r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--", *unchanged], cwd=ROOT,
                        capture_output=True, text=True)

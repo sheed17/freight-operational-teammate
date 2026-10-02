@@ -463,6 +463,32 @@ expected_noncanonical_schema:
     #   lifecycle state is the machine authority IMPLEMENTATION-REGISTRY.yaml, with CURRENT.md's
     #   bounded LIVE-STATUS projection of it.
     - policy_epochs
+    # Phase 9 (deep-end 1) adds ONE canonical table, `external_entity_mappings`, tenant-first and NOT
+    # exempt. It is domain entity #38: the binding of a canonical Neyma entity to its outside
+    # references (a TMS load number, a customer PO, a carrier PRO, a BOL number), and the only way an
+    # outside system's record enters the canonical model.
+    #   WHY IT EXISTS: an external id is trusted only within (tenant, external_system, id kind). The
+    #   same load number legitimately appears in two brokerages running the same TMS product, and a
+    #   customer PO legitimately covers two loads. Both must be REPRESENTABLE without collapsing: the
+    #   first as two unrelated rows, the second as ambiguity a lookup fails closed on.
+    #   WHY IT IS THE ONLY P9 TABLE SO FAR: the canonical freight entities are a PROJECTION over
+    #   Observations (M5) and Identity Binding Claims (M6); only the mapping is native durable state
+    #   that nothing else already holds. Per-entity domain tables are recorded P9 debt, not built.
+    #   WHY TENANT-FIRST: [C-1, CD-19]. MECHANICAL PROOF, read from a fresh canonical database via
+    #   PRAGMA: table_info gave PK order ['tenant','mapping_id']; `tenant` is column 0 of all three
+    #   indexes (ix_xmap_one_active_per_binding, ix_xmap_tenant_reference, ix_xmap_tenant_entity);
+    #   foreign_key_list gave three COMPOSITE tenant-leading FKs - (tenant, source_observation_id) ->
+    #   observations, (tenant, decision_human_id) -> tenant_humans, (tenant, replaces_mapping_id) ->
+    #   external_entity_mappings - so a mapping cannot cite another brokerage's observation, human or
+    #   mapping. The P9 readiness oracle (migrations/phase9_external_entity_mappings.
+    #   phase9_external_entity_mappings_readiness_problems) refuses the table without its
+    #   immutability and no-delete triggers.
+    #   It admits NO model provenance class (CHECK: SYSTEM_IMPORTED / OWNER_ASSERTED /
+    #   LINKER_INFERRED / RECONCILED only) and carries NO commit_key: it mints nothing and answers to
+    #   no effect ledger.
+    #   Ships dark: only the P9 freight-domain spine reads or writes it, and nothing on a live path
+    #   reaches the spine. This manifest is NOT a phase-status authority.
+    - external_entity_mappings
   # Deliberately NOT tenant-owned. Each member adjudicated - this is not an exemption hatch,
   # (no count is stated here on purpose: the hand-typed "Two members" had already drifted to three
   # before P3 and to four with platform_brake. A comment cannot be mechanically recomputed, so it

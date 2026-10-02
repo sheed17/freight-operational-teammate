@@ -896,15 +896,30 @@ def test_m8_mints_no_gate_decision():
 
 
 def test_m8_ships_dark_no_production_importer():
-    pkg = ROOT / "src" / "freight_recon"
-    offenders = []
-    for path in pkg.rglob("*.py"):
-        if path.name in ("expectation.py", "__init__.py"):
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "import expectation" in text or "from .expectation" in text or "from freight_recon.expectation" in text:
-            offenders.append(path.name)
-    assert offenders == [], f"production importers of the expectation machine: {offenders}"
+    """### REPLACED AT P9, AND IT HAD TO BE (CLAUDE.md sec 4 rule 20, sec 6). The guard this replaces
+    matched the SUBSTRINGS `import expectation`, `from .expectation` and
+    `from freight_recon.expectation`. When P9's freight-domain spine imported M8 from a subpackage —
+    `from ..expectation import M8Machine` — NONE of those substrings occurred, and this guard stayed
+    GREEN with a brand-new production importer on disk. It had never been able to fail on that
+    spelling: a decoration, not a guard.
+
+    It now uses `dark_surface_kit`'s AST matcher (proved to fire on every spelling by
+    `test_p9_freight_domain_ships_dark.py`) and asserts an EXACT set: the one P9 composition module,
+    `freight_domain/foundation.py`. M8 was built so a missing thing becomes visible; P9 is where
+    freight starts missing things, and it reaches M8 in exactly one place."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {P9_FOUNDATION}
+    observed = importers_of("expectation")
+    assert observed - permitted == set(), (
+        f"production importers of the expectation machine: {sorted(observed - permitted)}")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) M8: the confinement would be vacuous.")
 
 
 def test_no_foreign_contract_or_transition_names_in_the_source():

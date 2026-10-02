@@ -10,10 +10,23 @@
 > simplification. The pre-simplification version of this document, with its full narrative history,
 > is in git history at `cff82d5`.
 
-**Last updated:** 2026-10-01, recording **P8 PHASE ACCEPTANCE** and the **P9 SELECTION**. *(Until the P8 acceptance commit this line was dated 2026-09-15 and recorded "**P7 PHASE ACCEPTANCE** and the **P8 SELECTION**" — TRUE WHEN WRITTEN, REPLACED rather than deleted.)* *(This line was dated 2026-09-09 and recorded the **P7 ACCEPTANCE-AUTHORITY BOOTSTRAP** — "P7's seventeen-criterion acceptance bar now EXISTS and **not one criterion is scored**" ([below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored)). That bar has since been scored in full, so the sentence is REPLACED rather than deleted — [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.)* ### **P6 IS ACCEPTED: 17/17
+**Last updated:** 2026-10-01, recording **`P9-CP-1`** (P9 in progress), after **P8 PHASE ACCEPTANCE** and the **P9 SELECTION**. *(Until the P8 acceptance commit this line was dated 2026-09-15 and recorded "**P7 PHASE ACCEPTANCE** and the **P8 SELECTION**" — TRUE WHEN WRITTEN, REPLACED rather than deleted.)* *(This line was dated 2026-09-09 and recorded the **P7 ACCEPTANCE-AUTHORITY BOOTSTRAP** — "P7's seventeen-criterion acceptance bar now EXISTS and **not one criterion is scored**" ([below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored)). That bar has since been scored in full, so the sentence is REPLACED rather than deleted — [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.)* ### **P6 IS ACCEPTED: 17/17
 required criteria PASS, and P6 is `status: COMPLETE` / `execution_state: COMPLETE` /
 `checkpoint_state: PHASE_ACCEPTANCE_COMPLETE`.**
-### **P8 IS NOW ACCEPTED TOO, AND P9 HOLDS THE SELECTOR.**
+### **P9 IS IN PROGRESS: `P9-CP-1`, THE FREIGHT-DOMAIN SPINE, IS IMPLEMENTED AND NOT REVIEWED.**
+P9 is `status: READY` (still the selector) / `execution_state: IN_PROGRESS` /
+`checkpoint_state: CHECKPOINT_IMPLEMENTED`. **A freight team's load can now be followed end to end
+as one canonical record**: twenty synthetic, deliberately hostile load histories across three
+brokerages run through the P6–P8 machines in one database and come out as canonical loads with an
+operational timeline, exact tenant-scoped reference mapping, Conflicts, Expectations,
+reconciliation results and a count of what needs a human
+(`.venv/bin/python scripts/run_freight_corpus.py`). **It is not accepted, not reviewed, not
+validated and not enabled:** no independent review has been performed — and the checkpoint touches
+tier-1 surfaces, so one is owed before merge — no P9 criterion exists or is scored, the corpus is
+synthetic development input and not design-partner evidence, V-21 and V-14 are still OPEN, it uses
+no model, and it performs no external effect. **P10 stays `BLOCKED`.** Record:
+[`p9-de1-freight-domain-spine-implementation-record.md`](p9-de1-freight-domain-spine-implementation-record.md).
+### **P8 IS ACCEPTED, AND P9 HOLDS THE SELECTOR.**
 P8 is `status: COMPLETE` / `execution_state: COMPLETE` /
 `checkpoint_state: PHASE_ACCEPTANCE_COMPLETE` — seventeen of seventeen required criteria PASS on
 `4ab694f`/`bcb864d`: fourteen adjudicated by an independent session outside the build lineage that
@@ -21,9 +34,12 @@ re-derived the evidence on that exact tree, three established by structural gate
 run #57, and the independent-review gate), with **zero blocking findings**.
 **Accepted is not enabled: it ships dark** — the governed route still answers
 `ROUTE_NOT_CONFIGURED`, and no external effect and no autonomy are enabled.
-**P9 is the sole `READY` unit — `NOT_STARTED` / `NO_CHECKPOINT`, a SELECTION and nothing more:**
-no P9 code exists, and its design-partner `validation_blockers` entry **still stands**
-([`OPEN-VALIDATION-ITEMS.md`](../product/OPEN-VALIDATION-ITEMS.md), V-21 and V-14).
+**P9 is the sole `READY` unit**, and its design-partner `validation_blockers` entry **still stands**
+([`OPEN-VALIDATION-ITEMS.md`](../product/OPEN-VALIDATION-ITEMS.md), V-21 and V-14). *(Until the
+`P9-CP-1` commit this sentence read "**P9 is the sole `READY` unit — `NOT_STARTED` /
+`NO_CHECKPOINT`, a SELECTION and nothing more:** no P9 code exists" — TRUE WHEN WRITTEN, FALSE NOW:
+P9 code exists and P9 is `IN_PROGRESS`. REPLACED rather than deleted per
+[`CLAUDE.md`](../../CLAUDE.md) §4 rule 20.)*
 ### **P7 WAS ACCEPTED BEFORE IT.** P7 is `status: COMPLETE` /
 `execution_state: COMPLETE` / `checkpoint_state: PHASE_ACCEPTANCE_COMPLETE` — all seventeen criteria
 adjudicated PASS on `9e9542e`/`69c7324` by an independent session outside P7's build lineage.
@@ -84,7 +100,7 @@ suite.
 | **P6** — foundational entities and state machines | **COMPLETE** — **17/17** | thirteen landed checkpoints — all 13 machines, 134/134 transitions; accepted by an independent phase review on CI run `34314374504`; see [below](#p6-phase-acceptance--the-contract-that-now-exists) |
 | **P7** — provenance | **COMPLETE** — **17/17** | seventeen criteria, every one required, every one adjudicated PASS on `9e9542e`/`69c7324` by an independent session outside P7's build lineage. *(Until `e9840bd` this cell read "**READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** — the sole selected unit … **every one still `PENDING`** … and that is the highest evidence-supported state". That was TRUE at `2e2e7e9` and is FALSE now — REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.)* | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [below](#p7--the-acceptance-bar-now-exists-and-nothing-is-scored) |
 | **P8** — policy, rules, brake, conflict, expectation, exception, compensation | **COMPLETE** — **17/17** — `COMPLETE` / `COMPLETE` / `PHASE_ACCEPTANCE_COMPLETE`. Seventeen criteria, every one required, every one PASS on `4ab694f`/`bcb864d`: fourteen adjudicated PASS by an independent session outside P8's build lineage (`cd0af033-2522-4a0c-b96f-a5fb8b5461a8`), which re-derived the evidence on that exact tree and returned SUPPORTED with **zero blocking findings**; three established by structural gates rather than by the reviewer's own score — `P8-AC-14` by exact-tree CI (run #57, `36921170243`, conclusion SUCCESS on `4ab694f`), `P8-AC-15` and `P8-AC-17` by the independent-review gate. The two blockers of the earlier review are closed on reproduced evidence: `P8-AC-13` (G4 qualification) and `P8-AC-11` (standing mutation anti-vacuity). **ALL SIX P8 UNITS ARE LANDED AND ACCEPTED:** `U8.1` typed policy + Action Class gate registration, `U8.2` compile-or-refuse Rules, `U8.3` the real Human Brake, `U8.4` the M7–M10 Conflict/Expectation/Exception/Compensation layer, `U8.5` the `lane`→action_class migration, and `U8.6` the `CommandIntent`→Proposal boundary. **ACCEPTED IS NOT ENABLED.** It **ships dark**: no production module binds a policy authority, the kernel's production `GateRegistry` population is still EMPTY, the governed route still answers `ROUTE_NOT_CONFIGURED`, and no external effect and no autonomy are enabled. Three nonblocking reviewer findings are carried as debt (`P8-REVIEW-01`, `P8-REVIEW-02`, `P8-REVIEW-03`; see the registry's P8 block). *(Until the P8 acceptance commit this cell read "**READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** — the sole selected unit. **ALL SIX P8 UNITS ARE IMPLEMENTED AND LANDED ON THIS WORKING BRANCH** … **BUT P8 IS NOT ACCEPTED AND NOTHING IS SCORED:** CI run #53 concluded SUCCESS on the P8 candidate tree `319debc`, and a Tier-1 independent phase-acceptance review of that candidate **returned BLOCKED** … a fresh phase acceptance has not run … so P8 stays `READY` / `NOT_STARTED` / `NO_CHECKPOINT` and is **not** `COMPLETE`". That was TRUE on `319debc` and is FALSE NOW: the remediation landed, CI #57 concluded SUCCESS on `4ab694f`, and the fresh review supports acceptance. REPLACED rather than deleted per CLAUDE.md §5 rule 20.)* *(Until `31f189f` this cell read "**`U8.1` … IS LANDED ON THIS WORKING BRANCH** at `9d9bb53`, locally verified … but **NOTHING is scored**: no phase review, no CI run … `U8.2`–`U8.6` are NOT STARTED." That was TRUE WHEN WRITTEN — the U8.1-only landing moment — and is FALSE NOW: `U8.2`–`U8.6` have since landed on this branch and been locally verified, and the candidate has had CI #53 and an independent phase review. REPLACED rather than deleted per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20.)* | [`IMPLEMENTATION-REGISTRY.yaml`](IMPLEMENTATION-REGISTRY.yaml) unit P8, `adjudication_evidence`; [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [`pr-sequence.md`](pr-sequence.md) §P8; [`p8-phase-acceptance-review-319debc.md`](p8-phase-acceptance-review-319debc.md) — the earlier BLOCKED review, superseded |
-| **P9** — freight-domain projections, mappings, communications ingestion | **READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** — the sole selected unit: it took the selector in the commit that accepted the phase it depends on, as the registry's status model requires. **`READY` IS A SELECTION AND NOTHING MORE:** no P9 code exists, P9 carries no `acceptance_criteria` block yet, and its `validation_blockers` entry **STILL STANDS** — "SEVERAL DOMAIN RULES REQUIRE DESIGN-PARTNER VALIDATION". Two open `ARCHITECTURE_BLOCKER` items block P9: **V-21** (order/load/movement/leg/stop cardinality — it blocks any freight-domain schema) and **V-14** (where the agreed buy rate is recorded before the rate confirmation exists). Selecting P9 validates neither, and no design-partner evidence was recorded here: a P9 session that reaches an unresolved domain rule **stops and requests evidence** ([`CLAUDE.md`](../../CLAUDE.md) §5). | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [`OPEN-VALIDATION-ITEMS.md`](../product/OPEN-VALIDATION-ITEMS.md) |
+| **P9** — freight-domain projections, mappings, communications ingestion | **READY** / **`IN_PROGRESS`** / **`CHECKPOINT_IMPLEMENTED`** — the sole selected unit, with **`P9-CP-1` (the freight-domain spine) IMPLEMENTED AND NOT INDEPENDENTLY REVIEWED**. What exists: the External Entity Mapping (the one new table, `external_entity_mappings`), a canonical freight model with field-level provenance projected from M5 Observations and M6 Identity Binding Claims, Conflicts/Expectations/Exceptions raised through M7/M8/M9, a derived Operational Timeline and Financial Reconciliation Result, and a synthetic corpus of twenty hostile load histories whose labeled outcomes are all asserted. **What does NOT exist:** an acceptance block, any scored criterion, an independent review (owed before merge — tier-1 surfaces were touched), per-entity domain tables, model-assisted interpretation, live ingestion, and any external effect. *(Until the `P9-CP-1` commit this cell read "**READY** / **`NOT_STARTED`** / **`NO_CHECKPOINT`** … **`READY` IS A SELECTION AND NOTHING MORE:** no P9 code exists" — TRUE WHEN WRITTEN, REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §4 rule 20.)* P9 carries no `acceptance_criteria` block yet, and its `validation_blockers` entry **STILL STANDS** — "SEVERAL DOMAIN RULES REQUIRE DESIGN-PARTNER VALIDATION". Two open `ARCHITECTURE_BLOCKER` items block P9: **V-21** (order/load/movement/leg/stop cardinality — it blocks any freight-domain schema) and **V-14** (where the agreed buy rate is recorded before the rate confirmation exists). Selecting P9 validates neither, and no design-partner evidence was recorded here: a P9 session that reaches an unresolved domain rule **stops and requests evidence** ([`CLAUDE.md`](../../CLAUDE.md) §5). | [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md); [`OPEN-VALIDATION-ITEMS.md`](../product/OPEN-VALIDATION-ITEMS.md) |
 | **P10–P14** | **BLOCKED** behind P9 | *(this row read "**P9–P14** — **BLOCKED** behind P8" until the P8 acceptance commit moved the selector to P9, and "**P8–P14** — **BLOCKED** behind P7" until `e9840bd` accepted P7; REPLACED per [`CLAUDE.md`](../../CLAUDE.md) §5 rule 20)* — [`PHASE-OUTPUTS.md`](PHASE-OUTPUTS.md) |
 
 ### Live status — machine-derived, reconciled against the registry
@@ -109,7 +125,7 @@ suite.
 | P6 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
 | P7 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
 | P8 | COMPLETE | COMPLETE | PHASE_ACCEPTANCE_COMPLETE |
-| P9 | READY | NOT_STARTED | NO_CHECKPOINT |
+| P9 | READY | IN_PROGRESS | CHECKPOINT_IMPLEMENTED |
 | P10 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
 | P11 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
 | P12 | BLOCKED | NOT_STARTED | NO_CHECKPOINT |
@@ -1466,6 +1482,7 @@ missing from the written account.
 | **P6 tenant — M12** (1) | `rules` |
 | **P7 tenant — Evidence** (2) | `evidence`, `evidence_spans` |
 | **P8 tenant — the policy epoch** (1) | `policy_epochs` |
+| **P9 tenant — External Entity Mapping** (1) | `external_entity_mappings` |
 
 ### **P6/M13 ADDS NO ROW TO THIS TABLE, AND THAT IS CORRECT RATHER THAN AN OMISSION.** M13 **hardens**
 `brakes` and `platform_brake`, which P3 created and which are already carried above as **P3 tenant**

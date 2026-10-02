@@ -222,21 +222,27 @@ def test_owner_asserted_is_never_machine_recomputed_and_the_value_is_preserved()
 
 
 def test_the_provenance_module_ships_dark_with_no_production_importer():
-    """P7 ships dark: nothing in production imports the provenance-safety module. Discovered by AST
-    over the whole src tree with the denominator printed — never a hand-enumerated filename list."""
-    importers = []
-    inspected = 0
-    for path in require_population(sorted(SRC.rglob("*.py")), "src modules"):
-        if path.name == "provenance.py":
-            continue
-        inspected += 1
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith(".provenance"):
-                importers.append(path.name)
-            if isinstance(node, ast.ImportFrom) and not node.module and any(
-                a.name == "provenance" for a in node.names
-            ):
-                importers.append(path.name)
-    print(f"AC-15 (provenance): inspected {inspected} src modules for a production importer")
-    assert inspected > 0
-    assert not importers, f"the provenance-safety module has production importer(s): {importers}"
+    """### REPLACED AT P9, AND IT HAD TO BE (CLAUDE.md sec 4 rule 20, sec 6). The guard this replaces
+    matched `node.module.endswith(".provenance")`. For `from .provenance import X` the AST module is
+    `provenance` — no dot — so the ordinary sibling import was INVISIBLE to it: `linker.py` and
+    `lineage.py` have imported this module since P7 and it never saw them, and it did not see P9's
+    `from ..provenance import ...` either. It could not fail on the spellings this codebase uses.
+
+    It now uses `dark_surface_kit`'s matcher and asserts an EXACT set: the two P7 surfaces that compose
+    the provenance core (`linker.py`, `lineage.py`) and the one P9 composition module
+    `freight_domain/foundation.py`, through which every freight fact is assigned its provenance from
+    how it was acquired (R-P1)."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"src/freight_recon/linker.py", "src/freight_recon/lineage.py", P9_FOUNDATION}
+    observed = importers_of("provenance")
+    assert observed - permitted == set(), (
+        f"the provenance-safety module has unexpected importer(s): {sorted(observed - permitted)}")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) the provenance module: the "
+        f"confinement would be vacuous.")

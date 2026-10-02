@@ -1023,6 +1023,18 @@ class M8Machine:
         if not covering:
             # Coverage exists but not THROUGHOUT the required window — partial, not health.
             return ("PARTIAL", None)
+        # ### A NON-HEALTHY READING ANYWHERE IN THE WINDOW WINS (I8, M-32). Found at P9, when freight
+        # histories first supplied real coverage records: this read took the FIRST row spanning the
+        # window, so a `DOWN` outage recorded inside a `HEALTHY` month returned HEALTHY and the missed
+        # deadline was ruled OVERDUE — our blindness converted into a counterparty's fault, which is
+        # the one thing the honesty split exists to prevent. A channel was healthy THROUGHOUT a window
+        # only if no persisted reading says otherwise for any part of it. This is strictly fail-closed:
+        # it can turn an OVERDUE into an INDETERMINATE and never the reverse.
+        contradicting = [r for r in rows
+                         if r["health"] != HEALTHY_COVERAGE
+                         and r["window_start"] < window_end and r["window_end"] > window_start]
+        if contradicting:
+            return (contradicting[0]["health"], contradicting[0]["coverage_id"])
         row = covering[0]
         return (row["health"], row["coverage_id"])
 

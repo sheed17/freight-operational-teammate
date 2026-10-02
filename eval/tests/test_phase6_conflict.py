@@ -722,28 +722,29 @@ def test_six_kinds_are_closed():
 
 
 def test_ships_dark_no_production_importer():
-    """### NO PRODUCTION-ENABLED module imports the conflict module (rule 20; corrected when M12 landed).
-    M12 (the Rule, `rule.py`) is the one landed sibling that CALLS M7's `raise_conflict` entry point — RU-3
-    fails closed into a RULE_VS_RULE conflict through it (§3.7 "CALLS it"; the permanent scenario asserts
-    "M12 reaches M7 by import: True"). M12 EDITS NO PART OF M7 (conflict.py is byte-unchanged, no second
-    conflict table or vocabulary) and M12 ITSELF SHIPS DARK — nothing production imports `rule.py` — so M7
-    stays unreachable from any production path. `rule.py` and the probe are the only importers."""
-    import ast
-    src_dir = ROOT / "src" / "freight_recon"
-    offenders = []
-    for path in src_dir.rglob("*.py"):
-        if path.name in ("conflict.py", "rule.py"):   # rule.py: the landed dark sibling caller (M12)
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and "conflict" in node.module:
-                if node.module.endswith("conflict") and "conflicts" not in node.module:
-                    offenders.append(f"{path.name}: from {node.module}")
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.endswith(".conflict"):
-                        offenders.append(f"{path.name}: import {alias.name}")
-    assert offenders == [], offenders
+    """### THE PRODUCTION IMPORTERS OF THE CONFLICT MACHINE ARE AN EXACT, NAMED SET (rule 20; corrected
+    when M12 landed, and REPLACED AGAIN AT P9 — replaced, not deleted, not relaxed).
+
+    M12 (`rule.py`) is the landed dark sibling that CALLS M7's `raise_conflict` (RU-3 fails closed into
+    a RULE_VS_RULE conflict). P9's freight-domain spine is the second: contradictory appointment
+    windows, a billed line that disagrees with the rate confirmation and contradicting tracking sources
+    are raised THROUGH M7 rather than through a second conflict system, and they reach it through the
+    one composition module `freight_domain/foundation.py` (itself proved dark by
+    `test_p9_freight_domain_ships_dark.py`). Neither edits M7. A THIRD importer still turns this RED,
+    and the matcher is `dark_surface_kit`'s, which sees every import spelling."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"src/freight_recon/rule.py", P9_FOUNDATION}
+    observed = importers_of("conflict")
+    assert observed - permitted == set(), (
+        f"unexpected production importer(s) of the conflict machine: {sorted(observed - permitted)}")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) M7: the confinement would be vacuous.")
 
 
 def test_m7_does_not_import_m6_or_m3():

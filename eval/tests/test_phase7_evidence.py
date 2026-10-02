@@ -294,25 +294,31 @@ def _src_modules() -> list[Path]:
 
 
 def test_the_evidence_store_ships_dark_with_no_production_importer():
-    """P7 ships dark: nothing in production imports the Evidence STORE (`evidence.py`). Discovered by
-    AST over the whole src tree with the denominator printed — never a hand-enumerated filename list
-    (CLAUDE.md sec 6). Importing the phase7_evidence MIGRATION is expected (schema.py builds tables);
-    importing the store would join a dark surface to a live path."""
-    importers = []
-    inspected = 0
-    for path in _src_modules():
-        if path.name == "evidence.py":
-            continue
-        inspected += 1
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module in ("freight_recon.evidence", ".evidence"):
-                importers.append(f"{path.name}: from {node.module}")
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith(".evidence"):
-                importers.append(f"{path.name}: from {node.module}")
-    print(f"P7-AC-15 (evidence store): inspected {inspected} src modules for a production importer")
-    assert inspected > 0, "the ship-dark sweep inspected nothing"
-    assert not importers, f"the Evidence store has production importer(s): {importers}"
+    """### REPLACED AT P9, AND IT HAD TO BE (CLAUDE.md sec 4 rule 20, sec 6). The guard this replaces
+    matched `node.module in ("freight_recon.evidence", ".evidence")` or `.endswith(".evidence")`. The
+    AST never yields a leading dot, so a relative import — `from .evidence import EvidenceStore`, which
+    `lineage.py` has carried since P7, and `from ..evidence import EvidenceStore`, which P9 added —
+    was INVISIBLE to it. It passed for its whole life without being able to see the ordinary spelling.
+
+    It now uses `dark_surface_kit`'s matcher and asserts an EXACT set of importers of the Evidence
+    STORE: `lineage.py` (P7-internal composition — the lineage walker reads the store) and the one P9
+    composition module `freight_domain/foundation.py`, through which a freight document's bytes are
+    retained content-addressed. Importing the phase7_evidence MIGRATION is expected and is not an
+    import of the store."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"src/freight_recon/lineage.py", P9_FOUNDATION}
+    observed = importers_of("evidence")
+    assert observed - permitted == set(), (
+        f"the Evidence store has unexpected production importer(s): {sorted(observed - permitted)}")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) the Evidence store: the confinement "
+        f"would be vacuous.")
 
 
 def test_the_evidence_store_mints_no_canonical_event_and_no_gate():

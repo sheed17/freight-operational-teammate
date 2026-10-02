@@ -671,26 +671,32 @@ def test_a_legacy_database_migrates_to_the_canonical_observation_shape():
 
 
 def test_m5_ships_dark():
-    """Nothing under src/freight_recon/ imports observation, and the only script that may is the
-    probe. Discovered by scanning, never by an enumerated file list."""
-    importers: list[str] = []
-    inspected = 0
-    for path in sorted((ROOT / "src" / "freight_recon").rglob("*.py")) + \
-            sorted((ROOT / "scripts").rglob("*.py")):
-        if path.name == "observation.py":
-            continue
-        inspected += 1
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and \
-                    node.module.split(".")[-1] == "observation":
-                importers.append(path.name)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.split(".")[-1] == "observation":
-                        importers.append(path.name)
-    assert inspected > 20, f"the sweep inspected {inspected} modules; it proves nothing"
-    assert set(importers) <= {"probe_phase6_observation.py"}, (
-        f"M5 has importers outside the permitted probe: {sorted(set(importers))}. M5 ships dark.")
+    """### REPLACED AT P9 (CLAUDE.md sec 4 rule 20 — replaced, not deleted, not relaxed). For its whole
+    life this asserted that nothing under src/freight_recon/ imported `observation`, and it was right:
+    M5 landed as a machine with no caller. P9 is the phase the machine was built for — an inbound
+    freight record becomes an Observation — so "zero importers" became false the day freight arrived.
+
+    ### THE PROPERTY IS TIGHTENED TO "EXACTLY THESE, BY PATH", NOT RELAXED TO "WHATEVER". What the
+    guard protects is that M5 must not acquire importers scattered through the codebase, each composing
+    it its own way. One named composition module — `freight_domain/foundation.py`, itself proved dark
+    by `test_p9_freight_domain_ships_dark.py` — is the opposite of that, and a SECOND importer,
+    anywhere, still turns this RED. The matcher is `dark_surface_kit`'s, which sees every import
+    spelling; this guard's own matcher did, but three of its siblings' did not."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"scripts/probe_phase6_observation.py", P9_FOUNDATION}
+    observed = importers_of("observation", scripts=True)
+    assert observed - permitted == set(), (
+        f"M5 has importers outside the permitted set: {sorted(observed - permitted)}. Exactly one "
+        f"production module composes M5 ({P9_FOUNDATION}); a second is a second way to ingest.")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) M5: the confinement assertion above "
+        f"would be passing over a tree in which M5 is not wired at all.")
 
 
 def test_m5_authorizes_nothing():

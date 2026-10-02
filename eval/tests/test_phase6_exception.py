@@ -898,33 +898,27 @@ def test_the_neighbouring_machines_are_not_built():
 
 
 def test_m9_ships_dark_no_production_importer():
-    """### NO PRODUCTION-ENABLED module imports the exception machine (rule 20; corrected when M12 landed).
-    M12 (the Rule, `rule.py`) is the one landed sibling that CALLS M9's `raise_exception` entry point —
-    RU-8's expiry and the override-rate seam raise a human-confirmation Exception through it (§3.7 "CALLS
-    it"; the permanent scenario asserts "M12 reaches M9 by import: True"). M12 EDITS NO PART OF M9 (no FK,
-    no mirror column, no migration; exception.py is byte-unchanged) and M12 ITSELF SHIPS DARK — nothing
-    production imports `rule.py` (proved by test_phase6_rule.py::test_m12_ships_dark_no_production_importer)
-    — so M9 stays unreachable from any production path. `rule.py` and the probe are the only importers."""
-    import ast
-    pkg = ROOT / "src" / "freight_recon"
-    offenders = []
-    for py in pkg.rglob("*.py"):
-        if py.name in ("exception.py", "rule.py"):   # rule.py: the landed dark sibling caller (M12)
-            continue
-        tree = ast.parse(py.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                # `from .exception import X`
-                if node.module and node.module.split(".")[-1] == "exception":
-                    offenders.append(str(py.relative_to(ROOT)))
-                # `from . import exception` (module is None/"" for a bare relative import)
-                if not node.module and any(a.name == "exception" for a in node.names):
-                    offenders.append(str(py.relative_to(ROOT)))
-            if isinstance(node, ast.Import):
-                for a in node.names:
-                    if a.name.split(".")[-1] == "exception":
-                        offenders.append(str(py.relative_to(ROOT)))
-    assert offenders == [], f"production importer(s) of the exception machine: {offenders}"
+    """### THE PRODUCTION IMPORTERS OF THE EXCEPTION MACHINE ARE AN EXACT, NAMED SET (rule 20; corrected
+    when M12 landed, and REPLACED AGAIN AT P9 — replaced, not deleted, not relaxed).
+
+    M12 (`rule.py`) is the landed dark sibling that CALLS M9's `raise_exception`. P9's freight-domain
+    spine is the second caller: an accessorial nobody authorized, an invoice with no rate confirmation
+    to reconcile against and an unusable required document are raised THROUGH M9, via the one
+    composition module `freight_domain/foundation.py` (itself proved dark by
+    `test_p9_freight_domain_ships_dark.py`). Neither edits M9. A THIRD importer still turns this RED."""
+    import sys
+
+    kit_dir = str(ROOT / "eval" / "tests")
+    if kit_dir not in sys.path:
+        sys.path.insert(0, kit_dir)
+    from dark_surface_kit import P9_FOUNDATION, importers_of
+
+    permitted = {"src/freight_recon/rule.py", P9_FOUNDATION}
+    observed = importers_of("exception")
+    assert observed - permitted == set(), (
+        f"production importer(s) of the exception machine: {sorted(observed - permitted)}")
+    assert permitted - observed == set(), (
+        f"{sorted(permitted - observed)} no longer import(s) M9: the confinement would be vacuous.")
 
 
 def test_no_unregistered_exception_event_name_in_the_machine():
