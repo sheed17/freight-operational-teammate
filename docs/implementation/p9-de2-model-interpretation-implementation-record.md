@@ -8,8 +8,13 @@
 > **The corpus is synthetic development input.** Nothing here is a design-partner observation, no
 > freight rule is validated by it, and V-21 and V-14 remain **OPEN**. A score below is a measurement
 > of one model on invented language, not evidence about a customer's inbox.
-> **No independent review has been performed.** Tier-1 surfaces were touched (§6); one focused
-> independent review is owed before merge ([`CLAUDE.md`](../../CLAUDE.md) §7).
+> **Tier-1 surfaces were touched (§6); one focused independent review is owed before merge**
+> ([`CLAUDE.md`](../../CLAUDE.md) §7). A targeted independent review of candidate `78d4584` was
+> performed on 2026-10-02 by a session that did not build it. It found one blocking defect, repaired
+> in a separate commit (F-14, §5), and the nonblocking debt `P9-D21`–`P9-D28` (§7). **That review is
+> not recorded in the registry**, which still carries `independent_review_report: null` for this
+> checkpoint: no report file is committed, and it scored no P9 criterion and reviewed `P9-CP-1` not
+> at all.
 
 ## 1. What a broker can now do that they could not before
 
@@ -155,6 +160,7 @@ is debt `P9-D13`.
 | F-10 | **A counterparty's sentence could confirm an appointment.** A fixture assert defaulted an appointment claim's status to CONFIRMED and the projection observed it. | **Fixed for read language.** A claim read from text states a window only; REQUESTED is not CONFIRMED (CD-13). |
 | F-11 | **The one-harness guard was blind to indirect reach.** It looked for a direct `freight_domain` import; a second script reaching the spine through `eval/freight_corpus` left it green. | **Replaced** (rule 20): it now counts a `freight_corpus` import as reaching the spine, names two harnesses by exact set, and forbids production code from importing the corpus. Mutants for both routes. |
 | F-12 | **An Expectation raised on a binding that is later corrected stays owed** (seen in R03: a POD expectation on the load a delivery report was wrongly bound to). | **Recorded** — it is `P9-D2` reaching a new place. Owned and visible. |
+| F-14 | **An amount that keeps only PART of a written number was accepted as read from the text** (found by independent review of `78d4584`). The amount check was containment: `1,950.00` is contained in `$11,950.00`, `150` in `2150`. An invoice billing $11,950.00 against a signed $1,950.00 rate confirmation, read with its leading digit dropped, became a gate-readable `MODEL_EXTRACTED` linehaul of $1,950.00 and came out **RECONCILED** — no discrepancy, no Conflict, nobody told. | **Fixed.** `amount_written` requires the WHOLE number: a match may not touch another digit, nor a `,` / `.` joining it to one, and for a document it must sit on the line that was quoted, with its neighbours looked up in the whole text so a quote cut mid-number hides nothing. The misread invoice is now an unreadable document a named human is asked to read. Regression test and three mutants. |
 | F-13 | **The fixtures knew things the text does not say.** "at the dock, checked in" was labeled AT_PICKUP. A reader cannot know which dock. | An arrival with no stated stop is **not placed** (dropped with a reason). The raw corpus says "at the shipper" where the fixture relied on knowing. |
 
 ## 6. Safety surfaces touched — tier 1, independent review owed before merge
@@ -170,7 +176,8 @@ is debt `P9-D13`.
 - **No migration, no kernel change, no gate, no effect path, no production caller.**
 
 **Mutation proof.** `scripts/mutate_p9_interpretation.py` — 41 mutants, 41 caught on the first full
-run. Each reintroduces one real defect; the named guard is green before, RED under it, and green after
+run; the independent review added three for F-14 (containment restored; the amount checked against
+the quote alone; the amount accepted anywhere in the document), so the battery now carries 44. Each reintroduces one real defect; the named guard is green before, RED under it, and green after
 an in-memory byte-for-byte restore. `scripts/mutate_p9_freight_domain.py` (the P9-CP-1 battery) was
 re-run against the changed spine: 42 of 42 caught, after two anchors were repaired because the code
 they mutate moved — the "conversational rate is not weakened" mutant, and the "review claimed" mutant,
@@ -187,13 +194,21 @@ and projection hunks. F-9 and F-10 are independent fixes and should stay.
 |---|---|---|
 | `P9-D12` | An amount stated without a currency is read in the load's sell-rate currency. Whether an unstated currency may be assumed at all is **NEEDS VALIDATION**. | The resulting fact is weakened to `MODEL_INFERRED`: it cannot gate or dispute. With no single load currency there is no amount. |
 | `P9-D13` | Vision extraction is not behind the gateway and cannot use `gpt-6-luna` (§4). | The legacy surface is unchanged and keeps its own model. |
-| `P9-D14` | An appointment time stated without an end is a zero-width window, so "we're set for 1300" disputes a 13:00–15:00 window. Whether containment is agreement is **NEEDS VALIDATION**. | It can only raise a Conflict a human looks at. |
+| `P9-D14` | An appointment time stated without an end is a zero-width window, so "we're set for 1300" disputes a 13:00–15:00 window. Whether containment is agreement is **NEEDS VALIDATION**. | It raises a Conflict a human owns, and it authorizes nothing. **But a window in conflict raises no arrival Expectation**: when the point time is said *before* the system of record confirms the window that contains it, no arrival deadline is ever raised for that stop, and a truck that never shows is not reported as late until the human resolves the Conflict (verified in review; said after, the Expectation already exists and goes OVERDUE). |
 | `P9-D15` | A model reads a message with no load context, so an arrival that does not say where ("checked in") is not placed. | Nothing is guessed; the message stays on the load's timeline. |
 | `P9-D16` | The evidence quote and stated support of a model-proposed candidate are not persisted on the M6 claim (only the method, provenance, owner and queue order are). | The claim is still human-owned and unbound. |
 | `P9-D17` | Only zero-candidate records get model candidates; a deterministic ambiguity is not ranked by a model. | The deterministic candidates stand, human-owned. |
 | `P9-D18` | `.env.example` still documents the old defaults: this session's permission settings deny writing it. | The gateway's defaults are in code; the replacement text is in the handoff. |
 | `P9-D19` | The eval measures one model on a small synthetic corpus, with short inputs. No real mailbox, no long thread, no scanned document, no adversarial prompt-injection suite beyond two cases. | Nothing is enabled on it. |
 | `P9-D20` | What leaves the brokerage for the provider — message and document text, and for a candidate request a summary of that brokerage's own loads with party and driver names — has had no data-governance review. `store=false` is set on every call. | No real data is sent: the corpus is synthetic and nothing live calls the boundary. Required before any real mailbox is read. |
+| `P9-D21` | The amount check proves a number is WRITTEN, whole — on the quoted line of a document, anywhere in a message — not that it is the charge. A whole number inside an identifier (`INV-88213`), a time, or one carrying a magnitude suffix (`175k`) still grounds; in a message the amount need not sit inside the evidence quote. | It needs a reader to mis-associate, not mis-copy. A document still needs exactly one linehaul line; a message amount is a claim and authorizes nothing. |
+| `P9-D22` | Identifiers read off a document (`document_number`, `carrier_mc`) and reference values are still checked by containment: `IW-910` grounds against `IW-9107`, `MC-77120` against `MC-771203`. | No binding uses a model-read reference. A truncated invoice number changes the payable's key; a truncated MC is `P9-D23`. |
+| `P9-D23` | **An invoice the reader attributes to no carrier is attached to no movement, and nobody is told.** When `carrier_mc` is omitted (allowed: many invoices print none), truncated, or written in another format than the TMS holds, the payable exists, no reconciliation sees it (`COMPUTED`, no discrepancy), no Exception is raised and the load needs no attention — verified in review with an invoice overbilled by $10,000. | It fails closed for money: an unattributed payable can never be RECONCILED, and nothing pays. It is a silent stall, not a wrong payment. **Must be closed — an Exception with an owner — before anything ages or acts on payables (P10).** The attribution rule is P9-CP-1's (V-21). |
+| `P9-D24` | A reader that reports one promise twice (same quote, same deadline — or "call and send the POD in an hour" as two actions) raises two Expectations and, unmet, two Exceptions. | Duplicate work a human sees, discharged by the same answer. Whether that sentence is one obligation or two is a product decision. |
+| `P9-D25` | `PROMPT_VERSION` and `SCHEMA_VERSION` are bumped by hand. Nothing fails if the instruction text or an output model changes without a bump, so the committed recording would replay answers to a prompt that is no longer asked and the offline eval would keep reporting the old scores. | Development and eval only. A replayed reading passes the same grounding as a live one and is never authority. |
+| `P9-D26` | Spend is bounded per record (at most two requests, each at most three attempts) but not per call or per process: a message or document of any length is sent whole, the token budget is checked *before* a call so one oversized record overshoots it by its own size, and a gateway built without an `InferenceBudget` has no run cap. | The only live constructor is the eval script, which always passes a budget; corpus inputs are short. Required before a real mailbox is read. |
+| `P9-D27` | The recording store keeps the validated reply in plaintext — verbatim evidence quotes, amounts as written, party names, identifiers. Nothing structural stops `recording=` being passed to a gateway reading real traffic. The live eval also loads every variable in `.env`, not only the provider key. The "one opt-in site" guard matches the literal keyword `allow_live=True`; a non-literal value or an injected `client=` is invisible to it. | The corpus is synthetic and there is one constructor site. The P4 import gate covers every inference module (an adapter import in any of them turns it RED — verified by mutation), and one test names the single caller of a gateway task. Belongs with `P9-D20`. |
+| `P9-D28` | A sender with neither an address nor a name is identified by ROLE, so two such drivers on one inbox are one source and the later statement supersedes the earlier with no Conflict — F-9's defect, surviving in that corner. | Every corpus sender has an address. An ingestion adapter must supply one; it does not exist yet. |
 | `P9-D2` | Now also: an Expectation raised on a since-corrected binding stays owed (F-12). | As recorded in P9-CP-1. |
 | `P9-D11` | Still no P9 `acceptance_criteria` block. | Not the builder's to score (CLAUDE.md §10). |
 

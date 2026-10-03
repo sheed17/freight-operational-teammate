@@ -24,6 +24,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -33,6 +34,13 @@ for entry in (str(ROOT / "src"), str(ROOT / "eval")):
         sys.path.insert(0, entry)
 
 from freight_corpus import raw_histories as scenarios_module  # noqa: E402
+from freight_corpus.builders import (  # noqa: E402
+    HistoryBuilder,
+    charges,
+    load_ref,
+    movement,
+    stop,
+)
 from freight_corpus.histories import build_corpus  # noqa: E402
 from freight_corpus.interpretation_cases import (  # noqa: E402
     CORRELATION_CASES,
@@ -48,8 +56,21 @@ from freight_corpus.interpretation_eval import (  # noqa: E402
     run_labeled_messages,
     run_stage,
 )
-from freight_corpus.parties import CEDAR, NORTHLINE, NORTHLINE_SMS, SETUPS  # noqa: E402
-from freight_corpus.raw import build_raw_corpus, oracle_responder, raw_message_labels  # noqa: E402
+from freight_corpus.parties import (  # noqa: E402
+    CARRIERS,
+    CEDAR,
+    CUSTOMERS,
+    NORTHLINE,
+    NORTHLINE_OPS,
+    NORTHLINE_SMS,
+    SETUPS,
+)
+from freight_corpus.raw import (  # noqa: E402
+    build_raw_corpus,
+    document_text,
+    oracle_responder,
+    raw_message_labels,
+)
 from freight_corpus.raw_histories import (  # noqa: E402
     APPROVED_BY_MIKE,
     CHECK_IN,
@@ -67,6 +88,7 @@ from freight_corpus.reading import (  # noqa: E402
     message,
     paper,
     promise,
+    rate,
     reference,
     status,
 )
@@ -79,6 +101,7 @@ from freight_recon.freight_domain.foundation import format_instant  # noqa: E402
 from freight_recon.freight_domain.history import FreightHistory  # noqa: E402
 from freight_recon.freight_domain.interpretation import (  # noqa: E402
     FreightInterpreter,
+    amount_written,
     commitment_deadline,
     convert_document,
     convert_message,
@@ -363,6 +386,127 @@ def test_a_document_reading_is_all_or_nothing(tmp_path):
     assert convert_document(wrong_type, text=text, declared_doc_type="CARRIER_INVOICE").problems
     assert convert_document(DocumentTextInterpretation.model_validate(good), text=text,
                             declared_doc_type="CARRIER_INVOICE").extracted["total_minor"] == 232500
+
+
+def _billed_against_a_rate_con(invoice: dict) -> tuple[FreightHistory, dict[str, dict]]:
+    """One load: a signed rate confirmation for $1,950.00, then a carrier invoice. Returns the
+    history and each raw document's text with the correct reading of it."""
+    h = HistoryBuilder("RX1", "an invoice billed against a signed rate confirmation", NORTHLINE,
+                       day="2026-06-17", zone="America/Chicago", hostile=("raw_language",))
+    load, carrier = "LD-59001", CARRIERS["ironwood"]
+    papers: dict[str, dict] = {}
+
+    def paper_(label: str, at: str, doc_type: str, block: dict, signed: bool | None) -> None:
+        text, reading = document_text(doc_type, {"carrier_mc": carrier["mc"], **block},
+                                      load=load, carrier_name=carrier["name"])
+        papers[label] = {"text": text, "reading": reading}
+        h.raw_document(label, at, doc_type, text, refs=(load_ref(load),), via=NORTHLINE_OPS,
+                       signed=signed)
+
+    h.tms("covered", h.t("07:30"), load=load, status="COVERED", version=1,
+          customer=CUSTOMERS["prairie_ag"], po="PO-9901", bol="BOL-79001", sell=charges(248000),
+          stops=(stop("S1", "PICKUP", 1, "Prairie Ag Decatur", "America/Chicago"),
+                 stop("S2", "DELIVERY", 2, "Delta Crop Services", "America/Chicago")),
+          movements=(movement("M1", carrier, pro="PRO-79001"),))
+    paper_("rate-con", h.t("09:40"), "RATE_CON",
+           {"ratecon_number": "RC-59001", **charges(195000)}, True)
+    paper_("carrier-invoice", h.t("15:20", 1), "CARRIER_INVOICE",
+           {"invoice_number": "IW-9901", **invoice}, None)
+    h.clock("end", h.t("12:00", 2))
+    return h.build({}), papers
+
+
+def test_an_amount_that_keeps_only_part_of_a_written_number_is_not_that_number(tmp_path):
+    """The model never chooses an amount — and "1,950.00" is not what an invoice that says
+    "$11,950.00" states. Containment accepted it: that invoice, read with its leading digit dropped,
+    matched the signed $1,950.00 rate confirmation and came out RECONCILED, $10,000 overbilled and
+    clean. A number that keeps only some of a written number's digits is now refused; the document
+    becomes one a named human is asked to read, and nothing reconciles on it."""
+    written = [("2150", "we are at 2150 all in"), ("$2,150.00", "Line haul: $2,150.00"),
+               ("2150", "Line haul: 2150.00"), ("175", "Detention was 175."),
+               ("175", "detention 175, lumper 240")]
+    partial = [("1,950.00", "Line haul: $11,950.00"), ("950.00", "Line haul: $1,950.00"),
+               ("150", "we are at 2150 all in"), ("215", "we are at 2150 all in"),
+               ("175", "detention 175.50 owed"), ("7700", "Load 7700412"), ("1", "$1,950.00"),
+               ("50.00", "Fuel surcharge: $150.00"), (None, "175"), ("", "175")]
+    assert [amount_written(a, t) for a, t in written] == [True] * len(written)
+    assert [amount_written(a, t) for a, t in partial] == [False] * len(partial)
+
+    # In a MESSAGE: a rate cut out of the rate, a "rate" cut out of the load number, and a detention
+    # amount cut out of the rate. Only the number that is really written survives.
+    body = "Load 7700412 delivered. We are at 2150 all in. Detention applies at the receiver."
+    quote = "We are at 2150 all in"
+    reading = MessageInterpretation.model_validate(message(
+        rates=[rate("215", quote), rate("7700", quote), rate("2150", quote)],
+        accessorials=[charge("DETENTION", "Detention applies at the receiver", amount="150")]))
+    converted = convert_message(reading, body=body, subject="",
+                                as_of_utc="2026-06-01T17:00:00.000Z", zone="America/Chicago")
+    assert [(a["type"], a["amount_minor"]) for a in converted.asserts] == [
+        ("accessorial_claim", None), ("rate", 215000)], converted.asserts
+    assert sorted(d["item"] for d in converted.dropped) == ["accessorial_amount", "rate", "rate"]
+
+    # On a DOCUMENT the amount must be whole ON THE LINE THAT WAS QUOTED. The same invoice also
+    # bills a real $1,950.00 of detention two lines down: that does not support the linehaul.
+    text, good = document_text(
+        "CARRIER_INVOICE", {"carrier_mc": "MC-771203", "invoice_number": "IW-9902",
+                            **charges(1195000, 0, {"DETENTION": 195000}, total=1390000)},
+        load="LD-59002", carrier_name="Ironwood Hauling Inc")
+    assert "Line haul: $11,950.00" in text and "Detention: $1,950.00" in text, text
+
+    def read(first_line: dict) -> Any:
+        reading = {**good, "charges": [{**good["charges"][0], **first_line}, *good["charges"][1:]]}
+        return convert_document(DocumentTextInterpretation.model_validate(reading), text=text,
+                                declared_doc_type="CARRIER_INVOICE")
+
+    assert read({}).extracted["linehaul_minor"] == 1195000, "the honest reading must still be usable"
+    dropped_digit = read({"amount_text": "$1,950.00"})
+    assert dropped_digit.extracted is None
+    assert "charge_line_0_not_supported_by_text" in dropped_digit.problems
+    # A quote that stops mid-number does not hide the digit the reading left out.
+    cut_quote = read({"amount_text": "1,950.00", "evidence_text": "1,950.00"})
+    assert cut_quote.extracted is None, "an evidence quote cut out of a longer number was accepted"
+
+    # THROUGH THE SPINE: $11,950.00 billed against a signed $1,950.00 rate confirmation.
+    history, papers = _billed_against_a_rate_con(charges(1195000, total=1195000))
+    invoice = papers["carrier-invoice"]
+    misread = {**invoice["reading"], "charges": [
+        {**line, "amount_text": line["amount_text"].replace("11,950.00", "1,950.00")}
+        for line in invoice["reading"]["charges"]]}
+    assert [line["amount_text"] for line in misread["charges"]] == ["$1,950.00", "$1,950.00"]
+
+    def through_the_spine(name: str, invoice_reading: dict) -> Run:
+        readings = {papers["rate-con"]["text"]: papers["rate-con"]["reading"],
+                    invoice["text"]: invoice_reading}
+        return Run(tmp_path, [history], name=name,
+                   responder=lambda task, request: readings[request.text])
+
+    honest = through_the_spine("honest.db", invoice["reading"])
+    try:
+        view = honest.view(NORTHLINE, "LD-59001")
+        billed = next(iter(view.payables.values())).field_of("linehaul").facts[0]
+        assert (billed.value.amount_minor, billed.provenance_class, billed.may_gate) == (
+            1195000, "MODEL_EXTRACTED", True), "a document amount is a fact a gate may read"
+        assert [(r.status, [d.code for d in r.discrepancies]) for r in view.reconciliations] == [
+            ("DISCREPANT", ["LINEHAUL_MISMATCH"])]
+    finally:
+        honest.store.close()
+
+    run = through_the_spine("misread.db", misread)
+    try:
+        view = run.view(NORTHLINE, "LD-59001")
+        assert view.payables == {}, "an amount the invoice never states became a payable"
+        assert "RECONCILED" not in {r.status for r in view.reconciliations}, (
+            "an invoice overbilled by $10,000 reconciled clean against the rate confirmation")
+        parsed = run.observation("RX1", "carrier-invoice")["parsed"]
+        assert parsed["payload"]["extracted"] == {}
+        assert parsed["interpretation"]["status"] == "FAILED"
+        assert "charge_line_0_not_supported_by_text" in parsed["interpretation"]["failure"]
+        unavailable = [x for x in view.exceptions if x["type"] == "interpretation_unavailable"]
+        assert len(unavailable) == 1 and unavailable[0]["owner_id"] == "priya.nair"
+        # The rate confirmation, read honestly in the same run, is untouched.
+        assert next(iter(view.rate_confirmations.values())).value("linehaul").amount_minor == 195000
+    finally:
+        run.store.close()
 
 
 def test_values_read_off_a_document_point_at_spans_of_the_retained_artifact(scenarios):

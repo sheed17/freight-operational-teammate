@@ -4,7 +4,9 @@
 Each mutant reintroduces ONE real defect in model-backed interpretation and names the test that must
 turn RED under it. Three families:
 
-  * WHAT A READING MAY BECOME. Evidence no longer required; an amount that is not in the message; a
+  * WHAT A READING MAY BECOME. Evidence no longer required; an amount that is not in the message, or
+    that keeps only part of a written number's digits (containment, a quote cut mid-number, a line
+    that was not the one quoted); a
     stop guessed when none was stated; a quoted promise read as new (by structure, and by the
     reader's own flag); a deadline run from receipt, or accepted in the past; a counterparty's
     sentence confirming an appointment; two parties in one inbox collapsed into one source; an
@@ -71,6 +73,8 @@ INVENTED = f"{I}::test_the_model_cannot_invent_a_candidate_load_id"
 NEVER_BINDS = f"{I}::test_a_model_proposed_candidate_never_binds_however_clearly_it_is_supported"
 QUOTED = f"{I}::test_a_quoted_or_forwarded_promise_creates_no_second_obligation"
 EVIDENCE = f"{I}::test_an_item_whose_evidence_is_not_in_the_message_is_not_extracted"
+PARTIAL = (f"{I}::test_an_amount_that_keeps_only_part_of_a_written_number_is_not_that_"
+           f"number")
 APPOINTMENTS = (f"{I}::test_conflicting_appointment_messages_raise_a_conflict_not_a_guessed_"
                 f"overwrite")
 SDK = f"{G}::test_one_module_in_the_inference_boundary_imports_a_model_sdk"
@@ -102,10 +106,34 @@ CASES = [
     ("an amount that is NOT in the message is accepted — the model's digits are parsed without "
      "being checked against the content (the model never chooses an amount)",
      [(INTERP,
-       '    if not amount_text or not _contains(amount_text.strip().lstrip("$").strip(),\n'
-       '                                        body + "\\n" + subject):\n        return None\n',
+       '    if not amount_written(amount_text, body) and not amount_written(amount_text, subject):\n'
+       '        return None\n',
        '    if not amount_text:  # MUTANT\n        return None\n')],
      EVIDENCE),
+
+    ("an amount that keeps only PART of a written number is accepted — containment instead of the "
+     "whole number: '1,950.00' read off an invoice that says $11,950.00 reconciles clean",
+     [(INTERP,
+       '    whole = re.compile(rf"(?<!\\d)(?<!\\d[.,]){re.escape(digits)}(?:\\.0{{1,2}})?(?!\\d)'
+       '(?![.,]\\d)")\n',
+       '    whole = re.compile(re.escape(digits))  # MUTANT\n')],
+     PARTIAL),
+
+    ("a charge line's amount is checked against the QUOTE alone — an evidence quote that stops "
+     "mid-number hides the digit the reading left out",
+     [(INTERP,
+       '        if found is None or amount is None or not amount_written(\n'
+       '                charge.amount_text, text, start=found[0], end=found[1]):\n',
+       '        if found is None or amount is None or not amount_written(  # MUTANT\n'
+       '                charge.amount_text, text[found[0]:found[1]]):\n')],
+     PARTIAL),
+
+    ("a charge line's amount may be written ANYWHERE in the document — not on the line that was "
+     "quoted for it",
+     [(INTERP,
+       '                charge.amount_text, text, start=found[0], end=found[1]):\n',
+       '                charge.amount_text, text):  # MUTANT\n')],
+     PARTIAL),
 
     ("an arrival with NO stated stop is placed at the pickup — the deterministic layer guesses "
      "which facility a bare 'checked in' means",

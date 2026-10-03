@@ -491,9 +491,26 @@ def convert_message(output: MessageInterpretation, *, body: str, subject: str, a
     return result
 
 
+def amount_written(amount_text: str | None, text: str, *, start: int = 0,
+                   end: int | None = None) -> bool:
+    """Whether `text` WRITES the number `amount_text` — the WHOLE number — between `start` and `end`.
+
+    Containment is not enough. "1,950.00" is contained in "$11,950.00", "150" in "2150" and "175" in
+    "175.50", and each is a different amount: a reading that kept only part of a number's digits has
+    not read that number. So a match may not touch another digit, nor a `,` or `.` that joins it to
+    one. A trailing ".00" the reader left off is the same amount. The neighbours are looked up in the
+    WHOLE text, so an evidence quote that stops mid-number cannot hide them."""
+    digits = (amount_text or "").strip().lstrip("$").strip()
+    if not digits:
+        return False
+    end = len(text) if end is None else end
+    whole = re.compile(rf"(?<!\d)(?<!\d[.,]){re.escape(digits)}(?:\.0{{1,2}})?(?!\d)(?![.,]\d)")
+    return any(start <= found.start() and found.start() + len(digits) <= end
+               for found in whole.finditer(text))
+
+
 def _grounded_amount(amount_text: str | None, body: str, subject: str) -> int | None:
-    if not amount_text or not _contains(amount_text.strip().lstrip("$").strip(),
-                                        body + "\n" + subject):
+    if not amount_written(amount_text, body) and not amount_written(amount_text, subject):
         return None
     return parse_amount_minor(amount_text)
 
@@ -550,9 +567,9 @@ def convert_document(output: DocumentTextInterpretation, *, text: str,
     accessorials: dict[str, int] = {}
     for index, charge in enumerate(output.charges):
         found = find_quote(charge.evidence_text, text)
-        digits = charge.amount_text.strip().lstrip("$").strip()
         amount = parse_amount_minor(charge.amount_text)
-        if found is None or amount is None or not _contains(digits, text[found[0]:found[1]]):
+        if found is None or amount is None or not amount_written(
+                charge.amount_text, text, start=found[0], end=found[1]):
             result.problems.append(f"charge_line_{index}_not_supported_by_text")
             continue
         result.spans.append({"field": f"charge:{charge.line_kind}:{charge.charge_type or ''}",
