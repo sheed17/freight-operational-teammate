@@ -8,9 +8,12 @@ admitted module is itself reached by nothing live. This file is where that is pr
   1. the importer detector the replaced guards rely on fires on every import spelling — including
      the subpackage form three of the old guards could not see;
   2. inside `freight_domain/`, `foundation.py` is the ONLY module that imports a foundational machine;
-  3. nothing outside `freight_domain/` imports it, and one script runs it;
+  3. nothing outside `freight_domain/` imports it, and exactly two harness scripts run it — the
+     deterministic corpus harness, and the opt-in interpretation eval that reaches it through the
+     eval corpus package;
   4. its import closure reaches no effect-capable adapter and no effect/approval authority;
-  5. it constructs no gate, mints no witness or grant, and imports no model SDK or network client;
+  5. it constructs no gate, mints no witness or grant, and imports no model SDK or network client —
+     since deep-end 2 it may be HANDED an inference gateway, and it can build none itself;
   6. the production GateRegistry is still empty and the deployed governed route still refuses;
   7. the registry records P9 as in progress and not reviewed, with P10 still BLOCKED.
 
@@ -171,26 +174,59 @@ def test_foundation_is_the_only_freight_domain_module_that_imports_a_foundationa
 
 # ============================================================ 3. nothing live reaches it
 
-def test_nothing_outside_the_package_imports_the_freight_domain_except_its_one_harness():
+def test_nothing_outside_the_package_reaches_the_freight_domain_except_its_two_harnesses():
     """The spine has no production caller: no adapter, workflow, callback, route or operator script
-    imports it. One script runs the corpus through it, on a throwaway database."""
-    importers: list[str] = []
+    reaches it. Two harness scripts run it, each on a throwaway database.
+
+    REACHES, not merely imports. The interpretation eval never names `freight_domain`: it imports
+    the eval corpus package, which does. A guard that only looked for the direct import stayed green
+    with that second harness on disk — so a module that imports `freight_corpus` is counted as
+    reaching the spine, and no production module may import `freight_corpus` at all."""
+    direct: list[str] = []
+    reaching: list[str] = []
+    production_corpus_importers: list[str] = []
     swept = 0
     for path in sorted(SRC.rglob("*.py")) + sorted(SCRIPTS.rglob("*.py")):
         if PACKAGE in path.parents:
             continue
         swept += 1
-        if _names_package(path.read_text(encoding="utf-8"), "freight_domain"):
-            importers.append(path.relative_to(ROOT).as_posix())
-    print(f"swept {swept} modules outside freight_domain; importers: {importers}")
+        source = path.read_text(encoding="utf-8")
+        name = path.relative_to(ROOT).as_posix()
+        names_spine = _names_package(source, "freight_domain")
+        names_corpus = _names_package(source, "freight_corpus")
+        if names_spine:
+            direct.append(name)
+        if names_spine or names_corpus:
+            reaching.append(name)
+        if names_corpus and SRC in path.parents:
+            production_corpus_importers.append(name)
+    print(f"swept {swept} modules outside freight_domain; direct: {direct}; reaching: {reaching}")
     assert swept > 150, f"the sweep inspected {swept} modules; it proves nothing"
-    assert importers == ["scripts/run_freight_corpus.py"], (
-        f"the freight-domain spine is imported from outside its package by {importers}. It ships "
-        f"dark: exactly one harness script may run it.")
+    assert production_corpus_importers == [], (
+        f"production code imports the eval corpus: {production_corpus_importers}")
+    assert direct == ["scripts/run_freight_corpus.py"], (
+        f"the freight-domain spine is imported from outside its package by {direct}. It ships "
+        f"dark.")
+    assert reaching == ["scripts/run_freight_corpus.py",
+                        "scripts/run_freight_interpretation_eval.py"], (
+        f"the freight-domain spine is reached from outside its package by {reaching}. It ships "
+        f"dark: exactly two harness scripts may run it.")
+    corpus_package = sorted((ROOT / "eval" / "freight_corpus").glob("*.py"))
+    assert any(_names_package(p.read_text(encoding="utf-8"), "freight_domain")
+               for p in corpus_package), "the eval corpus no longer reaches the spine: stale guard"
+
     harness = (SCRIPTS / "run_freight_corpus.py").read_text(encoding="utf-8")
     assert "tempfile.TemporaryDirectory" in harness and "WorkflowStore" in harness
     assert not (imported_modules(harness) & (import_probe.EFFECT_CAPABLE_ADAPTERS
                                             | MODEL_AND_NETWORK_SDKS))
+    # The eval harness can reach a model — only through the inference gateway module, never an SDK
+    # of its own — and it reaches no effect-capable adapter. That it will not spend without two
+    # explicit switches is proved behaviourally in test_p9_inference_gateway.py.
+    eval_harness = (SCRIPTS / "run_freight_interpretation_eval.py").read_text(encoding="utf-8")
+    reached = imported_modules(eval_harness)
+    assert not (reached & (import_probe.EFFECT_CAPABLE_ADAPTERS | MODEL_AND_NETWORK_SDKS)), (
+        sorted(reached & (import_probe.EFFECT_CAPABLE_ADAPTERS | MODEL_AND_NETWORK_SDKS)))
+    assert "openai_responses" in reached and "LIVE_ENV" in eval_harness
 
 
 # ============================================================ 4. the import closure
@@ -216,8 +252,10 @@ def test_the_freight_domain_import_closure_reaches_nothing_effect_capable():
 # ============================================================ 5. no gate, no model, no network
 
 def test_the_freight_domain_constructs_no_gate_and_imports_no_model_or_network_client():
-    """It mints nothing and asks no model anything. `checkpoint.py` stays the sole minter of a gate
-    decision and a witness (CLAUDE.md sec 10); correlation here is deterministic."""
+    """It mints nothing, and it imports no model SDK and no network client. `checkpoint.py` stays the
+    sole minter of a gate decision and a witness (CLAUDE.md sec 10). Since deep-end 2 the spine may
+    be HANDED an inference gateway and read language through it; it cannot construct one, and
+    whatever a model proposes about correlation is routed to a human by the deterministic linker."""
     constructions: list[str] = []
     third_party: list[str] = []
     for path in _package_files():
@@ -261,8 +299,9 @@ def _field(block: str, name: str) -> str | None:
 
 
 def test_p9_is_recorded_in_progress_and_unreviewed_and_p10_is_still_blocked():
-    """P9 is IN PROGRESS with one implemented, unreviewed checkpoint whose evidence is on disk. It is
-    not COMPLETE, nothing is scored, its validation blockers stand, and P10 has not been unblocked."""
+    """P9 is IN PROGRESS with two implemented, unreviewed checkpoints, each with evidence on disk. It
+    is not COMPLETE, nothing is scored, its validation blockers stand, and P10 has not been
+    unblocked."""
     text = REGISTRY.read_text(encoding="utf-8")
     p9, p10 = _unit_block(text, "P9", "P10"), _unit_block(text, "P10", "P11")
     assert (_field(p9, "status"), _field(p9, "execution_state"), _field(p9, "checkpoint_state")) == (
@@ -273,8 +312,16 @@ def test_p9_is_recorded_in_progress_and_unreviewed_and_p10_is_still_blocked():
     assert "acceptance_criteria:" not in p9, "P9 acquired an acceptance block from its own build"
     assert not re.search(r"(?m)^\s*result:\s*PASS\b", p9), "a P9 criterion was scored PASS"
     assert "readiness_target: LOCALLY_IMPLEMENTED" in p9
+    checkpoints = re.findall(r"(?m)^      - id: (P9-CP-\d+)\s*$", p9)
+    assert checkpoints == ["P9-CP-1", "P9-CP-2"], checkpoints
     evidence = re.findall(r"(?m)^\s*implementer_evidence:\s*(\S+)\s*$", p9)
-    assert len(evidence) == 1, f"P9 names {len(evidence)} landed checkpoint(s) with evidence"
-    assert (ROOT / evidence[0]).is_file(), f"{evidence[0]} is not on disk"
-    assert re.search(r"(?m)^\s*independent_review_report:\s*null\s*$", p9), (
-        "P9-CP-1 claims an independent review report; none has been performed")
+    assert len(evidence) == len(checkpoints), (
+        f"P9 names {len(evidence)} evidence file(s) for {len(checkpoints)} landed checkpoint(s)")
+    assert len(set(evidence)) == len(evidence), "two checkpoints cite the same evidence file"
+    for path in evidence:
+        assert (ROOT / path).is_file(), f"{path} is not on disk"
+    reviews = re.findall(r"(?m)^\s*independent_review_report:\s*(\S+)\s*$", p9)
+    assert reviews == ["null"] * len(checkpoints), (
+        f"a P9 checkpoint claims an independent review report ({reviews}); none has been "
+        f"performed")
+    assert p9.count("checkpoint_state: CHECKPOINT_IMPLEMENTED") == 1 + len(checkpoints)

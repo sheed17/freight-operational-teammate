@@ -9406,11 +9406,12 @@ units:
 
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
-    # ### P9 IS `READY` / `IN_PROGRESS` / `CHECKPOINT_IMPLEMENTED` (2026-10-01, P9 deep-end 1).
+    # ### P9 IS `READY` / `IN_PROGRESS` / `CHECKPOINT_IMPLEMENTED` (2026-10-01, P9 deep-end 1;
+    # unchanged by deep-end 2 on 2026-10-02, which adds a second landed checkpoint).
     # `status` STAYS `READY`: it is the SELECTOR, and meta.status_model.status allows a unit to leave
     # READY only when a successor takes it in the same commit (P5 is the precedent for READY +
-    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - one entry in
-    # `landed_checkpoints`, whose evidence exists on disk. `checkpoint_state` is CHECKPOINT_IMPLEMENTED
+    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - two entries
+    # in `landed_checkpoints`, each with evidence on disk. (Until P9-CP-2 this said "one entry".) `checkpoint_state` is CHECKPOINT_IMPLEMENTED
     # and NOT higher: the work landed and NO independent review has been performed.
     # ### THIS IS NOT ACCEPTANCE AND NOT ENABLEMENT. P9 carries no `acceptance_criteria` block, not
     # one criterion is scored, the 40-entity model is partially exercised, and it ships dark. P10
@@ -9442,6 +9443,36 @@ units:
           (CLAUDE.md sec 7): a migration, tenant isolation, and the REPLACEMENT of eleven ships-dark
           guards. Each replaced guard carries a mutation proof that it can fail
           (scripts/mutate_p9_freight_domain.py), but CLAUDE.md sec 7 still requires ONE focused
+          independent review by someone who did not write it BEFORE MERGE. That review is owed and
+          is not claimed here.
+        criteria_scored: []
+      - id: P9-CP-2
+        name: Model-backed freight interpretation behind one inference boundary
+        checkpoint_state: CHECKPOINT_IMPLEMENTED
+        summary: >-
+          Raw freight language - a message's text, a rate confirmation's or invoice's text - is
+          read by a model through ONE narrow boundary (src/freight_recon/inference/: four typed
+          tasks, strict structured outputs, a routing check, bounded retry, a per-run budget,
+          token telemetry, record/replay; OpenAI Responses API, default model gpt-6-luna) and
+          becomes the SAME structures P9-CP-1 consumes. freight_domain/interpretation.py decides
+          what a reading may bear: every item must quote the content or it is dropped; a deadline,
+          a date and an amount are computed or parsed deterministically; a quoted promise is not a
+          new one; a claimed approval is a fraud signal and never an authorization; a
+          model-proposed load is a MODEL_INFER candidate the linker routes to a human, an id the
+          request did not supply is refused, and exact tenant-scoped resolution always runs
+          first. A failed reading leaves the record asserting nothing and tells a named human. The
+          twenty hostile histories reach every labeled outcome from their raw form, and nine
+          raw-language histories are added. Ordinary tests and CI call no model; live calls are
+          opt-in twice and budgeted. No production caller, no external effect. Ships dark.
+        implementer_evidence: docs/implementation/p9-de2-model-interpretation-implementation-record.md
+        independent_review_report: null
+        independent_review_note: >-
+          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 surfaces
+          (CLAUDE.md sec 7): one ships-dark guard REPLACED (two harness scripts now reach the
+          spine, and the guard counts indirect reach through the eval corpus), tenant isolation
+          (which loads a model is offered), the identity-binding path (model candidates through M6),
+          and a new place a provider credential is read. Each guard carries a mutation proof
+          (scripts/mutate_p9_interpretation.py). CLAUDE.md sec 7 still requires ONE focused
           independent review by someone who did not write it BEFORE MERGE. That review is owed and
           is not claimed here.
         criteria_scored: []

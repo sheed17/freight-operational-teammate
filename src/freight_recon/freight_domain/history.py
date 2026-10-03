@@ -10,11 +10,12 @@ history is evidence of customer validation, and no rule is validated by appearin
 KIND. The runtime derives the `Acquisition` from those two facts and the provenance class from the
 acquisition (R-P1). A record carrying `provenance_class` anywhere in its content is refused.
 
-### NO MODEL READS THESE RECORDS. A message's `asserts` list and a document's `extracted` block are
-the STRUCTURED stand-in for what a model will later read off the text. They are fixtures, written so
-the deterministic mechanism — a commitment becoming an Expectation, an invoice line reaching
-reconciliation — can be exercised without an LLM. When model interpretation arrives it produces these
-same structures, with `MODEL_EXTRACTED` provenance and an evidence span, and nothing downstream moves.
+### STRUCTURED OR RAW. A message's `asserts` list and a document's `extracted` block are what its
+text SAYS, as structure. A record may arrive with them already supplied — a fixture, written so the
+deterministic mechanism can be exercised with no model at all — or without them, as raw language. A
+raw record is read by a model through `interpretation.py`, which produces these same structures, each
+item carrying an evidence span, and nothing downstream moves. Either way what the text says is a
+READING of an artifact (`MODEL_EXTRACTED`): it may evidence a field and can never choose one.
 
 ### AN UNREADABLE RECORD IS NOT DROPPED. `parse_record` raises `UnparseableRecord`; intake turns that
 into an UNPARSEABLE Observation owned by a named human.

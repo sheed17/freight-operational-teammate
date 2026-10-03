@@ -17,19 +17,19 @@ four statuses and never chooses between candidates:
 `UNMAPPED` is "this tenant has no such reference". It is never "let me look in another tenant": the
 store is bound to one tenant at construction and has no method that takes another.
 
-### THE BOUNDARY FOR MODEL-ASSISTED CORRELATION. `CandidateGenerator` is where a probabilistic matcher
-will attach in a later P9 unit. It returns CANDIDATES. Candidates are never written to the mapping
-table and can never confirm a binding — the linker routes a model inference to AMBIGUOUS at any
-confidence. In this build the generator is `NoCandidates`, which returns nothing.
+### MODEL-ASSISTED CORRELATION NEVER REACHES THIS TABLE. When exact resolution finds nothing, intake
+may ask a model for CANDIDATE loads (`interpretation.py`). A candidate is never written here — `record`
+refuses model provenance — and can never confirm a binding: the linker routes a model inference to
+AMBIGUOUS at any stated support, and a human decides.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any
 
 from ..event_envelope import format_instant
 from ..migrations.phase9_external_entity_mappings import (
@@ -105,30 +105,6 @@ class Resolution:
     @property
     def entity_refs(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(m.entity_ref for m in self.active))
-
-
-@dataclass(frozen=True)
-class Candidate:
-    """A PROPOSED correlation from a non-deterministic source. Never a mapping, never a bind."""
-
-    entity_ref: str
-    source: str
-    confidence: float | None = None    # orders a human's queue; gates nothing (GR-8)
-
-
-class CandidateGenerator(Protocol):
-    """The seam for probabilistic / model-assisted candidate generation. Implementations return
-    candidates for a reference that did not resolve exactly; the caller hands them to the
-    deterministic linker, which can only ever route them to a human."""
-
-    def candidates(self, reference: ExternalReference, *, tenant: str) -> Sequence[Candidate]: ...
-
-
-class NoCandidates:
-    """The generator this build ships: deterministic matching only, no model, no fuzzy match."""
-
-    def candidates(self, reference: ExternalReference, *, tenant: str) -> Sequence[Candidate]:
-        return ()
 
 
 def _row_to_mapping(row: Any) -> Mapping:

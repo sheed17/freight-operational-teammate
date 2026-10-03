@@ -112,9 +112,8 @@ CASES = [
     ("a rate said in conversation is NOT weakened to a guess — it is retained at MODEL_EXTRACTED and "
      "becomes readable as a buy figure (V-14 interim behaviour)",
      [(PROJECTION,
-       'observation, parsed, carrier_owed(item["amount_minor"], item["currency"]),\n'
-       "                        provenance=MODEL_INFERRED))",
-       'observation, parsed, carrier_owed(item["amount_minor"], item["currency"])))')],
+       "observation, parsed, money, provenance=MODEL_INFERRED, source=speaker))",
+       "observation, parsed, money, source=speaker))")],
      f"{T}::test_a_conversational_rate_never_becomes_the_buy_rate"),
 
     ("an accessorial with NO recorded human authorization is reported AUTHORIZED — the carrier's "
@@ -278,7 +277,7 @@ CASES = [
     ("a production module OUTSIDE the package imports the freight spine — it is no longer dark",
      [(OUTSIDE, APPEND, "\n\ndef _mutant_live_caller():\n"
                         "    from .freight_domain import intake  # MUTANT\n    return intake\n")],
-     f"{D}::test_nothing_outside_the_package_imports_the_freight_domain_except_its_one_harness"),
+     f"{D}::test_nothing_outside_the_package_reaches_the_freight_domain_except_its_two_harnesses"),
     ("the freight spine can REACH an effect-capable adapter",
      [(MODEL, APPEND, "\n\ndef _mutant_reaches_an_adapter():\n"
                       "    from ..tms_write import enter_approved_payable  # MUTANT\n"
@@ -293,9 +292,12 @@ CASES = [
      f"{D}::test_the_freight_domain_constructs_no_gate_and_imports_no_model_or_network_client"),
     ("the registry CLAIMS an independent review of P9-CP-1 that has not happened",
      [(REGISTRY, "        independent_review_report: null\n        independent_review_note: >-\n"
-                 "          NO INDEPENDENT REVIEW HAS BEEN PERFORMED.",
+                 "          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 "
+                 "surfaces\n          (CLAUDE.md sec 7): a migration,",
        "        independent_review_report: docs/implementation/p9-review.md\n"
-       "        independent_review_note: >-\n          NO INDEPENDENT REVIEW HAS BEEN PERFORMED.")],
+       "        independent_review_note: >-\n"
+       "          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 "
+       "surfaces\n          (CLAUDE.md sec 7): a migration,")],
      f"{D}::test_p9_is_recorded_in_progress_and_unreviewed_and_p10_is_still_blocked"),
     ("the registry promotes P10 out of BLOCKED",
      [(REGISTRY, "  - unit_id: P10\n    name: Delivered Load Closure - shadow slice\n    status: BLOCKED",

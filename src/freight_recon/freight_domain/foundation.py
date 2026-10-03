@@ -222,10 +222,10 @@ class FreightFoundation:
 
         `exact` is `(entity_ref, mapping_id)` for every reference that resolved through an ACTIVE
         External Entity Mapping. `weak` is entities reachable only through a retired mapping or an
-        unqualified reference. `model_candidates` is the boundary a probabilistic candidate generator
-        will later feed — `(entity_ref, source)` proposed by a model. It is EMPTY in this build, and
-        whatever is passed through it can never confirm: the linker routes a model inference to
-        AMBIGUOUS at any confidence (GR-8)."""
+        unqualified reference. `model_candidates` is `(entity_ref, source)` proposed by a model for a
+        record exact resolution could not place (`interpretation.py`). Whatever is passed through it
+        can never confirm: the linker routes a model inference to AMBIGUOUS at any confidence
+        (GR-8)."""
         signals = [Signal(match_method="EXACT_ID", identifier=entity_ref, source=mapping_id)
                    for entity_ref, mapping_id in exact]
         signals.extend(Signal(match_method="MODEL_INFER", identifier=entity_ref, source=source)
@@ -295,6 +295,34 @@ class FreightFoundation:
                           owner_id=owner_id, actor_id="freight-domain-linker")
         return BindingOutcome(observation_id, ProcessingState.UNBOUND.value, None, None,
                               candidates=distinct, reason=reason)
+
+    def bind_model_candidates(self, observation_id: str, *,
+                              candidates: Sequence[tuple[str, float | None]],
+                              owner_id: str) -> BindingOutcome:
+        """A model PROPOSED which entity an artifact belongs to: NO bind, whatever it proposed. Each
+        candidate is recorded through M6 as a `MODEL_INFER` attempt, which M6 routes to AMBIGUOUS
+        ("model_inferred", `MODEL_INFERRED`) and a named human — for one candidate exactly as for
+        five, and at any stated support (GR-8). The number carried with a candidate orders that
+        human's queue; no guard here or in M6 reads it."""
+        obs = self._m5.require(observation_id)
+        distinct = tuple(dict.fromkeys(ref for ref, _ in candidates))
+        for entity_ref, queue_order in candidates:
+            claim_id = stable_id("ibc", self._tenant, observation_id, entity_ref, "MODEL_INFER")
+            if self._m6.get(claim_id) is not None:
+                continue
+            attempt = MatchAttempt(
+                subject_ref=observation_id, entity_ref=entity_ref,
+                match_method=MatchMethod.MODEL_INFER, candidate_count=max(len(distinct), 1),
+                confidence=queue_order)
+            self._m6.link(attempt, owner_id=owner_id, binding_claim_id=claim_id,
+                          actor_id="freight-domain-interpreter")
+        if obs.state is ProcessingState.PARSED:
+            self._m5.bind(observation_id,
+                          BindingDecision(kind=BindingKind.AMBIGUOUS,
+                                          candidate_count=len(distinct)),
+                          owner_id=owner_id, actor_id="freight-domain-linker")
+        return BindingOutcome(observation_id, ProcessingState.UNBOUND.value, None, None,
+                              candidates=distinct, reason="model_inferred")
 
     def leave_unbound(self, observation_id: str, *, owner_id: str) -> BindingOutcome:
         """No reference resolved to anything this tenant knows. UNBOUND, human-owned, and retried
@@ -373,6 +401,23 @@ class FreightFoundation:
             self._evidence.attach_span(
                 self._tenant, evidence_id, locator=locator, extracted_text=extracted_text,
                 now=self.now(), span_id=stable_id("span", self._tenant, evidence_id, locator))
+
+    def attach_field_spans(self, evidence_id: str, spans: Sequence[Mapping[str, Any]]) -> int:
+        """Point each value a model READ off a document at the place in the retained artifact it was
+        read from. One span per `(evidence, locator, field)`, written once: the same bytes arriving
+        again add nothing. Returns how many spans were newly written."""
+        known = {s["span_id"] for s in self._evidence.spans_for(self._tenant, evidence_id)}
+        written = 0
+        for span in spans:
+            span_id = stable_id("span", self._tenant, evidence_id, span["locator"], span["field"])
+            if span_id in known:
+                continue
+            self._evidence.attach_span(
+                self._tenant, evidence_id, locator=span["locator"], region=span["field"],
+                extracted_text=span["text"], now=self.now(), span_id=span_id)
+            known.add(span_id)
+            written += 1
+        return written
 
     def mark_illegible(self, evidence_id: str) -> None:
         self._evidence.mark_illegible(self._tenant, evidence_id)

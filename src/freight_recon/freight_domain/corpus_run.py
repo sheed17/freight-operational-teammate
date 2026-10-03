@@ -22,6 +22,7 @@ from typing import Any
 from .financial import blocking_discrepancies
 from .history import FreightHistory, TenantSetup
 from .intake import FreightIntake, RecordOutcome
+from .interpretation import FreightInterpreter
 from .projection import FreightProjection, LoadView
 from .timeline import render_timeline
 
@@ -228,14 +229,19 @@ def check_expected(result: HistoryResult, projection: FreightProjection) -> None
 # --------------------------------------------------------------------------- the run
 
 def run_corpus(conn: sqlite3.Connection, setups: Mapping[str, TenantSetup],
-               histories: Sequence[FreightHistory]) -> CorpusResult:
-    """Run every history through its brokerage's intake, on one shared database."""
+               histories: Sequence[FreightHistory], *,
+               interpreter: FreightInterpreter | None = None) -> CorpusResult:
+    """Run every history through its brokerage's intake, on one shared database.
+
+    With no `interpreter` (the deterministic harness) no model is asked anything. With one, every
+    brokerage's intake reads raw language through it; the interpreter holds no tenant, and each
+    intake still offers a model only its OWN brokerage's loads."""
     intakes: dict[str, FreightIntake] = {}
     results: list[HistoryResult] = []
     for history in histories:
         intake = intakes.get(history.tenant)
         if intake is None:
-            intake = FreightIntake(conn, setups[history.tenant])
+            intake = FreightIntake(conn, setups[history.tenant], interpreter=interpreter)
             intakes[history.tenant] = intake
         outcomes = intake.run(history)
         results.append(HistoryResult(
@@ -245,6 +251,9 @@ def run_corpus(conn: sqlite3.Connection, setups: Mapping[str, TenantSetup],
     for result in results:
         check_expected(result, projections[result.history.tenant])
     report = build_report(conn, intakes, projections, results)
+    if interpreter is not None:
+        # Counts and token totals only: no content, and no money (the ledger holds neither).
+        report["inference"] = interpreter.ledger.summary()
     return CorpusResult(intakes=intakes, projections=projections, histories=results, report=report)
 
 
@@ -311,6 +320,11 @@ def build_report(conn: sqlite3.Connection, intakes: Mapping[str, FreightIntake],
         "loads_requiring_human_attention": len([v for v in views if v.attention]),
         "human_attention_required": (len([v for v in views if v.attention]) + len(unbound)),
         "external_effect_rows": sum(sum(c.values()) for c in effects.values()),
+        "model_readings": stats.get("model_readings", 0),
+        "model_reading_failures": stats.get("model_reading_failures", 0),
+        "model_candidate_requests": stats.get("model_candidate_requests", 0),
+        "model_candidates_refused": stats.get("model_candidates_refused", 0),
+        "model_inferred_ambiguities": stats.get("model_inferred_ambiguities", 0),
         "labeled_expectations_checked": sum(r.checks for r in results),
         "labeled_expectations_failed": sum(len(r.mismatches) for r in results),
     }

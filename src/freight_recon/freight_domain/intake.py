@@ -17,8 +17,16 @@ its reference resolvable. In every non-exact case a named human owns it and noth
 ### A DUPLICATE DOES NOTHING. An identical record re-delivered is an M5 confirmation; intake stops
 there. No second parse, bind, document, payable, expectation or timeline entry.
 
-### NO EFFECT, NO MODEL, NO ADAPTER. Intake reads records it is handed and writes canonical rows. It
-sends nothing, calls nothing outside the process, and asks no model anything.
+### NO EFFECT AND NO ADAPTER. Intake reads records it is handed and writes canonical rows. It sends
+nothing and reaches no outside system of its own.
+
+### A MODEL ONLY THROUGH THE INTERPRETER, AND ONLY WHEN ROUTED. Intake is handed an optional
+`FreightInterpreter`. With none (the deterministic harness) it asks no model anything and a message
+asserts only what its record already structured. With one, a record whose content is unstructured
+language is READ once, at parse; the reading is grounded and normalized by `interpretation.py` and
+stored on the Observation, so the projection and every replay read the stored reading and never
+call a model again. A record nothing exact could place may be given model-PROPOSED candidate loads,
+which the linker routes to a human and never binds.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ..inference.contracts import CandidateOption
 from .detectors import (
     DischargeExpectation,
     Intent,
@@ -42,10 +51,8 @@ from .entity_mapping import (
     EXACT,
     RETIRED_ONLY,
     UNMAPPED,
-    CandidateGenerator,
     ExternalEntityMappings,
     ExternalReference,
-    NoCandidates,
 )
 from .foundation import (
     FreightFoundation,
@@ -64,8 +71,9 @@ from .history import (
     to_utc,
     utc_datetime,
 )
+from .interpretation import FAILED, READ, ContentReading, FreightInterpreter
 from .model import entity_id, entity_ref
-from .projection import LOAD, FreightProjection, Projector, split_ref
+from .projection import LOAD, FreightProjection, LoadView, Projector, split_ref
 
 #: The most times intake re-projects after materializing intents. Each pass can only add rows the
 #: machines accept; two passes settle every history in the corpus, and the bound is a guard against a
@@ -80,6 +88,15 @@ DUPLICATE = "DUPLICATE"
 UNPARSEABLE = "UNPARSEABLE"
 REFUSED = "REFUSED"
 CONTROL = "CONTROL"
+
+#: How a model's stated support for a candidate orders the human's queue (M6 `confidence`, whose one
+#: legitimate use is sorting that queue). It is an ordering key. No guard anywhere reads it.
+CANDIDATE_QUEUE_ORDER: dict[str, float] = {"CLEAR": 0.9, "PARTIAL": 0.6, "WEAK": 0.3}
+
+
+class ModelInferenceConfirmed(RuntimeError):
+    """The linker returned something other than AMBIGUOUS for a model-proposed candidate. That is a
+    broken invariant, not an input problem: intake stops rather than bind on it."""
 
 
 class HistoryClock:
@@ -137,6 +154,11 @@ class IntakeStats:
     exceptions_raised: int = 0
     settle_passes: int = 0
     writes_after_settle: int = 0
+    model_readings: int = 0
+    model_reading_failures: int = 0
+    model_candidate_requests: int = 0
+    model_candidates_refused: int = 0
+    model_inferred_ambiguities: int = 0
 
     def as_document(self) -> dict[str, int]:
         return dict(self.__dict__)
@@ -148,7 +170,6 @@ class _Resolution:
 
     exact: list[tuple[str, str]] = field(default_factory=list)   # (entity_ref, mapping_id)
     weak: list[str] = field(default_factory=list)
-    model: list[tuple[str, str]] = field(default_factory=list)
     ambiguity: str | None = None
 
 
@@ -157,14 +178,14 @@ class FreightIntake:
     that tenant, all bound at construction."""
 
     def __init__(self, conn: sqlite3.Connection, setup: TenantSetup, *,
-                 candidate_generator: CandidateGenerator | None = None,
+                 interpreter: FreightInterpreter | None = None,
                  clock: HistoryClock | None = None) -> None:
         self.setup = setup
         self.clock = clock or HistoryClock()
         self.foundation = FreightFoundation(conn, tenant=setup.tenant, clock=self.clock)
         self.mappings = ExternalEntityMappings(conn, tenant=setup.tenant, clock=self.clock)
         self.projector = Projector(self.foundation, self.mappings, setup)
-        self.candidates: CandidateGenerator = candidate_generator or NoCandidates()
+        self.interpreter = interpreter
         self.stats = IntakeStats()
         self._provisioned = False
 
@@ -243,19 +264,120 @@ class FreightIntake:
                                              reason=str(exc))
             return RecordOutcome(record.label, UNPARSEABLE, observation_id=observation_id,
                                  detail=str(exc))
+        # A record that is unstructured language is READ here, once, and the grounded reading is
+        # stored with the parse. Everything after this line is the same whether a model, a fixture
+        # or nobody supplied the structure.
+        reading = self._read_content(record, parsed, observation_id, as_of)
         self.foundation.mark_parsed(observation_id, parsed)
 
         if record.kind == "document":
-            self._retain_document(observation_id, parsed["payload"])
+            self._retain_document(observation_id, parsed["payload"],
+                                  spans=reading.spans if reading is not None else ())
         if record.kind == "tms_load":
             outcome = self._intake_tms_load(record, observation_id, parsed)
         elif record.kind == "human_assertion":
             outcome = self._intake_human_assertion(record, observation_id, parsed)
         else:
-            outcome = self._bind(record.label, observation_id, record.references())
+            outcome = self._bind(record.label, observation_id, record.references(), record=record)
+        if reading is not None and reading.status == FAILED:
+            self._reading_failed(observation_id, outcome, record, reading)
+        self._correlate(observation_id, outcome.load_id)
         self._retry_unbound()
         self._settle()
         return outcome
+
+    # ------------------------------------------------------------------ model interpretation
+
+    def _read_content(self, record: InboundRecord, parsed: dict[str, Any], observation_id: str,
+                      as_of: str) -> ContentReading | None:
+        """Hand the record to the interpreter, which decides whether a model is needed at all. A
+        usable reading becomes the record's `asserts` or `extracted` block; a failed one leaves the
+        record asserting nothing."""
+        if self.interpreter is None:
+            return None
+        reading = self.interpreter.read(record, parsed, observation_id=observation_id,
+                                        as_of_utc=as_of, interpreted_at=self.foundation.now())
+        if reading.record is not None:
+            parsed["interpretation"] = reading.record
+        if reading.status == READ:
+            self.stats.model_readings += 1
+            if reading.asserts is not None:
+                parsed["payload"]["asserts"] = reading.asserts
+            if reading.extracted is not None:
+                parsed["payload"]["extracted"] = reading.extracted
+        elif reading.status == FAILED:
+            self.stats.model_reading_failures += 1
+        return reading
+
+    def _reading_failed(self, observation_id: str, outcome: RecordOutcome, record: InboundRecord,
+                        reading: ContentReading) -> None:
+        """The record's language could not be read into supported structure. It is still observed,
+        parsed and bound by its exact references — and a named human is told to read it."""
+        what = "document" if record.kind == "document" else "message"
+        self._raise_exception(RaiseException(
+            exception_id=stable_id("exc", self.tenant, observation_id, "interpretation"),
+            type="interpretation_unavailable", severity="SEV2", source_ref=observation_id,
+            source_kind="observation", owner_id=self.setup.intake_owner,
+            entity_ref=entity_ref(LOAD, outcome.load_id) if outcome.load_id else "",
+            summary=(f"An inbound {what} could not be read automatically "
+                     f"({(reading.failure or 'unknown').split(':', 1)[0]}). Nothing was "
+                     f"extracted from it and nothing was assumed."),
+            specific_question=f"What does this {what} say that the load needs?"))
+
+    def _correlate(self, observation_id: str, load_id: str | None) -> None:
+        if self.interpreter is not None and load_id:
+            self.interpreter.ledger.correlate(observation_id, entity_ref(LOAD, load_id))
+
+    def _candidate_options(self) -> tuple[CandidateOption, ...]:
+        """This brokerage's loads, newest first, described for a model. The ids are this tenant's
+        own canonical load refs — there is no other tenant's load in this intake to offer."""
+        views = sorted(self.projector.project().loads.values(),
+                       key=lambda v: (v.observations[0]["received_at"] if v.observations else "",
+                                      v.load_id), reverse=True)
+        return tuple(CandidateOption(candidate_id=v.ref, summary=describe_load(v)) for v in views)
+
+    def _propose_candidates(self, label: str, observation_id: str, record: InboundRecord,
+                            *, bound_exactly: bool,
+                            deterministic_candidates: int) -> RecordOutcome | None:
+        """Ask for model-proposed candidate loads — only reached for a message or document, and the
+        interpreter only calls a model when exact resolution produced nothing. Returns the held
+        outcome when candidates were recorded, else None."""
+        if self.interpreter is None or record.kind not in ("message", "document"):
+            return None
+        payload = record.payload
+        text = (f"{payload.get('subject', '')}\n{payload.get('body', '')}".strip()
+                if record.kind == "message" else str(payload.get("content", "")))
+        needs_options = not bound_exactly and not deterministic_candidates
+        reading = self.interpreter.propose(
+            observation_id=observation_id, kind=record.kind, text=text,
+            options=self._candidate_options() if needs_options else (),
+            bound_exactly=bound_exactly, deterministic_candidates=deterministic_candidates,
+            at=self.foundation.now())
+        if not reading.route.model_needed:
+            return None
+        self.stats.model_candidate_requests += 1
+        self.stats.model_candidates_refused += len(reading.refused)
+        if reading.status != READ or not reading.candidates:
+            return None
+        source = f"model:{self.interpreter.gateway.provider}/{self.interpreter.gateway.model}"
+        proposed = [(c["candidate_id"], source) for c in reading.candidates]
+        # The linker decides, not intake: a model inference is AMBIGUOUS at any stated support.
+        decision = self.foundation.decide_link(observation_id, exact=(), weak=(),
+                                               model_candidates=proposed)
+        if decision.status == "CONFIRMED" or not decision.candidates:
+            raise ModelInferenceConfirmed(
+                "the linker did not route a model-proposed candidate to a human. A model "
+                "inference never confirms a binding (GR-8).")
+        self.foundation.bind_model_candidates(
+            observation_id, owner_id=self.setup.intake_owner,
+            candidates=[(c["candidate_id"], CANDIDATE_QUEUE_ORDER[c["support"]])
+                        for c in reading.candidates])
+        self.stats.model_inferred_ambiguities += 1
+        self.stats.ambiguous_bindings += 1
+        return RecordOutcome(
+            label, AMBIGUOUS_BINDING, observation_id=observation_id,
+            candidate_load_ids=tuple(split_ref(c)[1] for c in decision.candidates),
+            ambiguity=decision.reason, detail="candidate loads proposed by a model; none bound")
 
     # ------------------------------------------------------------------ setup
 
@@ -271,7 +393,8 @@ class FreightIntake:
 
     # ------------------------------------------------------------------ documents
 
-    def _retain_document(self, observation_id: str, payload: dict[str, Any]) -> None:
+    def _retain_document(self, observation_id: str, payload: dict[str, Any], *,
+                         spans: Any = ()) -> None:
         """Retain the artifact content-addressed and point its extracted values at a span. Done at
         intake whether or not the document binds: the bytes are evidence either way."""
         evidence_id = self.foundation.retain_document(
@@ -279,6 +402,8 @@ class FreightIntake:
             media_type=payload["media_type"])
         self.foundation.attach_span(evidence_id, locator="page:1",
                                     extracted_text=payload["doc_type"])
+        if spans:
+            self.foundation.attach_field_spans(evidence_id, spans)
         if not payload["legible"]:
             self.foundation.mark_illegible(evidence_id)
 
@@ -297,10 +422,8 @@ class FreightIntake:
                     resolution.ambiguity = "one_reference_names_several_loads"
             elif resolved.status == RETIRED_ONLY:
                 resolution.weak.extend(m.entity_ref for m in resolved.retired)
-            elif resolved.status == UNMAPPED:
-                resolution.model.extend(
-                    (c.entity_ref, c.source)
-                    for c in self.candidates.candidates(reference, tenant=self.tenant))
+            elif resolved.status != UNMAPPED:
+                raise MalformedHistory(f"unknown mapping resolution status {resolved.status!r}")
         if not candidate_sets:
             return resolution
         common = set(candidate_sets[0])
@@ -320,12 +443,21 @@ class FreightIntake:
         return resolution
 
     def _bind(self, label: str, observation_id: str,
-              references: Iterable[ExternalReference], *, late: bool = False) -> RecordOutcome:
+              references: Iterable[ExternalReference], *, late: bool = False,
+              record: InboundRecord | None = None) -> RecordOutcome:
+        """DETERMINISTIC FIRST. Exact, tenant-scoped resolution runs and its answer stands. Only when
+        it produced nothing at all is a model asked for candidates, and those go to a human."""
         resolution = self._resolve(references)
         decision = self.foundation.decide_link(
-            observation_id, exact=resolution.exact, weak=resolution.weak,
-            model_candidates=resolution.model)
-        if decision.status == "CONFIRMED" and decision.entity_ref is not None:
+            observation_id, exact=resolution.exact, weak=resolution.weak)
+        confirmed = decision.status == "CONFIRMED" and decision.entity_ref is not None
+        if record is not None:
+            held = self._propose_candidates(
+                label, observation_id, record, bound_exactly=confirmed,
+                deterministic_candidates=len(decision.candidates))
+            if held is not None:
+                return held
+        if confirmed and decision.entity_ref is not None:
             self.foundation.bind_exact(observation_id, decision.entity_ref)
             self.stats.exact_bindings += 1
             if late:
@@ -362,12 +494,13 @@ class FreightIntake:
                           for r in parsed["refs"]]
             resolution = self._resolve(references)
             decision = self.foundation.decide_link(
-                observation["observation_id"], exact=resolution.exact, weak=resolution.weak,
-                model_candidates=resolution.model)
+                observation["observation_id"], exact=resolution.exact, weak=resolution.weak)
             if decision.status == "CONFIRMED" and decision.entity_ref is not None:
                 self.foundation.bind_exact(observation["observation_id"], decision.entity_ref)
                 self.stats.exact_bindings += 1
                 self.stats.late_bindings += 1
+                self._correlate(observation["observation_id"],
+                                split_ref(decision.entity_ref)[1])
 
     # ------------------------------------------------------------------ the system of record
 
@@ -614,6 +747,30 @@ class FreightIntake:
             entity_ref=intent.entity_ref or None, specific_question=intent.specific_question)
         self.stats.exceptions_raised += int(wrote)
         return wrote
+
+
+def describe_load(view: LoadView) -> str:
+    """One load, described for a model choosing between candidates: its outside names, parties,
+    stops and reported status. Operational context only — no rate, charge or amount is included."""
+    names = [f"{m.external_id} ({m.external_id_kind})" for m in view.mappings
+             if m.state == "ACTIVE" and m.neyma_entity_type == LOAD]
+    parts = ["references: " + ("; ".join(dict.fromkeys(names)) or "none")]
+    if view.customer is not None and view.customer.value("legal_name"):
+        parts.append(f"customer: {view.customer.value('legal_name')}")
+    carriers = [str(c.value("legal_name")) for c in view.carriers.values()
+                if c.value("legal_name")]
+    if carriers:
+        parts.append("carrier: " + "; ".join(carriers))
+    drivers = [str(d.value("name")) for d in view.drivers.values() if d.value("name")]
+    if drivers:
+        parts.append("driver: " + "; ".join(drivers))
+    stops = sorted(view.stops.values(), key=lambda s: (s.value("sequence") or 0, s.stop_key))
+    if stops:
+        parts.append("stops: " + "; ".join(
+            f"{s.value('stop_type')} {s.value('facility_name')}" for s in stops))
+    if view.load.value("reported_status"):
+        parts.append(f"status: {view.load.value('reported_status')}")
+    return " | ".join(parts)
 
 
 def intake_for(conn: sqlite3.Connection, setup: TenantSetup, *,

@@ -96,13 +96,14 @@ class UnboundItem:
     references: tuple[str, ...]
     source_system: str
     as_of: str
+    model_proposed: bool = False       # the candidates came from a model, not from a reference
 
     def as_document(self) -> dict[str, Any]:
         return {"observation_id": self.observation_id, "kind": self.kind, "state": self.state,
                 "reason": self.reason, "owner_id": self.owner_id,
                 "candidate_load_ids": list(self.candidate_load_ids),
                 "references": list(self.references), "source_system": self.source_system,
-                "as_of": self.as_of}
+                "as_of": self.as_of, "model_proposed": self.model_proposed}
 
 
 @dataclass
@@ -137,6 +138,7 @@ class LoadView:
     work_item: dict[str, Any] | None = None
     observations: list[dict[str, Any]] = field(default_factory=list)          # bound, arrival order
     commitments: list[dict[str, Any]] = field(default_factory=list)
+    reference_corrections: list[dict[str, Any]] = field(default_factory=list)
     duplicate_evidence_arrivals: list[str] = field(default_factory=list)
     binding_history: list[dict[str, Any]] = field(default_factory=list)
     ambiguous_candidates: list[UnboundItem] = field(default_factory=list)
@@ -383,7 +385,8 @@ class Projector:
             kind=(parsed or {}).get("kind"), state=observation["state"], reason=reason,
             owner_id=observation["owner_id"], candidate_load_ids=candidates,
             references=references, source_system=observation["source_system"],
-            as_of=observation["as_of"])
+            as_of=observation["as_of"],
+            model_proposed=any(c["match_method"] == "MODEL_INFER" for c in (claims or ())))
 
     # ------------------------------------------------------------------ facts
 
@@ -581,7 +584,8 @@ class Projector:
                 entity.observe(name, fact(str(contact[name])))
 
     def _observe_appointment(self, view: LoadView, observation: Mapping[str, Any],
-                             parsed: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
+                             parsed: Mapping[str, Any], payload: Mapping[str, Any], *,
+                             source: str | None = None) -> None:
         stop = view.stops.get(payload["stop_key"])
         if stop is None:
             return
@@ -594,8 +598,13 @@ class Projector:
             view.appointments[payload["stop_key"]] = appointment
         window = {"start_local": payload["start_local"], "end_local": payload["end_local"],
                   "timezone": payload["timezone"]}
-        appointment.observe("window", self._fact(observation, parsed, window))
-        appointment.observe("status", self._fact(observation, parsed, payload["status"]))
+        appointment.observe("window", self._fact(observation, parsed, window, source=source))
+        if payload.get("status"):
+            # A claim READ out of free text states a window and nothing more: a counterparty's
+            # message can dispute an appointment time, but REQUESTED is not CONFIRMED (CD-13) and a
+            # sentence does not make it so.
+            appointment.observe("status", self._fact(observation, parsed, payload["status"],
+                                                     source=source))
 
     def _movement_for(self, view: LoadView, *, movement_key: str | None,
                       carrier_mc: str | None) -> CarrierMovement | None:
@@ -615,7 +624,10 @@ class Projector:
 
     def _add_tracking(self, view: LoadView, observation: Mapping[str, Any],
                       parsed: Mapping[str, Any], payload: Mapping[str, Any], *,
-                      index: int) -> None:
+                      index: int, source: str | None = None) -> None:
+        def fact(value: Any) -> Fact:
+            return self._fact(observation, parsed, value, source=source)
+
         event = TrackingEvent(
             tenant_id=self._tenant,
             entity_id=entity_id(self._tenant, "tracking_event", observation["observation_id"],
@@ -625,20 +637,18 @@ class Projector:
         movement = self._movement_for(view, movement_key=payload.get("movement_key"),
                                       carrier_mc=None)
         event.movement_id = movement.entity_id if movement else None
-        event.observe("signal", self._fact(observation, parsed, payload["signal"]))
-        event.observe("status", self._fact(observation, parsed, payload["status"]))
+        event.observe("signal", fact(payload["signal"]))
+        event.observe("status", fact(payload["status"]))
         if payload.get("position") is not None:
-            event.observe("position", self._fact(observation, parsed, payload["position"]))
+            event.observe("position", fact(payload["position"]))
         view.tracking.append(event)
         stop = view.stops.get(payload.get("stop_key") or "")
         if stop is not None:
             # Arrival and departure are CLAIMS, from whichever source made them (CD-15).
             if payload["status"] in ("AT_PICKUP", "AT_DELIVERY"):
-                stop.observe("reported_arrival",
-                             self._fact(observation, parsed, observation["as_of"]))
+                stop.observe("reported_arrival", fact(observation["as_of"]))
             elif payload["status"] in ("LOADED", "DELIVERED"):
-                stop.observe("reported_departure",
-                             self._fact(observation, parsed, observation["as_of"]))
+                stop.observe("reported_departure", fact(observation["as_of"]))
 
     def _apply_document(self, view: LoadView, observation: Mapping[str, Any],
                         parsed: Mapping[str, Any], payload: Mapping[str, Any],
@@ -738,8 +748,9 @@ class Projector:
 
     def _accessorial(self, view: LoadView, observation: Mapping[str, Any],
                      parsed: Mapping[str, Any], *, movement: CarrierMovement | None,
-                     charge_type: str, amount: DirectedMoney, role: str, source: str | None,
-                     evidence_id: str | None, claims_authorization: bool) -> None:
+                     charge_type: str, amount: DirectedMoney | None, role: str,
+                     source: str | None, evidence_id: str | None, claims_authorization: bool,
+                     amount_provenance: str | None = None) -> None:
         charge = view.accessorials.get(charge_type)
         if charge is None:
             charge = AccessorialCharge(
@@ -750,8 +761,10 @@ class Projector:
             charge.observe("charge_type", self._fact(observation, parsed, charge_type,
                                                      source=source, evidence_id=evidence_id))
             view.accessorials[charge_type] = charge
-        charge.observe("amount", self._fact(observation, parsed, amount, source=source,
-                                            evidence_id=evidence_id))
+        if amount is not None:
+            charge.observe("amount", self._fact(observation, parsed, amount, source=source,
+                                                evidence_id=evidence_id,
+                                                provenance=amount_provenance))
         charge.observe("requesting_party_role", self._fact(observation, parsed, role,
                                                            source=source, evidence_id=evidence_id))
         charge.claim_observation_ids.append(observation["observation_id"])
@@ -795,35 +808,47 @@ class Projector:
         thread.load_ids.append(view.load_id)
 
         role = payload["sender"]["role"]
+        # WHO SAID IT is the source of a claim made in a message, not which inbox it landed in. Two
+        # parties writing to one inbox are two sources: neither's statement supersedes the other's.
+        # The same party's later statement does supersede its own earlier one, and both are kept.
+        speaker = claim_source(observation, payload)
         for index, item in enumerate(payload["asserts"]):
             kind = item["type"]
             if kind == "status":
                 signal = "driver_assertion" if role == "driver" else "carrier_assertion"
                 self._add_tracking(view, observation, parsed,
                                    {"signal": signal, "status": item["status"],
-                                    "stop_key": item.get("stop_key"),
+                                    "stop_key": resolve_stop_key(view, item),
                                     "movement_key": item.get("movement_key"), "position": None},
-                                   index=index + 1)
+                                   index=index + 1, source=speaker)
             elif kind == "appointment":
-                self._observe_appointment(view, observation, parsed, item)
+                claim = resolve_appointment_claim(view, item)
+                if claim is not None:
+                    self._observe_appointment(view, observation, parsed, claim, source=speaker)
             elif kind == "accessorial_claim":
                 movement = self._movement_for(view, movement_key=item.get("movement_key"),
                                               carrier_mc=None)
+                money, weakened = resolve_claim_money(view, item)
                 self._accessorial(
                     view, observation, parsed, movement=movement, charge_type=item["charge_type"],
-                    amount=carrier_owed(item["amount_minor"], item["currency"]), role=role,
-                    source=None, evidence_id=None,
-                    claims_authorization=item["claims_authorization"])
+                    amount=money, role=role, source=speaker, evidence_id=None,
+                    claims_authorization=item["claims_authorization"],
+                    amount_provenance=weakened)
             elif kind == "rate":
                 movement = self._movement_for(view, movement_key=item.get("movement_key"),
                                               carrier_mc=None)
                 if movement is None and len(view.movements) == 1:
                     movement = next(iter(view.movements.values()))
-                if movement is not None:
+                money, _ = resolve_claim_money(view, item)
+                if movement is not None and money is not None:
                     # V-14: a rate said in conversation is retained as a guess, never as the buy.
                     movement.observe("pre_ratecon_buy", self._fact(
-                        observation, parsed, carrier_owed(item["amount_minor"], item["currency"]),
-                        provenance=MODEL_INFERRED))
+                        observation, parsed, money, provenance=MODEL_INFERRED, source=speaker))
+            elif kind == "reference_correction":
+                view.reference_corrections.append({
+                    "observation_id": observation["observation_id"], "index": index,
+                    "stated_reference": item.get("stated_reference"),
+                    "replaces": item.get("replaces"), "sender_role": role})
             elif kind == "commitment":
                 view.commitments.append({
                     "observation_id": observation["observation_id"], "index": index,
@@ -1038,6 +1063,70 @@ class Projector:
                 reasons.append("reconciliation_unresolved")
         view.attention = sorted(set(reasons))
         view.housekeeping = sorted(set(housekeeping))
+
+
+def claim_source(observation: Mapping[str, Any], payload: Mapping[str, Any]) -> str:
+    """The source of a claim made in a message: the channel it arrived on AND the party who made it."""
+    sender = payload["sender"]
+    return (f"{observation['source_system']}#"
+            f"{sender.get('address') or sender.get('name') or sender['role']}")
+
+
+def resolve_stop_key(view: LoadView, item: Mapping[str, Any]) -> str | None:
+    """Which stop a claim is about. A record that names the stop keeps it. A claim read from free
+    text names only a KIND of stop ("at the shipper"), and that resolves only when the load has
+    exactly one stop of that kind — a load with two pickups does not get one picked for it."""
+    if item.get("stop_key"):
+        return str(item["stop_key"])
+    kind = item.get("stop_type")
+    if not kind:
+        return None
+    matches = [key for key, stop in view.stops.items() if stop.value("stop_type") == kind]
+    return matches[0] if len(matches) == 1 else None
+
+
+def resolve_appointment_claim(view: LoadView, item: Mapping[str, Any]) -> dict[str, Any] | None:
+    """An appointment claim as a facility-local window on one stop, or None when it cannot be placed.
+    A claim read from free text carries a calendar date and a wall-clock time; the FACILITY's zone
+    comes from the stop it resolves to, never from the sender. A time stated without an end is a
+    window of exactly that instant — nothing is rounded out to a plausible window."""
+    if "start_local" in item:
+        return dict(item)
+    stop_key = resolve_stop_key(view, item)
+    stop = view.stops.get(stop_key or "")
+    zone = stop.value("facility_timezone") if stop is not None else None
+    if stop_key is None or not zone:
+        return None
+    day = item["local_date"]
+    return {"stop_key": stop_key, "start_local": f"{day}T{item['start_time']}",
+            "end_local": f"{day}T{item['end_time'] or item['start_time']}", "timezone": zone,
+            "status": None}
+
+
+def load_currency(view: LoadView) -> str | None:
+    """The one currency the system of record carries this load's sell rate in, or None."""
+    currencies = {f.value.currency for f in view.load.field_of("sell").facts
+                  if isinstance(f.value, DirectedMoney)}
+    return next(iter(currencies)) if len(currencies) == 1 else None
+
+
+def resolve_claim_money(view: LoadView,
+                        item: Mapping[str, Any]) -> tuple[DirectedMoney | None, str | None]:
+    """An amount claimed in a message, as money owed to a carrier, and whether it must be WEAKENED.
+
+    A claim that states its currency keeps it. One that does not ("detention 175") is read in the
+    currency the system of record carries this load's sell rate in — and because that currency was
+    ASSUMED, not read, the resulting fact is weakened to `MODEL_INFERRED`: retained, and unable to
+    gate or dispute anything. Whether an unstated currency may be assumed at all is NEEDS VALIDATION
+    (debt `P9-D12`). With no single load currency there is no amount."""
+    if item.get("amount_minor") is None:
+        return None, None
+    if item.get("currency"):
+        return carrier_owed(item["amount_minor"], item["currency"]), None
+    assumed = load_currency(view)
+    if assumed is None:
+        return None, None
+    return carrier_owed(item["amount_minor"], assumed), MODEL_INFERRED
 
 
 def commitment_expectation_id(tenant: str, load_ref: str, commitment: Mapping[str, Any]) -> str:

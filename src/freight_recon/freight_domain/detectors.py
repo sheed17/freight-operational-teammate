@@ -124,6 +124,7 @@ def detect(view: LoadView, setup: TenantSetup) -> list[Intent]:
     intents.extend(_arrival_expectations(view, setup))
     intents.extend(_financial_obligations(view, setup))
     intents.extend(_document_exceptions(view, setup))
+    intents.extend(_reference_correction_exceptions(view, setup))
     return intents
 
 
@@ -414,4 +415,25 @@ def _document_exceptions(view: LoadView, setup: TenantSetup) -> list[Intent]:
             summary=f"A {doc_type} arrived and cannot satisfy the requirement: "
                     + "; ".join(problems) + ".",
             specific_question=f"Can a usable {doc_type} be obtained from the carrier?"))
+    return out
+
+
+def _reference_correction_exceptions(view: LoadView, setup: TenantSetup) -> list[Intent]:
+    """A counterparty says an earlier message named the WRONG load. That is a claim about where
+    records belong, and a counterparty's claim re-binds nothing: only a named human corrects a
+    binding (M6 IB-7), which retains the binding it replaces. So nothing moves here — the person who
+    owns inbound triage is asked, with the reference the sender now states."""
+    out: list[Intent] = []
+    for correction in view.reference_corrections:
+        stated = correction["stated_reference"]
+        out.append(RaiseException(
+            exception_id=stable_id("exc", view.load.tenant_id, correction["observation_id"],
+                                   "reference_correction", correction["index"]),
+            type="counterparty_reference_correction", severity="SEV2",
+            source_ref=correction["observation_id"], source_kind="observation",
+            owner_id=setup.intake_owner, entity_ref=view.ref,
+            summary=("A counterparty says an earlier message named the wrong load"
+                     + (f" and now names {stated!r}" if stated else "")
+                     + ". Nothing was re-bound: a correction to a binding is a human's act."),
+            specific_question="Which load do the earlier message and this one belong to?"))
     return out

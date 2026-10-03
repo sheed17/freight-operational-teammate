@@ -1,0 +1,4261 @@
+{
+ "entries": {
+  "0148ec073c59211cd96dcd1918fd8b72f33948accb4fdad3821f6554d6721326": {
+   "input_digest": "99c91aa38665cebae0e422715b897ebffac7cf172d2617e54a2a2267bc0a7263",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-905118",
+    "carrier_mc_evidence_text": "Carrier: Summit Line Freight (MC-905118)",
+    "charges": [
+     {
+      "amount_text": "$1,800.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,800.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$240.00",
+      "charge_type": "LUMPER",
+      "evidence_text": "Lumper fee: $240.00",
+      "line_kind": "ACCESSORIAL"
+     },
+     {
+      "amount_text": "$150.00",
+      "charge_type": "DETENTION",
+      "evidence_text": "Detention: $150.00",
+      "line_kind": "ACCESSORIAL"
+     },
+     {
+      "amount_text": "$2,190.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,190.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "SL-3302",
+    "document_number_evidence_text": "Invoice number: SL-3302",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48702",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48702"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:49.894Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1069,
+    "output_tokens": 424,
+    "reasoning_tokens": 54
+   }
+  },
+  "03bb25fa42d00a31309ef238c8006f0f726c3c9c9941c9aeb875dd3cfdd9e90b": {
+   "input_digest": "09e6c5e10ab5c22e630ca41342232d4fc3a1f0806bb2323225c1a69b75d19f99",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "POD attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "51005",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "51005"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:11.383Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2791,
+    "output_tokens": 111,
+    "reasoning_tokens": 0
+   }
+  },
+  "077e98f3b373ded75ad86f31c445f0653f774dd89099fc056aa4192a9e815f84": {
+   "input_digest": "586fa06bb237809238d9f51cc0aa6243d9da513a7fcfba47ef67fecb8b0fb1fc",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "RESCHEDULED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "Receiver pushed us to 10 tomorrow.",
+      "in_quoted_text": false,
+      "start_time_24h": null,
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51008",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51008"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:28.871Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2804,
+    "output_tokens": 288,
+    "reasoning_tokens": 144
+   }
+  },
+  "0adb75fed9c13d952bc5a1aaf9631a6cccdcb79e8cf5f31691a41c7d5d0ef396": {
+   "input_digest": "0e532b3243d89d212941f92cb5eadfc92d2c35ff613aa973ba31329caf646f78",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "We delivered",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:43.717Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2795,
+    "output_tokens": 79,
+    "reasoning_tokens": 0
+   }
+  },
+  "0c21252e8aea83c8a58af9ae637524c9f5a88bc2bdaad9b8509d0c51ec51bdef": {
+   "input_digest": "6d9eadecd0b4e32774fa1c8eaaf31b9f09cf0e455cb9bf0404785806f4ddf244",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,500.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,500.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-1107",
+    "document_number_evidence_text": "Rate confirmation number: RC-1107",
+    "references": [
+     {
+      "evidence_text": "Broker load number: HP-1107",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "HP-1107"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:07.465Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1052,
+    "output_tokens": 164,
+    "reasoning_tokens": 0
+   }
+  },
+  "0e727d086e755ac6bddbc7ea13cf6739cbce8fac01506151164c997430b83fe0": {
+   "input_digest": "b2877052f90351b781a6ebd1d24c5e86c0ae67efc6170d5545621a6b0c252ec0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Checked in at the shipper",
+      "in_quoted_text": false,
+      "status": "ARRIVED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:11:53.908Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 2801,
+    "output_tokens": 181,
+    "reasoning_tokens": 56
+   }
+  },
+  "0ea3fe89826a1d52388c5f363981c9cfacef4f6f13f8779709211a18f266ce1a": {
+   "input_digest": "ae992477affb9cc41033993e495fe32ad20abc0f794315f114b067dd46ab6b29",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "20:00",
+      "day_offset": 0,
+      "evidence_text": "will update you by 8",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 8"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:50.416Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2791,
+    "output_tokens": 230,
+    "reasoning_tokens": 57
+   }
+  },
+  "0fc34bd1e414ed31037889b8c9283f26d386e345bccadb573d9bbb57a7efdbe3": {
+   "input_digest": "b3c4762a621cd259d8f9c848ad32f767ea422b5fc35195ab434435fb6e8e5e4f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "RATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [
+     {
+      "amount_text": "2150",
+      "currency_code": null,
+      "evidence_text": "2150 all in",
+      "in_quoted_text": false
+     }
+    ],
+    "references": [
+     {
+      "evidence_text": "LD-51007",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51007"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:14.960Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2802,
+    "output_tokens": 157,
+    "reasoning_tokens": 41
+   }
+  },
+  "106216fa744e1c598b24628043e340a71636c80410e24c9eb25305fd570e6c45": {
+   "input_digest": "d2897281068dfcfc80146415022ac98e1a254bf91c9a582f3ea1f2cb77b29578",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48519",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48519"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:30.413Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2798,
+    "output_tokens": 217,
+    "reasoning_tokens": 85
+   }
+  },
+  "145ed11c2384cfe507aa69d20e84ce315814aaba3f4a690c84a3be41f47c1a5a": {
+   "input_digest": "0249ea21d9a9a73400bf69b0568a511ec23a540abf727d625956f26eb8bf8cdb",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "POD attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "for 48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "48219"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:11:59.467Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2791,
+    "output_tokens": 170,
+    "reasoning_tokens": 55
+   }
+  },
+  "14b14edf3633bfb8beb539f929aef190572bc8387b91a8c3f14bf527401d05ec": {
+   "input_digest": "26cf55cee16580036e56d18b40bec6a097f6b53168034982210b5ab89f5e8be4",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "running 2 hrs behind",
+      "in_quoted_text": false,
+      "reason_text": "2 hrs behind",
+      "stop": "UNSPECIFIED"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "48410",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "48410"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:18.105Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2787,
+    "output_tokens": 234,
+    "reasoning_tokens": 118
+   }
+  },
+  "1797f0a6e12523732bc1286f17c21a5b54a888ed6d2cfc123570485e1e3b675c": {
+   "input_digest": "b925d039ad91290870dbb5401641df5862d8941384fc4be8e0e17010091c7994",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": null,
+      "approver_named": "Mike",
+      "asserts_prior_approval": true,
+      "charge_label": "Detention",
+      "charge_type": "DETENTION",
+      "currency_code": null,
+      "evidence_text": "Detention is included per approval from Mike.",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "CARRIER_INVOICE",
+      "evidence_text": "Invoice attached.",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:05.418Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2794,
+    "output_tokens": 261,
+    "reasoning_tokens": 114
+   }
+  },
+  "1d159b5b139f1c2701c7a6cf5ba76cd8b895f2f583f53788440677d4db787f7b": {
+   "input_digest": "7dedbe458d77463e3eaf58d7d52b5c1126be238e8d900c786a04fe0e9d585e2b",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:17.806Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 943,
+    "output_tokens": 13,
+    "reasoning_tokens": 0
+   }
+  },
+  "1e94c7ff35a261e5469c502d60d19b814151fa611de6fac693a36fd8b1acf9c4": {
+   "input_digest": "7e02224829e78e99588da70d33c1e398485040c9a30f7461fc1ba376bc2b38df",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,950.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,950.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48340",
+    "document_number_evidence_text": "Rate confirmation number: RC-48340",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48340",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48340"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:07.510Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1045,
+    "output_tokens": 287,
+    "reasoning_tokens": 63
+   }
+  },
+  "2226acb0684c9be12b380924011f9af60651152977d420062c728109600a683c": {
+   "input_digest": "f3f97147dcf4441c8217f2e0159a11eac9103b98a12d4280783155b637bd67c5",
+   "model": "gpt-6-luna",
+   "payload": {
+    "commitments": [
+     {
+      "actor": "CARRIER",
+      "clock_time_24h": "15:00",
+      "day_offset": 0,
+      "evidence_text": "will call u by 3 w/ new eta",
+      "in_quoted_text": false,
+      "promised_action": "CALL_BACK",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 3"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:24.478Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "extract_commitments",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 951,
+    "output_tokens": 148,
+    "reasoning_tokens": 64
+   }
+  },
+  "29c631c6b62b40323004aa157f1f80e12c7a7b95771b0134fead4fa251ce1e5a": {
+   "input_digest": "a220a9cd34c59dce4fc129670dbe82b4210f62383b57684e069f6409be896f43",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$2,150.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,150.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$2,150.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,150.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "IW-7790",
+    "document_number_evidence_text": "Invoice number: IW-7790",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48340",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48340"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:10.620Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 315,
+    "reasoning_tokens": 42
+   }
+  },
+  "2b3d4010a26f11e08f5befd7fa081e3c5d37e05f87421393c107382bdc7b947e": {
+   "input_digest": "2b5d3888c6eee3bc7febb895876ba98dad7cd88d270a380db4cda74ae91ad4ae",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "200",
+      "approver_named": null,
+      "asserts_prior_approval": true,
+      "charge_label": "detention",
+      "charge_type": "DETENTION",
+      "currency_code": null,
+      "evidence_text": "you approved 200 detention",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-50090",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-50090"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:52.263Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2799,
+    "output_tokens": 215,
+    "reasoning_tokens": 67
+   }
+  },
+  "2da5030072264b4d95d4fb9de95296c78459ce802ac3686bf6f5a73740798670": {
+   "input_digest": "76fe938c1ae0db5533324412a9708290de0bb89965f230985b33ff8571692ba5",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,950.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,950.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-51007",
+    "document_number_evidence_text": "Rate confirmation number: RC-51007",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-51007",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51007"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:17.676Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1045,
+    "output_tokens": 263,
+    "reasoning_tokens": 38
+   }
+  },
+  "2ec0276ce41e116ef2f7a2b549b55b40b7c5b36a1327e46cddb49003bfeb2d2a": {
+   "input_digest": "5c222dbc94ddad3e3560793df8762da085914d3780aa60c189395d678381b75f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "RATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "RATE_CON",
+      "evidence_text": "pls send RC",
+      "in_quoted_text": false,
+      "presence": "REQUESTED"
+     }
+    ],
+    "rates": [
+     {
+      "amount_text": "1,850",
+      "currency_code": null,
+      "evidence_text": "1,850 all in",
+      "in_quoted_text": false
+     }
+    ],
+    "references": [],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:53.837Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2799,
+    "output_tokens": 289,
+    "reasoning_tokens": 123
+   }
+  },
+  "357c16c43dc3f485234fd2d2c4d01549df1c21a296a63e76370399dbebbc3fec": {
+   "input_digest": "944b49f0ed7d243372f3f4128763b2c2f001b13c096d0c42f14fd1bc011d488e",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "We delivered about 45 minutes ago",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:08.139Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2795,
+    "output_tokens": 158,
+    "reasoning_tokens": 72
+   }
+  },
+  "3ca9c2729c182e93985b2d0e8dc000dccb007be1b8ba54ed147fa8b011bc90ed": {
+   "input_digest": "1cded4dcd18d6d3d11ac38eab5e7bffce9e414cff1e6b7d6162c4b4275fbc09c",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "CARRIER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "will send POD within the hour",
+      "in_quoted_text": true,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": 60,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "within the hour"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "will send POD",
+      "in_quoted_text": true,
+      "presence": "PROMISED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "FW: load 51020 update",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "51020"
+     },
+     {
+      "evidence_text": "Subject: load 51020 update",
+      "in_quoted_text": true,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "51020"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Hank is at the receiver now",
+      "in_quoted_text": true,
+      "status": "ARRIVED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:29.110Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2853,
+    "output_tokens": 524,
+    "reasoning_tokens": 156
+   }
+  },
+  "3f8a75f2e4387d34cce2b14926018af06366a5a0f226cc5ef194b17fcb26e566": {
+   "input_digest": "0057278404ddf3f79b9617b6fe9656311a83aece1b0534cf77c88e02bc5334f7",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [
+     {
+      "actor": "CARRIER",
+      "clock_time_24h": "11:00",
+      "day_offset": 1,
+      "evidence_text": "I will send the POD by 11 tomorrow.",
+      "in_quoted_text": true,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 11 tomorrow"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "I will send the POD by 11 tomorrow.",
+      "in_quoted_text": true,
+      "presence": "PROMISED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:26.856Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2809,
+    "output_tokens": 607,
+    "reasoning_tokens": 326
+   }
+  },
+  "402bcf58f284fe5f1227683f734212ae994ab98942f08cf7f39767c8feb62ae9": {
+   "input_digest": "12a96e46836b1dbcfc4408cc75e57e753c97d1c828c3381c3d6fa2b70d80c86f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48219"
+     },
+     {
+      "evidence_text": "LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48219"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "LD-48219 delivered this morning.",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:46.883Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2829,
+    "output_tokens": 358,
+    "reasoning_tokens": 129
+   }
+  },
+  "40695d5aa408cc5d025d4c3dc4c50326ec8221ad3d059a566e6ef0e3452cfe2e": {
+   "input_digest": "d107bc5c718f23fdedcd678929d050c570c0e41542f2df86ab43d59b0a98abdc",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-905118",
+    "carrier_mc_evidence_text": "Carrier: Summit Line Freight (MC-905118)",
+    "charges": [
+     {
+      "amount_text": "$1,180.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,180.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48277",
+    "document_number_evidence_text": "Rate confirmation number: RC-48277",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48277",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48277"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:00.320Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1043,
+    "output_tokens": 313,
+    "reasoning_tokens": 149
+   }
+  },
+  "41ef3de16468d63b719802ce0d4424375aab9335b9368a8bc2426598ca9b71b8": {
+   "input_digest": "a8d3b1674a38ae0a84442fa8da2844fcaafc7dacf70535a88e324122ae5764d0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": null,
+      "approver_named": "Mike",
+      "asserts_prior_approval": true,
+      "charge_label": "Detention",
+      "charge_type": "DETENTION",
+      "currency_code": null,
+      "evidence_text": "Detention is included per approval from Mike.",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "CARRIER_INVOICE",
+      "evidence_text": "Invoice attached.",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51007",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51007"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:21.450Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2800,
+    "output_tokens": 310,
+    "reasoning_tokens": 129
+   }
+  },
+  "4267d2487fb6fe8d66ea1258040e2732777997f0759345f1fda3773c4ab6f253": {
+   "input_digest": "ae5432ea3d646cfedc6bd32b31221f6d06190e835e4e0607d927408c95113018",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:0a1f6c2e-5b0d-4f8e-9a11-000000000002",
+      "evidence_text": "Wabash Valley delivery on PO-8850",
+      "reason": "The record's PO-8850 and Wabash Valley delivery match this candidate.",
+      "support": "CLEAR"
+     },
+     {
+      "candidate_id": "brokerage_load:0a1f6c2e-5b0d-4f8e-9a11-000000000003",
+      "evidence_text": "Wabash Valley delivery on PO-8850",
+      "reason": "The record's PO-8850 and Wabash Valley delivery match this candidate.",
+      "support": "CLEAR"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:15.841Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 1025,
+    "input_tokens": 1028,
+    "output_tokens": 282,
+    "reasoning_tokens": 118
+   }
+  },
+  "447d181b874c00331e86fc62c2b6bfa5eb40bcd9b68815080de51469236e60dc": {
+   "input_digest": "d544d2466bcb26cdb63e9304728b330c03e4b6e843903e9bb04c5dc3c2f4741d",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-659440",
+    "carrier_mc_evidence_text": "Carrier: Bluegrass Carriers Co (MC-659440)",
+    "charges": [
+     {
+      "amount_text": "$1,850.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,850.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$1,850.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,850.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "BG-1301",
+    "document_number_evidence_text": "Invoice number: BG-1301",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-50033",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-50033"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:38.595Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 199,
+    "reasoning_tokens": 0
+   }
+  },
+  "470b374f37792e9ef0cd61e9b5e98e77ed283af46a0f38282f1223bfff41f8d1": {
+   "input_digest": "40357338f4ffc12a9bab391ad2dc75205bd9b1dbc904c8e1bd1e14c250d9f236",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:0a1f6c2e-5b0d-4f8e-9a11-000000000001",
+      "evidence_text": "48219",
+      "reason": "The record's load number matches the numeric portion of this candidate's load reference, LD-48219.",
+      "support": "CLEAR"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:12.080Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1023,
+    "output_tokens": 141,
+    "reasoning_tokens": 55
+   }
+  },
+  "48c820909f3a8c39be2b8f2762ecf8967536b8b9d600cacb378159af4fd89bbe": {
+   "input_digest": "18a5f050d6fb8f014180293c9a7cf102ad4eac29c4b21e2fec4964275a1fa516",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "$150",
+      "approver_named": null,
+      "asserts_prior_approval": false,
+      "charge_label": "detention",
+      "charge_type": "DETENTION",
+      "currency_code": null,
+      "evidence_text": "Requesting detention of $150",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "driver was held 3 hours past the appointment",
+      "in_quoted_text": false,
+      "reason_text": "held 3 hours past the appointment",
+      "stop": "UNSPECIFIED"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:36.206Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2800,
+    "output_tokens": 277,
+    "reasoning_tokens": 122
+   }
+  },
+  "4a5d03d6c25d2ac15bee165881f07e6f8fd60486c47cabe3dd56134d33c9f692": {
+   "input_digest": "b513729dd8730b8a1e17ed91951b9bb4ead101d78d08d91515743a04419a549e",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "16:30",
+      "day_offset": 0,
+      "evidence_text": "I'll get back to you by 4:30 either way.",
+      "in_quoted_text": false,
+      "promised_action": "CALL_BACK",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 4:30"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:50.059Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2808,
+    "output_tokens": 286,
+    "reasoning_tokens": 105
+   }
+  },
+  "4f7093b0212e05d8a7b1bb8d3831cbe7cfd4c75b0c16c836960c7d12b6beb3ec": {
+   "input_digest": "4eec3789c9e974a2e2e7277815f4f19012c5c98e61ae83bf2401001c8ab9c9c8",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "RATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "RATE_CON",
+      "evidence_text": "send the rate con when you can",
+      "in_quoted_text": false,
+      "presence": "REQUESTED"
+     }
+    ],
+    "rates": [
+     {
+      "amount_text": "1850",
+      "currency_code": null,
+      "evidence_text": "1850 all in",
+      "in_quoted_text": false
+     }
+    ],
+    "references": [
+     {
+      "evidence_text": "LD-50033",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-50033"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:36.440Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2803,
+    "output_tokens": 254,
+    "reasoning_tokens": 107
+   }
+  },
+  "5063bbc622bb2615581a1cb43cdbcd79644ce484972f0d4828db8bdc5478bd99": {
+   "input_digest": "f291173c2e832d93d1b6943119d0a477d0b646596beea4482373b702fc6d81d6",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-905118",
+    "carrier_mc_evidence_text": "Carrier: Summit Line Freight (MC-905118)",
+    "charges": [
+     {
+      "amount_text": "$1,600.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,600.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-50090",
+    "document_number_evidence_text": "Rate confirmation number: RC-50090",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-50090",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-50090"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:48.620Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1043,
+    "output_tokens": 301,
+    "reasoning_tokens": 78
+   }
+  },
+  "51ae88d3cd27ac83c6d0973370d087c57f3ed8f31122d5a5d56920a454750824": {
+   "input_digest": "04b469a9baa83b566863a086da55868f9f2c31dd0d12f9f3f1fe4b07b88da0f9",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51002",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51002"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:40.114Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2797,
+    "output_tokens": 195,
+    "reasoning_tokens": 63
+   }
+  },
+  "55d6221da087492605c68db16f0ae54cb77515a8ddecf00f2280cc1b2f77e97e": {
+   "input_digest": "aac84e271a425d3926162a169540ac57528ed2fa86bf8dcc52b063ad58dd7cdb",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "REQUEST",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "RATE_CON",
+      "evidence_text": "Need the rate con",
+      "in_quoted_text": false,
+      "presence": "REQUESTED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "load 99731",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "99731"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:08.337Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2796,
+    "output_tokens": 194,
+    "reasoning_tokens": 80
+   }
+  },
+  "55e61b3a89028c4da59160e853e83e111f245f81005df7cba333705ee49af056": {
+   "input_digest": "b2f4f32fc9d75be6b725ff013782ef5a5f1b3d31440038a74224f2c527692aaa",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "POD to follow",
+      "in_quoted_text": false,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": null,
+      "time_kind": "NONE",
+      "time_text": null
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "POD to follow",
+      "in_quoted_text": false,
+      "presence": "PROMISED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51003",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51003"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "delivered at the receiver",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:51.488Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2798,
+    "output_tokens": 379,
+    "reasoning_tokens": 72
+   }
+  },
+  "571c265d439197a3f9e4331b3e66d982c543ab43779e3e4cd20423e95b89234e": {
+   "input_digest": "4583262e7fd65078be84d166ff2e2390931d4a5c48f332722817471015ec7b4d",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "175",
+      "approver_named": null,
+      "asserts_prior_approval": false,
+      "charge_label": "detention",
+      "charge_type": "DETENTION",
+      "currency_code": null,
+      "evidence_text": "we'll need detention 175",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "shipper held him 3 hrs this afternoon",
+      "in_quoted_text": false,
+      "reason_text": null,
+      "stop": "PICKUP"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:53.384Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2796,
+    "output_tokens": 198,
+    "reasoning_tokens": 50
+   }
+  },
+  "571e8315ab00a8d277815bb27d9097d0ee8d4505587255bddf5e992787cc46b9": {
+   "input_digest": "2e0d5e6a6d1df44209ef259c807c6f4c81643d87db58c523990d537a2899b1f1",
+   "model": "gpt-6-luna",
+   "payload": {
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "I'll update you in an hour.",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": 60,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "in an hour"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:22.611Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "extract_commitments",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 951,
+    "output_tokens": 79,
+    "reasoning_tokens": 0
+   }
+  },
+  "5b71ff6e6a36b311571bd19ea808a47e96deb736f8618d4c8d6b095bfd559e24": {
+   "input_digest": "3ad4515f8d49ad06125f1e8ec000fa97fa907131d4d0dd0a71759a727262227a",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,620.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,620.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48233",
+    "document_number_evidence_text": "Rate confirmation number: RC-48233",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:13.049Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1045,
+    "output_tokens": 296,
+    "reasoning_tokens": 71
+   }
+  },
+  "5b7f65422a1793a986c8bb7487dfaff7ed1bd9784a1d1bb9ce88551a7dc933fd": {
+   "input_digest": "4656060c903c6c095abd2e76cf7094635a8632c2586233739affc74a07f36c7c",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-659440",
+    "carrier_mc_evidence_text": "Carrier: Bluegrass Carriers Co (MC-659440)",
+    "charges": [
+     {
+      "amount_text": "$2,350.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,350.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$2,350.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,350.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "BG-1244",
+    "document_number_evidence_text": "Invoice number: BG-1244",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48890",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48890"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:07.527Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 313,
+    "reasoning_tokens": 39
+   }
+  },
+  "5cbf50e5fabd03c41d742e5408493f9735c49de9ff29b71fe3dc1018aa032bd8": {
+   "input_digest": "3cea29e1993df9311cd3880c9d17afbff4e3043e4782b20785898d2cc13667c0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "delivered",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:52.830Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2782,
+    "output_tokens": 108,
+    "reasoning_tokens": 27
+   }
+  },
+  "5ee2fdde8d9af3376ee072dd539a2745f1ad85f8c436be110a2011b93143567a": {
+   "input_digest": "2ff73a58e53cc40ff4e1ddedb1cfcb0aabe45ce4d52bab952045154508c8aec9",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:0a1f6c2e-5b0d-4f8e-9a11-000000000004",
+      "evidence_text": "shipper in Elgin",
+      "reason": "The record says the shipper is in Elgin, matching the candidate's Midwest Paper Elgin pickup stop. The record does not state a distinctive load reference.",
+      "support": "PARTIAL"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:19.731Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 1025,
+    "input_tokens": 1028,
+    "output_tokens": 99,
+    "reasoning_tokens": 0
+   }
+  },
+  "65dafb7311242c751bd70fd79b4e4c8c7cfcf83e613be8e6b8ab4a7567e8b239": {
+   "input_digest": "f9197c2681a775eecb01f1b6fba97b8d32be656163efee465db1a958f342a763",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:16.707Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 1025,
+    "input_tokens": 1028,
+    "output_tokens": 13,
+    "reasoning_tokens": 0
+   }
+  },
+  "6779457a012d73efa1a93e042370765a3ceda7401a2c06085804b926cfed93fd": {
+   "input_digest": "11354760e5cdb704eeb003ea5c97b82480d4c176a288a01359277902325727a5",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-482915",
+    "carrier_mc_evidence_text": "Carrier: Redbird Transport LLC (MC-482915)",
+    "charges": [
+     {
+      "amount_text": "$2,400.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,400.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$175.00",
+      "charge_type": "DETENTION",
+      "evidence_text": "Detention: $175.00",
+      "line_kind": "ACCESSORIAL"
+     },
+     {
+      "amount_text": "$2,575.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,575.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "RB-2291",
+    "document_number_evidence_text": "Invoice number: RB-2291",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48219"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:59.133Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1061,
+    "output_tokens": 370,
+    "reasoning_tokens": 49
+   }
+  },
+  "67a2884f260b3505cd28256c2206b08c13718cf0990ac52c68e7a329f4df8e6e": {
+   "input_digest": "0dcdf5b06cf08ce7636b6bc1ee7fbb6d2502e4cd81e95d7a5fbe59660cd51d69",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "CORRECTION",
+    "commitments": [],
+    "corrections": [
+     {
+      "corrects": "LOAD_REFERENCE",
+      "evidence_text": "That was the wrong load number in my last email \u2014 this is for 51004."
+     }
+    ],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "RE: LD-51003",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "CORRECTED_FROM",
+      "value": "LD-51003"
+     },
+     {
+      "evidence_text": "this is for 51004",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "CORRECTED_TO",
+      "value": "51004"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:55.055Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2805,
+    "output_tokens": 308,
+    "reasoning_tokens": 78
+   }
+  },
+  "67be7242204c5c8500c4fb9a759e0217c365e863735085cf457f440f3a9a2c31": {
+   "input_digest": "260049e938543716143d583e9928f7f37ddcc684787684c1c3f9cedf3a81e348",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-659440",
+    "carrier_mc_evidence_text": "(MC-659440)",
+    "charges": [
+     {
+      "amount_text": "$1,840.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,840.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48260",
+    "document_number_evidence_text": "Rate confirmation number: RC-48260",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48260",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48260"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:42.134Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1045,
+    "output_tokens": 322,
+    "reasoning_tokens": 105
+   }
+  },
+  "68d985623406e8fb318a1373497604d3154944406c99e1b15929d9fba39f4bba": {
+   "input_digest": "b3641d37797c2e48832778d1d555e74d11cbe3e0aff852974bad808137e9ecc3",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "CONFIRMED",
+      "day_offset": 2,
+      "end_time_24h": null,
+      "evidence_text": "the delivery appt is 1300 Friday",
+      "in_quoted_text": false,
+      "start_time_24h": "13:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [
+     {
+      "corrects": "APPOINTMENT",
+      "evidence_text": "the delivery appt is 1300 Friday, not 0900"
+     }
+    ],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:39.925Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2803,
+    "output_tokens": 344,
+    "reasoning_tokens": 145
+   }
+  },
+  "699bc5d10fa88ecf7ccc7e5dc9c5fd8ec67e2983daa3afbf61a5504f701bfd6e": {
+   "input_digest": "306151499f2452f57d6343944af5871afa4058bc31020738a57563c9e0b1b4c8",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-482915",
+    "carrier_mc_evidence_text": "Carrier: Redbird Transport LLC (MC-482915)",
+    "charges": [
+     {
+      "amount_text": "$2,300.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,300.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$2,300.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,300.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "RB-2291",
+    "document_number_evidence_text": "Invoice number: RB-2291",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48219"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:04.697Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1053,
+    "output_tokens": 198,
+    "reasoning_tokens": 0
+   }
+  },
+  "6d4dd837c85007a07f99fb1ebb3c912e0b5ec10b045248c7ed0fc98a720a1342": {
+   "input_digest": "8edb782a9408f55c03f8db35c061a6ae51857c17860a27bcd1932bd1a4276837",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "RESCHEDULED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "delivry appt is 1400 tmrw",
+      "in_quoted_text": false,
+      "start_time_24h": "14:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "CORRECTION",
+    "commitments": [],
+    "corrections": [
+     {
+      "corrects": "APPOINTMENT",
+      "evidence_text": "correction to my last txt"
+     }
+    ],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:09.545Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2804,
+    "output_tokens": 257,
+    "reasoning_tokens": 122
+   }
+  },
+  "6ee6498ba930bb3a5a5532d85fdace5a9bf8fd3af92b7ad76666bc581d7d4655": {
+   "input_digest": "39dc892efac5d30f848408ccde08834212db4538fb7cbacb52fa17dbc7d6042a",
+   "model": "gpt-6-luna",
+   "payload": {
+    "commitments": [
+     {
+      "actor": "DRIVER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "I'll send the POD in 30 minutes.",
+      "in_quoted_text": false,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": 30,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "in 30 minutes"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:27.139Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "extract_commitments",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 937,
+    "output_tokens": 118,
+    "reasoning_tokens": 34
+   }
+  },
+  "6fca7e451e3ce3f696d0f9caaf28e1afbff1ee531f0ef47481e9bad7fbe0d5c2": {
+   "input_digest": "30e3c5a4bc6fbd8e35685c46682a80c89d31cf83b37d41d159794456b302ddd0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "11:00",
+      "day_offset": 0,
+      "evidence_text": "I'll text you by 11 once he's checked in",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 11"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:26.765Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2798,
+    "output_tokens": 298,
+    "reasoning_tokens": 121
+   }
+  },
+  "753e42af42c39a4cec47a26d49bac0d8d7aee854ae941deebbb780afd01000ed": {
+   "input_digest": "63d1249fb0a3e2a60e583cb32cd70ab0f88102d3a351cb9cd335b6c231c8e629",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "REQUEST",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:06.259Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2795,
+    "output_tokens": 81,
+    "reasoning_tokens": 27
+   }
+  },
+  "773125e9b6d421e7e69a3d922fb7536450f79484401c71fbbf93695164d67446": {
+   "input_digest": "8df7072e8aa86d88fb2fcf0bd866d01cc410847fc536e934d27dd27b145bcdfc",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-482915",
+    "carrier_mc_evidence_text": "(MC-482915)",
+    "charges": [
+     {
+      "amount_text": "$2,400.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,400.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48219",
+    "document_number_evidence_text": "Rate confirmation number: RC-48219",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48219"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:43.185Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1044,
+    "output_tokens": 380,
+    "reasoning_tokens": 164
+   }
+  },
+  "7b2d425c3ad9ebe3b346a3fe786484ddc1e61f2c29395fa67132eb4ad88a0655": {
+   "input_digest": "796f4283342d330833e542ff57e4d4bd507ad24815eda8a7d7e712829c2aab9f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-905118",
+    "carrier_mc_evidence_text": "Carrier: Summit Line Freight (MC-905118)",
+    "charges": [
+     {
+      "amount_text": "$1,800.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,800.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48702",
+    "document_number_evidence_text": "Rate confirmation number: RC-48702",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48702",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48702"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:43.093Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1043,
+    "output_tokens": 300,
+    "reasoning_tokens": 77
+   }
+  },
+  "7b68ac017df097cf60eb404fc5b770227f3542c9ddc9e7e5ccd460eb8cc7ac88": {
+   "input_digest": "26f3fa4eef51f36a3ea6d7e8bcc262d7c288d78753670f319e62ec0fb1a29011",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "POD attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "for 51005",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "51005"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:58.370Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2791,
+    "output_tokens": 223,
+    "reasoning_tokens": 108
+   }
+  },
+  "7c170cd598e7bb50dcbb994e7db0835daabc8524af71d44cc09b3fde4c80de16": {
+   "input_digest": "b9e8d00ef23f1f55cf35a82a909449075b8583d4b264344d541f7e845f6860ab",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "POD attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:19.965Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2793,
+    "output_tokens": 154,
+    "reasoning_tokens": 37
+   }
+  },
+  "7f9815b28a727730590d630f5c06473b6a7ccddeac24cb2fb5128fb484563d46": {
+   "input_digest": "9d2d55be09b1dd3ed42d99937d11cfeb1b513274c7801d41d2e3f79874f48950",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48591",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48591"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Loaded",
+      "in_quoted_text": false,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     },
+     {
+      "evidence_text": "on the way",
+      "in_quoted_text": false,
+      "status": "IN_TRANSIT",
+      "stop": "UNSPECIFIED"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:33.818Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2793,
+    "output_tokens": 274,
+    "reasoning_tokens": 59
+   }
+  },
+  "7fcc970d1eb64ba97b25cfff663de8d7d13b78497203fb49c7846f4e9a6d86a7": {
+   "input_digest": "419d450923ba482c2c4f329900d6ddca2dd2b1f8c882d7fa2e2eb8a25717a5af",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "17:00",
+      "day_offset": 0,
+      "evidence_text": "I'll update you by 5",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 5"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51002",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51002"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Luis is loaded.",
+      "in_quoted_text": false,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:37.435Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2801,
+    "output_tokens": 340,
+    "reasoning_tokens": 71
+   }
+  },
+  "81bffdeb7f9fdecb41599665776f99b90c6b8e785e4d451d4156ace3af96bcb6": {
+   "input_digest": "edb546df7af27857d829b10d3fe2553e546d0d0e4af84751937dd5337893e267",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "UNSPECIFIED",
+      "day_offset": 0,
+      "end_time_24h": null,
+      "evidence_text": "We still have the delivery appointment today at 3pm",
+      "in_quoted_text": false,
+      "start_time_24h": "15:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51008",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51008"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:32.113Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2807,
+    "output_tokens": 250,
+    "reasoning_tokens": 101
+   }
+  },
+  "85df96ee6c24a3348e6c31afa9b4ac8e4d861fdadc50b9c5c6a2b747ea643ee2": {
+   "input_digest": "6e03a7a9e3a57e4cfedf998b88ba404f17faa176e655fe5602df72a0d041602b",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "CORRECTION",
+    "commitments": [],
+    "corrections": [
+     {
+      "corrects": "LOAD_REFERENCE",
+      "evidence_text": "That was the wrong load number in my last email"
+     }
+    ],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "RE: load 48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "CORRECTED_FROM",
+      "value": "48219"
+     },
+     {
+      "evidence_text": "this is for 48291",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "CORRECTED_TO",
+      "value": "48291"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:12.573Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2805,
+    "output_tokens": 410,
+    "reasoning_tokens": 189
+   }
+  },
+  "879b683540a6b2a976addd292cd5549bbb4699c118f904f7d18f3c194a33f579": {
+   "input_digest": "64418c00b02afea486b00834ddb4a5c64cb2b1f5696006142d591c4b88be9c0d",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "CONFIRMED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "Receiver has the delivery appointment at 1300 tomorrow.",
+      "in_quoted_text": false,
+      "start_time_24h": "13:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51009",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51009"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:37.662Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2796,
+    "output_tokens": 216,
+    "reasoning_tokens": 67
+   }
+  },
+  "87cf4f9cec556f059b3ba5c9f5bf4929450e98641b92725765363586829ae13e": {
+   "input_digest": "f3f97147dcf4441c8217f2e0159a11eac9103b98a12d4280783155b637bd67c5",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "15:00",
+      "day_offset": 0,
+      "evidence_text": "will call u by 3 w/ new eta",
+      "in_quoted_text": false,
+      "promised_action": "CALL_BACK",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 3"
+     }
+    ],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "runnin behind, trk had a flat.",
+      "in_quoted_text": false,
+      "reason_text": "trk had a flat",
+      "stop": "UNSPECIFIED"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:15.741Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2802,
+    "output_tokens": 243,
+    "reasoning_tokens": 82
+   }
+  },
+  "890fc98c239e89300a8ff4f3d94d282f8d3fea0aac2d61af8d0d1455de5e7ff1": {
+   "input_digest": "66521d1bb1e7193bb7f1464250aff02069693edc2e0d25816fbee3b321d995fc",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "$250",
+      "approver_named": null,
+      "asserts_prior_approval": false,
+      "charge_label": "TONU",
+      "charge_type": "TONU",
+      "currency_code": null,
+      "evidence_text": "We'll be billing a TONU of $250.",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "driver was already at the dock",
+      "in_quoted_text": false,
+      "status": "ARRIVED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:01.766Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2804,
+    "output_tokens": 230,
+    "reasoning_tokens": 80
+   }
+  },
+  "8a7c08278fddaf5b91773d59d770187af5361a289eaa6f5941a91e62c761fb47": {
+   "input_digest": "ce5c6dce86e7d421f7b26725ed818614bd64afa599807152f5bad517d76b1243",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "delivered",
+      "in_quoted_text": false,
+      "status": "DELIVERED",
+      "stop": "DELIVERY"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:55.427Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2784,
+    "output_tokens": 118,
+    "reasoning_tokens": 37
+   }
+  },
+  "8da1a49581c08b0ebfb5bed1495d79e5399944cabc6adb43ef5e4363386246b5": {
+   "input_digest": "39dc892efac5d30f848408ccde08834212db4538fb7cbacb52fa17dbc7d6042a",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [
+     {
+      "actor": "DRIVER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "I'll send the POD in 30 minutes.",
+      "in_quoted_text": false,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": 30,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "in 30 minutes"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "I'll send the POD in 30 minutes.",
+      "in_quoted_text": false,
+      "presence": "PROMISED"
+     }
+    ],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:19.060Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2788,
+    "output_tokens": 206,
+    "reasoning_tokens": 48
+   }
+  },
+  "91aa22e55a7738238d5e9f638a3974358006d000982645070b37c3d8dc913daa": {
+   "input_digest": "78605530ba73b0722e964755d9afa2acb49adbd7c68bb85d2813893995d05568",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "DOCUMENT_DELIVERY",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "11:00",
+      "day_offset": 1,
+      "evidence_text": "I will send the POD by 11 tomorrow.",
+      "in_quoted_text": false,
+      "promised_action": "SEND_DOCUMENT",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 11 tomorrow"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "POD",
+      "evidence_text": "I will send the POD by 11 tomorrow.",
+      "in_quoted_text": false,
+      "presence": "PROMISED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:17.203Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2803,
+    "output_tokens": 391,
+    "reasoning_tokens": 110
+   }
+  },
+  "96fff0c613e0d05106eff4234ad5330d48ad09acc4ee3f9c23b9a81e27aca32e": {
+   "input_digest": "26537a8cb1cc15d236e7c75238e530216d34f9e1e5974fad899b1fb3e60520b3",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:47223441-1950-5e69-a8f7-48a270cab1ae",
+      "evidence_text": "48410",
+      "reason": "The record contains 48410, which matches the load_ref LD-48410 for this candidate.",
+      "support": "CLEAR"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:19.793Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1675,
+    "output_tokens": 77,
+    "reasoning_tokens": 0
+   }
+  },
+  "98aa7ff984ed9dc4a61b491321f3ca36ccc904966e3b94b88d6fc6ad6c06902f": {
+   "input_digest": "fee73d32a0c2dff50ee0bc497ee37213988c34d96f6662b81b071386898fb122",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "(MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$2,100.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,100.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48890-A",
+    "document_number_evidence_text": "Rate confirmation number: RC-48890-A",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48890",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48890"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:02.228Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1046,
+    "output_tokens": 292,
+    "reasoning_tokens": 73
+   }
+  },
+  "99d1b82baeb3c3cd3d274490f1446734730a970f1605f260e047d18b33f6b0f7": {
+   "input_digest": "e2d64b444ff26e704f64e606d73fa97ed66635f5c44a549361590f5710e70d21",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:21.110Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1018,
+    "output_tokens": 30,
+    "reasoning_tokens": 15
+   }
+  },
+  "9b70d0adc5f91898b5b1a3d982b07a31a5f7f0335a819f7773f839dd7a49907a": {
+   "input_digest": "afbe537b62573899c231abb4bd1c1ee7683bd2e834cad45a6ecd3cab046f5991",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "CONFIRMED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "set for 0900 delivery tomorrow",
+      "in_quoted_text": false,
+      "start_time_24h": "09:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48305",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48305"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:02.380Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2801,
+    "output_tokens": 143,
+    "reasoning_tokens": 0
+   }
+  },
+  "a0c4d26521dba7a9cef8d1c6d51c9597fefe80c756537b4221f9828703820939": {
+   "input_digest": "6a1c38dca85a77e0f162525ec6ceb587b127095e66fb4b8c2b96274fac27b9f0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,620.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,620.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$1,620.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,620.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "IW-7718",
+    "document_number_evidence_text": "Invoice number: IW-7718",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:32.898Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1059,
+    "output_tokens": 321,
+    "reasoning_tokens": 47
+   }
+  },
+  "a164558a37e0051892ce5d8461de1821026a1478c24eddb247aac778808b53f6": {
+   "input_digest": "dd00964cbcfb27cb264b34b2e3c1f18bd7ff873aa9af3ffe33d335b5619bfd48",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-48519",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48519"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:36.381Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2796,
+    "output_tokens": 150,
+    "reasoning_tokens": 61
+   }
+  },
+  "a1a3dc02463948993b2fec0c3db57ce00c92d089aaedf05a095874de36b5067a": {
+   "input_digest": "b652383e195ef82c94bd513071a49dc76a9fdff3edac7ffdba3bfa8535968322",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "receiver is backed up",
+      "in_quoted_text": false,
+      "reason_text": "receiver is backed up",
+      "stop": "DELIVERY"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:04.587Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2795,
+    "output_tokens": 224,
+    "reasoning_tokens": 99
+   }
+  },
+  "a48eaa3d3e553b167cd5bf42adf5e87114f90c29634ce9b5b6f857e5cf87db9a": {
+   "input_digest": "f316cfc00f9a25b513e0687da73777e39c946775ab3745315e2a1966b9a96a30",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "BOL",
+      "evidence_text": "BOL attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Loaded at 14:10",
+      "in_quoted_text": false,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:58.433Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2799,
+    "output_tokens": 167,
+    "reasoning_tokens": 55
+   }
+  },
+  "a6d2db2d4ee09d595c5343fa27963cd7166ec5d900c83718a76847366096aaf0": {
+   "input_digest": "6cd0d497d6175c04c8abf2720b33b3cfc71c4e46e342fe86374cfad6d9c4a71d",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,620.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,620.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$1,620.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,620.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "IW-7718",
+    "document_number_evidence_text": "Invoice number: IW-7718",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48233",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48233"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:29.951Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 319,
+    "reasoning_tokens": 45
+   }
+  },
+  "a70985a56a255b48802625ac71ac262ed275a047a0216c2d82e21aef0bc1ad72": {
+   "input_digest": "9cc6189964e5c72e78ac5981feb6a53ad9dfe29cc5bdb746445b55a0548ae9cc",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "$285",
+      "approver_named": "Dana",
+      "asserts_prior_approval": true,
+      "charge_label": "Lumper",
+      "charge_type": "LUMPER",
+      "currency_code": null,
+      "evidence_text": "Lumper came to $285, receipt attached. Your dispatcher Dana ok'd it over the phone before we unloaded.",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "LUMPER_RECEIPT",
+      "evidence_text": "receipt attached",
+      "in_quoted_text": false,
+      "presence": "ATTACHED"
+     }
+    ],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:32.763Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2803,
+    "output_tokens": 270,
+    "reasoning_tokens": 106
+   }
+  },
+  "a7433a7f1656b18ee0e84f93dd0c9226e30522a2835641c76195fa251a79c1f4": {
+   "input_digest": "68921391ffcbff5420e9caae19273fff40ff89b18bef4b915ab398384a7d7d7f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:55.943Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2793,
+    "output_tokens": 118,
+    "reasoning_tokens": 39
+   }
+  },
+  "a93a3a2863c38b1298bb867c6d1f58693a2cf93e37366f46656d63c20bc61e00": {
+   "input_digest": "50dfdba70516c880bafab2108fe18b76e159318c0e950389cbd1346d99f2891b",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "OTHER",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "PO-8850",
+      "in_quoted_text": false,
+      "kind": "PO_NUMBER",
+      "role": "SUBJECT",
+      "value": "PO-8850"
+     },
+     {
+      "evidence_text": "LD-48411",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48411"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:22.926Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2802,
+    "output_tokens": 226,
+    "reasoning_tokens": 106
+   }
+  },
+  "a9882fd9f07a64b8451d1fe5da20fb1fbedfe56306bb736437fba9639c807e33": {
+   "input_digest": "e0981ef6d766687056ea5baa0173c4b6d13c6a552cc9de4083a189323dcd1680",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "OTHER",
+    "commitments": [
+     {
+      "actor": "CARRIER",
+      "clock_time_24h": "17:00",
+      "day_offset": 0,
+      "evidence_text": "I'll update you by 5 with an ETA.",
+      "in_quoted_text": true,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 5"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "RE: LD-51020",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51020"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Driver is loaded.",
+      "in_quoted_text": true,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:23.326Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2837,
+    "output_tokens": 401,
+    "reasoning_tokens": 128
+   }
+  },
+  "a9dbfbd26997c6ca43702e925e3ceeca6547a3814b106845f1cd1eb4309fe02d": {
+   "input_digest": "ad24b996c22f55aa954a606ff066eb95913d79ce184a8905793b72ded32e5e8f",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "CARRIER",
+      "clock_time_24h": "17:00",
+      "day_offset": 0,
+      "evidence_text": "I'll update you by 5 with an ETA.",
+      "in_quoted_text": true,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 5"
+     }
+    ],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "FW: RE: LD-51002",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51002"
+     },
+     {
+      "evidence_text": "Subject: RE: LD-51002",
+      "in_quoted_text": true,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51002"
+     }
+    ],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Luis is loaded.",
+      "in_quoted_text": true,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:47.505Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2860,
+    "output_tokens": 608,
+    "reasoning_tokens": 277
+   }
+  },
+  "abd51a50bc1164e98315c5a49c9e028baa5b486e1414b0b2ce6a8c72e3532899": {
+   "input_digest": "a0221df4c610f448c8aea980e9e8bae343709f0b5c61ce2ef7cdcbf5c2677f0e",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$2,150.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,150.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$175.00",
+      "charge_type": "DETENTION",
+      "evidence_text": "Detention: $175.00",
+      "line_kind": "ACCESSORIAL"
+     },
+     {
+      "amount_text": "$2,325.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $2,325.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "IW-9107",
+    "document_number_evidence_text": "Invoice number: IW-9107",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-51007",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51007"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:25.312Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1062,
+    "output_tokens": 373,
+    "reasoning_tokens": 51
+   }
+  },
+  "b0793016ef3b5def26dd501496bc4c0049a9b30a635c03cf2eaeeb4f7cadddeb": {
+   "input_digest": "43c41cdd54a91b1ad1c6c35419cbd158e3fe13862de8ef56234bc0720393d342",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "REQUEST",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [
+     {
+      "doc_type": "RATE_CON",
+      "evidence_text": "Need the rate con for load 99731 resent",
+      "in_quoted_text": false,
+      "presence": "REQUESTED"
+     }
+    ],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "load 99731",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "99731"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:42.780Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2796,
+    "output_tokens": 189,
+    "reasoning_tokens": 69
+   }
+  },
+  "b614407c3c007ae5382a4faa6311630a92d2e90e7e600abe7856b596bd959fd6": {
+   "input_digest": "ada24d4e2e19db8e9a9f0a0ff2e026872f63a259edf33c78df6fee8db24a80e4",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-482915",
+    "carrier_mc_evidence_text": "Carrier: Redbird Transport LLC (MC-482915)",
+    "charges": [
+     {
+      "amount_text": "$2,300.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,300.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48219",
+    "document_number_evidence_text": "Rate confirmation number: RC-48219",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48219",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48219"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:02.542Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1044,
+    "output_tokens": 329,
+    "reasoning_tokens": 106
+   }
+  },
+  "b739f97ae8751f82fdd48fb0d836db22cd4ca72d664c7f428e2d4c2cd60c6422": {
+   "input_digest": "4e85ab47f9b5608b7332c1ba631a8800fe70ac1aa94c105f7f9d9d28092db173",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "I'll update you in an hour.",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": 60,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "in an hour"
+     }
+    ],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "still waiting on a door",
+      "in_quoted_text": false,
+      "reason_text": "waiting on a door",
+      "stop": "PICKUP"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Checked in at the shipper 12:42",
+      "in_quoted_text": false,
+      "status": "ARRIVED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:33.722Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2803,
+    "output_tokens": 340,
+    "reasoning_tokens": 70
+   }
+  },
+  "b95f27c4268c4ae19974b5daf884cf88f062177c1472ab90a322ef3d09646ee1": {
+   "input_digest": "1dc5f53ea1374a3c033b230b306997608bb724c2a0d860400db2e11b0302fa53",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [
+     {
+      "amount_text": "240",
+      "approver_named": null,
+      "asserts_prior_approval": true,
+      "charge_label": "lumper",
+      "charge_type": "LUMPER",
+      "currency_code": null,
+      "evidence_text": "lumper was 240 at the receiver, your guy already approved it on the phone",
+      "in_quoted_text": false
+     }
+    ],
+    "appointments": [],
+    "category": "ACCESSORIAL_OR_BILLING",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:45.930Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2798,
+    "output_tokens": 180,
+    "reasoning_tokens": 53
+   }
+  },
+  "bc68261c87d5c0e7f0dd6acb2c0c6a5bb8c68cf3970c8b1b3dec349ccfc08ba0": {
+   "input_digest": "3f0628f283d1ba6eaeebab033ad8aa0f1854fd40324a6adadd38d965469581ae",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:fb45fdb5-8abb-5a1d-8e24-1bbc4d1a6a95",
+      "evidence_text": "running about an hour late to Lakeshore Print",
+      "reason": "The record mentions Lakeshore Print, matching the candidate\u2019s delivery location, but gives no distinctive identifier to distinguish it from the other candidate delivered to Lakeshore Print Annex.",
+      "support": "PARTIAL"
+     },
+     {
+      "candidate_id": "brokerage_load:d2d6480a-a952-5101-bc29-71705de1c449",
+      "evidence_text": "running about an hour late to Lakeshore Print",
+      "reason": "The record mentions Lakeshore Print, matching the candidate\u2019s delivery location, but gives no distinctive identifier to distinguish it from the other candidate delivered to Lakeshore Print Annex.",
+      "support": "PARTIAL"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:05.535Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1253,
+    "output_tokens": 187,
+    "reasoning_tokens": 0
+   }
+  },
+  "bcfea6a4992cbf10a7e268a4977e7ca3f594e56896f233638b7910d7f3007058": {
+   "input_digest": "1373d3e8a15763b86bce5a3a40322e73d906be21d5ac92509c884e945d2aa855",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "REQUEST",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "PO-4540",
+      "in_quoted_text": false,
+      "kind": "PO_NUMBER",
+      "role": "SUBJECT",
+      "value": "PO-4540"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:39.653Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2794,
+    "output_tokens": 201,
+    "reasoning_tokens": 113
+   }
+  },
+  "bd75dbd72615b9dc2c69cc4b616dc407541b7bafe10e346d9366b3178f340f55": {
+   "input_digest": "63eeb9d1c3d08170e36b6e6110fd48f87b768d56c99ae450fb0ce9a74d4ed587",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "RESCHEDULED",
+      "day_offset": 3,
+      "end_time_24h": null,
+      "evidence_text": "Please push delivery on PO-8850 to Thursday.",
+      "in_quoted_text": false,
+      "start_time_24h": null,
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "PO-8850",
+      "in_quoted_text": false,
+      "kind": "PO_NUMBER",
+      "role": "SUBJECT",
+      "value": "PO-8850"
+     }
+    ],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:14.568Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2797,
+    "output_tokens": 256,
+    "reasoning_tokens": 109
+   }
+  },
+  "bff7d7f42ec955244eabf8bac3ed529963da61b54f62af5e5c3d8f1999eb1117": {
+   "input_digest": "10f75ac9f61feed68a6635ef63b3ec42560f1c4a7e11b8f9656bdb0b6fa39834",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-659440",
+    "carrier_mc_evidence_text": "Carrier: Bluegrass Carriers Co (MC-659440)",
+    "charges": [
+     {
+      "amount_text": "$1,840.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,840.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$1,840.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,840.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "BG-1190",
+    "document_number_evidence_text": "Invoice number: BG-1190",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48260",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "OTHER",
+      "value": "LD-48260"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:45.440Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 309,
+    "reasoning_tokens": 36
+   }
+  },
+  "c6ee81ff4e34f11b06a74c18dbe333dce18853137a31ab51b4299e2f3c841dc8": {
+   "input_digest": "90ff9d7be8a911bab4009db17a07ff215e724c037382b623d5ea610371b279d0",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,270.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,270.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48801",
+    "document_number_evidence_text": "Rate confirmation number: RC-48801",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48801",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48801"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:56.614Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1045,
+    "output_tokens": 316,
+    "reasoning_tokens": 91
+   }
+  },
+  "d0050e33f0242ac93dbebdc0c36612b50ecdeac8cbbf7d111c6e45dbb3f261cf": {
+   "input_digest": "3b8c474a448abba5835c7e084d785d4e866eb2724f5a7bb9450d84288ec1ef64",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:59.063Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 2269,
+    "output_tokens": 13,
+    "reasoning_tokens": 0
+   }
+  },
+  "d0f2232b7bab7cfadf99dfc08b1400eafb601da241f413cb2f9b333362c62e0d": {
+   "input_digest": "c6044cfbe7ae36b6a4e9a2c50f77f8d047f65ffcae31388915b343e52a4f9cad",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-659440",
+    "carrier_mc_evidence_text": "Carrier: Bluegrass Carriers Co (MC-659440)",
+    "charges": [
+     {
+      "amount_text": "$2,350.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $2,350.00",
+      "line_kind": "LINEHAUL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "RATE_CON",
+    "document_number": "RC-48890-B",
+    "document_number_evidence_text": "Rate confirmation number: RC-48890-B",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-48890",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48890"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:16:04.369Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1046,
+    "output_tokens": 166,
+    "reasoning_tokens": 0
+   }
+  },
+  "d4fca2702abf68d12b555466edc97cf274a40eaed6c89e86d0a894709bf15110": {
+   "input_digest": "508d6d865ecb1d210aa61c8e9b66843a8270ef15774ba4c85c4dfbf4d2aaccac",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-905118",
+    "carrier_mc_evidence_text": "Carrier: Summit Line Freight (MC-905118)",
+    "charges": [
+     {
+      "amount_text": "$1,600.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,600.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$200.00",
+      "charge_type": "DETENTION",
+      "evidence_text": "Detention: $200.00",
+      "line_kind": "ACCESSORIAL"
+     },
+     {
+      "amount_text": "$1,800.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,800.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "SL-3390",
+    "document_number_evidence_text": "Invoice number: SL-3390",
+    "references": [
+     {
+      "evidence_text": "Broker load number: LD-50090",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-50090"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:56.002Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1060,
+    "output_tokens": 365,
+    "reasoning_tokens": 45
+   }
+  },
+  "d5117e79e5db5fae67dcde3c33d5204d1d8a1e73f8d7c474a73bbd03ff586625": {
+   "input_digest": "ba136e19fca24bd63611039080884225719507d0b3a0223f3a518206b83cbd8c",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "running about an hour late",
+      "in_quoted_text": false,
+      "reason_text": null,
+      "stop": "UNSPECIFIED"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:03.239Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2789,
+    "output_tokens": 191,
+    "reasoning_tokens": 107
+   }
+  },
+  "d96f19c4b74f662f7df68d43188e09d550e641331f7ca21725f5470750a94432": {
+   "input_digest": "8a494e5c1722e4b5ca25adc585af8b29139fcb469f4a9075f618e1522a1fd783",
+   "model": "gpt-6-luna",
+   "payload": {
+    "carrier_mc": "MC-771203",
+    "carrier_mc_evidence_text": "Carrier: Ironwood Hauling Inc (MC-771203)",
+    "charges": [
+     {
+      "amount_text": "$1,500.00",
+      "charge_type": null,
+      "evidence_text": "Line haul: $1,500.00",
+      "line_kind": "LINEHAUL"
+     },
+     {
+      "amount_text": "$1,500.00",
+      "charge_type": null,
+      "evidence_text": "Total due: $1,500.00",
+      "line_kind": "TOTAL"
+     }
+    ],
+    "currency_code": "USD",
+    "currency_evidence_text": "All amounts in USD",
+    "doc_type": "CARRIER_INVOICE",
+    "document_number": "IW-7850",
+    "document_number_evidence_text": "Invoice number: IW-7850",
+    "references": [
+     {
+      "evidence_text": "Broker load number: HP-1107",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "HP-1107"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:14:09.824Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_document_text",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1054,
+    "output_tokens": 199,
+    "reasoning_tokens": 0
+   }
+  },
+  "dadccbc552d15af6e37df20a50eacce348ad025a3a10181ebb1b0a7482caef53": {
+   "input_digest": "ca0beab982dbcc19dc5b87fc6677798e4aa32f1750acf6a8bd14454b6bbbaee9",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "at the shipper, checked in",
+      "in_quoted_text": false,
+      "status": "ARRIVED",
+      "stop": "PICKUP"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:45.287Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2787,
+    "output_tokens": 152,
+    "reasoning_tokens": 26
+   }
+  },
+  "dd0edaf6a4c70ba4181dfe9c4c128d9c523cedd0189645bfeae252ab454ffa0f": {
+   "input_digest": "d5416c29ebbb726d779506d64b99fa3172b3c36b0be68fe1a7c8bc7175b47720",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "RESCHEDULED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "delivery appt is 1000 tomorrow",
+      "in_quoted_text": false,
+      "start_time_24h": "10:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "CORRECTION",
+    "commitments": [],
+    "corrections": [
+     {
+      "corrects": "APPOINTMENT",
+      "evidence_text": "Correction - delivery appt is 1000 tomorrow, not 0900."
+     }
+    ],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51009",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51009"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:42.435Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2805,
+    "output_tokens": 444,
+    "reasoning_tokens": 192
+   }
+  },
+  "dffd960994d9f43dd2770ef8c0550b3fcc4be168ae336aba0087b98543020a94": {
+   "input_digest": "a27e6cc2a5fe3d80b3c189220a789b087ab32aa8105f46e911e6b6086ad6ed1a",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "CONFIRMED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "set for 0900 delivery tomorrow.",
+      "in_quoted_text": false,
+      "start_time_24h": "09:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [
+     {
+      "evidence_text": "LD-51009",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-51009"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:34.896Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2801,
+    "output_tokens": 214,
+    "reasoning_tokens": 68
+   }
+  },
+  "e70e8bfdbabaf6f18175b674b8d9aab7c81b8a75cecc28877d572c14e62e0219": {
+   "input_digest": "0cbd7a9d41d88c1ea5f77210de330c42a80115726e0b2ff1c304aa0f124a87b4",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:09.176Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1259,
+    "output_tokens": 13,
+    "reasoning_tokens": 0
+   }
+  },
+  "e94fe67cd026c63a8f3e0dfb2531dc7cdfc6d45f74932d3d9ae8be53ed3267ce": {
+   "input_digest": "073d8d62e2349915b16b15c5ae71456fb205b1a3bd270dfec61396a025b300f1",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [
+     {
+      "appointment_status": "RESCHEDULED",
+      "day_offset": 1,
+      "end_time_24h": null,
+      "evidence_text": "Receiver pushed us to 10 tomorrow.",
+      "in_quoted_text": false,
+      "start_time_24h": "10:00",
+      "stop": "DELIVERY"
+     }
+    ],
+    "category": "APPOINTMENT",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": true,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:12:02.468Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2797,
+    "output_tokens": 284,
+    "reasoning_tokens": 172
+   }
+  },
+  "ea70f9dd37b2cc77b7dc807e0c7f23f330a1a0314a838cf538c2ffd8eef0dc27": {
+   "input_digest": "f398d3fccb08b10bcff16a617716461459c26f22fc71f2e0396d4e5ab8e29815",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:d2d6480a-a952-5101-bc29-71705de1c449",
+      "evidence_text": "POD attached for 51005.",
+      "reason": "The record mentions load number 51005, which corresponds to candidate load reference LD-51005.",
+      "support": "PARTIAL"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:00.156Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1254,
+    "output_tokens": 82,
+    "reasoning_tokens": 0
+   }
+  },
+  "eaf9fd2913c5f84496edc1a66a4ffe473c65b68a6799dee0672a761233fb0e75": {
+   "input_digest": "b513729dd8730b8a1e17ed91951b9bb4ead101d78d08d91515743a04419a549e",
+   "model": "gpt-6-luna",
+   "payload": {
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": "16:30",
+      "day_offset": 0,
+      "evidence_text": "I'll get back to you by 4:30 either way.",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": null,
+      "time_kind": "CLOCK_TIME",
+      "time_text": "by 4:30"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:29.866Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "extract_commitments",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 957,
+    "output_tokens": 178,
+    "reasoning_tokens": 89
+   }
+  },
+  "eb1a923d7ca5825bde824eff5ee0c4d7f32d23a4142f0a90a2cd59c08e48bd4e": {
+   "input_digest": "25175371a3d7bf672dff5bc27e2b4d2e9d8eaa32410c41185926a4bf190a9e42",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "RATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [
+     {
+      "amount_text": "2150",
+      "currency_code": null,
+      "evidence_text": "2150 all in",
+      "in_quoted_text": false
+     }
+    ],
+    "references": [
+     {
+      "evidence_text": "LD-48340",
+      "in_quoted_text": false,
+      "kind": "LOAD_NUMBER",
+      "role": "SUBJECT",
+      "value": "LD-48340"
+     }
+    ],
+    "response_requested": false,
+    "statuses": []
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:15:04.485Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2802,
+    "output_tokens": 114,
+    "reasoning_tokens": 0
+   }
+  },
+  "eb5950de88a20fa816e59e111dfdc65fc6213a78d9d1e65d272c6c3ae4596003": {
+   "input_digest": "cf0f505a717cb23bb35e2a1c55a33d0bd5c8f7a850dd8512a4418ef404928a3b",
+   "model": "gpt-6-luna",
+   "payload": {
+    "candidates": [
+     {
+      "candidate_id": "brokerage_load:686593ce-5e2c-555a-a019-983575c050a1",
+      "evidence_text": "POD attached for 51005.",
+      "reason": "The record references 51005, which matches the listed load reference LD-51005.",
+      "support": "PARTIAL"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:17:12.915Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "propose_entity_candidates",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 704,
+    "output_tokens": 80,
+    "reasoning_tokens": 0
+   }
+  },
+  "f7c1fdb2e38912876653cc48073b1aa1cb0b6fcfad456a12a8f30d0a8ae72fa5": {
+   "input_digest": "c42aca5ce8318aef77c28bb626c1287b665bb1745f88be200ccd0a3430f7830c",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [],
+    "corrections": [],
+    "delays": [],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "loaded",
+      "in_quoted_text": false,
+      "status": "LOADED",
+      "stop": "PICKUP"
+     },
+     {
+      "evidence_text": "rolling",
+      "in_quoted_text": false,
+      "status": "IN_TRANSIT",
+      "stop": "UNSPECIFIED"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:13:47.723Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2783,
+    "output_tokens": 194,
+    "reasoning_tokens": 34
+   }
+  },
+  "f7db7ced42684902a86f9008be1f6262d0007eb11efe24f26df83d68bbeb2363": {
+   "input_digest": "2e0d5e6a6d1df44209ef259c807c6f4c81643d87db58c523990d537a2899b1f1",
+   "model": "gpt-6-luna",
+   "payload": {
+    "accessorials": [],
+    "appointments": [],
+    "category": "STATUS_UPDATE",
+    "commitments": [
+     {
+      "actor": "SENDER",
+      "clock_time_24h": null,
+      "day_offset": null,
+      "evidence_text": "I'll update you in an hour.",
+      "in_quoted_text": false,
+      "promised_action": "STATUS_UPDATE",
+      "relative_minutes": 60,
+      "time_kind": "RELATIVE_MINUTES",
+      "time_text": "in an hour"
+     }
+    ],
+    "corrections": [],
+    "delays": [
+     {
+      "evidence_text": "still waiting on a door",
+      "in_quoted_text": false,
+      "reason_text": "waiting on a door",
+      "stop": "UNSPECIFIED"
+     }
+    ],
+    "documents": [],
+    "rates": [],
+    "references": [],
+    "response_requested": false,
+    "statuses": [
+     {
+      "evidence_text": "Driver checked in at 12:42",
+      "in_quoted_text": false,
+      "status": "ARRIVED",
+      "stop": "UNSPECIFIED"
+     }
+    ]
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T05:11:56.886Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "interpret_message",
+   "usage": {
+    "cached_input_tokens": 2716,
+    "input_tokens": 2802,
+    "output_tokens": 232,
+    "reasoning_tokens": 48
+   }
+  }
+ },
+ "format": "neyma-inference-recording-1",
+ "note": "Recorded model readings of a SYNTHETIC development corpus. A development/eval optimization: never business authority."
+}

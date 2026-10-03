@@ -208,6 +208,31 @@ class HistoryBuilder:
                            "subject": subject, "body": body, "asserts": list(asserts),
                            "quoted_external_ids": list(quoted), "forwarded": forwarded})
 
+    def raw_message(self, label: str, at: str, *, channel: str, source_system: str,
+                    sender: tuple[str, str, str], thread: str, body: str,
+                    refs: tuple[dict[str, Any], ...] = (), subject: str = "",
+                    quoted: tuple[str, ...] = (), forwarded: bool = False,
+                    external_id: str | None = None, as_of: str | None = None) -> None:
+        """A message exactly as it was captured: text, and NO `asserts`. What it says is for a
+        reader to work out. `refs` is only what the envelope itself carried — a thread or subject
+        line with the brokerage's own load number — and is empty when the text is all there is."""
+        self._add(label, channel=channel, kind="message", source_system=source_system, at=at,
+                  refs=refs, external_id=external_id, as_of=as_of,
+                  payload={"direction": "inbound", "thread_key": thread,
+                           "sender": {"role": sender[0], "name": sender[1], "address": sender[2]},
+                           "subject": subject, "body": body,
+                           "quoted_external_ids": list(quoted), "forwarded": forwarded})
+
+    def raw_document(self, label: str, at: str, doc_type: str, text: str, *,
+                     refs: tuple[dict[str, Any], ...], via: str, signed: bool | None = None,
+                     external_id: str | None = None) -> None:
+        """A document as text, with NO `extracted` block."""
+        self._add(label, channel="email", kind="document", source_system=via, at=at, refs=refs,
+                  external_id=external_id,
+                  payload={"doc_type": doc_type, "content": text, "signed": signed,
+                           "legible": True, "pages_present": 1, "pages_expected": 1,
+                           "attached_to": None})
+
     def document(self, label: str, at: str, doc_type: str, content: str, *,
                  refs: tuple[dict[str, Any], ...], via: str, channel: str = "email",
                  signed: bool | None = None, legible: bool = True, pages: tuple[int, int] = (1, 1),

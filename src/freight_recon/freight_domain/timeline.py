@@ -23,7 +23,12 @@ from zoneinfo import ZoneInfo
 from .financial import blocking_discrepancies
 from .foundation import stable_id
 from .model import DirectedMoney, OperationalTimelineEntry, carrier_owed
-from .projection import LoadView
+from .projection import (
+    LoadView,
+    resolve_appointment_claim,
+    resolve_claim_money,
+    resolve_stop_key,
+)
 
 SIGNAL_LABELS: dict[str, str] = {
     "tracking_provider_position": "tracking provider",
@@ -209,7 +214,7 @@ def _message_summaries(view: LoadView, payload: dict[str, Any],
         kind = item["type"]
         if kind == "status":
             out.append((f"{who} reports {item['status']}"
-                        f"{_stop_label(view, item.get('stop_key'))}", list(base_flags)))
+                        f"{_stop_label(view, resolve_stop_key(view, item))}", list(base_flags)))
         elif kind == "commitment":
             flags = list(base_flags)
             if item["in_quoted_text"]:
@@ -220,21 +225,37 @@ def _message_summaries(view: LoadView, payload: dict[str, Any],
                 out.append((f"{who} promises another update by {_local(item['due_by'], zone)}",
                             flags))
         elif kind == "appointment":
-            out.append((f"{who} states appointment{_stop_label(view, item['stop_key'])}: "
-                        f"{item['start_local']}..{item['end_local']} {item['timezone']}",
-                        list(base_flags)))
+            placed = resolve_appointment_claim(view, item)
+            if placed is None:
+                out.append((f"{who} states an appointment that names no single stop of this load "
+                            f"- retained, not applied", list(base_flags) + ["not_placed"]))
+            else:
+                out.append((f"{who} states appointment{_stop_label(view, placed['stop_key'])}: "
+                            f"{placed['start_local']}..{placed['end_local']} "
+                            f"{placed['timezone']}", list(base_flags)))
         elif kind == "accessorial_claim":
             flags = list(base_flags)
-            claim = (f"{who} claims {item['charge_type']} "
-                     f"{_money(item['amount_minor'], item['currency'])} OUT")
+            money, weakened = resolve_claim_money(view, item)
+            claim = f"{who} claims {item['charge_type']}"
+            if money is not None:
+                claim += f" {money.display()} OUT"
+            if weakened is not None:
+                flags.append("currency_assumed_not_stated")
             if item["claims_authorization"]:
                 flags.append("counterparty_asserted_authorization")
                 claim += " and asserts it was approved - an assertion, not an authorization"
             out.append((claim, flags))
         elif kind == "rate":
-            out.append((f"{who} states a rate of {_money(item['amount_minor'], item['currency'])} "
-                        f"OUT in conversation - retained as an observation, not the buy rate",
+            money, _ = resolve_claim_money(view, item)
+            stated = f" of {money.display()} OUT" if money is not None else ""
+            out.append((f"{who} states a rate{stated} in conversation - retained as an "
+                        f"observation, not the buy rate",
                         list(base_flags) + ["not_authoritative"]))
+        elif kind == "reference_correction":
+            stated = item.get("stated_reference")
+            out.append((f"{who} says an earlier message named the wrong load"
+                        + (f" and now names {stated}" if stated else "")
+                        + " - a claim; nothing was re-bound", list(base_flags)))
         elif kind == "delay":
             out.append((f"{who} reports a delay"
                         + (f": {item['reason']}" if item["reason"] else ""), list(base_flags)))
@@ -327,7 +348,11 @@ def _foundation_entries(builder: _Builder) -> None:
                     sources=(f"observation:{item['subject_ref']}",))
     for item in view.ambiguous_candidates:
         others = len(item.candidate_load_ids) - 1
-        if others:
+        if item.model_proposed:
+            summary = (f"an inbound {item.kind} named no load exactly; a model proposed this load"
+                       + (f" and {others} other(s)" if others else "")
+                       + " as a candidate - held for a human, not bound")
+        elif others:
             summary = (f"an inbound {item.kind} may belong to this load or to {others} other(s) - "
                        f"held for a human, not bound")
         else:
