@@ -553,11 +553,14 @@ def w09_accessorial_authorized() -> Any:
 # ============================================================ P9-D23, the other ways in and out
 
 def w10_mc_written_another_way() -> Any:
-    """The invoice prints "MC 771203". The TMS holds "MC-771203". Neyma does not decide those are
-    the same carrier: an identifier is looked up, not tidied. A human places the invoice."""
-    h = HistoryBuilder("W10", "Normal to Lima: the same MC, written another way", NORTHLINE,
+    """The invoice prints "MC-77120". The TMS holds "MC-771203". One digit short is a DIFFERENT
+    number: Neyma matches an MC on its exact digits and never on a prefix of them, so it does not
+    decide this is the same carrier. A human places the invoice. (A benign re-spelling of the SAME
+    digits - "MC 771203" - does resolve by itself; that is tested where it can be varied, in
+    `test_p9_load_work.py`, not here.)"""
+    h = HistoryBuilder("W10", "Normal to Lima: an MC printed one digit short", NORTHLINE,
                        day="2026-07-07", zone="America/Chicago",
-                       hostile=("invoice_unattributed", "carrier_mc_formatted_differently",
+                       hostile=("invoice_unattributed", "carrier_mc_truncated",
                                 "attribution_corrected_by_human"))
     load = "LD-49010"
     stops = _stops(h, pickup="Prairie Ag Normal", delivery="Allen County Feed",
@@ -572,11 +575,11 @@ def w10_mc_written_another_way() -> Any:
                po="PO-2310", bol="BOL-56010", pro="PRO-60010", sell=181000, stops=stops)
     _pod(h, "pod", h.t("15:20"), load=load, via=NORTHLINE_PODS)
     invoice = _invoice_as(h, "invoice-other-spelling", h.t("16:00"), load=load, number="IW-9010",
-                          carrier="ironwood", linehaul=143000, via=NORTHLINE_OPS, mc="MC 771203")
+                          carrier="ironwood", linehaul=143000, via=NORTHLINE_OPS, mc="MC-77120")
     h.human("attributed", h.t("16:30"), "marcus.reid", "attribute_carrier_invoice",
             refs=(load_ref(load),), movement_key="M1",
             target={"source_system": NORTHLINE_OPS, "external_id": invoice},
-            note="same carrier - their new template drops the dash")
+            note="same carrier - their new template cuts the last digit off")
     return h.build({"work": [
         checkpoint("invoice-other-spelling", load, posture="HUMAN_ATTENTION", human=True,
                    needs={"INVOICE_UNATTRIBUTED": ("OPEN", "HUMAN_REQUIRED")},

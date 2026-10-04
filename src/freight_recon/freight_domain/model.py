@@ -652,10 +652,12 @@ class AccessorialAuthorization:
 
 # --------------------------------------------------------------------------- financial (09)
 
-#: What may place a carrier's invoice on a movement. A document's own movement key, an MC that
-#: resolves EXACTLY through this brokerage's External Entity Mapping to the carrier of exactly one
-#: movement of the load, or a recorded human's act. Nothing else — and never a model.
-ATTRIBUTION_BASES: tuple[str, ...] = ("MOVEMENT_KEY", "CARRIER_MC_EXACT", "HUMAN_ASSERTION")
+#: What may place a carrier's invoice on a movement. A document's own movement key; an MC that
+#: resolves through this brokerage's External Entity Mapping to the carrier of exactly one movement
+#: of the load — as the very string a mapping recorded (EXACT), or as a benign re-spelling of it
+#: with identical digits (EQUIVALENT); or a recorded human's act. Nothing else — and never a model.
+ATTRIBUTION_BASES: tuple[str, ...] = ("MOVEMENT_KEY", "CARRIER_MC_EXACT", "CARRIER_MC_EQUIVALENT",
+                                      "HUMAN_ASSERTION")
 
 #: Why an invoice bound to a load could not be placed on one of its movements.
 #:   CARRIER_NOT_STATED     the invoice prints no MC and names no movement

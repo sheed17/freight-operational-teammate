@@ -180,6 +180,16 @@ class ExternalEntityMappings:
             "SELECT * FROM external_entity_mappings WHERE tenant = ? ORDER BY created_at, mapping_id",
             (self._tenant,)).fetchall()]
 
+    def active_of_kind(self, system: str, kind: str, *, entity_type: str) -> tuple[Mapping, ...]:
+        """Every ACTIVE mapping of one id kind in one outside system — for THIS tenant and no other.
+        What a caller comparing an identifier's canonical form reads; the tenant predicate is the
+        same one `resolve` carries, so a neighbour's carrier is never a candidate."""
+        return tuple(_row_to_mapping(r) for r in self._conn.execute(
+            "SELECT * FROM external_entity_mappings WHERE tenant = ? AND external_system = ? "
+            "AND external_id_kind = ? AND neyma_entity_type = ? AND state = 'ACTIVE' "
+            "ORDER BY created_at, mapping_id",
+            (self._tenant, system, kind, entity_type)).fetchall())
+
     def entity_exists(self, entity_type: str, entity_id: str) -> bool:
         return self._conn.execute(
             "SELECT 1 FROM external_entity_mappings WHERE tenant = ? AND neyma_entity_type = ? "

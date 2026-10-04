@@ -650,28 +650,158 @@ def test_placing_the_invoice_clears_the_stall_and_keeps_the_history(run):
     assert rows == 4, "history was deleted to make the need go away"
 
 
-def test_an_mc_is_looked_up_never_tidied_and_never_looked_up_next_door(run):
-    """ "MC 771203" is not "MC-771203": Neyma does not decide two spellings are one carrier. And an
-    MC resolves only through THIS brokerage's own mapping."""
+def _one_carrier_load_billed_as(tmp_path, printed_mc, *, name="mc.db"):
+    """A delivered, signed-for, one-carrier Ironwood load (TMS: `MC-771203`) whose invoice prints
+    `printed_mc` and bills exactly the rate confirmation. Returns the final work, view and db."""
+    h = HistoryBuilder("WM", "an invoice whose MC is printed some way", NORTHLINE,
+                       day="2026-08-24", zone="America/Chicago", hostile=("carrier_mc_format",))
+    load = "LD-49095"
+    stops = _stops(h, pickup="Prairie Ag Normal", delivery="Allen County Feed")
+    _cover(h, NORTHLINE_OPS, NORTHLINE_PODS)
+    customer, carrier = _covered(h, load=load, customer="prairie_ag", carrier="ironwood",
+                                 po="PO-2395", bol="BOL-56095", pro="PRO-60095", sell=181000,
+                                 stops=stops, at=("07:30", "08:00"))
+    _rate_con(h, "rate-con", h.t("08:20"), load=load, number="RC-49095", carrier="ironwood",
+              linehaul=143000, via=NORTHLINE_OPS)
+    _delivered(h, "delivered", h.t("15:00"), load=load, customer=customer, carrier=carrier,
+               po="PO-2395", bol="BOL-56095", pro="PRO-60095", sell=181000, stops=stops)
+    h.document("pod", h.t("15:20"), "POD", f"PROOF OF DELIVERY | load {load}",
+               refs=(load_ref(load),), via=NORTHLINE_PODS, signed=True)
+    _invoice_as(h, "invoice", h.t("16:00"), load=load, number="IW-9095", carrier="ironwood",
+                linehaul=143000, via=NORTHLINE_OPS, mc=printed_mc)
+    store = _store(tmp_path, name)
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    return result.state(NORTHLINE, load), _view(result, NORTHLINE, load), store
+
+
+@pytest.mark.parametrize("printed", ["MC 771203", "MC771203", "mc-771203", "Mc  771203",
+                                     "MC - 771203", "771203", " MC-771203 "])
+def test_an_mc_written_another_way_is_the_same_mc_when_its_digits_are_identical(tmp_path, printed):
+    """P9-D31. The TMS holds `MC-771203`; the invoice prints the SAME digits with another prefix
+    case, spacing or hyphenation. That is one identifier written two ways: the invoice is placed on
+    the carrier's movement, reconciled, and nobody is asked. The basis records that it matched on
+    equivalent digits rather than on the recorded string."""
+    assert CARRIERS["ironwood"]["mc"] == "MC-771203" and printed != "MC-771203"
+    state, view, store = _one_carrier_load_billed_as(tmp_path, printed)
+    payable = next(iter(view.payables.values()))
+    assert payable.stated_carrier_mc == printed.strip() or payable.stated_carrier_mc == printed
+    assert payable.movement_id == view.movements["M1"].entity_id
+    assert payable.attribution_basis == "CARRIER_MC_EQUIVALENT" and payable.attribution_problem is None
+    assert state.reconciliation == ("RECONCILED",) and state.routine_work_is_zero
+    assert state.need(NeedKind.INVOICE_UNATTRIBUTED) is None and view.open_exceptions() == []
+    # Nothing was rewritten to make it match: the mapping still holds only what the TMS said.
+    assert [r[0] for r in store.conn.execute(
+        "SELECT external_id FROM external_entity_mappings WHERE tenant = ? "
+        "AND external_id_kind = 'mc_number'", (NORTHLINE,))] == ["MC-771203"]
+    store.close()
+
+
+def test_the_recorded_spelling_of_an_mc_still_matches_exactly(tmp_path):
+    state, view, store = _one_carrier_load_billed_as(tmp_path, "MC-771203")
+    assert next(iter(view.payables.values())).attribution_basis == "CARRIER_MC_EXACT"
+    assert state.reconciliation == ("RECONCILED",) and state.routine_work_is_zero
+    store.close()
+
+
+@pytest.mark.parametrize("printed,why", [
+    ("MC-77120", "truncated: one digit short"),
+    ("MC-7712030", "one digit long"),
+    ("MC-771204", "one digit different"),
+    ("MC-0771203", "a leading zero is a different digit string"),
+    ("MC-771 203", "a separator inside the digits"),
+    ("MC-771-203", "a separator inside the digits"),
+    ("MC-771203X", "a trailing letter"),
+    ("MX-771203", "another prefix"),
+    ("DOT-771203", "another registry's prefix"),
+    ("MC#771203", "punctuation that is not a space or a hyphen"),
+    ("MC-771203 / MC-482915", "two numbers"),
+])
+def test_an_mc_with_different_or_missing_digits_is_never_matched(tmp_path, printed, why):
+    """P9-D31, the other half. Not fuzzy, no edit distance, no truncation, no inferred digit: an MC
+    whose digits are not EXACTLY the recorded ones names no carrier this brokerage knows. The
+    invoice is held, compared against nothing, and a named human is asked."""
+    state, view, store = _one_carrier_load_billed_as(tmp_path, printed)
+    payable = next(iter(view.payables.values()))
+    assert payable.movement_id is None and payable.attribution_basis is None, why
+    assert payable.attribution_problem == "CARRIER_UNRECOGNIZED" and payable.lifecycle_state == "HELD"
+    need = state.need(NeedKind.INVOICE_UNATTRIBUTED)
+    assert need is not None and need.human_required, why
+    assert need.reason_codes == ("CARRIER_UNRECOGNIZED",)
+    assert "RECONCILED" not in state.reconciliation, why
+    assert any(repr(printed) in e.note for e in need.evidence)
+    assert any("MC-771203" in e.note for e in need.evidence), "the candidate is shown too"
+    store.close()
+
+
+def test_the_truncated_mc_in_the_corpus_is_placed_only_by_a_human(run):
+    """W10, through time: the invoice prints `MC-77120` against the TMS's `MC-771203`. It is
+    unplaced until a recorded human places it — and it is her act, not a shortened number, that
+    the payable's basis records."""
     result, conn = run
-    # At the moment the invoice arrives, BEFORE any human acts: it fits no carrier Neyma knows.
     arrived = result.at("W10", "invoice-other-spelling", "LD-49010")
     unplaced = arrived.need(NeedKind.INVOICE_UNATTRIBUTED)
-    assert unplaced is not None, "the spelling was normalized and the invoice placed itself"
+    assert unplaced is not None, "a truncated MC was matched and the invoice placed itself"
     assert unplaced.reason_codes == ("CARRIER_UNRECOGNIZED",)
-    assert any("'MC 771203'" in e.note for e in unplaced.evidence)
-    assert any("MC-771203" in e.note for e in unplaced.evidence), "the candidate is shown too"
     assert "RECONCILED" not in arrived.reconciliation
-    view = _view(result, NORTHLINE, "LD-49010")
-    payable = next(iter(view.payables.values()))
-    assert payable.stated_carrier_mc == "MC 771203"
-    assert payable.attribution_basis == "HUMAN_ASSERTION", "the spelling was normalized"
-    known = conn.execute(
-        "SELECT COUNT(DISTINCT tenant) FROM external_entity_mappings "
-        "WHERE external_system = 'fmcsa' AND external_id = 'MC-771203'").fetchone()[0]
-    assert known == 2, "the trap needs the same carrier under both brokerages"
+    payable = next(iter(_view(result, NORTHLINE, "LD-49010").payables.values()))
+    assert payable.stated_carrier_mc == "MC-77120"
+    assert payable.attribution_basis == "HUMAN_ASSERTION", "a truncated MC was matched"
     assert conn.execute("SELECT COUNT(*) FROM external_entity_mappings "
-                        "WHERE external_id = 'MC 771203'").fetchone()[0] == 0
+                        "WHERE external_id = 'MC-77120'").fetchone()[0] == 0
+
+
+def test_an_mc_is_never_looked_up_next_door(tmp_path):
+    """Cedar Ridge knows Summit Line (`MC-905118`); Northline, in this database, has never recorded
+    it. A Northline invoice printing `MC 905118` — a benign re-spelling of a NEIGHBOUR's carrier —
+    names no carrier Northline knows. If the equivalence looked across tenants it would be
+    recognized (and reported as a carrier 'not on this load')."""
+    store = _store(tmp_path, "next-door.db")
+    there = HistoryBuilder("WN", "the neighbour's carrier", CEDAR, day="2026-08-24",
+                           zone="America/Chicago", hostile=("cross_tenant_carrier",))
+    stops = _stops(there, pickup="Ozark Building Supply", delivery="Bluff City Lumber")
+    there.tms("covered", there.t("07:00"), load="LD-88001", status="COVERED", version=1,
+              customer=CUSTOMERS["cedar_building"], po="PO-8801", bol="BOL-8801",
+              sell=charges(120000), stops=stops,
+              movements=(movement("M1", CARRIERS["summit"], pro="PRO-8801"),))
+    FreightIntake(store.conn, WORK_SETUPS[CEDAR]).ingest(there.build({}).records[0])
+    assert store.conn.execute(
+        "SELECT tenant FROM external_entity_mappings WHERE external_id = 'MC-905118'"
+    ).fetchall()[0][0] == CEDAR, "the trap needs the carrier recorded next door"
+    state, view, here = _one_carrier_load_billed_as(tmp_path, "MC 905118", name="next-door.db")
+    payable = next(iter(view.payables.values()))
+    assert payable.movement_id is None
+    assert payable.attribution_problem == "CARRIER_UNRECOGNIZED", payable.attribution_problem
+    assert state.need(NeedKind.INVOICE_UNATTRIBUTED).human_required
+    assert cross_tenant_violations(here.conn) == []
+    here.close()
+    store.close()
+
+
+@pytest.mark.parametrize("printed", ["MC-771203", "MC 771203", "MC771203"])
+def test_one_mc_recorded_under_two_carriers_places_nothing(tmp_path, printed):
+    """The brokerage's own records hold the same digits twice, spelled two ways, as two carriers.
+    Neither is chosen — not even the one whose recorded spelling the invoice happens to print."""
+    twin = {**CARRIERS["ironwood"], "mc": "MC 771203", "name": "Ironwood Hauling (duplicate row)"}
+    h = HistoryBuilder("WT", "one MC, two carrier rows", NORTHLINE, day="2026-08-23",
+                       zone="America/Chicago", hostile=("carrier_mc_duplicated",))
+    stops = _stops(h, pickup="Prairie Ag Normal", delivery="Allen County Feed")
+    h.tms("other-load", h.t("07:00"), load="LD-49094", status="COVERED", version=1,
+          customer=CUSTOMERS["prairie_ag"], po="PO-2394", bol="BOL-56094",
+          sell=charges(150000), stops=stops, movements=(movement("M1", twin, pro="PRO-60094"),))
+    store = _store(tmp_path, "twins.db")
+    FreightIntake(store.conn, WORK_SETUPS[NORTHLINE]).ingest(h.build({}).records[0])
+    store.close()
+    state, view, again = _one_carrier_load_billed_as(tmp_path, printed, name="twins.db")
+    rows = again.conn.execute(
+        "SELECT COUNT(DISTINCT neyma_entity_id) FROM external_entity_mappings WHERE tenant = ? "
+        "AND external_id_kind = 'mc_number'", (NORTHLINE,)).fetchone()[0]
+    assert rows == 2, "the trap needs one number recorded as two carriers"
+    payable = next(iter(view.payables.values()))
+    assert payable.movement_id is None and payable.attribution_basis is None
+    assert payable.attribution_problem == "CARRIER_AMBIGUOUS"
+    assert state.need(NeedKind.INVOICE_UNATTRIBUTED).human_required
+    assert "RECONCILED" not in state.reconciliation
+    again.close()
 
 
 def test_the_same_invoice_at_another_brokerage_cannot_be_reached(run):

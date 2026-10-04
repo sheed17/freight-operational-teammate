@@ -47,6 +47,7 @@ REASON = f"{FD}/work_reasoning.py"
 PROJECTION = f"{FD}/projection.py"
 DETECTORS = f"{FD}/detectors.py"
 MODEL = f"{FD}/model.py"
+MAPPING = f"{FD}/entity_mapping.py"
 
 T = "eval/tests/test_p9_load_work.py"
 
@@ -55,7 +56,10 @@ CONFLICT = f"{T}::test_an_unresolved_conflict_is_human_attention_and_resolving_i
 UNPLACED = (f"{T}::test_an_invoice_no_movement_claims_is_an_owned_human_need_and_never_"
             f"reconciled")
 HELD = f"{T}::test_an_unplaced_invoice_is_held_and_is_compared_against_nothing"
-MC = f"{T}::test_an_mc_is_looked_up_never_tidied_and_never_looked_up_next_door"
+MC_SAME = f"{T}::test_an_mc_written_another_way_is_the_same_mc_when_its_digits_are_identical"
+MC_OTHER = f"{T}::test_an_mc_with_different_or_missing_digits_is_never_matched"
+MC_NEXT_DOOR = f"{T}::test_an_mc_is_never_looked_up_next_door"
+MC_TWINS = f"{T}::test_one_mc_recorded_under_two_carriers_places_nothing"
 POD = f"{T}::test_delivered_without_a_pod_is_work_and_a_usable_pod_closes_it"
 TWICE = f"{T}::test_evaluating_the_same_state_twice_creates_nothing"
 TENANT = f"{T}::test_the_same_invoice_at_another_brokerage_cannot_be_reached"
@@ -177,11 +181,42 @@ CASES = [
        '            if False:  # MUTANT\n                payable.lifecycle_state = "HELD"\n')],
      HELD),
 
-    ("an MC is TIDIED before it is looked up - 'MC 771203' is quietly decided to be 'MC-771203'",
-     [(PROJECTION, '            ExternalReference(CARRIER_REGISTRY, "mc_number", str(carrier_mc)),\n',
-       '            ExternalReference(CARRIER_REGISTRY, "mc_number",  # MUTANT\n'
-       '                              str(carrier_mc).replace("MC ", "MC-")),\n')],
-     MC),
+    ("an MC is matched FUZZILY - a number one digit short matches the carrier it is a prefix of",
+     [(PROJECTION, '            if canonical_mc_digits(m.external_id) == digits)) '
+                   'if digits is not None else ()\n',
+       '            if (canonical_mc_digits(m.external_id) or "").startswith(digits))) '
+       'if digits is not None else ()  # MUTANT\n')],
+     MC_OTHER),
+
+    ("an MC is TIDIED too far - every non-digit is thrown away, so another prefix, a trailing "
+     "letter or a split number is 'the same MC'",
+     [(PROJECTION, '    match = _MC_BENIGN_FORM.fullmatch(str(value))\n'
+                   '    return match.group(1) if match else None\n',
+       '    return re.sub(r"[^0-9]", "", str(value)) or None  # MUTANT\n')],
+     MC_OTHER),
+
+    ("an MC is matched ONLY as the recorded string - P9-D31 undone: a carrier whose template "
+     "drops the dash needs a human for every invoice",
+     [(PROJECTION, '            if canonical_mc_digits(m.external_id) == digits)) '
+                   'if digits is not None else ()\n',
+       '            if canonical_mc_digits(m.external_id) == digits)) '
+       'if False else ()  # MUTANT\n')],
+     MC_SAME),
+
+    ("an MC is looked up NEXT DOOR - the equivalence reads every brokerage's carriers",
+     [(MAPPING, '            "SELECT * FROM external_entity_mappings WHERE tenant = ? AND '
+                'external_system = ? "\n            "AND external_id_kind = ? AND '
+                'neyma_entity_type = ? AND state = \'ACTIVE\' "\n',
+       '            "SELECT * FROM external_entity_mappings WHERE ? IS NOT NULL AND '
+       'external_system = ? "  # MUTANT\n            "AND external_id_kind = ? AND '
+       'neyma_entity_type = ? AND state = \'ACTIVE\' "\n')],
+     MC_NEXT_DOOR),
+
+    ("one MC recorded under TWO carriers: the spelling the invoice prints wins - the exact match "
+     "hides the ambiguity",
+     [(PROJECTION, '        carriers = tuple(dict.fromkeys((*exact, *equivalent)))\n',
+       '        carriers = exact or equivalent  # MUTANT\n')],
+     MC_TWINS),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',

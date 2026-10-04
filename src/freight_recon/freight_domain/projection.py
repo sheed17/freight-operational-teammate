@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,6 +77,9 @@ MODEL_INFERRED = "MODEL_INFERRED"
 #: The outside system a carrier's MC number is an id IN. An MC is trusted only within it, and only
 #: for the brokerage whose mapping recorded it.
 CARRIER_REGISTRY = "fmcsa"
+#: The BENIGN ways one MC number is written: an optional `MC` prefix in any case, spaces and hyphens
+#: around it, then the digits and nothing else. `MC-771203`, `MC 771203`, `mc771203` and `771203`.
+_MC_BENIGN_FORM = re.compile(r"\s*(?:MC)?[\s-]*([0-9]+)\s*", re.IGNORECASE)
 OPEN_CONFLICT_STATES = ("RAISED", "OPEN", "ESCALATED")
 OWED_STATES = ("RAISED", "OVERDUE", "INDETERMINATE")
 LATE_STATES = ("OVERDUE", "INDETERMINATE")
@@ -84,6 +88,19 @@ LATE_STATES = ("OVERDUE", "INDETERMINATE")
 def split_ref(ref: str) -> tuple[str, str]:
     kind, _, ident = ref.partition(":")
     return kind, ident
+
+
+def canonical_mc_digits(value: object) -> str | None:
+    """The digits of an MC number, when `value` is a BENIGN way of writing one; else None.
+
+    Two spellings name one MC only when they differ in representation and in nothing else: the
+    optional `MC` prefix, its case, and the spaces and hyphens around it. The DIGITS must then be
+    identical, character for character. This is not a fuzzy match and must never become one: a
+    shorter number, a longer one, a leading zero, one digit different, a separator inside the
+    digits, another prefix or a trailing letter is a DIFFERENT identifier (or not an MC at all) —
+    it returns None or different digits, and the invoice stays a named human's question."""
+    match = _MC_BENIGN_FORM.fullmatch(str(value))
+    return match.group(1) if match else None
 
 
 @dataclass
@@ -621,9 +638,12 @@ class Projector:
         load is that carrier's. Otherwise nothing is chosen: a load may be moved by several carriers,
         and attributing a carrier's paper to "the" movement would be the 1:1 assumption V-21 forbids.
 
-        The MC is an IDENTITY looked up, never a string tidied: "MC 771203" is not "MC-771203" until
-        a recorded mapping says so. Which spellings name one carrier is a rule nobody has supplied
-        (NEEDS VALIDATION), so an unrecognized spelling is a named human's question, not a guess."""
+        The MC is an IDENTITY looked up within this brokerage. It matches the string a mapping
+        recorded, or — when both are BENIGN ways of writing an MC — a mapping whose digits are
+        identical (`canonical_mc_digits`: "MC 771203" and "MC-771203" are one number; "MC-77120"
+        and "MC-771204" are not, and are never matched). Every carrier either way finds is counted:
+        if the brokerage's own records hold that number under two carriers, nothing is chosen. An
+        MC that fits no recorded carrier is a named human's question, not a guess."""
         if movement_key and movement_key in view.movements:
             return view.movements[movement_key], "MOVEMENT_KEY", None
         if not carrier_mc:
@@ -631,14 +651,20 @@ class Projector:
         resolution = self._m.resolve(
             ExternalReference(CARRIER_REGISTRY, "mc_number", str(carrier_mc)),
             entity_type=Carrier.ENTITY_TYPE)
-        carriers = tuple(dict.fromkeys(m.neyma_entity_id for m in resolution.active))
+        exact = tuple(dict.fromkeys(m.neyma_entity_id for m in resolution.active))
+        digits = canonical_mc_digits(carrier_mc)
+        equivalent = tuple(dict.fromkeys(
+            m.neyma_entity_id for m in self._m.active_of_kind(
+                CARRIER_REGISTRY, "mc_number", entity_type=Carrier.ENTITY_TYPE)
+            if canonical_mc_digits(m.external_id) == digits)) if digits is not None else ()
+        carriers = tuple(dict.fromkeys((*exact, *equivalent)))
         if not carriers:
             return None, None, "CARRIER_UNRECOGNIZED"
         if len(carriers) > 1:
             return None, None, "CARRIER_AMBIGUOUS"
         matches = [m for m in view.movements.values() if m.carrier_id == carriers[0]]
         if len(matches) == 1:
-            return matches[0], "CARRIER_MC_EXACT", None
+            return matches[0], "CARRIER_MC_EXACT" if exact else "CARRIER_MC_EQUIVALENT", None
         return None, None, "CARRIER_AMBIGUOUS" if matches else "CARRIER_NOT_ON_LOAD"
 
     def _movement_for(self, view: LoadView, *, movement_key: str | None,
@@ -1220,7 +1246,8 @@ def resolve_claim_money(view: LoadView,
 _ATTRIBUTION_REASONS: dict[str, str] = {
     "CARRIER_NOT_STATED": "it prints no carrier MC and names no movement",
     "CARRIER_UNRECOGNIZED": "it prints carrier MC {mc!r}, which names no carrier this brokerage "
-                            "has recorded (an identifier is matched exactly, never tidied)",
+                            "has recorded (an MC is matched on its exact digits; a shorter, "
+                            "longer or different number is never matched)",
     "CARRIER_NOT_ON_LOAD": "it prints carrier MC {mc!r}, a carrier this brokerage knows that "
                            "moves no movement of this load",
     "CARRIER_AMBIGUOUS": "it prints carrier MC {mc!r}, which fits more than one movement of this "
