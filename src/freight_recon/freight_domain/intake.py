@@ -75,7 +75,14 @@ from .history import (
 )
 from .interpretation import FAILED, READ, ContentReading, FreightInterpreter
 from .model import entity_id, entity_ref
-from .projection import LOAD, FreightProjection, LoadView, Projector, split_ref
+from .projection import (
+    LOAD,
+    FreightProjection,
+    LoadView,
+    Projector,
+    exception_key,
+    split_ref,
+)
 
 #: The most times intake re-projects after materializing intents. Each pass can only add rows the
 #: machines accept; two passes settle every history in the corpus, and the bound is a guard against a
@@ -157,6 +164,7 @@ class IntakeStats:
     expectations_amended: int = 0
     expectations_cancelled: int = 0
     exceptions_raised: int = 0
+    exceptions_resolved: int = 0
     settle_passes: int = 0
     writes_after_settle: int = 0
     model_readings: int = 0
@@ -693,8 +701,38 @@ class FreightIntake:
         elif act == "confirm_appointment":
             detail = self._confirm_appointment(observation_id, load_ref, payload,
                                                human_id=human_id, decision_ref=decision_ref)
+        elif act == "resolve_exception":
+            detail = self._resolve_exception(observation_id, load_ref, payload, human_id=human_id)
         return RecordOutcome(record.label, BOUND, observation_id=observation_id,
                              load_id=split_ref(load_ref)[1], detail=detail)
+
+    def _resolve_exception(self, observation_id: str, load_ref: str, payload: dict[str, Any], *,
+                           human_id: str) -> str:
+        """A recorded human closes ONE Exception, by name, on the load her act names. It is the only
+        way this spine closes an Exception, and M9 does the closing: the row moves to RESOLVED with
+        her as the decider and is retained.
+
+        The Exception must be OPEN and attached to THAT load, in this brokerage: a key that is open
+        on another load, or on nothing, closes nothing and is put back to a named human. Resolving
+        an Exception decides only that: an invoice that is still unplaced is still unplaced."""
+        view = self.projector.project().loads[split_ref(load_ref)[1]]
+        named = [x for x in view.open_exceptions() if exception_key(x) == payload["exception"]]
+        if len(named) == 1 and self.foundation.resolve_exception_by_human(
+                named[0]["exception_id"], human_id=human_id, correlation_id=load_ref):
+            self.stats.exceptions_resolved += 1
+            return "resolve_exception"
+        if any(exception_key(x) == payload["exception"] for x in view.exceptions):
+            # It is this load's, and a human already closed it: saying so again changes nothing
+            # and is nobody's new question.
+            return "already resolved"
+        self._raise_exception(RaiseException(
+            exception_id=stable_id("exc", self.tenant, observation_id, "no_exception"),
+            type="assertion_target_missing", severity="SEV2", source_ref=observation_id,
+            source_kind="observation", owner_id=self.setup.intake_owner, entity_ref=load_ref,
+            summary=f"A human resolved Exception {payload['exception']!r}, and this load has no "
+                    f"open Exception by that name. Nothing was closed.",
+            specific_question="Which Exception, on which load, did you mean to close?"))
+        return "resolution could not be applied"
 
     def _attribute_invoice(self, observation_id: str, load_ref: str,
                            payload: dict[str, Any]) -> str:

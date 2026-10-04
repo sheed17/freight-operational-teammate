@@ -1138,7 +1138,8 @@ def test_a_wrong_load_number_is_a_humans_question_and_moving_the_record_moves_th
         "AND expected_type = 'document:POD' ORDER BY created_at", (NORTHLINE,)).fetchall()
     assert [r["state"] for r in rows] == ["CANCELLED", "RAISED"], "history was not retained"
     assert rows[0]["subject_ref"] == f"brokerage_load:{left.load_id}"
-    # The human's question is not closed for her: M9 has no closure this spine can perform.
+    # Moving the record does not close her question for her: only her own `resolve_exception` act
+    # does (test_a_humans_explicit_resolution_closes_the_exception_...).
     assert left.need(NeedKind.IDENTITY_UNRESOLVED) is not None
     store.close()
 
@@ -1188,6 +1189,230 @@ def test_an_expectation_that_outlives_its_cause_is_never_dropped(tmp_path):
     view = result.intakes[NORTHLINE].projection().view_by_load_ref("LD-49097")
     assert audit_state(left, view, tenant=NORTHLINE) == []
     store.close()
+
+
+# ============================================================ P9-D30: a human closes an Exception
+
+def _resolve_act(tenant, load, key, *, human, at, label="resolved"):
+    """One `resolve_exception` console act: `human` closes the Exception named `key` on `load`. It
+    arrives at `at` — the brokerage's own clock, so that closing it is the ONLY thing that changes."""
+    h = HistoryBuilder("WR", "a human closes an exception", tenant, day="2026-12-01",
+                       zone="America/Chicago", hostile=("human_resolves_exception",))
+    h.human(label, at, human, "resolve_exception", refs=(load_ref(load),), exception=key,
+            note="reviewed")
+    return h.records[-1]
+
+
+def _m9_row(conn, tenant, key):
+    kind, _, source = key.partition("@")
+    return conn.execute(
+        "SELECT * FROM exceptions WHERE tenant = ? AND type = ? AND source_ref = ?",
+        (tenant, kind, source)).fetchone()
+
+
+def test_a_humans_explicit_resolution_closes_the_exception_and_its_need_and_keeps_the_history(
+        tmp_path):
+    """R03, finished. A carrier says an earlier message named the wrong load; Priya moves the
+    record. Her QUESTION is still open — moving a record does not say it was answered. Then she
+    resolves the Exception herself: M9 records her as the decider, the row and its raise are
+    retained, and the need is gone. Nobody decided it for her, and nothing else was closed."""
+    store = _store(tmp_path)
+    histories = [h for h in build_raw_histories() if h.history_id == "R03"]
+    ledger = InferenceLedger()
+    gateway = ScriptedGateway(raw_history_responder(), ledger=ledger)
+    result = run_work_histories(store.conn, SETUPS, histories,
+                                interpreter=FreightInterpreter(gateway, ledger))
+    intake = result.intakes[NORTHLINE]
+    before = result.state(NORTHLINE, "LD-51003")
+    question = before.need(NeedKind.IDENTITY_UNRESOLVED)
+    assert question is not None and question.reason_codes == ("REFERENCE_CORRECTION_CLAIMED",)
+    key = next(o for o in question.origins if o.startswith("exception:")).split(":", 1)[1]
+    assert key.startswith("counterparty_reference_correction@")
+    assert _m9_row(store.conn, NORTHLINE, key)["state"] == "OPEN"
+    rows = row_counts(store.conn)["exceptions"]
+    other = result.state(NORTHLINE, "LD-51004")
+
+    outcome = intake.ingest(_resolve_act(NORTHLINE, "LD-51003", key, human="priya.nair",
+                                         at=intake.foundation.now()))
+    assert outcome.disposition == "BOUND" and outcome.detail == "resolve_exception"
+    after = {s.load_number: s for s in work_states(intake).values()}
+    left = after["LD-51003"]
+    assert left.need(NeedKind.IDENTITY_UNRESOLVED) is None, "her resolved question is still work"
+    assert (NeedKind.IDENTITY_UNRESOLVED, "RESOLVED", "human:priya.nair") in {
+        (s.kind, s.how, s.by) for s in left.settled}
+    assert left.housekeeping == before.housekeeping
+    # M9 did the closing, and kept everything.
+    row = _m9_row(store.conn, NORTHLINE, key)
+    assert row["state"] == "RESOLVED" and row["decision_human_id"] == "priya.nair"
+    assert row_counts(store.conn)["exceptions"] == rows, "the Exception row was not retained"
+    decision = store.conn.execute(
+        "SELECT event_name, envelope_json FROM event_outbox WHERE tenant = ? AND event_id = ?",
+        (NORTHLINE, row["decision_ref"])).fetchone()
+    assert decision is not None and decision["event_name"] == "ExceptionResolved"
+    envelope = json.loads(decision["envelope_json"])
+    assert envelope["actor_type"] == "human" and envelope["actor_id"] == "priya.nair"
+    assert [r[0] for r in store.conn.execute(
+        "SELECT event_name FROM event_outbox WHERE tenant = ? AND aggregate_type = 'exception' "
+        "AND aggregate_id = ? ORDER BY rowid", (NORTHLINE, row["exception_id"]))] == [
+            "ExceptionRaised", "ExceptionResolved"]
+    # Exactly that Exception: the other load's work is what it was.
+    assert [(n.need_id, n.status) for n in after["LD-51004"].needs] == [
+        (n.need_id, n.status) for n in other.needs]
+    view = intake.projection().view_by_load_ref("LD-51003")
+    assert audit_state(left, view, tenant=NORTHLINE) == []
+    assert sum(intake.foundation.effect_surface_counts().values()) == 0
+    store.close()
+
+
+def _late_then_answered(tmp_path, name):
+    """W03 to its end: a promise broken, then kept. One cured Exception is left open in M9."""
+    store = _store(tmp_path, name)
+    result = run_work_histories(store.conn, WORK_SETUPS, [_history("W03")])
+    state = result.state(NORTHLINE, "LD-49003")
+    assert len(state.housekeeping) == 1 and state.housekeeping[0].startswith(
+        "cured_exception:expectation_unmet@")
+    return store, result, state, state.housekeeping[0].split(":", 1)[1]
+
+
+def test_a_cured_exception_is_closed_only_by_a_human_and_then_is_not_housekeeping(tmp_path):
+    """A promise went overdue and was then kept. The Exception M9 raised for it has nothing left to
+    decide, and it is still OPEN: no evidence, no rule and no projection closes it. A named human
+    does — and only then does it stop being counted."""
+    store, result, state, key = _late_then_answered(tmp_path, "cured.db")
+    intake = result.intakes[NORTHLINE]
+    assert _m9_row(store.conn, NORTHLINE, key)["state"] == "OPEN", "something closed it by itself"
+    needs = [(n.need_id, n.status, n.handling) for n in state.needs]
+    intake.ingest(_resolve_act(NORTHLINE, "LD-49003", key, human="dana.ortiz",
+                               at=intake.foundation.now()))
+    after = next(iter(work_states(intake).values()))
+    assert after.housekeeping == () and _m9_row(store.conn, NORTHLINE, key)["state"] == "RESOLVED"
+    assert [(n.need_id, n.status, n.handling) for n in after.needs] == needs, \
+        "closing a cured Exception changed the operational work"
+    # Said again - a second click, a second record - it is the same closed Exception: no new row,
+    # no new question for anybody, the same work.
+    rows = row_counts(store.conn)["exceptions"]
+    again = intake.ingest(_resolve_act(NORTHLINE, "LD-49003", key, human="marcus.reid",
+                                       at=intake.foundation.now(), label="resolved-again"))
+    assert again.detail == "already resolved" and row_counts(store.conn)["exceptions"] == rows
+    assert _m9_row(store.conn, NORTHLINE, key)["decision_human_id"] == "dana.ortiz"
+    assert next(iter(work_states(intake).values())).digest() == after.digest()
+    store.close()
+
+
+def test_a_resolution_closes_only_the_exception_it_names_on_the_load_it_names(tmp_path):
+    """Three ways to name the wrong thing, and one way to be nobody. Each closes NOTHING, and each
+    is put back in front of a named human instead of being ignored."""
+    store = _store(tmp_path, "wrong.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [_history("W02"), _history("W03")])
+    intake = result.intakes[NORTHLINE]
+    key = result.state(NORTHLINE, "LD-49003").housekeeping[0].split(":", 1)[1]
+    assert result.state(NORTHLINE, "LD-49002").routine_work_is_zero
+    now = intake.foundation.now()
+
+    def still_open():
+        return _m9_row(store.conn, NORTHLINE, key)["state"] == "OPEN"
+
+    # (1) The right key, on ANOTHER load of the same brokerage.
+    out = intake.ingest(_resolve_act(NORTHLINE, "LD-49002", key, human="dana.ortiz", at=now,
+                                     label="a"))
+    assert out.detail == "resolution could not be applied" and still_open()
+    asked = next(s for s in work_states(intake).values() if s.load_number == "LD-49002")
+    need = asked.need(NeedKind.IDENTITY_UNRESOLVED)
+    assert need is not None and need.human_required and need.owner_id == "priya.nair"
+    assert need.reason_codes == ("HUMAN_ACT_NAMES_NOTHING",) and key in need.why
+    # (2) A key that names no Exception at all.
+    out = intake.ingest(_resolve_act(NORTHLINE, "LD-49003", "expectation_unmet@exp-nothing",
+                                     human="dana.ortiz", at=now, label="b"))
+    assert out.detail == "resolution could not be applied" and still_open()
+    # (3) Somebody this brokerage has never recorded.
+    out = intake.ingest(_resolve_act(NORTHLINE, "LD-49003", key, human="mallory", at=now,
+                                     label="c"))
+    assert out.disposition == "REFUSED" and still_open()
+    # (4) Another brokerage's human, at that brokerage, naming this brokerage's Exception.
+    there = FreightIntake(store.conn, WORK_SETUPS[CEDAR])
+    for record in next(h for h in build_work_histories() if h.history_id == "W13").records:
+        there.ingest(record)
+    out = there.ingest(_resolve_act(CEDAR, "LD-49050", key, human="sam.okafor",
+                                    at=there.foundation.now(), label="d"))
+    assert out.detail == "resolution could not be applied" and still_open()
+    assert cross_tenant_violations(store.conn) == []
+    # The population: the same act by a real human, on the right load, DOES close it.
+    intake.ingest(_resolve_act(NORTHLINE, "LD-49003", key, human="dana.ortiz", at=now,
+                               label="e"))
+    assert not still_open()
+    store.close()
+
+
+def test_closing_the_exception_does_not_finish_the_work_it_was_raised_for(tmp_path):
+    """W01, before anybody places the invoice. A human closes the unattributed-invoice Exception.
+    The INVOICE IS STILL UNPLACED: held, compared against nothing, and a named human's — the need is
+    read off the payable, not off the Exception row, so it does not go quiet with a click. Placing
+    the invoice is what ends it."""
+    history = _history("W01")
+    labels = [r.label for r in history.records]
+    store = _store(tmp_path, "stands.db")
+    intake = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+    for record in history.records[: labels.index("a-day-later") + 1]:
+        intake.ingest(record)
+    state = next(iter(work_states(intake).values()))
+    need = state.need(NeedKind.INVOICE_UNATTRIBUTED)
+    key = next(o for o in need.origins if o.startswith("exception:")).split(":", 1)[1]
+    intake.ingest(_resolve_act(NORTHLINE, "LD-49001", key, human="marcus.reid",
+                               at="2026-06-03T19:00:00.000Z"))
+    assert _m9_row(store.conn, NORTHLINE, key)["state"] == "RESOLVED"
+    after = next(iter(work_states(intake).values()))
+    still = after.need(NeedKind.INVOICE_UNATTRIBUTED)
+    assert still is not None and still.need_id == need.need_id, \
+        "an unplaced invoice went quiet because its Exception was closed"
+    assert still.human_required and still.owner_id == "dana.ortiz"
+    assert after.posture is Posture.HUMAN_ATTENTION and not after.routine_work_is_zero
+    view = intake.projection().view_by_load_ref("LD-49001")
+    payable = next(iter(view.payables.values()))
+    assert payable.movement_id is None and payable.lifecycle_state == "HELD"
+    assert "RECONCILED" not in after.reconciliation
+    assert audit_state(after, view, tenant=NORTHLINE) == []
+    # Her attribution, not the closed Exception, is what ends the need.
+    intake.ingest(history.records[labels.index("attributed")])
+    placed = next(iter(work_states(intake).values()))
+    assert placed.need(NeedKind.INVOICE_UNATTRIBUTED) is None
+    store.close()
+
+
+def test_a_resolved_exception_is_the_same_work_on_replay_and_after_a_restart(tmp_path):
+    """The resolution's event id is minted at random by M9. None of it reaches the work state: the
+    same history with the same human act gives the same work in another database, and again when
+    the process is thrown away and rebuilt from the rows."""
+    digests = []
+    for name in ("one.db", "two.db"):
+        store, result, _, key = _late_then_answered(tmp_path, name)
+        intake = result.intakes[NORTHLINE]
+        intake.ingest(_resolve_act(NORTHLINE, "LD-49003", key, human="dana.ortiz",
+                                   at=intake.foundation.now()))
+        as_of = intake.foundation.now()
+        state = next(iter(work_states(intake).values()))
+        rebuilt = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+        assert next(iter(work_states(rebuilt, as_of=as_of).values())).digest() == state.digest()
+        digests.append(state.digest())
+        refs = [r[0] for r in store.conn.execute(
+            "SELECT decision_ref FROM exceptions WHERE tenant = ? AND state = 'RESOLVED'",
+            (NORTHLINE,))]
+        assert len(refs) == 1 and refs[0] not in json.dumps(state.as_document())
+        store.close()
+    assert digests[0] == digests[1]
+
+
+def test_only_a_humans_act_reaches_the_exception_closure_and_the_work_engine_never_does():
+    """One caller of M9's closure in the freight spine, and one caller of that: the intake's
+    human-act path. The work projection, the through-time runner and shadow reasoning — everything
+    a model's answer could reach — name neither."""
+    fd = "src/freight_recon/freight_domain"
+    assert callers_of("resolve_exception_by_human") == {f"{fd}/intake.py"}
+    closers = callers_of("resolve_by_human")
+    assert closers == {f"{fd}/foundation.py"}, closers
+    for module in ("load_work.py", "work_run.py", "work_reasoning.py", "detectors.py",
+                   "projection.py", "interpretation.py"):
+        text = (ROOT / fd / module).read_text(encoding="utf-8")
+        assert "resolve_exception_by_human" not in text and "resolve_by_human" not in text, module
 
 
 # ============================================================ shadow reasoning

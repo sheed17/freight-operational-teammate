@@ -58,7 +58,7 @@ LEGAL_CHANNELS: dict[str, tuple[str, ...]] = {
 
 HUMAN_ACTS: tuple[str, ...] = (
     "bind_observation", "correct_binding", "authorize_accessorial", "deny_accessorial",
-    "correct_reference", "attribute_carrier_invoice", "confirm_appointment",
+    "correct_reference", "attribute_carrier_invoice", "confirm_appointment", "resolve_exception",
 )
 ASSERT_TYPES: tuple[str, ...] = (
     "status", "commitment", "appointment", "accessorial_claim", "rate", "delay",
@@ -367,6 +367,15 @@ def _parse_human_assertion(payload: Mapping[str, Any]) -> dict[str, Any]:
             # WHICH movement of the load the invoice bills. The human names the movement; the
             # carrier follows from it. Nothing here names a payee or an amount.
             parsed["movement_key"] = str(_require(payload, "movement_key", what=act))
+    elif act == "resolve_exception":
+        # A recorded human closes ONE Exception of the load she names, by its stable key
+        # (`<type>@<source_ref>`, as the work state shows it). It decides nothing else: it places
+        # no record, approves no charge and settles no Conflict.
+        parsed["exception"] = str(_require(payload, "exception", what=act)).strip()
+        if "@" not in parsed["exception"]:
+            raise UnparseableRecord(
+                f"resolve_exception names {parsed['exception']!r}, which is not an Exception key "
+                f"of the form <type>@<source_ref>")
     elif act == "confirm_appointment":
         # A recorded human states the appointment at one stop, in the FACILITY's wall time. It is
         # the only thing that settles a disputed window; a counterparty's sentence cannot.

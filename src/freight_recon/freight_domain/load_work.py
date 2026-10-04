@@ -15,8 +15,11 @@ need they all describe. So one missing POD is one piece of work, however many ro
 when the cause is cured the need is gone, whatever state those rows are left in.
 
 ### M9 CLOSES ONLY BY A HUMAN'S DECISION, AND NOTHING HERE PRETENDS OTHERWISE. An Exception whose
-cause has been cured stays open in M9 until a recorded human closes it. It is reported as
-HOUSEKEEPING — retained, owned, and not a task — never as attention, and never silently dropped.
+cause has been cured stays open in M9 until a recorded human closes it (the `resolve_exception` act,
+through M9's own transition). It is reported as HOUSEKEEPING — retained, owned, and not a task —
+never as attention, and never silently dropped. And the other way round: closing an Exception does
+not finish the work it was raised for. A need read off a CAUSE stands while the cause does, whether
+or not its Exception row is still open.
 
 ### A CLOSED VOCABULARY. Need kinds, handling classes, statuses and shadow actions are enums. There
 is no free-form "todo", and a signal this module cannot classify becomes an `UNCLASSIFIED_EXCEPTION`
@@ -52,6 +55,7 @@ from .projection import (
     FreightProjection,
     LoadView,
     commitment_expectation_id,
+    exception_key,
     explain_unattributed_invoice,
     split_ref,
 )
@@ -318,14 +322,6 @@ class LoadWorkState:
 
 
 # ================================================================================= identity
-
-def exception_key(exception: Mapping[str, Any]) -> str:
-    """What makes an Exception THE SAME Exception on every run: its type and its cause. M9 allows one
-    open row per `(source_ref, type)`, so this names an open Exception uniquely — and unlike the row's
-    own id, which M9 mints at random when it raises one for a missed deadline, it is the same string
-    when the history is replayed."""
-    return f"{exception['type']}@{exception['source_ref']}"
-
 
 def exception_origin(exception: Mapping[str, Any]) -> str:
     return f"exception:{exception_key(exception)}"
@@ -1074,8 +1070,8 @@ def _exception_needs(build: _Build) -> None:
 
     ### A QUESTION PUT TO A HUMAN IS NOT DECLARED ANSWERED HERE. A counterparty says an earlier
     message named the wrong load; a human then moves a record. Whether that was the answer is hers
-    to say, by closing the Exception — which nothing in this spine can yet do for her (M9 closes
-    only on a K-1 decision reference). So the need stays open, and that is reported, not hidden."""
+    to say, by resolving the Exception (`resolve_exception`, which M9 records as her decision).
+    Until she does the need stays open, and that is reported, not hidden."""
     view = build.view
     for exception in view.open_exceptions():
         if exception["exception_id"] in build.claimed_exceptions:
@@ -1220,6 +1216,13 @@ def _settlements(build: _Build) -> None:
         if charge.lifecycle_state in ("AUTHORIZED", "DENIED"):
             settle(NeedKind.ACCESSORIAL_UNAUTHORIZED, (charge_type,), "RESOLVED",
                    charge.authorization_id or f"denied:{charge_type}")
+    for exception in view.exceptions:
+        # A question a named human closed, in M9, by her own decision. The row is retained.
+        if exception["state"] == "RESOLVED" and exception["type"] not in _CAUSE_DERIVED_EXCEPTIONS:
+            kind = _EXCEPTION_NEEDS.get(exception["type"],
+                                        (NeedKind.UNCLASSIFIED_EXCEPTION, "", None))[0]
+            settle(kind, ("exception", exception_key(exception)), "RESOLVED",
+                   f"human:{exception['decision_human_id']}", scope="tenant")
     for entry in view.binding_history:
         if entry["state"] == "CORRECTED":
             # A record bound here by mistake was moved by a human; the prior binding is retained.

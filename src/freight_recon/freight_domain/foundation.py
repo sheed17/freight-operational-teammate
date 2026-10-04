@@ -584,6 +584,21 @@ class FreightFoundation:
             schedule_timer=False)
         return not result.coalesced
 
+    def resolve_exception_by_human(self, exception_id: str, *, human_id: str,
+                                   correlation_id: str | None = None) -> bool:
+        """EC-3 / EC-6 — a recorded, ACTIVE human of this tenant explicitly resolves ONE Exception.
+        M9 is the only thing that closes one, and it does so through its own transition: it refuses
+        a machine, a model or anyone it has not recorded in that seat, records her as the decider,
+        and retains the row and every event before it. Nothing here writes M9's storage. Returns
+        False when there is no such open Exception for this tenant (nothing is closed)."""
+        exception = self._m9.get(exception_id)
+        if exception is None or not exception.is_open:
+            return False
+        self._m9.resolve_by_human(exception_id, decision_human_id=human_id, actor_kind="human",
+                                  correlation_id=correlation_id or exception.entity_ref
+                                  or exception.source_ref)
+        return True
+
     # ------------------------------------------------------------------ work item (M1)
 
     def ensure_work_item(self, *, work_item_id: str, type: str, owner_id: str,

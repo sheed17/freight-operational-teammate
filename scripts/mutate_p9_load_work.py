@@ -48,6 +48,7 @@ PROJECTION = f"{FD}/projection.py"
 DETECTORS = f"{FD}/detectors.py"
 MODEL = f"{FD}/model.py"
 MAPPING = f"{FD}/entity_mapping.py"
+INTAKE = f"{FD}/intake.py"
 
 T = "eval/tests/test_p9_load_work.py"
 
@@ -79,6 +80,11 @@ MOVED_RECORD = (f"{T}::test_a_wrong_load_number_is_a_humans_question_and_moving_
                 f"moves_the_work")
 ORPHAN = f"{T}::test_an_expectation_that_outlives_its_cause_is_never_dropped"
 OWED = f"{T}::test_an_owed_line_conflict_that_outlives_its_invoice_is_never_dropped"
+RESOLVED = (f"{T}::test_a_humans_explicit_resolution_closes_the_exception_and_its_need_and_"
+            f"keeps_the_history")
+CURED = f"{T}::test_a_cured_exception_is_closed_only_by_a_human_and_then_is_not_housekeeping"
+EXACT = f"{T}::test_a_resolution_closes_only_the_exception_it_names_on_the_load_it_names"
+STANDS = f"{T}::test_closing_the_exception_does_not_finish_the_work_it_was_raised_for"
 
 
 def purge_pycache() -> None:
@@ -217,6 +223,37 @@ CASES = [
      [(PROJECTION, '        carriers = tuple(dict.fromkeys((*exact, *equivalent)))\n',
        '        carriers = exact or equivalent  # MUTANT\n')],
      MC_TWINS),
+
+    # ------------------------------------------------------------------ P9-D30: closing an Exception
+    ("an Exception a human RESOLVED in M9 is still shown as open work - her closed question never "
+     "leaves the load",
+     [(PROJECTION, '        return [x for x in self.exceptions if x["state"] != "RESOLVED"]\n',
+       '        return list(self.exceptions)  # MUTANT\n')],
+     RESOLVED),
+
+    ("a cured Exception still OPEN in M9 is HIDDEN - neither work nor housekeeping, so the "
+     "projection calls it finished while M9 still holds it",
+     [(WORK, '            build.housekeeping.append(f"cured_exception:{exception_key(exception)}")\n'
+             '            build.claimed_exceptions.add(exception["exception_id"])\n',
+       '            build.claimed_exceptions.add(exception["exception_id"])  # MUTANT\n')],
+     CURED),
+
+    ("a resolution closes an Exception on ANOTHER load - the key is looked up across the "
+     "brokerage instead of on the load the human named",
+     [(INTAKE, '        named = [x for x in view.open_exceptions() '
+               'if exception_key(x) == payload["exception"]]\n',
+       '        named = [x for x in self.foundation.exceptions() if x["state"] != "RESOLVED"'
+       '  # MUTANT\n                 and exception_key(x) == payload["exception"]]\n')],
+     EXACT),
+
+    ("an unplaced invoice goes QUIET once its Exception is closed - the need is read off the row, "
+     "not the cause, so a click finishes work nobody did",
+     [(WORK, '        raised = build.open_exceptions(type_="carrier_invoice_unattributed",\n'
+             '                                       source_ref=payable.origin_observation_id)\n',
+       '        raised = build.open_exceptions(type_="carrier_invoice_unattributed",\n'
+       '                                       source_ref=payable.origin_observation_id)\n'
+       '        if not raised:  # MUTANT\n            continue\n')],
+     STANDS),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',

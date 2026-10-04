@@ -90,6 +90,14 @@ def split_ref(ref: str) -> tuple[str, str]:
     return kind, ident
 
 
+def exception_key(exception: Mapping[str, Any]) -> str:
+    """What makes an Exception THE SAME Exception on every run: its type and its cause. M9 allows one
+    open row per `(source_ref, type)`, so this names an open Exception uniquely — and unlike the row's
+    own id, which M9 mints at random when it raises one for a missed deadline, it is the same string
+    when the history is replayed. It is also how a human names the Exception she is resolving."""
+    return f"{exception['type']}@{exception['source_ref']}"
+
+
 def canonical_mc_digits(value: object) -> str | None:
     """The digits of an MC number, when `value` is a BENIGN way of writing one; else None.
 
