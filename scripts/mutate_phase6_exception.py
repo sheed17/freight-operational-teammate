@@ -210,6 +210,49 @@ CASES = [
        "from . import exception as _mutant_exception  # MUTANT production importer\n\n\n"
        "def create_canonical_schema(conn: sqlite3.Connection) -> None:")],
      f"{T}::test_m9_ships_dark_no_production_importer"),
+
+    # ------------------------------------------------------------------ P9-D30: the explicit human path
+    ("the explicit human resolution accepts ANY actor — a model or `system` that names a real human "
+     "closes an exception (P9-D30, [C-6], GR-7, ER-9)",
+     [(M9,
+       "        if str(actor_kind).upper() != HUMAN:\n"
+       "            # A blank actor is still an attempt, and is still recorded: the refusal must not\n",
+       "        if False:  # MUTANT\n"
+       "            # A blank actor is still an attempt, and is still recorded: the refusal must not\n")],
+     f"{T}::test_nothing_but_a_human_resolves_through_the_explicit_path"),
+
+    ("the explicit human resolution no longer checks WHO — an unnamed, unknown, OFFBOARDED or "
+     "other-tenant human closes an exception (P9-D30, I1, AC-SAFE-028)",
+     [(M9,
+       "        deciding_human = self._require_named_human(\n"
+       "            decision_human_id, \"the human resolving this exception\", actor_kind=\"human\")\n",
+       "        deciding_human = str(decision_human_id or \"nobody\")  # MUTANT\n")],
+     f"{T}::test_an_explicit_human_resolution_names_an_active_human_of_this_tenant"),
+
+    ("the explicit human resolution widens the from-set — an AGEING exception resolves directly "
+     "(P9-D30, machine §14/§15)",
+     [(M9,
+       "        if exception.state not in (EC3_FROM | EC6_FROM):\n"
+       "            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,\n"
+       "                                 actor_id=str(decision_human_id or actor_kind))\n",
+       "        if exception.state is EcState.RESOLVED:  # MUTANT\n"
+       "            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,\n"
+       "                                 actor_id=str(decision_human_id or actor_kind))\n")],
+     f"{T}::test_an_explicit_human_resolution_resolves_from_acknowledged_and_escalated_never_ageing"),
+
+    ("the explicit human resolution is recorded as `system` — the audit row that IS the decision no "
+     "longer records an authenticated human (P9-D30, K-1, ER-11)",
+     [(M9,
+       "            actor_type=\"human\", actor_id=deciding_human,\n",
+       "            actor_type=\"system\", actor_id=deciding_human,  # MUTANT\n")],
+     f"{T}::test_an_explicit_human_resolution_closes_the_exact_exception_and_is_its_own_decision"),
+
+    ("the explicit human resolution's decision_ref names NO EVENT — the row points at an id nothing "
+     "was emitted under, which is the string `done` again (P9-D30, K-1)",
+     [(M9,
+       "            event_id=decision_event_id,\n",
+       "            event_id=None,  # MUTANT\n")],
+     f"{T}::test_an_explicit_human_resolution_closes_the_exact_exception_and_is_its_own_decision"),
 ]
 
 

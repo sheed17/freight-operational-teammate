@@ -605,6 +605,133 @@ def test_db_freeze_requires_entity_and_field():
             (TENANT, HUMAN))
 
 
+# ============================================================ P9-D30: an explicit human resolution
+
+def _illegal_attempts(conn: sqlite3.Connection, tenant: str = TENANT) -> int:
+    return int(conn.execute(
+        "SELECT COUNT(*) FROM event_outbox WHERE tenant = ? "
+        "AND event_name = 'IllegalTransitionAttempted'", (tenant,)).fetchone()[0])
+
+
+def _resolved_envelope(conn: sqlite3.Connection, exception_id: str) -> EventEnvelope:
+    row = conn.execute(
+        "SELECT envelope_json FROM event_outbox WHERE tenant = ? AND aggregate_type = 'exception' "
+        "AND aggregate_id = ? AND event_name = 'ExceptionResolved'", (TENANT, exception_id)).fetchone()
+    assert row is not None, "no ExceptionResolved event was emitted"
+    return EventEnvelope.from_json(row["envelope_json"])
+
+
+def test_an_explicit_human_resolution_closes_the_exact_exception_and_is_its_own_decision():
+    """P9-D30. A named, ACTIVE human explicitly resolves THIS exception. The `ExceptionResolved` the
+    machine emits — actor_type=human, actor_id the named human — is the human-decision audit row,
+    and the RESOLVED row's `decision_ref` names it. The row and its history are retained, a second
+    open exception is untouched, and RESOLVED stays terminal."""
+    conn = _conn()
+    m = _machine(conn)
+    x = _raise(m).exception.exception_id
+    other = _raise(m, source_ref="comp-2").exception.exception_id
+    before = conn.execute("SELECT COUNT(*) FROM exceptions WHERE tenant = ?", (TENANT,)).fetchone()[0]
+    r = m.resolve_by_human(x, decision_human_id=HUMAN, actor_kind="human")
+    assert r.transition_id == "EC-3" and r.to_state is EcState.RESOLVED
+    assert r.event_names == ("ExceptionResolved",)
+    row = m.get(x)
+    assert row.state is EcState.RESOLVED and row.decision_human_id == HUMAN
+    assert row.decision_ref_kind == "AUDIT_EVENT" and row.decision_ref == r.event_ids[0]
+    envelope = _resolved_envelope(conn, x)
+    assert envelope.event_id == row.decision_ref, "the decision_ref names no event"
+    assert envelope.actor_type == "human" and envelope.actor_id == HUMAN
+    assert envelope.payload["decision_ref"] == row.decision_ref
+    assert envelope.producer_transition_id == "EC-3"
+    # History retained: the row is still there, with the raise that opened it.
+    assert conn.execute("SELECT COUNT(*) FROM exceptions WHERE tenant = ?",
+                        (TENANT,)).fetchone()[0] == before == 2
+    names = [n[0] for n in conn.execute(
+        "SELECT event_name FROM event_outbox WHERE tenant = ? AND aggregate_id = ? "
+        "ORDER BY rowid", (TENANT, x))]
+    assert names == ["ExceptionRaised", "ExceptionResolved"]
+    # Exactly the exception named, and no other.
+    assert m.get(other).state is EcState.OPEN and m.get(other).decision_ref is None
+    # Terminal: neither path moves a RESOLVED exception.
+    with pytest.raises(IllegalTransition):
+        m.resolve_by_human(x, decision_human_id=HUMAN, actor_kind="human")
+    with pytest.raises(IllegalTransition):
+        m.resolve(x, decision_ref=_human_decision(conn), decision_human_id=HUMAN)
+    assert m.get(x).version == row.version
+
+
+def test_an_explicit_human_resolution_resolves_from_acknowledged_and_escalated_never_ageing():
+    conn = _conn()
+    m = _machine(conn)
+    acked = _raise(m).exception.exception_id
+    m.acknowledge(acked, acknowledged_by=HUMAN)
+    assert m.resolve_by_human(acked, decision_human_id=HUMAN,
+                              actor_kind="human").transition_id == "EC-3"
+    ageing = _raise(m, source_ref="comp-age").exception.exception_id
+    m.age(ageing)
+    attempts = _illegal_attempts(conn)
+    with pytest.raises(IllegalTransition):
+        m.resolve_by_human(ageing, decision_human_id=HUMAN, actor_kind="human")
+    assert m.get(ageing).state is EcState.AGEING and m.get(ageing).decision_ref is None
+    assert _illegal_attempts(conn) == attempts + 1, "the refusal was not recorded under GR-1"
+    m.escalate(ageing)
+    r = m.resolve_by_human(ageing, decision_human_id=HUMAN, actor_kind="human")
+    assert r.transition_id == "EC-6" and m.get(ageing).state is EcState.RESOLVED
+    assert _resolved_envelope(conn, ageing).producer_transition_id == "EC-6"
+
+
+@pytest.mark.parametrize("actor_kind", ["model", "system", "detector", "rule", "timer", ""])
+def test_nothing_but_a_human_resolves_through_the_explicit_path(actor_kind):
+    """A model, `system`, a detector, a rule and a timer are each refused — recorded under GR-1 —
+    even when they name a real, ACTIVE human as the decider. Naming a human is not being one."""
+    conn = _conn()
+    m = _machine(conn)
+    x = _raise(m).exception.exception_id
+    attempts = _illegal_attempts(conn)
+    with pytest.raises(IllegalTransition):
+        m.resolve_by_human(x, decision_human_id=HUMAN, actor_kind=actor_kind)
+    row = m.get(x)
+    assert row.state is EcState.OPEN and row.decision_ref is None and row.decision_human_id is None
+    assert _illegal_attempts(conn) == attempts + 1
+    assert conn.execute(
+        "SELECT COUNT(*) FROM event_outbox WHERE tenant = ? AND event_name = 'ExceptionResolved'",
+        (TENANT,)).fetchone()[0] == 0
+
+
+def test_an_explicit_human_resolution_names_an_active_human_of_this_tenant():
+    """The deciding human is FK-backed: unnamed, unknown, OFFBOARDED and another brokerage's human
+    each fail closed and close nothing. An exception of another tenant cannot be reached at all."""
+    conn = _conn()
+    m = _machine(conn)
+    x = _raise(m).exception.exception_id
+    _human(conn, TENANT, "owner:gone", state="OFFBOARDED")
+    _human(conn, OTHER, "owner:next-door")
+    for human in (None, "", "   ", "ghost", "owner:gone", "owner:next-door"):
+        with pytest.raises(GuardNotSatisfied):
+            m.resolve_by_human(x, decision_human_id=human, actor_kind="human")
+        assert m.get(x).state is EcState.OPEN and m.get(x).decision_ref is None, human
+    there = _machine(conn, OTHER)
+    with pytest.raises(UnknownException):
+        there.resolve_by_human(x, decision_human_id=HUMAN, actor_kind="human")
+    assert m.get(x).state is EcState.OPEN
+    # The population: the same call by a real human of this tenant DOES close it.
+    assert m.resolve_by_human(x, decision_human_id=HUMAN,
+                              actor_kind="human").to_state is EcState.RESOLVED
+
+
+def test_the_decision_ref_path_is_unchanged_by_the_explicit_path():
+    """`resolve` still demands a reference that RESOLVES under K-1: the explicit path did not turn
+    a bare string, or its own closure event, into something `resolve` accepts."""
+    conn = _conn()
+    m = _machine(conn)
+    first = _raise(m).exception.exception_id
+    closed = m.resolve_by_human(first, decision_human_id=HUMAN, actor_kind="human")
+    x = _raise(m, source_ref="comp-2").exception.exception_id
+    for ref in (None, "done", str(uuid.uuid4()), closed.event_ids[0]):
+        with pytest.raises(IllegalTransition):
+            m.resolve(x, decision_ref=ref, decision_human_id=HUMAN)
+        assert m.get(x).state is EcState.OPEN, ref
+
+
 def test_a_retracted_cause_still_requires_an_event_and_a_decision_ref():
     """### M9-AQ-2. There is no CANCELLED state and no cancel event; a retracted cause reaches RESOLVED
     through EC-3/EC-6 with a resolving decision_ref like every other closure."""

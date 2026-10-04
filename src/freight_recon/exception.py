@@ -19,6 +19,8 @@ quiet days. Every one of those is a mechanism for FORGETTING, and in freight the
 resolve are exactly the things that cost money. So closure is not a status change. ### CLOSURE IS AN
 EVENT WITH A RESOLVING `decision_ref` (I11, GR-14, K-1, AC-MACH-903), and there is no other way out —
 not inactivity, not AutoClose, not expiry, not a sweep, not a reaper, not a timer, and NEVER A MODEL.
+(A named, ACTIVE human explicitly resolving THIS exception is such an event: `resolve_by_human` makes
+the `ExceptionResolved` it emits the human-decision row the `decision_ref` names — P9-D30.)
 The one thing a timer may do is make the exception LOUDER: EC-4 ages it and EC-5 escalates it. ### A
 TIMER NEVER RESOLVES (machine §37).
 
@@ -871,6 +873,76 @@ class M9Machine:
             write_args=(ref, decision_ref_kind, human), correlation_id=correlation_id,
             causation_id=causation_id, trace_id=trace_id, event_id=event_id,
             after_write=self._cancel_timers_after(exception.exception_id, "resolved (EC-3/EC-6)"))
+
+    def resolve_by_human(
+        self,
+        exception_id: str,
+        *,
+        decision_human_id: str | None,
+        actor_kind: str,
+        expected: EcRecord | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> TransitionResult:
+        """EC-3 / EC-6, WHERE THE DECISION IS THIS ACT: an authenticated, named, ACTIVE human of this
+        tenant explicitly resolves THIS exception.
+
+        ### WHY THIS EXISTS (engineering-lead decision P9-D30; determines P6-D1 / M9-AQ-1 for the human
+        branch). `resolve` asks for a `decision_ref` to a human-decision event ALREADY in the log. No
+        component can produce the first one: K-1 names `HumanDecided` (M1 WI-9, which itself requires a
+        resolving `decision_ref`), an approval, a brake release, a compensation approval — and
+        `HumanResolved`, which is not a canonical contract. So a named human who has just answered an
+        Exception's own question could not close it. `HumanResolved` IS this fact, under its canonical
+        F9 name: ### THE `ExceptionResolved` EVENT THIS TRANSITION EMITS — `actor_type=human`,
+        `actor_id` = THE NAMED HUMAN — IS THE `audit_events` HUMAN-DECISION ROW K-1(a) REQUIRES, and
+        the row's `decision_ref` names it (kind AUDIT_EVENT). The reference still RESOLVES to an event
+        recording an authenticated human; what changed is that the event is this closure, not an
+        earlier one.
+
+        ### WHAT IT IS NOT. Not AutoClose, not inactivity, not a timer, not a rule (rule closure stays
+        `resolve(decision_ref_kind="RULE")`), not a projection that no longer likes the row, and
+        NEVER A MODEL OR `system`: `actor_kind` is REQUIRED and anything but a human is recorded under
+        GR-1 and refused. The human is FK-backed (`tenant_humans`, ACTIVE, this tenant). The from-set
+        is EC-3/EC-6's own — AGEING does not resolve. ### THE CALLER MUST BE THE HUMAN'S OWN ACT ON
+        THIS EXCEPTION: this machine cannot see a session, so a caller that passes a human's name on
+        behalf of anything else is committing the authority laundering ER-11 names. The row and every
+        event before this one are retained; nothing is deleted."""
+        exception = expected or self.require(exception_id)
+        if str(actor_kind).upper() != HUMAN:
+            # A blank actor is still an attempt, and is still recorded: the refusal must not
+            # itself fail on an envelope with no actor.
+            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,
+                                 actor_id=str(actor_kind).strip() or "unstated-actor")
+            raise IllegalTransition(
+                f"an explicit human resolution is made by an AUTHENTICATED HUMAN and by nothing else "
+                f"(EC-3/EC-6, [C-6], GR-7, ER-9). actor_kind={actor_kind!r} — a model, `system`, a "
+                f"timer and a rule do not resolve through this transition. Recorded to audit and "
+                f"security under GR-1.")
+        if exception.state not in (EC3_FROM | EC6_FROM):
+            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,
+                                 actor_id=str(decision_human_id or actor_kind))
+            raise IllegalTransition(
+                f"an exception resolves from OPEN/ACKNOWLEDGED (EC-3) or ESCALATED (EC-6); "
+                f"{exception_id!r} is {exception.state.value}. An AGEING exception is in neither "
+                f"from-set and a RESOLVED one is terminal — a human's explicit resolution does not "
+                f"widen either. Recorded to audit and security under GR-1.")
+        deciding_human = self._require_named_human(
+            decision_human_id, "the human resolving this exception", actor_kind="human")
+        # The decision IS the event about to be emitted, so its id is fixed first and written to the
+        # row and the envelope in the one commit (GR-2): the row never names an event that is not there.
+        decision_event_id = str(uuid.uuid4())
+        row_id = "EC-3" if exception.state in EC3_FROM else "EC-6"
+        return self._advance(
+            exception, row_id, EcState.RESOLVED, event_name="ExceptionResolved",
+            payload={"decision_ref": decision_event_id}, event_producer=row_id,
+            actor_type="human", actor_id=deciding_human,
+            writes="decision_ref = ?, decision_ref_kind = ?, decision_human_id = ?",
+            write_args=(decision_event_id, DECISION_KIND_AUDIT, deciding_human),
+            correlation_id=correlation_id, causation_id=causation_id, trace_id=trace_id,
+            event_id=decision_event_id,
+            after_write=self._cancel_timers_after(
+                exception.exception_id, "resolved by an explicit human decision (EC-3/EC-6)"))
 
     # --- EC-4 / EC-5: ageing and escalation, on the durable-timer substrate ------------------------
 
