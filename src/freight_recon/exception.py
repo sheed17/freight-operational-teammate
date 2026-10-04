@@ -921,7 +921,7 @@ class M9Machine:
                 f"security under GR-1.")
         if exception.state not in (EC3_FROM | EC6_FROM):
             self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,
-                                 actor_id=str(decision_human_id or actor_kind))
+                                 actor_id=str(decision_human_id or "").strip() or "human")
             raise IllegalTransition(
                 f"an exception resolves from OPEN/ACKNOWLEDGED (EC-3) or ESCALATED (EC-6); "
                 f"{exception_id!r} is {exception.state.value}. An AGEING exception is in neither "

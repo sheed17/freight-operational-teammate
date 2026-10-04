@@ -1757,7 +1757,9 @@ def test_a_hundred_hostile_mutations_expose_no_stall_no_stale_work_and_no_leak(a
 def test_the_oracle_fires_on_a_wrong_answer(run):
     """The attack above is a negative assertion over an oracle. The oracle is shown to FIRE: on a
     dropped need, a human's need downgraded, a human's need that can be waited away, a duplicate, a
-    foreign tenant, flipped billing readiness, and work resting on nothing."""
+    foreign tenant, flipped billing readiness, work resting on nothing, and a wait made a human's.
+    (The last two were added by the independent review: both branches existed and neither had ever
+    been seen to fire.)"""
     result, _ = run
     state = result.at("W01", "invoice-no-mc", "LD-49001")
     labels = [r.label for r in _history("W01").records]
@@ -1796,7 +1798,12 @@ def test_the_oracle_fires_on_a_wrong_answer(run):
                 ("billing", replace(honest, billing_ready=not honest.billing_ready), "BILLING"),
                 ("unowned", replace(honest, needs=(replace(need, owner_id=None),)),
                  "no accountable owner"),
-                ("money", replace(honest, billing_blockers=("owes USD 11,620.00",)), "MONEY")):
+                ("money", replace(honest, billing_blockers=("owes USD 11,620.00",)), "MONEY"),
+                ("stale", replace(honest, needs=(replace(
+                    need, origins=("expectation:exp-long-gone",)),)), "STALE WORK"),
+                ("escalated", replace(honest, needs=(need, replace(
+                    need, need_id="need-invented", kind=NeedKind.ARRIVAL_PENDING),)),
+                 "FALSE ESCALATION")):
             found = audit_state(wrong, moment, tenant=NORTHLINE)
             assert any(expected in f for f in found), (label, expected, found)
         store.close()

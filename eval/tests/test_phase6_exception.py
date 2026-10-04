@@ -673,6 +673,12 @@ def test_an_explicit_human_resolution_resolves_from_acknowledged_and_escalated_n
         m.resolve_by_human(ageing, decision_human_id=HUMAN, actor_kind="human")
     assert m.get(ageing).state is EcState.AGEING and m.get(ageing).decision_ref is None
     assert _illegal_attempts(conn) == attempts + 1, "the refusal was not recorded under GR-1"
+    # An unnamed human on an AGEING exception is still an attempt: refused, and recorded (once —
+    # GR-1's refusal identity is per actor at one version, so three blank names are one record).
+    for nobody in (None, "", "   "):
+        with pytest.raises(IllegalTransition):
+            m.resolve_by_human(ageing, decision_human_id=nobody, actor_kind="human")
+    assert _illegal_attempts(conn) == attempts + 2 and m.get(ageing).state is EcState.AGEING
     m.escalate(ageing)
     r = m.resolve_by_human(ageing, decision_human_id=HUMAN, actor_kind="human")
     assert r.transition_id == "EC-6" and m.get(ageing).state is EcState.RESOLVED

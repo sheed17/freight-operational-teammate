@@ -234,10 +234,17 @@ CASES = [
      [(M9,
        "        if exception.state not in (EC3_FROM | EC6_FROM):\n"
        "            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,\n"
-       "                                 actor_id=str(decision_human_id or actor_kind))\n",
+       "                                 actor_id=str(decision_human_id or \"\").strip() or \"human\")\n",
        "        if exception.state is EcState.RESOLVED:  # MUTANT\n"
        "            self._refuse_illegal(exception.exception_id, Trigger.RESOLVED,\n"
-       "                                 actor_id=str(decision_human_id or actor_kind))\n")],
+       "                                 actor_id=str(decision_human_id or \"\").strip() or \"human\")\n")],
+     f"{T}::test_an_explicit_human_resolution_resolves_from_acknowledged_and_escalated_never_ageing"),
+
+    ("the explicit human resolution's from-set refusal is recorded under whatever name it was "
+     "handed — a blank human makes the REFUSAL itself fail, so the attempt leaves no record (GR-1)",
+     [(M9,
+       "                                 actor_id=str(decision_human_id or \"\").strip() or \"human\")\n",
+       "                                 actor_id=str(decision_human_id or actor_kind))  # MUTANT\n")],
      f"{T}::test_an_explicit_human_resolution_resolves_from_acknowledged_and_escalated_never_ageing"),
 
     ("the explicit human resolution is recorded as `system` — the audit row that IS the decision no "
