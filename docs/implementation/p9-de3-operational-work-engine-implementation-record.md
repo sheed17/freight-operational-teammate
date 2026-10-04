@@ -8,9 +8,12 @@
 > **The corpus is synthetic development input.** Nothing here is a design-partner observation, no
 > freight rule is validated by it, and V-21 and V-14 remain **OPEN**. A score below is a measurement
 > of one model on invented situations, not evidence about a customer's operation.
-> **No independent review has been performed.** Tier-1 surfaces were touched (§7); one focused
-> independent review is owed before merge ([`CLAUDE.md`](../../CLAUDE.md) §7). P9 stays `READY` /
-> `IN_PROGRESS`; P10 stays `BLOCKED`; no P9 criterion exists or is scored.
+> **One focused independent review of this checkpoint was performed on 2026-10-03 (§11).** It found
+> one blocking defect and repaired it, and applied engineering-lead decisions D30 and D31. The
+> reviewer's own repairs — including a tier-1 change to M9's closure guard — have **not** themselves
+> been independently reviewed. P9 stays `READY` / `IN_PROGRESS`; P10 stays `BLOCKED`; no P9
+> criterion exists or is scored. §1–§10 below are the builder's record as written; where §11
+> supersedes a statement, §11 says so.
 
 ## 1. What a broker can now do that they could not before
 
@@ -400,3 +403,57 @@ V-21, V-14, `P9-D31` and `P9-D32`. `P9-D7` (concurrency, PostgreSQL) and `P9-D2`
 recorded. `P9-D20` / `P9-D27` (what leaves the brokerage for a provider) before any real mailbox —
 the load-work request adds a load's open needs and short counterparty excerpts to that list. The P9
 acceptance block.
+
+## 11. Independent review — 2026-10-03
+
+**Reviewed `7d036d0..50f3334`.** Repairs are separate commits on top of `50f3334`. Synthetic corpus
+throughout; nothing below is design-partner evidence.
+
+### What the review found
+
+| Class | Finding | Disposition |
+|---|---|---|
+| **A — blocking** | **A load was reported QUIET and billing-ready while M7 held an open, human-owned Conflict.** A Conflict on what a movement is owed was read only as an origin of `INVOICE_DISCREPANCY`; once no invoice on that movement was in discrepancy it was behind no need. Reached when a human places an invoice on the wrong movement of a two-carrier load and then on the right one, and when a second rate confirmation puts the expected side in dispute. The builder's oracle calls it SILENT STALL + FALSE QUIET; no corpus history or attack mutant reaches the state, so "0 findings" never saw it. | **Fixed** (`36ddfd0`): every open Conflict is behind a need. Test RED on `50f3334`; one new mutant caught. |
+| C — test | The attack battery has no operator that repeats, reverses or re-targets a HUMAN act; that is how the finding above escaped 164 mutants. | Recorded `P9-D44`. A dedicated test now covers the state. |
+| B | §4's "0 findings" and §7's "it found nothing in the engine" hold only for the states the corpus reaches. | Stated here. |
+| — | §9 says credential handling is unchanged in kind; the live-eval script's `_load_dotenv` DID change: it now reads `.env` only when the key is not already in the process environment. Narrower, not wider. | No action. |
+
+### Engineering-lead decisions applied
+
+- **D30 — an Exception closes only through an authoritative resolution; an explicit authenticated
+  human resolution is sufficient.** The builder's §8 analysis is correct: M9 had no closure any
+  component could legally reach, because nothing can produce the first K-1 human-decision event.
+  Repaired in two commits: `M9Machine.resolve_by_human` (`a461f22`, tier 1 — the `ExceptionResolved`
+  it emits, `actor_type=human`, is the human-decision row its `decision_ref` names; `resolve` and
+  the one K-1 resolver are untouched; no migration), and one console act `resolve_exception`
+  (`f427861`) that reaches it. Nothing closes automatically: a cured Exception is still open, still
+  housekeeping, until a human closes it. **Closing an Exception does not finish the work**: a need
+  read off a cause stands while the cause does. **§3 "What is NOT done", §8 and F-20 are superseded.**
+- **D31 — normalize an MC only for benign representation differences.** `66da52e`. Optional `MC`
+  prefix, case, spaces and hyphens around it; the digits must be identical. Tenant-scoped; one
+  number under two carrier rows places nothing. The old test and mutant that asserted "never
+  tidied" are replaced. W10 now prints a TRUNCATED MC, so the corpus counts in §4 are unchanged.
+  **§3's "The MC is an identity looked up, not a string tidied" bullet is superseded.**
+- **D32 — tracking cadence and unconfirmed-appointment behaviour are tenant policy.** Not solved.
+  Both rules are now marked `PROVISIONAL — NEEDS VALIDATION (P9-D32)` in the code that enforces
+  them. The cadence is tenant configuration and `None` by default; the unconfirmed-appointment rule
+  is always on and is **not** yet tenant-configurable. Both yield shadow candidates only.
+
+### R03's label change
+
+**Correct, not a hidden regression.** M8's own spec says a wrong expectation is `CANCELLED`
+(§22/§25, EX-6 `ReasonDisappeared`). Checked beyond the label: the cancelled row is retained; the
+load the report moved TO owes the POD; and when the load it left is later truly delivered, a new
+POD Expectation is raised with its own deadline and goes overdue normally.
+
+### Debt recorded by the review
+
+| ID | Debt | Why it does not block |
+|---|---|---|
+| `P9-D30` | **Addressed.** Remaining: an Exception closed by a human while its cause still stands is not re-raised in M9 (the spine's exception ids are deterministic), so that need then lives in the work projection alone; and an Exception attached to no load cannot be closed by `resolve_exception`. | Owned, visible, never quiet. |
+| `P9-D31` | **Closed** for invoice attribution. Remaining: the TMS side still keys a carrier on the raw string, so one carrier the system of record spells two ways is two carrier rows, and its invoices are `CARRIER_AMBIGUOUS`. | Fails closed to a named human. |
+| `P9-D39` | An owed-line Conflict that outlives its discrepancy is a human's need with no act that resolves it (extends `P9-D37`). | Truthful and owned; a financial resolution is P12. |
+| `P9-D41` | `billing_ready` is the W8-1 customer-invoice eligibility predicate (delivered, sell rate consistent, document packet satisfied, no billing Conflict). It is TRUE while carrier-side human needs are open — an unplaced or discrepant carrier invoice, an unauthorized accessorial. Whether a carrier-side dispute should hold customer billing is **NEEDS VALIDATION**. | Canonical per W8-1 / E30 (AR is POD-gated; AP is a separate obligation). Such a load is never QUIET. |
+| `P9-D42` | The frozen M9 machine spec (EC-3/EC-6), K-1, and debts `P6-D1` / `M9-AQ-1` still describe only the prior-event referent. | Spec text is the spec owner's to amend. Code and decision are recorded here. |
+| `P9-D44` | The hostile layer never repeats, reverses or re-targets a human act. | Covered by dedicated tests for the two states found. |
+

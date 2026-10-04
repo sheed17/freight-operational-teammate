@@ -335,7 +335,13 @@ def _tracking_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
     tracking cadence, counted from the last movement signal. With no cadence configured there is no
     clock — a cadence nobody chose would be a freight rule nobody chose. The deadline is M8's, and it
     is evaluated against the tracking channel's recorded coverage, so a blind channel yields
-    INDETERMINATE and never "the carrier went quiet" (CD-14)."""
+    INDETERMINATE and never "the carrier went quiet" (CD-14).
+
+    ### PROVISIONAL — NEEDS VALIDATION (P9-D32). WHEN the clock starts (the first under-way signal),
+    WHAT resets it (any movement signal, from any source) and WHEN it stops (a delivery report) are
+    this build's SYNTHETIC choices, made so the corpus can be run. They are not validated freight
+    rules and not a universal one: how a brokerage wants a moving truck watched is TENANT POLICY.
+    They raise an Expectation and, at most, a shadow candidate — never authority for anything."""
     cadence = setup.tracking_update_cadence_minutes
     if cadence is None or setup.arrival_tracking_channel is None:
         return []

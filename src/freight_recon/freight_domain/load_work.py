@@ -986,7 +986,13 @@ def _stop_reached(view: LoadView, stop_key: str) -> bool:
 def _appointment_needs(build: _Build) -> None:
     """A stop the truck has not reached whose appointment nobody has CONFIRMED. A REQUESTED window
     is not a time anyone agreed to (CD-13), so Neyma is watching no deadline there: it could not
-    tell a late truck from an on-time one. One need per load, naming the stops."""
+    tell a late truck from an on-time one. One need per load, naming the stops.
+
+    ### PROVISIONAL — NEEDS VALIDATION (P9-D32). That an unconfirmed appointment is work from the
+    moment a carrier is on the load until the stop is reached is this build's SYNTHETIC choice, made
+    so the corpus can be run. It is not a validated freight rule and not a universal one: whether,
+    when and by whom a brokerage wants an appointment verified is TENANT POLICY, and it is not yet
+    tenant-configurable here. It yields a shadow candidate only — never authority for anything."""
     view = build.view
     if not any(m.carrier_id for m in view.movements.values()) or view.delivered_claims():
         return
