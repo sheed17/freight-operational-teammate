@@ -42,6 +42,7 @@ from freight_corpus.histories import _cover, _rate_con, _stops, build_corpus  # 
 from freight_corpus.parties import (  # noqa: E402
     CARRIERS,
     CEDAR,
+    CEDAR_OPS,
     CUSTOMERS,
     HARBOR,
     NORTHLINE,
@@ -49,6 +50,7 @@ from freight_corpus.parties import (  # noqa: E402
     NORTHLINE_PODS,
     NORTHLINE_SMS,
     SETUPS,
+    customer_contact,
     dispatcher,
 )
 from freight_corpus.raw_histories import build_raw_histories, raw_history_responder  # noqa: E402
@@ -1685,6 +1687,228 @@ def test_a_kept_promise_leaves_nothing_behind_and_an_unusable_document_does_not_
     assert broken.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
     document = broken.need(NeedKind.DOCUMENT_REQUIRED)
     assert document is not None and "DOCUMENT_RECEIVED_UNUSABLE" in document.reason_codes
+
+
+def _promise_rows(conn, tenant=NORTHLINE):
+    """Every promise Expectation M8 holds for `tenant`: its id, its state, whether it was answered
+    late, and the observation M8 records as having discharged it (None while it has not been)."""
+    return [tuple(r) for r in conn.execute(
+        "SELECT expectation_id, state, late, discharge_observation_id FROM expectations "
+        "WHERE tenant = ? AND expected_type = 'counterparty_update' "
+        "ORDER BY created_at, expectation_id", (tenant,))]
+
+
+def test_a_carriers_document_does_not_keep_somebody_elses_promise(tmp_path):
+    """A promise is kept by the side that made it. The CUSTOMER says "we'll send the signed
+    paperwork by 2" and sends nothing; the CARRIER's signed POD arrives at 1. The POD is no longer
+    owed - and the customer's promise is still unkept: at 2:05 it is OVERDUE, the POD is not what
+    M8 cites for it, M9 holds an owned Exception, and the load is a named human's, not quiet.
+    (Second independent review of P9-CP-3: the paper discharge answered ANY party's
+    `send_document` promise, so this load was reported QUIET and billing-ready with a customer's
+    silence recorded as a kept promise.)"""
+    outcomes = {}
+    for who, sender in (("carrier", dispatcher("summit")),
+                        ("customer", customer_contact("prairie_ag"))):
+        h, load, refs = _delivered_owing_a_pod("CARR" if who == "carrier" else "CUST")
+        h.message("promised", h.t("11:00"), channel="email", source_system=NORTHLINE_OPS,
+                  sender=sender, thread="re-docs", subject="RE: paperwork",
+                  body="We'll send the signed paperwork by 2.", refs=refs,
+                  asserts=(promise(h.t("14:00"), "send_document"),))
+        h.document("pod", h.t("13:00"), "POD", f"PROOF OF DELIVERY | load {load}", refs=refs,
+                   via=NORTHLINE_PODS, signed=True)
+        h.clock("two-passes", h.t("14:05"))
+        store = _store(tmp_path, f"whose-{who}.db")
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        pods = {r[0] for r in store.conn.execute(
+            "SELECT observation_id FROM observations WHERE tenant = ? AND source_system = ?",
+            (NORTHLINE, NORTHLINE_PODS))}
+        unmet = [tuple(r) for r in store.conn.execute(
+            "SELECT state, owner_id, source_ref FROM exceptions WHERE tenant = ? "
+            "AND type = 'expectation_unmet'", (NORTHLINE,))]
+        outcomes[who] = (result.at(h.history_id, "pod", load), result.state(NORTHLINE, load),
+                         _promise_rows(store.conn), pods, unmet)
+        store.close()
+
+    # The population: the very same POD DOES keep the CARRIER's own promise, and M8 cites it.
+    _, kept, promises, pods, unmet = outcomes["carrier"]
+    assert [(state, bool(late)) for _, state, late, _ in promises] == [("DISCHARGED", False)]
+    assert promises[0][3] in pods and unmet == [] and kept.routine_work_is_zero
+
+    at_pod, broken, promises, pods, unmet = outcomes["customer"]
+    assert len(pods) == 1, "the trap needs the carrier's POD on this load"
+    (expectation_id, state, _, discharged_by), = promises
+    assert state == "OVERDUE", "the carrier's POD kept the customer's promise"
+    assert discharged_by is None, "the POD is cited as what kept the customer's promise"
+    # The POD did its OWN job, and only that.
+    assert broken.need(NeedKind.DOCUMENT_REQUIRED) is None
+    assert broken.requirements == {"POD": "SATISFIED"}
+    # M9 holds ONE owned Exception for the customer's silence...
+    assert unmet == [("OPEN", "dana.ortiz", expectation_id)], unmet
+    # ...and the load is never quiet because of it: waited on at 1, a named human's at 2:05.
+    waited = at_pod.need(NeedKind.CARRIER_UPDATE_PENDING)
+    assert waited is not None and waited.handling is Handling.WAIT, \
+        "the customer's promise stopped being waited on when the carrier's POD landed"
+    assert not at_pod.routine_work_is_zero
+    assert not broken.routine_work_is_zero and broken.posture is Posture.HUMAN_ATTENTION, \
+        "a load with a customer's promise unkept was reported quiet"
+    need = broken.need(NeedKind.UNCLASSIFIED_EXCEPTION)
+    assert need is not None and need.human_required and need.status is NeedStatus.OVERDUE
+    assert need.reason_codes == ("PROMISED_UPDATE_OVERDUE:customer_contact",)
+    assert need.owner_id == "dana.ortiz" and f"expectation:{expectation_id}" in need.origins
+
+
+def test_paper_on_another_load_or_at_another_brokerage_keeps_no_promise(tmp_path):
+    """The carrier promises the POD for THIS load by 2. A signed POD arrives at 1 - for another
+    load of this brokerage, and then for the same-numbered load at Cedar Ridge. Neither is this
+    load's paper: the promise goes overdue, nothing is cited for it, and the POD is still owed."""
+    # (1) Another load of the same brokerage.
+    h, load, refs = _delivered_owing_a_pod("WRNG")
+    _promises(h, "pod-by-two", h.t("11:00"), refs, "I'll send the POD by 2.", h.t("14:00"))
+    other = "LD-49599"
+    stops = _stops(h, pickup="Prairie Ag Peoria", delivery="River Bend Co-op")
+    buyer, mover = CUSTOMERS["prairie_ag"], CARRIERS["summit"]
+    h.tms("other-covered", h.t("11:10"), load=other, status="COVERED", version=1, customer=buyer,
+          po="PO-OTHER", bol="BOL-OTHER", sell=charges(150000), stops=stops,
+          movements=(movement("M1", mover, pro="PRO-OTHER"),))
+    h.tms("other-delivered", h.t("12:00"), load=other, status="DELIVERED", version=2,
+          customer=buyer, po="PO-OTHER", bol="BOL-OTHER", sell=charges(150000), stops=stops,
+          movements=(movement("M1", mover, pro="PRO-OTHER", status="DELIVERED"),))
+    h.document("pod-for-the-other-load", h.t("13:00"), "POD",
+               f"PROOF OF DELIVERY | load {other}", refs=(load_ref(other),), via=NORTHLINE_PODS,
+               signed=True)
+    h.clock("two-passes", h.t("14:05"))
+    store = _store(tmp_path, "wrong-load.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    # The population: it IS a usable POD, and it satisfied the OTHER load's requirement.
+    assert result.state(NORTHLINE, other).requirements == {"POD": "SATISFIED"}
+    here = result.state(NORTHLINE, load)
+    (_, state, _, discharged_by), = _promise_rows(store.conn)
+    assert (state, discharged_by) == ("OVERDUE", None), "another load's POD kept this promise"
+    assert here.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
+    assert here.need(NeedKind.DOCUMENT_REQUIRED) is not None
+    assert here.requirements == {"POD": "OUTSTANDING"}
+    store.close()
+
+    # (2) The same load number, PO, BOL, PRO and carrier - at Cedar Ridge, in the same database.
+    h, load, refs = _delivered_owing_a_pod("XTEN")
+    _promises(h, "pod-by-two", h.t("11:00"), refs, "I'll send the POD by 2.", h.t("14:00"))
+    h.clock("two-passes", h.t("14:05"))
+    there = HistoryBuilder("XTENC", "the twin at Cedar Ridge gets the POD", CEDAR,
+                           day="2026-08-10", zone="America/Chicago",
+                           hostile=("same_external_id_under_two_tenants",))
+    stops = _stops(there, pickup="Prairie Ag Sterling", delivery="Stark County Feed",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED")
+    _cover(there, CEDAR_OPS)
+    customer, carrier = _covered(there, load=load, customer="prairie_ag", carrier="summit",
+                                 po="PO-XTEN", bol="BOL-XTEN", pro="PRO-XTEN", sell=193000,
+                                 stops=stops, at=("07:30", "08:00"))
+    _delivered(there, "delivered", there.t("10:00"), load=load, customer=customer,
+               carrier=carrier, po="PO-XTEN", bol="BOL-XTEN", pro="PRO-XTEN", sell=193000,
+               stops=stops)
+    there.document("pod", there.t("13:00"), "POD", f"PROOF OF DELIVERY | load {load}",
+                   refs=(load_ref(load),), via=CEDAR_OPS, signed=True)
+    store = _store(tmp_path, "next-door.db")
+    north = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+    cedar = FreightIntake(store.conn, WORK_SETUPS[CEDAR])
+    mine = h.build({}).records
+    for record in mine[:-1]:
+        north.ingest(record)
+    for record in there.build({}).records:
+        cedar.ingest(record)
+    north.ingest(mine[-1])                                  # 2:05 at Northline
+    # The population: Cedar Ridge's same-numbered load DID get a usable POD.
+    twin = next(iter(work_states(cedar).values()))
+    assert twin.load_number == load and twin.requirements == {"POD": "SATISFIED"}
+    here = next(iter(work_states(north).values()))
+    (_, state, _, discharged_by), = _promise_rows(store.conn)
+    assert (state, discharged_by) == ("OVERDUE", None), "a neighbour's POD kept this promise"
+    assert here.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
+    assert here.need(NeedKind.DOCUMENT_REQUIRED) is not None
+    assert _promise_rows(store.conn, CEDAR) == [] and cross_tenant_violations(store.conn) == []
+    store.close()
+
+
+def test_a_kept_promise_is_kept_once_however_often_the_paper_arrives_and_again_on_replay(tmp_path):
+    """The signed POD arrives, then the same bytes in a NEW message, then the first message
+    re-delivered. ONE discharge of the promise, citing the first arrival; no second transition, no
+    duplicate need and nobody's Exception - in another database, and when the process is thrown
+    away and rebuilt from the rows."""
+    digests = []
+    for name in ("one.db", "two.db"):
+        h, load, refs = _delivered_owing_a_pod("DUPE")
+        _promises(h, "pod-by-two", h.t("11:00"), refs, "I'll send the POD by 2.", h.t("14:00"))
+        paper = f"PROOF OF DELIVERY | load {load}"
+        h.document("pod", h.t("13:00"), "POD", paper, refs=refs, via=NORTHLINE_PODS, signed=True,
+                   external_id="<pod-first>")
+        h.document("pod-same-bytes", h.t("13:10"), "POD", paper, refs=refs, via=NORTHLINE_PODS,
+                   signed=True, external_id="<pod-again>")
+        h.redeliver("pod-redelivered", h.t("13:20"), of="pod")
+        h.clock("two-passes", h.t("14:05"))
+        store = _store(tmp_path, name)
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        intake = result.intakes[NORTHLINE]
+        (expectation_id, state, late, discharged_by), = _promise_rows(store.conn)
+        first = intake.foundation.observation_by_external(NORTHLINE_PODS, "<pod-first>")
+        assert state == "DISCHARGED" and not late
+        assert discharged_by == first["observation_id"]
+        transitions = [r[0] for r in store.conn.execute(
+            "SELECT event_name FROM event_outbox WHERE tenant = ? AND aggregate_type = "
+            "'expectation' AND aggregate_id = ? ORDER BY rowid", (NORTHLINE, expectation_id))]
+        assert transitions == ["ExpectationRaised", "ExpectationDischarged"], transitions
+        assert store.conn.execute("SELECT COUNT(*) FROM exceptions WHERE tenant = ?",
+                                  (NORTHLINE,)).fetchone()[0] == 0
+        for step in result.steps:
+            for moment in step.states.values():
+                ids = [n.need_id for n in moment.needs]
+                assert len(ids) == len(set(ids)), f"a duplicate need after {step.label}"
+        kept = result.at("DUPE", "pod", load)
+        final = result.state(NORTHLINE, load)
+        assert kept.routine_work_is_zero and final.routine_work_is_zero
+        for label in ("pod-same-bytes", "pod-redelivered"):
+            again = result.at("DUPE", label, load)
+            assert again.needs == () and again.settled == kept.settled, label
+        rebuilt = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+        assert next(iter(work_states(
+            rebuilt, as_of=intake.foundation.now()).values())).digest() == final.digest()
+        digests.append(final.digest())
+        store.close()
+    assert digests[0] == digests[1]
+
+
+@pytest.mark.parametrize("kind,said", [("other", "I'll get back to you by 2."),
+                                       ("call_back", "I'll call you back by 2."),
+                                       ("status_update", "I'll have an update for you by 2.")])
+def test_a_promise_that_is_not_about_paper_is_still_answered_only_by_the_carriers_word(
+        tmp_path, kind, said):
+    """What answers a promise that is NOT `send_document` did not change: the signed POD arriving
+    at 1 does not keep "I'll get back to you by 2" - it goes overdue and is chased - and the
+    carrier's own next message does, exactly as before."""
+    outcomes = {}
+    for answered in ("paper", "word"):
+        h, load, refs = _delivered_owing_a_pod("VAGP" if answered == "paper" else "VAGW")
+        _promises(h, "by-two", h.t("11:00"), refs, said, h.t("14:00"), kind)
+        if answered == "paper":
+            h.document("pod", h.t("13:00"), "POD", f"PROOF OF DELIVERY | load {load}", refs=refs,
+                       via=NORTHLINE_PODS, signed=True)
+        else:
+            h.message("carrier-writes", h.t("13:00"), channel="email",
+                      source_system=NORTHLINE_OPS, sender=dispatcher("summit"), thread="re-pod",
+                      subject="RE: POD", body="Driver is still at the receiver, more shortly.",
+                      refs=refs)
+        h.clock("two-passes", h.t("14:05"))
+        store = _store(tmp_path, f"vague-{answered}.db")
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        outcomes[answered] = (result.state(NORTHLINE, load), _promise_rows(store.conn))
+        store.close()
+
+    state, ((_, promised, _, discharged_by),) = outcomes["paper"]
+    assert (promised, discharged_by) == ("OVERDUE", None), f"paper kept a {kind} promise"
+    assert state.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
+    assert state.need(NeedKind.DOCUMENT_REQUIRED) is None, "the POD itself is on file"
+
+    state, ((_, promised, late, discharged_by),) = outcomes["word"]
+    assert promised == "DISCHARGED" and not late and discharged_by is not None
+    assert state.need(NeedKind.CARRIER_STATUS_OVERDUE) is None
 
 
 def test_deadline_precedence_is_the_same_work_on_replay_and_after_a_restart(tmp_path):

@@ -399,10 +399,14 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             and o["parsed"]["kind"] == "message"
             and o["parsed"]["payload"]["direction"] == "inbound"
             and o["parsed"]["payload"]["sender"]["role"] in side]
-        if commitment["commitment_kind"] == "send_document":
-            # A promise to send paper is kept by the PAPER, not only by another message: a required
-            # document that arrived after the promise and satisfies its requirement answers it.
-            # Without this a carrier who did exactly what they said is called late for it.
+        if commitment["commitment_kind"] == "send_document" \
+                and commitment["sender_role"] in CARRIER_SIDE_ROLES:
+            # A CARRIER's promise to send paper is kept by the PAPER, not only by another message:
+            # a required document that arrived after the promise and satisfies its requirement
+            # answers it. Without this a carrier who did exactly what they said is called late for
+            # it. The carrier side's promise ONLY: a document records no sender, and the required
+            # paper is the carrier's to send (the only side whose promise the work engine lets
+            # cover it) - so it never keeps a customer's or a facility's promise for them.
             received = {o["observation_id"]: o["received_at"] for o in view.observations}
             for requirement in view.requirements:
                 if requirement.state != "SATISFIED" or requirement.satisfied_by_document_id is None:

@@ -92,6 +92,7 @@ AFTER = (f"{T}::test_a_promise_made_after_our_deadline_passed_does_not_turn_over
          f"into_a_wait")
 KEPT = (f"{T}::test_a_kept_promise_leaves_nothing_behind_and_an_unusable_document_does_"
         f"not_keep_it")
+WHOSE = f"{T}::test_a_carriers_document_does_not_keep_somebody_elses_promise"
 CONTROLS = f"{T}::test_the_control_states_are_settled_without_a_model"
 
 
@@ -302,9 +303,18 @@ CASES = [
 
     ("a KEPT promise is still chased - the promised document does not answer the promise, so the "
      "carrier is called late for doing what they said",
-     [(DETECTORS, '        if commitment["commitment_kind"] == "send_document":\n',
+     [(DETECTORS, '        if commitment["commitment_kind"] == "send_document" \\\n'
+                  '                and commitment["sender_role"] in CARRIER_SIDE_ROLES:\n',
        '        if False:  # MUTANT\n')],
      KEPT),
+
+    ("a required document keeps ANYBODY's promise - the carrier-side guard on the paper discharge "
+     "is dropped, so a customer who sent nothing is recorded as having kept a promise and the "
+     "load goes quiet",
+     [(DETECTORS, '        if commitment["commitment_kind"] == "send_document" \\\n'
+                  '                and commitment["sender_role"] in CARRIER_SIDE_ROLES:\n',
+       '        if commitment["commitment_kind"] == "send_document":  # MUTANT\n')],
+     WHOSE),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',
