@@ -521,8 +521,9 @@ def _promise_words(view: LoadView, commitment: Mapping[str, Any]) -> str | None:
 
 
 def _side(sender_role: str | None) -> str:
-    """Whose side a promise came from. With no commitment record behind an Expectation the side is
-    the carrier's: that is the only side this spine raises a follow-up Expectation for."""
+    """Whose side a promise came from. A follow-up Expectation is raised for ANY sender's promise -
+    a carrier's, a customer's, a facility's. One with no commitment record behind it is read as
+    the carrier's, so that it is chased rather than left to nobody."""
     if sender_role is None or sender_role in CARRIER_SIDE_ROLES:
         return "carrier"
     return str(sender_role)

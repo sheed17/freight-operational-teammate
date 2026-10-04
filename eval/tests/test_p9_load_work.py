@@ -52,6 +52,7 @@ from freight_corpus.parties import (  # noqa: E402
     SETUPS,
     customer_contact,
     dispatcher,
+    driver,
 )
 from freight_corpus.raw_histories import build_raw_histories, raw_history_responder  # noqa: E402
 from freight_corpus.work_attack import (  # noqa: E402
@@ -82,6 +83,7 @@ from freight_corpus.work_reasoning_cases import (  # noqa: E402
 from freight_recon.freight_domain.corpus_run import cross_tenant_violations  # noqa: E402
 from freight_recon.freight_domain.financial import blocking_discrepancies  # noqa: E402
 from freight_recon.freight_domain.history import (  # noqa: E402
+    CARRIER_SIDE_ROLES,
     DocumentRequirementConfig,
     FreightHistory,
     to_utc,
@@ -1909,6 +1911,278 @@ def test_a_promise_that_is_not_about_paper_is_still_answered_only_by_the_carrier
     state, ((_, promised, late, discharged_by),) = outcomes["word"]
     assert promised == "DISCHARGED" and not late and discharged_by is not None
     assert state.need(NeedKind.CARRIER_STATUS_OVERDUE) is None
+
+
+# ------------------------------------------------------------------ whose WORD keeps a promise
+
+TOM = customer_contact("prairie_ag")
+SHIPPER_DOCK = ("facility_contact", "Prairie Ag Sterling Dock", "dock@prairieag-sterling.example")
+RECEIVER_DOCK = ("facility_contact", "Stark County Feed Receiving",
+                 "receiving@starkcountyfeed.example")
+A_COLLEAGUE = ("customer_contact", "Joel Baptiste", "jbaptiste@prairieag.example")
+A_NAMESAKE = (TOM[0], TOM[1], "tom.weller@prairie-ag-inputs.example")
+NO_ADDRESS = ("facility_contact", "Dock Office", "")
+
+
+def _two_carriers_delivered(tag, *, day="2026-08-10"):
+    """`_delivered_owing_a_pod`, moved by TWO carriers: Summit Line's M1 and Bluegrass's M2."""
+    h = HistoryBuilder(tag, f"one load, two carriers ({tag})", NORTHLINE, day=day,
+                       zone="America/Chicago", hostile=("one_load_two_movements",))
+    load = f"LD-497{sum(map(ord, tag)) % 90 + 10}"
+    refs = (load_ref(load),)
+    stops = _stops(h, pickup="Prairie Ag Sterling", delivery="Stark County Feed",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED")
+    _cover(h, NORTHLINE_SMS, NORTHLINE_OPS, NORTHLINE_PODS, "tracking:macropoint")
+    block = dict(load=load, customer=CUSTOMERS["prairie_ag"], po=f"PO-{tag}", bol=f"BOL-{tag}",
+                 sell=charges(193000), stops=stops)
+
+    def movers(status):
+        return (movement("M1", CARRIERS["summit"], pro=f"PRO-{tag}-1", status=status),
+                movement("M2", CARRIERS["bluegrass"], pro=f"PRO-{tag}-2", status=status))
+    h.tms("tender", h.t("07:30"), status="TENDERED", version=1, **block)
+    h.tms("covered", h.t("08:00"), status="COVERED", version=2, movements=movers("BOOKED"),
+          **block)
+    h.track("loaded", h.t("09:00"), "LOADED", refs=refs, stop_key="S1")
+    h.track("at-delivery", h.t("09:45"), "AT_DELIVERY", refs=refs, stop_key="S2")
+    h.tms("delivered", h.t("10:00"), status="DELIVERED", version=3, movements=movers("DELIVERED"),
+          **block)
+    return h, load, refs
+
+
+def _writes(h, label, at, refs, sender, body, *, due_by=None, kind="status_update",
+            external_id=None):
+    """One inbound message from `sender` - a text when the address is a phone number, an email
+    otherwise - promising a follow-up by `due_by` when one is given."""
+    texted = sender[2].startswith("+")
+    h.message(label, at, channel="sms" if texted else "email",
+              source_system=NORTHLINE_SMS if texted else NORTHLINE_OPS, sender=sender,
+              thread=f"{label}-thread", subject="" if texted else "RE: your load", body=body,
+              refs=refs, asserts=(promise(due_by, kind),) if due_by else (),
+              external_id=external_id)
+
+
+def _a_promise_and_then_a_word(tag, promiser, speaker, kind, *, on=_delivered_owing_a_pod,
+                               pod_at="10:30", again=False):
+    """`promiser` promises a follow-up by 2, at 11:00, on a delivered load whose signed POD is
+    ALREADY on file - so no paper can answer the promise, and nothing else is owed. `speaker`
+    writes at 1 (and, with `again`, is re-delivered and writes once more). It is 2:05."""
+    h, load, refs = on(tag)
+    if pod_at:
+        h.document("pod", h.t(pod_at), "POD", f"PROOF OF DELIVERY | load {load}", refs=refs,
+                   via=NORTHLINE_PODS, signed=True)
+    _writes(h, "promised", h.t("11:00"), refs, promiser, "We'll get that over to you by 2.",
+            due_by=h.t("14:00"), kind=kind)
+    _writes(h, "a-word", h.t("13:00"), refs, speaker, "Our dock closes at 4 today.",
+            external_id="<a-word>")
+    if again:
+        h.redeliver("a-word-redelivered", h.t("13:10"), of="a-word")
+        _writes(h, "another-word", h.t("13:20"), refs, speaker, "And we open at 6 tomorrow.",
+                external_id="<another-word>")
+    h.clock("two-passes", h.t("14:05"))
+    return h, load
+
+
+def _what_the_word_did(store, result, load, speaker):
+    """The work state at 2:05; the promise as M8 holds it; the row of what `speaker` wrote at 1,
+    with the subject the promise is about; and M9's Exceptions for an unmet Expectation."""
+    intake = result.intakes[NORTHLINE]
+    (expectation_id, state, late, discharged_by), = _promise_rows(store.conn)
+    subject = store.conn.execute(
+        "SELECT subject_ref FROM expectations WHERE tenant = ? AND expectation_id = ?",
+        (NORTHLINE, expectation_id)).fetchone()[0]
+    word = intake.foundation.observation_by_external(
+        NORTHLINE_SMS if speaker[2].startswith("+") else NORTHLINE_OPS, "<a-word>")
+    unmet = [tuple(r) for r in store.conn.execute(
+        "SELECT state, owner_id, source_ref FROM exceptions WHERE tenant = ? "
+        "AND type = 'expectation_unmet'", (NORTHLINE,))]
+    return (result.state(NORTHLINE, load), (expectation_id, state, bool(late), discharged_by),
+            (word, subject), unmet)
+
+
+@pytest.mark.parametrize("tag,promiser,speaker,kind,on", [
+    ("DOCK", SHIPPER_DOCK, RECEIVER_DOCK, "send_document", _delivered_owing_a_pod),
+    ("COLL", TOM, A_COLLEAGUE, "status_update", _delivered_owing_a_pod),
+    ("NAME", TOM, A_NAMESAKE, "call_back", _delivered_owing_a_pod),
+    ("CREW", dispatcher("summit"), driver("summit"), "other", _delivered_owing_a_pod),
+    ("TWOC", driver("summit"), driver("bluegrass"), "status_update", _two_carriers_delivered),
+], ids=["the-shipper's-dock-and-the-receiver's", "a-customer-and-a-colleague",
+        "the-same-name-at-another-address", "a-dispatcher-and-the-driver",
+        "one-carrier's-driver-and-another's"])
+def test_a_promise_is_kept_only_by_a_word_from_the_sender_who_made_it(
+        tmp_path, tag, promiser, speaker, kind, on):
+    """A promise belongs to the sender who made it. Somebody ELSE in the same role writing about
+    the load - the receiver's dock for the shipper's, a colleague, a namesake at another address,
+    the driver for the dispatcher, another carrier's driver on a two-carrier load - says nothing
+    about whether it was kept: at 2:05 it is OVERDUE, nothing is cited for it, M9 holds one owned
+    Exception, and the load is not quiet. The promiser's OWN next word does answer it, as before.
+    (Third review of P9-CP-3: an answer was matched on the sender's ROLE alone, so the receiver's
+    "our dock closes at 4" kept the shipper's promise and the load was reported QUIET.)"""
+    outcomes = {}
+    for who, writer in (("promiser", promiser), ("somebody-else", speaker)):
+        h, load = _a_promise_and_then_a_word(tag + who[0].upper(), promiser, writer, kind, on=on)
+        store = _store(tmp_path, f"{tag}-{who}.db")
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        outcomes[who] = _what_the_word_did(store, result, load, writer)
+        store.close()
+
+    # The population: the very same message, from the promiser, DOES keep the promise - and with
+    # the POD on file there is then nothing left on this load at all.
+    state, (_, promised, late, discharged_by), (word, subject), unmet = outcomes["promiser"]
+    assert word is not None and (word["state"], word["bound_entity_ref"]) == ("BOUND", subject)
+    assert (promised, late, discharged_by) == ("DISCHARGED", False, word["observation_id"])
+    assert unmet == [] and state.routine_work_is_zero and state.posture is Posture.QUIET
+
+    state, (expectation_id, promised, _, discharged_by), (word, subject), unmet = \
+        outcomes["somebody-else"]
+    # The trap is real: what the other party wrote IS on this load, where M8 would have taken it.
+    assert word is not None and (word["state"], word["bound_entity_ref"]) == ("BOUND", subject)
+    assert word["parsed"]["payload"]["sender"]["role"] in (
+        CARRIER_SIDE_ROLES if promiser[0] in CARRIER_SIDE_ROLES else (promiser[0],)), \
+        "the trap needs a word from the promiser's own role"
+    assert promised == "OVERDUE", \
+        f"a word from {speaker[1]} <{speaker[2]}> kept the promise of {promiser[1]} <{promiser[2]}>"
+    assert discharged_by is None, "somebody else's word is cited as what kept the promise"
+    assert unmet == [("OPEN", "dana.ortiz", expectation_id)], unmet
+    assert not state.routine_work_is_zero and state.posture is not Posture.QUIET, \
+        "a load with a promise nobody kept was reported quiet"
+    if promiser[0] in CARRIER_SIDE_ROLES:
+        # A carrier's broken promise is Neyma's to chase; the Exception is still a named human's.
+        need = state.need(NeedKind.CARRIER_STATUS_OVERDUE)
+        assert need is not None and "PROMISED_UPDATE_OVERDUE" in need.reason_codes
+        assert f"expectation:{expectation_id}" in need.origins
+    else:
+        need = state.need(NeedKind.UNCLASSIFIED_EXCEPTION)
+        assert state.posture is Posture.HUMAN_ATTENTION
+        assert need is not None and need.human_required and need.status is NeedStatus.OVERDUE
+        assert need.reason_codes == (f"PROMISED_UPDATE_OVERDUE:{promiser[0]}",)
+        assert need.owner_id == "dana.ortiz" and f"expectation:{expectation_id}" in need.origins
+
+
+def test_a_sender_with_no_address_keeps_no_promise_by_word_and_paper_is_another_matter(tmp_path):
+    """A name and a role are not an identity. A sender the record gives NO address makes a promise
+    and "the same" nameless sender writes again: nothing says it is the same party, so the promise
+    is not answered - it goes overdue to a named human. The carrier's PAPER is a separate rule and
+    is untouched: an address-less dispatcher's promised POD still keeps that promise."""
+    h, load = _a_promise_and_then_a_word("ANON", NO_ADDRESS, NO_ADDRESS, "status_update")
+    store = _store(tmp_path, "anon.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    state, (expectation_id, promised, _, discharged_by), (word, subject), unmet = \
+        _what_the_word_did(store, result, load, NO_ADDRESS)
+    store.close()
+    assert word is not None and (word["state"], word["bound_entity_ref"]) == ("BOUND", subject)
+    assert word["parsed"]["payload"]["sender"] == {"role": NO_ADDRESS[0], "name": NO_ADDRESS[1],
+                                                   "address": ""}
+    assert (promised, discharged_by) == ("OVERDUE", None), "a sender with no address was matched"
+    assert unmet == [("OPEN", "dana.ortiz", expectation_id)]
+    assert state.posture is Posture.HUMAN_ATTENTION and not state.routine_work_is_zero
+
+    unaddressed = ("carrier_contact", CARRIERS["summit"]["dispatcher"]["name"], "")
+    h, load, refs = _delivered_owing_a_pod("ANOP")
+    _writes(h, "promised", h.t("11:00"), refs, unaddressed, "I'll send the POD by 2.",
+            due_by=h.t("14:00"), kind="send_document")
+    h.document("pod", h.t("13:00"), "POD", f"PROOF OF DELIVERY | load {load}", refs=refs,
+               via=NORTHLINE_PODS, signed=True, external_id="<pod>")
+    h.clock("two-passes", h.t("14:05"))
+    store = _store(tmp_path, "anon-paper.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    (_, promised, late, discharged_by), = _promise_rows(store.conn)
+    paper = result.intakes[NORTHLINE].foundation.observation_by_external(NORTHLINE_PODS, "<pod>")
+    assert (promised, bool(late), discharged_by) == ("DISCHARGED", False, paper["observation_id"])
+    assert result.state(NORTHLINE, load).routine_work_is_zero
+    store.close()
+
+
+def test_a_word_keeps_a_promise_once_and_the_same_way_on_replay_and_after_a_restart(tmp_path):
+    """The answer arrives, is re-delivered, and is followed by another message from the same
+    sender. From the promiser that is ONE discharge, citing the first arrival; from somebody else
+    it is none, however often it arrives. Either way: the same in another database, and when the
+    process is thrown away and the work is rebuilt from the rows."""
+    for who, writer in (("promiser", TOM), ("somebody-else", A_COLLEAGUE)):
+        digests = []
+        for name in ("one", "two"):
+            h, load = _a_promise_and_then_a_word("RPL" + who[0].upper(), TOM, writer,
+                                                 "status_update", again=True)
+            store = _store(tmp_path, f"replay-{who}-{name}.db")
+            result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+            intake = result.intakes[NORTHLINE]
+            final, (expectation_id, promised, late, discharged_by), (word, _), unmet = \
+                _what_the_word_did(store, result, load, writer)
+            transitions = [r[0] for r in store.conn.execute(
+                "SELECT event_name FROM event_outbox WHERE tenant = ? AND aggregate_type = "
+                "'expectation' AND aggregate_id = ? ORDER BY rowid", (NORTHLINE, expectation_id))]
+            assert intake.foundation.observation_by_external(NORTHLINE_OPS,
+                                                             "<another-word>") is not None
+            if who == "promiser":
+                assert (promised, late, discharged_by) == ("DISCHARGED", False,
+                                                           word["observation_id"])
+                assert transitions == ["ExpectationRaised", "ExpectationDischarged"], transitions
+                assert unmet == [] and final.routine_work_is_zero
+            else:
+                assert (promised, discharged_by) == ("OVERDUE", None)
+                assert transitions.count("ExpectationDischarged") == 0, transitions
+                assert unmet == [("OPEN", "dana.ortiz", expectation_id)], unmet
+                assert final.posture is Posture.HUMAN_ATTENTION
+            for step in result.steps:
+                for moment in step.states.values():
+                    ids = [n.need_id for n in moment.needs]
+                    assert len(ids) == len(set(ids)), f"a duplicate need after {step.label}"
+            before = (_promise_rows(store.conn), store.conn.execute(
+                "SELECT COUNT(*) FROM event_outbox WHERE tenant = ?", (NORTHLINE,)).fetchone()[0])
+            rebuilt = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+            assert next(iter(work_states(
+                rebuilt, as_of=intake.foundation.now()).values())).digest() == final.digest()
+            assert before == (_promise_rows(store.conn), store.conn.execute(
+                "SELECT COUNT(*) FROM event_outbox WHERE tenant = ?", (NORTHLINE,)).fetchone()[0])
+            digests.append(final.digest())
+            store.close()
+        assert digests[0] == digests[1], who
+
+
+def test_the_same_address_writing_to_another_brokerage_keeps_no_promise_here(tmp_path):
+    """Tom promises Northline a follow-up by 2 and writes nothing more to Northline. At 1 the very
+    same address writes to CEDAR RIDGE about its own same-numbered load. A sender is an identity
+    within one brokerage's records: Northline's promise is overdue, and nothing of Cedar Ridge's
+    is cited, read or raised here."""
+    h, load = _a_promise_and_then_a_word("XTID", TOM, A_COLLEAGUE, "status_update")
+    mine = [r for r in h.build({}).records if r.label != "a-word"]
+    there = HistoryBuilder("XTIDC", "the twin at Cedar Ridge hears from Tom", CEDAR,
+                           day="2026-08-10", zone="America/Chicago",
+                           hostile=("same_external_id_under_two_tenants",))
+    stops = _stops(there, pickup="Prairie Ag Sterling", delivery="Stark County Feed",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED")
+    _cover(there, CEDAR_OPS)
+    customer, carrier = _covered(there, load=load, customer="prairie_ag", carrier="summit",
+                                 po="PO-XTIDP", bol="BOL-XTIDP", pro="PRO-XTIDP", sell=193000,
+                                 stops=stops, at=("07:30", "08:00"))
+    _delivered(there, "delivered", there.t("10:00"), load=load, customer=customer,
+               carrier=carrier, po="PO-XTIDP", bol="BOL-XTIDP", pro="PRO-XTIDP", sell=193000,
+               stops=stops)
+    there.message("tom-writes-next-door", there.t("13:00"), channel="email",
+                  source_system=CEDAR_OPS, sender=TOM, thread="cedar", subject="RE: your load",
+                  body="Our dock closes at 4 today.", refs=(load_ref(load),),
+                  external_id="<a-word>")
+    store = _store(tmp_path, "next-door-word.db")
+    north = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+    cedar = FreightIntake(store.conn, WORK_SETUPS[CEDAR])
+    for record in mine[:-1]:
+        north.ingest(record)
+    for record in there.build({}).records:
+        cedar.ingest(record)
+    north.ingest(mine[-1])                                  # 2:05 at Northline
+    # The population: Cedar Ridge DID hear from that address, on its own same-numbered load.
+    heard = cedar.foundation.observation_by_external(CEDAR_OPS, "<a-word>")
+    twin = next(iter(work_states(cedar).values()))
+    assert heard is not None and heard["state"] == "BOUND" and twin.load_number == load
+    assert heard["parsed"]["payload"]["sender"]["address"] == TOM[2]
+    here = next(iter(work_states(north).values()))
+    (expectation_id, promised, _, discharged_by), = _promise_rows(store.conn)
+    assert (promised, discharged_by) == ("OVERDUE", None), "a neighbour's inbox kept this promise"
+    assert here.posture is Posture.HUMAN_ATTENTION
+    assert [tuple(r) for r in store.conn.execute(
+        "SELECT tenant, owner_id, source_ref FROM exceptions WHERE type = 'expectation_unmet'")] \
+        == [(NORTHLINE, "dana.ortiz", expectation_id)]
+    assert _promise_rows(store.conn, CEDAR) == [] and cross_tenant_violations(store.conn) == []
+    store.close()
 
 
 def test_deadline_precedence_is_the_same_work_on_replay_and_after_a_restart(tmp_path):

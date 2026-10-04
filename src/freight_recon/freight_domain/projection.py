@@ -919,6 +919,7 @@ class Projector:
                     "observation_id": observation["observation_id"], "index": index,
                     "commitment_kind": item["commitment_kind"], "due_by": item["due_by"],
                     "in_quoted_text": item["in_quoted_text"], "sender_role": role,
+                    "sender_identity": sender_identity(payload),
                     "channel": observation["source_system"], "timezone": parsed["timezone"],
                     "received_at": observation["received_at"], "as_of": observation["as_of"]})
 
@@ -1194,6 +1195,16 @@ def claim_source(observation: Mapping[str, Any], payload: Mapping[str, Any]) -> 
             f"{sender.get('address') or sender.get('name') or sender['role']}")
 
 
+def sender_identity(payload: Mapping[str, Any]) -> str | None:
+    """WHO sent a message, exactly: the address its own record carries. An IDENTITY, compared
+    character for character and never tidied - not a description. Nothing is read from a name, a
+    role or an organisation: two contacts at one customer, two docks, and two carriers' drivers are
+    different senders. A record that carries no address has NO sender identity (None), and nothing
+    is ever matched to None."""
+    address = payload["sender"]["address"]
+    return address if address.strip() else None
+
+
 def resolve_stop_key(view: LoadView, item: Mapping[str, Any]) -> str | None:
     """Which stop a claim is about. A record that names the stop keeps it. A claim read from free
     text names only a KIND of stop ("at the shipper"), and that resolves only when the load has
@@ -1311,8 +1322,8 @@ def commitment_expectation_id(tenant: str, load_ref: str, commitment: Mapping[st
 
 
 def counterparty_updates(view: LoadView) -> list[dict[str, Any]]:
-    """Bound inbound records from the carrier's side of this load — what answers a carrier's
-    promise to follow up. In arrival order."""
+    """Bound inbound records from the carrier's side of this load, in arrival order. NOT what
+    answers a promise: a promise is answered only by its own sender's word (`sender_identity`)."""
     out: list[dict[str, Any]] = []
     for observation in view.observations:
         parsed = observation["parsed"]

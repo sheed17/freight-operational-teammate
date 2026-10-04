@@ -93,6 +93,9 @@ AFTER = (f"{T}::test_a_promise_made_after_our_deadline_passed_does_not_turn_over
 KEPT = (f"{T}::test_a_kept_promise_leaves_nothing_behind_and_an_unusable_document_does_"
         f"not_keep_it")
 WHOSE = f"{T}::test_a_carriers_document_does_not_keep_somebody_elses_promise"
+WORD = f"{T}::test_a_promise_is_kept_only_by_a_word_from_the_sender_who_made_it"
+ANON = (f"{T}::test_a_sender_with_no_address_keeps_no_promise_by_word_and_paper_is_another_"
+        f"matter")
 CONTROLS = f"{T}::test_the_control_states_are_settled_without_a_model"
 
 
@@ -315,6 +318,27 @@ CASES = [
                   '                and commitment["sender_role"] in CARRIER_SIDE_ROLES:\n',
        '        if commitment["commitment_kind"] == "send_document":  # MUTANT\n')],
      WHOSE),
+
+    ("a word from ANYBODY in the promiser's role keeps the promise - the answer is matched on the "
+     "sender's role alone again, so the receiver's dock keeps the shipper's promise and the load "
+     "goes quiet",
+     [(DETECTORS, '            and promiser is not None and sender_identity(o["parsed"]["payload"])'
+                  ' == promiser]\n',
+       '            and True]  # MUTANT\n')],
+     WORD),
+
+    ("a sender with NO address is matched to another sender with none - nothing equals nothing, "
+     "so a promise nobody can be identified as having made is kept by whoever wrote next",
+     [(DETECTORS, '            and promiser is not None and sender_identity(o["parsed"]["payload"])'
+                  ' == promiser]\n',
+       '            and sender_identity(o["parsed"]["payload"]) == promiser]  # MUTANT\n')],
+     ANON),
+
+    ("a NAME stands in for an address - a sender's identity falls back to the display name, so "
+     "two senders who merely share a name are one party",
+     [(PROJECTION, '    return address if address.strip() else None\n',
+       '    return address if address.strip() else payload["sender"]["name"]  # MUTANT\n')],
+     ANON),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',

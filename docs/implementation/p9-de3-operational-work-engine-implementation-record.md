@@ -493,10 +493,34 @@ throughout; nothing below is design-partner evidence.
   required document that arrives after it and satisfies its requirement. The document must still
   pass every existing requirement check — an unusable copy (unsigned) keeps nothing. A document
   never discharges a customer's or any other non-carrier party's promise: that promise is still
-  answered only by a later inbound message from that same side, and otherwise goes overdue to a
-  named human (the carrier-side limit is `3a0cdd3`; as first written in `f2ed10a` the discharge
-  answered any party's promise). This is deliberately narrow: a commitment records no document
-  type and none is inferred, so nothing here decides WHICH document was promised.
+  answered only by a later inbound message from the exact sender who made it (next paragraph), and
+  otherwise goes overdue to a named human (the carrier-side limit is `3a0cdd3`; as first written
+  in `f2ed10a` the discharge answered any party's promise). This is deliberately narrow: a
+  commitment records no document type and none is inferred, so nothing here decides WHICH
+  document was promised.
+
+  **A second false QUIET on the same promise, found by the final reader of that repair, and
+  fixed.** A WORD answered a promise when it came from anybody in the promiser's sender ROLE. The
+  shipper's dock promises signed paperwork by 2 and says nothing more; at 1 the receiver's dock
+  writes "our dock closes at 4 today": the promise was DISCHARGED citing the receiver's email, M9
+  held nothing, and the load was QUIET. The same held for a customer's colleague, for a namesake
+  at another address, and - on a two-carrier load - for the other carrier's driver. Decided
+  2026-10-04: **a message-based promise belongs to the specific sender who made it.** A later
+  inbound message answers it only when it carries the **exact sender address** of the promise's
+  own record (`sender_identity`: the record's `sender.address`, compared character for character
+  and never tidied). A role, a display name, an organisation, a facility, a carrier and a customer
+  are not identities, and none is inferred. A promise whose record carries no address has no
+  identity: no later word is matched to it, and it goes overdue to a named human. No model is
+  asked who anybody is. The carrier-side paper discharge above is a separate rule and is
+  unchanged - an address-less dispatcher's promised POD still keeps that promise.
+
+  **What this changes besides the defect - stated, not buried.** A dispatcher's promise is no
+  longer answered by the driver's text, nor a contact's by a colleague's reply, nor anyone's by
+  their own word from a second address. The code said the first of those was intended; nothing
+  exercised it - of the 10 promises in the three corpora (44 histories), none was answered by a
+  different sender, which is also how the defect escaped. Such a promise now goes overdue: a
+  carrier's to Neyma's follow-up candidate, anybody else's to a named human. Extra burden, never
+  quiet (`P9-D47`).
 
 ### R03's label change
 
@@ -516,5 +540,6 @@ POD Expectation is raised with its own deadline and goes overdue normally.
 | `P9-D42` | The frozen M9 machine spec (EC-3/EC-6), K-1, and debts `P6-D1` / `M9-AQ-1` still describe only the prior-event referent. | Spec text is the spec owner's to amend. Code and decision are recorded here. |
 | `P9-D44` | The hostile layer never repeats, reverses or re-targets a human act. | Covered by dedicated tests for the two states found. |
 | `P9-D45` | A human act that arrives BEFORE the record it names (an attribution before its invoice) raises `invoice_attribution_unusable`. When the invoice arrives the projection applies her attribution, and the Exception — which still says nothing was placed — stays her question until she closes it. Found by comparing every reordered / late-arrival mutant with its base: 30 of 32 end in exactly the base's work; this is one, and the other is conversation order, which is meaning. | Extra human burden, never quiet; closable since D30. |
-| `P9-D46` | **FIXED** (above): a counterparty's promise never extends, replaces or suppresses a deadline of ours. Remaining: a promise of unsettled scope ("I'll get back to you") is still not answered by a document, only by the carrier's next message. | Seven regressions and five mutants in place. |
+| `P9-D46` | **FIXED** (above): a counterparty's promise never extends, replaces or suppresses a deadline of ours. Remaining: a promise of unsettled scope ("I'll get back to you") is still not answered by a document, only by the promiser's own next message. | Seven regressions and five mutants in place. |
+| `P9-D47` | A promise is answered by word only from the exact sender address that made it. Resolving a sender to a PARTY - which contacts, drivers and addresses may answer for one another - is not built, and that rule is `NEEDS VALIDATION`: until it is chosen, a driver does not answer for the dispatcher, a colleague does not answer for a contact, and a sender writing from a second address is not recognised. While such a promise is still owed, another sender's promise on the same load coalesces into it (`P9-D6`). | Fails closed: overdue, owned, never quiet. Eight regression cases and three mutants in place. |
 

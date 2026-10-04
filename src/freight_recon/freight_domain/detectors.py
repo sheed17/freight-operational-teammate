@@ -31,6 +31,7 @@ from .projection import (
     LoadView,
     commitment_expectation_id,
     explain_unattributed_invoice,
+    sender_identity,
 )
 
 #: Signals that report where a truck IS. A system of record that simply has not been updated yet is
@@ -384,13 +385,20 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             out.append(DischargeExpectation(expectation["expectation_id"],
                                             tuple(dict.fromkeys(answers))))
 
-    # A carrier's promise is answered by the carrier's next inbound word on this load.
+    # A promise is answered by the next inbound word, on this load, FROM THE SENDER WHO MADE IT.
     for commitment in view.commitments:
         expectation = by_id.get(
             commitment_expectation_id(view.load.tenant_id, view.ref, commitment))
         if expectation is None:
             continue
-        # A dispatcher's promise is kept by the driver's text as much as by the dispatcher's own.
+        # A ROLE IS NOT A PARTY. The receiver's dock is not the shipper's, a colleague is not the
+        # contact who promised, the driver is not the dispatcher, and on a two-carrier load one
+        # carrier's driver is not the other's. A word answers a promise only when it comes from
+        # the exact sender identity the promise's own record carries; no organisation, facility,
+        # carrier or customer is inferred from a role. A promise whose record carries no address
+        # has no identity and is matched to nothing: it stays owed and goes overdue to a named
+        # human rather than being kept by whoever wrote next.
+        promiser = commitment["sender_identity"]
         side = (CARRIER_SIDE_ROLES if commitment["sender_role"] in CARRIER_SIDE_ROLES
                 else (commitment["sender_role"],))
         answers = [
@@ -398,7 +406,8 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             if o["received_at"] > commitment["received_at"]
             and o["parsed"]["kind"] == "message"
             and o["parsed"]["payload"]["direction"] == "inbound"
-            and o["parsed"]["payload"]["sender"]["role"] in side]
+            and o["parsed"]["payload"]["sender"]["role"] in side
+            and promiser is not None and sender_identity(o["parsed"]["payload"]) == promiser]
         if commitment["commitment_kind"] == "send_document" \
                 and commitment["sender_role"] in CARRIER_SIDE_ROLES:
             # A CARRIER's promise to send paper is kept by the PAPER, not only by another message:
