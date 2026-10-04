@@ -436,9 +436,9 @@ def evaluate_load_work(view: LoadView, *, setup: TenantSetup, as_of: str) -> Loa
     build = _Build(view=view, setup=setup, as_of=as_of)
     pending_promises = _expectation_needs(build)
     _document_needs(build)
-    _conflict_needs(build)
     _identity_needs(build)
     _financial_needs(build)
+    _conflict_needs(build)
     _appointment_needs(build)
     _billing_needs(build)
     _exception_needs(build)
@@ -751,11 +751,20 @@ def _document_needs(build: _Build) -> None:
 
 def _conflict_needs(build: _Build) -> None:
     """An unresolved Conflict is a human's. Neyma does not pick the likelier party. The Conflict and
-    any Exception raised FOR it are one need."""
+    any Exception raised FOR it are one need.
+
+    ### EVERY OPEN CONFLICT IS BEHIND A NEED. A Conflict on what a movement is owed is read with the
+    invoice it disputes — while an invoice on that movement is still in discrepancy, the two are one
+    need. When none is (the invoice was placed on another movement, or one side of the comparison
+    is itself now in dispute) the Conflict is still OPEN in M7, and nothing but a human or a
+    registered rule resolves one: it is shown as its own need, never dropped. Runs after the
+    financial needs, so it knows which Conflicts an invoice already carries."""
+    carried = {origin for need in build.needs for origin in need.origins}
     view = build.view
     for conflict in view.open_conflicts():
         entity_kind = split_ref(conflict["entity_ref"])[0]
-        if conflict["field"].startswith("owed_to_carrier."):
+        outlived = conflict["field"].startswith("owed_to_carrier.")
+        if outlived and f"conflict:{conflict['conflict_id']}" in carried:
             continue                                  # read with the invoice it disputes
         raised = build.open_exceptions(source_ref=conflict["conflict_id"],
                                        source_kind="conflict")
@@ -780,13 +789,17 @@ def _conflict_needs(build: _Build) -> None:
             reason = f"FINANCIAL:{entity_kind}.{conflict['field']}"
             actions = (ShadowAction.ASK_HUMAN_REVIEW_FINANCIAL_DISCREPANCY,)
             why = f"Sources state different figures for {entity_kind}.{conflict['field']}."
+            if outlived:
+                why += (" No invoice on this movement is in discrepancy now, and the dispute is "
+                        "still open: only a human closes it.")
         else:
             reason = f"FIELD:{entity_kind}.{conflict['field']}"
             actions = (ShadowAction.ASK_HUMAN_RESOLVE_CONFLICT,)
             why = f"Sources disagree about {entity_kind}.{conflict['field']}."
+        reasons = (reason, "OWED_LINE_CONFLICT_OUTLIVED_ITS_DISCREPANCY") if outlived else (reason,)
         build.add(
             NeedKind.EVIDENCE_CONFLICT, (conflict["conflict_id"],), status=NeedStatus.OPEN,
-            handling=Handling.HUMAN_REQUIRED, reason_codes=(reason,), why=why, actions=actions,
+            handling=Handling.HUMAN_REQUIRED, reason_codes=reasons, why=why, actions=actions,
             owner_id=conflict["owner_id"], related=(conflict["entity_ref"],),
             origins=(f"conflict:{conflict['conflict_id']}", *build.claim(raised)),
             evidence=evidence, opened_at=conflict["created_at"],

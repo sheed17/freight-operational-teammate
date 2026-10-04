@@ -74,6 +74,7 @@ REBILLED = f"{T}::test_an_invoice_resent_with_different_charges_is_a_dispute_and
 MOVED_RECORD = (f"{T}::test_a_wrong_load_number_is_a_humans_question_and_moving_the_record_"
                 f"moves_the_work")
 ORPHAN = f"{T}::test_an_expectation_that_outlives_its_cause_is_never_dropped"
+OWED = f"{T}::test_an_owed_line_conflict_that_outlives_its_invoice_is_never_dropped"
 
 
 def purge_pycache() -> None:
@@ -115,6 +116,12 @@ CASES = [
        '    view = build.view\n    for conflict in ():  # MUTANT\n        '
        'entity_kind = split_ref(conflict["entity_ref"])[0]\n')],
      CONFLICT),
+
+    ("an open Conflict on what a movement is owed is DROPPED once no invoice there is discrepant "
+     "- the load goes quiet with an owned Conflict still open in M7",
+     [(WORK, '        if outlived and f"conflict:{conflict[\'conflict_id\']}" in carried:\n',
+       '        if outlived:  # MUTANT\n')],
+     OWED),
 
     ("the human-required marker is dropped - a need only a human may decide is not marked as one",
      [(WORK, '        required = handling is Handling.HUMAN_REQUIRED if human_required is None \\\n'

@@ -726,6 +726,73 @@ def test_an_invoice_discrepancy_is_never_silently_good(run):
     assert final.need(NeedKind.INVOICE_DISCREPANCY) is not None, "it went quiet by itself"
 
 
+def test_an_owed_line_conflict_that_outlives_its_invoice_is_never_dropped(tmp_path):
+    """A human places an invoice on the WRONG movement of a two-carrier load: it does not match, and
+    M7 raises a Conflict on what that movement is owed. She then places it on the right movement,
+    where it reconciles. The Conflict on the first movement is still OPEN in M7 — nothing but a
+    human or a registered rule resolves one — so the load is NOT quiet: a named human is still
+    shown it. (Independent review of P9-CP-3: this state was reported QUIET and billing-ready with
+    an open, owned Conflict behind no need. No corpus history reaches it.)"""
+    h = HistoryBuilder("WQ", "an invoice placed on the wrong movement, then the right one",
+                       NORTHLINE, day="2026-08-20", zone="America/Chicago",
+                       hostile=("owed_conflict_outlives_its_invoice",))
+    load = "LD-49096"
+    stops = _stops(h, pickup="Prairie Ag Decatur", delivery="Three Rivers Co-op",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED")
+    _cover(h, NORTHLINE_OPS, NORTHLINE_PODS)
+    buyer = CUSTOMERS["prairie_ag"]
+    h.tms("covered", h.t("08:00"), load=load, status="COVERED", version=1, customer=buyer,
+          po="PO-2396", bol="BOL-56096", sell=charges(300000), stops=stops,
+          movements=(movement("M1", CARRIERS["redbird"], pro="PRO-60096A"),
+                     movement("M2", CARRIERS["ironwood"], pro="PRO-60096B")))
+    _rate_con(h, "rc-m1", h.t("08:30"), load=load, number="RC-49096A", carrier="redbird",
+              linehaul=150000, via=NORTHLINE_OPS, movement_key="M1")
+    _rate_con(h, "rc-m2", h.t("08:35"), load=load, number="RC-49096B", carrier="ironwood",
+              linehaul=160000, via=NORTHLINE_OPS, movement_key="M2")
+    h.tms("delivered", h.t("09:40", 1), load=load, status="DELIVERED", version=2, customer=buyer,
+          po="PO-2396", bol="BOL-56096", sell=charges(300000), stops=stops,
+          movements=(movement("M1", CARRIERS["redbird"], pro="PRO-60096A", status="DELIVERED"),
+                     movement("M2", CARRIERS["ironwood"], pro="PRO-60096B",
+                              status="DELIVERED")))
+    h.document("pod", h.t("10:00", 1), "POD", f"PROOF OF DELIVERY | load {load}",
+               refs=(load_ref(load),), via=NORTHLINE_PODS, signed=True)
+    invoice = _invoice_as(h, "invoice-no-mc", h.t("11:00", 1), load=load, number="IW-9096",
+                          carrier="ironwood", linehaul=160000, via=NORTHLINE_OPS, mc=None)
+    for label, clock, key in (("placed-wrong", "12:00", "M1"), ("placed-right", "13:00", "M2")):
+        h.human(label, h.t(clock, 1), "marcus.reid", "attribute_carrier_invoice",
+                refs=(load_ref(load),), movement_key=key,
+                target={"source_system": NORTHLINE_OPS, "external_id": invoice}, note=key)
+    store = _store(tmp_path)
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+
+    wrong = result.at("WQ", "placed-wrong", load)
+    disputed = wrong.need(NeedKind.INVOICE_DISCREPANCY)
+    assert disputed is not None and wrong.reconciliation == ("COMPUTED", "DISCREPANT")
+    conflict_origin = next(o for o in disputed.origins if o.startswith("conflict:"))
+
+    final = result.state(NORTHLINE, load)
+    view = _view(result, NORTHLINE, load)
+    # The population: the invoice now RECONCILES where she put it, and M7 still holds the Conflict.
+    assert final.reconciliation == ("COMPUTED", "RECONCILED")
+    assert final.need(NeedKind.INVOICE_DISCREPANCY) is None
+    assert [c["state"] for c in view.open_conflicts()] == ["RAISED"]
+    assert f"conflict:{view.open_conflicts()[0]['conflict_id']}" == conflict_origin
+
+    assert not final.routine_work_is_zero and final.posture is Posture.HUMAN_ATTENTION, \
+        "a load with an open, owned Conflict was reported quiet"
+    kept = final.need(NeedKind.EVIDENCE_CONFLICT)
+    assert kept is not None and kept.human_required and conflict_origin in kept.origins
+    assert kept.owner_id == view.open_conflicts()[0]["owner_id"] == "dana.ortiz"
+    assert kept.actions == (ShadowAction.ASK_HUMAN_REVIEW_FINANCIAL_DISCREPANCY,)
+    assert "OWED_LINE_CONFLICT_OUTLIVED_ITS_DISCREPANCY" in kept.reason_codes
+    document = json.dumps(final.as_document())
+    assert "1500" not in document and "1600" not in document, "an amount leaked into the work"
+    assert audit_state(final, view, tenant=NORTHLINE) == []
+    # While the invoice WAS discrepant there, the Conflict was one need with it, not two.
+    assert wrong.need(NeedKind.EVIDENCE_CONFLICT) is None, "the same disagreement was shown twice"
+    store.close()
+
+
 def test_a_claimed_approval_is_not_an_authorization(run):
     """ "Detention is included per approval from Mike." The charge is exactly as unauthorized as it
     was, the claim is recorded as a reason to look harder, and only a recorded human's decision
