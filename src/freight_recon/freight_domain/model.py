@@ -182,13 +182,34 @@ class Field:
         """The latest statements a consequential read may use — a guess is not among them."""
         return [f for f in self.latest_by_source().values() if f.may_gate]
 
+    def answered_by_owner(self, fact: Fact) -> bool:
+        """Whether an owner's assertion already ANSWERED this statement.
+
+        A recorded human decided the field knowing everything Neyma had then been told, so what was
+        said before she decided no longer disputes her. Neither does a source that merely REPEATS,
+        afterwards, what it had already said — a system of record nobody has updated yet is the same
+        statement arriving again, not a new one. A source that says something NEW after she decided
+        is a new dispute: her value is preserved and a human is asked again (R-P3)."""
+        owner = self.owner_fact()
+        if owner is None or fact is owner:
+            return False
+        if fact.received_at <= owner.received_at:
+            return True
+        earlier = [f for f in self.facts if f.source_system == fact.source_system
+                   and f.received_at <= owner.received_at]
+        if not earlier:
+            return False
+        prior = max(earlier, key=lambda f: (f.as_of, f.received_at))
+        return repr(_comparable(prior.value)) == repr(_comparable(fact.value))
+
     def disagreement(self) -> list[Fact]:
         """The latest statements when they are mutually exclusive, else empty. Only a CONTESTED field
         can be in dispute, and only statements that may gate take part: a guess is retained as an
-        observation and cannot dispute a fact."""
+        observation and cannot dispute a fact. A statement an owner has already answered takes no
+        part either — it is retained in the history, and it is settled."""
         if not self.contested:
             return []
-        gating = self.gating_facts()
+        gating = [f for f in self.gating_facts() if not self.answered_by_owner(f)]
         distinct = {repr(_comparable(f.value)) for f in gating}
         return sorted(gating, key=lambda f: (f.as_of, f.source_system)) if len(distinct) > 1 else []
 
@@ -631,6 +652,23 @@ class AccessorialAuthorization:
 
 # --------------------------------------------------------------------------- financial (09)
 
+#: What may place a carrier's invoice on a movement. A document's own movement key, an MC that
+#: resolves EXACTLY through this brokerage's External Entity Mapping to the carrier of exactly one
+#: movement of the load, or a recorded human's act. Nothing else — and never a model.
+ATTRIBUTION_BASES: tuple[str, ...] = ("MOVEMENT_KEY", "CARRIER_MC_EXACT", "HUMAN_ASSERTION")
+
+#: Why an invoice bound to a load could not be placed on one of its movements.
+#:   CARRIER_NOT_STATED     the invoice prints no MC and names no movement
+#:   CARRIER_UNRECOGNIZED   the MC as printed names no carrier this brokerage has recorded
+#:   CARRIER_NOT_ON_LOAD    it names a recorded carrier that moves no movement of this load
+#:   CARRIER_AMBIGUOUS      it fits more than one movement, or the MC names more than one carrier
+#:   MOVEMENT_UNKNOWN       a human placed it on a movement this load does not have
+ATTRIBUTION_PROBLEMS: tuple[str, ...] = (
+    "CARRIER_NOT_STATED", "CARRIER_UNRECOGNIZED", "CARRIER_NOT_ON_LOAD", "CARRIER_AMBIGUOUS",
+    "MOVEMENT_UNKNOWN",
+)
+
+
 @dataclass
 class CustomerInvoice(Entity):
     """E30 — what WE bill the customer: money IN. This build never issues one; it evaluates the
@@ -661,11 +699,25 @@ class CarrierPayable(Entity):
     document_id: str | None = None
     lifecycle_state: str = "INVOICE_RECEIVED"      # L-Payable
     duplicate_observation_ids: list[str] = field(default_factory=list)
+    # WHICH movement this invoice bills, and how that is known. An invoice bound to a load is not
+    # thereby attributed to a carrier: a load may be moved by several, and the paper may be nobody's
+    # on this load at all. `attribution_basis` names what placed it; `attribution_problem` is why
+    # nothing could. Exactly one of them is set.
+    attribution_basis: str | None = None           # one of ATTRIBUTION_BASES
+    attribution_problem: str | None = None         # one of ATTRIBUTION_PROBLEMS
+    stated_carrier_mc: str | None = None           # the MC as the invoice PRINTS it, or None
+    stated_movement_key: str | None = None
+    attributed_by: str | None = None               # the human, when a human placed it
+    attribution_decision_ref: str | None = None
 
     def links(self) -> dict[str, Any]:
         return {"movement_id": self.movement_id, "load_id": self.load_id,
                 "document_id": self.document_id, "lifecycle_state": self.lifecycle_state,
-                "duplicate_observation_ids": list(self.duplicate_observation_ids)}
+                "duplicate_observation_ids": list(self.duplicate_observation_ids),
+                "attribution_basis": self.attribution_basis,
+                "attribution_problem": self.attribution_problem,
+                "stated_carrier_mc": self.stated_carrier_mc,
+                "attributed_by": self.attributed_by}
 
 
 # --------------------------------------------------------------------------- derived (11)
@@ -706,11 +758,15 @@ class FinancialReconciliationResult:
     actual_condition: str
     discrepancies: tuple[Discrepancy, ...]
     source_observation_ids: tuple[str, ...]  # CD-18: every source financial record pinned
+    # WHICH invoice was compared. A movement can be billed twice, and a result that named only the
+    # movement would let one invoice's verdict be read as another's.
+    payable_id: str | None = None
 
     def as_document(self) -> dict[str, Any]:
         return {
             "reconciliation_id": self.reconciliation_id, "tenant_id": self.tenant_id,
-            "load_id": self.load_id, "movement_id": self.movement_id, "status": self.status,
+            "load_id": self.load_id, "movement_id": self.movement_id,
+            "payable_id": self.payable_id, "status": self.status,
             "expected": self.expected.as_document() if self.expected else None,
             "expected_condition": self.expected_condition, "expected_basis": self.expected_basis,
             "actual": self.actual.as_document() if self.actual else None,

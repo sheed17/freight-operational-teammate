@@ -22,10 +22,16 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .financial import blocking_discrepancies
-from .foundation import format_instant, stable_id
+from .foundation import facility_local_deadline, format_instant, stable_id
 from .history import CARRIER_SIDE_ROLES, TenantSetup, utc_datetime
 from .model import TRACKING_PROGRESSION, DirectedMoney, Fact
-from .projection import OWED_STATES, LoadView, commitment_expectation_id
+from .projection import (
+    OPEN_CONFLICT_STATES,
+    OWED_STATES,
+    LoadView,
+    commitment_expectation_id,
+    explain_unattributed_invoice,
+)
 
 #: Signals that report where a truck IS. A system of record that simply has not been updated yet is
 #: not evidence against a later status, so `tms_status` never plays the regressing party.
@@ -33,6 +39,15 @@ CURRENT_STATE_SIGNALS: tuple[str, ...] = (
     "tracking_provider_position", "driver_assertion", "carrier_assertion",
 )
 ARRIVAL_STATUSES: tuple[str, ...] = ("AT_PICKUP", "AT_DELIVERY", "LOADED", "DELIVERED")
+#: The movement stages that can only be reported once the truck has been to a stop of that kind.
+STAGES_PAST_STOP: dict[str, tuple[str, ...]] = {
+    "PICKUP": ("LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED"),
+    "DELIVERY": ("AT_DELIVERY", "DELIVERED"),
+}
+#: The M8 expected-type of "this moving truck should be heard from again".
+TRACKING_UPDATE = "tracking_update"
+#: Statuses that say the freight is on the truck and has not been delivered.
+UNDER_WAY_STATUSES: tuple[str, ...] = ("LOADED", "IN_TRANSIT", "AT_DELIVERY")
 LINE_MISMATCH_CODES: dict[str, str] = {
     "LINEHAUL_MISMATCH": "linehaul", "FUEL_MISMATCH": "fuel",
     "ACCESSORIAL_AMOUNT_MISMATCH": "accessorials", "ACCESSORIAL_NOT_BILLED": "accessorials",
@@ -70,6 +85,18 @@ class DischargeExpectation:
 
 
 @dataclass(frozen=True)
+class AmendExpectation:
+    expectation_id: str
+    deadline_utc: str
+
+
+@dataclass(frozen=True)
+class CancelExpectation:
+    expectation_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class RaiseException:
     exception_id: str
     type: str
@@ -82,7 +109,8 @@ class RaiseException:
     specific_question: str
 
 
-Intent = RaiseConflict | RaiseExpectation | DischargeExpectation | RaiseException
+Intent = (RaiseConflict | RaiseExpectation | DischargeExpectation | AmendExpectation
+          | CancelExpectation | RaiseException)
 
 
 def _stated(value: Any) -> str:
@@ -122,6 +150,7 @@ def detect(view: LoadView, setup: TenantSetup) -> list[Intent]:
     intents.extend(_commitment_expectations(view, setup))
     intents.extend(_document_expectations(view, setup))
     intents.extend(_arrival_expectations(view, setup))
+    intents.extend(_tracking_expectations(view, setup))
     intents.extend(_financial_obligations(view, setup))
     intents.extend(_document_exceptions(view, setup))
     intents.extend(_reference_correction_exceptions(view, setup))
@@ -140,8 +169,15 @@ def _field_conflicts(view: LoadView, setup: TenantSetup) -> list[Intent]:
             parties = _parties(facts)
             if len(parties) < 2:
                 continue
+            # A field a human has already decided can be disputed AGAIN, by a statement made after
+            # her decision. That is a new Conflict, not the resolved one reopened: the settled
+            # dispute keeps its own row and its own parties, and the new one counts on from it.
+            settled = len([c for c in view.conflicts
+                           if c["entity_ref"] == entity.ref and c["field"] == name
+                           and c["state"] not in OPEN_CONFLICT_STATES])
             out.append(RaiseConflict(
-                conflict_id=stable_id("conf", view.load.tenant_id, entity.ref, name),
+                conflict_id=stable_id("conf", view.load.tenant_id, entity.ref, name,
+                                      *((settled,) if settled else ())),
                 kind=_conflict_kind([p[1] for p in parties]), entity_ref=entity.ref, field=name,
                 parties=parties, owner_id=setup.load_owner))
     return out
@@ -205,6 +241,19 @@ def _document_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
     the POD arrived (CD-8) — this is the mechanism that keeps the difference visible."""
     out: list[Intent] = []
     claims = view.delivered_claims()
+    # A document was expected BECAUSE delivery was reported. If that report has since been moved
+    # off this load — a human corrected the binding it rested on — the reason is gone, and the
+    # Expectation is cancelled with it (M8 EX-6), retained as CANCELLED. Left owed, it would call a
+    # carrier late for paper on a load nobody says was delivered. M8 has no such exit from
+    # INDETERMINATE: that one stays owed, and the work engine keeps it in front of a human.
+    pending = {r.required_doc_type for r in view.requirements if r.state == "PENDING"}
+    for expectation in view.expectations:
+        kind, _, doc_type = expectation["expected_type"].partition(":")
+        if kind == "document" and doc_type in pending \
+                and expectation["state"] in ("RAISED", "OVERDUE"):
+            out.append(CancelExpectation(
+                expectation["expectation_id"],
+                f"delivery is no longer reported on this load, so no {doc_type} is owed"))
     if not claims:
         return out
     first = min((c.field_of("status").facts[0] for c in claims), key=lambda f: f.as_of)
@@ -245,6 +294,20 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
         if window is None:
             continue
         expected_type = f"arrival:{stop_key}"
+        # An appointment that MOVED moves its deadline with it. Without this the watch keeps the
+        # window nobody holds any more: a truck is called late against a time that was rescheduled,
+        # or is never called late against the time that replaced it.
+        deadline = format_instant(facility_local_deadline(
+            datetime.fromisoformat(window["end_local"]), window["timezone"]))
+        stale = [e for e in view.expectations if e["expected_type"] == expected_type
+                 and e["state"] in ("RAISED", "OVERDUE") and e["deadline_utc"] != deadline]
+        if stale:
+            for expectation in stale:
+                out.append(AmendExpectation(expectation["expectation_id"], deadline)
+                           if expectation["state"] == "RAISED"
+                           else CancelExpectation(expectation["expectation_id"],
+                                                  f"the appointment at {stop_key} was moved"))
+            continue
         out.append(RaiseExpectation(
             expectation_id=stable_id("exp", view.load.tenant_id, view.ref, expected_type,
                                      window["end_local"], window["timezone"]),
@@ -255,12 +318,65 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
     return out
 
 
+def movement_signals(view: LoadView) -> list[Any]:
+    """Every movement signal on this load, oldest first by the instant it is ABOUT. A late-arriving
+    report of an earlier moment sorts where it happened, so stale news never looks like fresh news."""
+    return sorted(view.tracking,
+                  key=lambda t: (t.field_of("status").facts[0].as_of, t.entity_id))
+
+
+def tracking_expectation_id(view: LoadView, anchor: Any) -> str:
+    return stable_id("exp", view.load.tenant_id, view.ref, TRACKING_UPDATE,
+                     anchor.origin_observation_id)
+
+
+def _tracking_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
+    """A truck that is UNDER WAY is expected to be heard from again within the brokerage's own
+    tracking cadence, counted from the last movement signal. With no cadence configured there is no
+    clock — a cadence nobody chose would be a freight rule nobody chose. The deadline is M8's, and it
+    is evaluated against the tracking channel's recorded coverage, so a blind channel yields
+    INDETERMINATE and never "the carrier went quiet" (CD-14)."""
+    cadence = setup.tracking_update_cadence_minutes
+    if cadence is None or setup.arrival_tracking_channel is None:
+        return []
+    signals = movement_signals(view)
+    if view.delivered_claims() or not any(t.value("status") in UNDER_WAY_STATUSES
+                                          for t in signals):
+        return []
+    if _has_owed(view, TRACKING_UPDATE):
+        return []
+    anchor = signals[-1]
+    fact = anchor.field_of("status").facts[0]
+    return [RaiseExpectation(
+        expectation_id=tracking_expectation_id(view, anchor), subject_ref=view.ref,
+        expected_type=TRACKING_UPDATE, expected_source=setup.arrival_tracking_channel,
+        owner_id=setup.load_owner, originating_timezone=fact.originating_timezone,
+        deadline_utc=format_instant(utc_datetime(fact.as_of) + timedelta(minutes=cadence)))]
+
+
 def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
     out: list[Intent] = []
     owed = [e for e in view.expectations if e["state"] in OWED_STATES]
     if not owed:
         return out
     by_id = {e["expectation_id"]: e for e in owed}
+
+    # A tracking update is owed since ONE movement signal; any signal about a later moment answers
+    # it, and so does a report of delivery whenever it is about — nothing is moving after that, so
+    # no later signal would ever come to close it.
+    signals = movement_signals(view)
+    delivered = {t.entity_id for t in view.delivered_claims()}
+    for anchor in signals:
+        expectation = by_id.get(tracking_expectation_id(view, anchor))
+        if expectation is None:
+            continue
+        since = anchor.field_of("status").facts[0].as_of
+        answers = [t.origin_observation_id for t in signals
+                   if t is not anchor and (t.field_of("status").facts[0].as_of > since
+                                           or t.entity_id in delivered)]
+        if answers:
+            out.append(DischargeExpectation(expectation["expectation_id"],
+                                            tuple(dict.fromkeys(answers))))
 
     # A carrier's promise is answered by the carrier's next inbound word on this load.
     for commitment in view.commitments:
@@ -307,6 +423,17 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
         stop_key = expectation["expected_type"].split(":", 1)[1]
         arrivals = [t.origin_observation_id for t in view.tracking
                     if t.stop_key == stop_key and t.value("status") in ARRIVAL_STATUSES]
+        # A signal that names NO stop still says where the freight has been, when the load has
+        # exactly one stop of that kind: "loaded" was at the only pickup, "delivered" at the only
+        # delivery — the same rule that places a stop named only by kind. Without it a system of
+        # record's bare DELIVERED never answers the arrival it implies, and a delivered load goes
+        # on asking where the truck is. With two pickups nothing is assumed about which.
+        stop = view.stops.get(stop_key)
+        kind = stop.value("stop_type") if stop is not None else None
+        if kind in STAGES_PAST_STOP and len(
+                [s for s in view.stops.values() if s.value("stop_type") == kind]) == 1:
+            arrivals += [t.origin_observation_id for t in view.tracking
+                         if t.stop_key is None and t.value("status") in STAGES_PAST_STOP[kind]]
         if arrivals:
             out.append(DischargeExpectation(expectation["expectation_id"],
                                             tuple(dict.fromkeys(arrivals))))
@@ -373,6 +500,21 @@ def _financial_obligations(view: LoadView, setup: TenantSetup) -> list[Intent]:
                          + "."),
                 specific_question="Did a named person at this brokerage authorize each of these "
                                   "charges? Authorize or deny each one."))
+
+    # An invoice bound to the load that no movement claims was compared against NOTHING: no
+    # reconciliation above saw it. That is not "no discrepancy" — it is a silent stall, and it is
+    # raised to a named human with everything needed to place it (P9-D23). Nothing is guessed: not
+    # the sole movement of a one-carrier load, and not a "close enough" spelling of an MC.
+    for payable in view.payables.values():
+        if payable.movement_id is not None:
+            continue
+        explained = explain_unattributed_invoice(view, payable)
+        out.append(RaiseException(
+            exception_id=stable_id("exc", tenant, payable.ref, "unattributed"),
+            type="carrier_invoice_unattributed", severity="SEV2",
+            source_ref=payable.origin_observation_id, source_kind="observation",
+            owner_id=setup.load_owner, entity_ref=view.ref,
+            summary=explained["summary"], specific_question=explained["question"]))
 
     for charge in view.accessorials.values():
         if charge.counterparty_asserted_authorization and charge.lifecycle_state != "AUTHORIZED":

@@ -73,6 +73,9 @@ from .model import (
 
 LOAD = BrokerageLoad.ENTITY_TYPE
 MODEL_INFERRED = "MODEL_INFERRED"
+#: The outside system a carrier's MC number is an id IN. An MC is trusted only within it, and only
+#: for the brokerage whose mapping recorded it.
+CARRIER_REGISTRY = "fmcsa"
 OPEN_CONFLICT_STATES = ("RAISED", "OPEN", "ESCALATED")
 OWED_STATES = ("RAISED", "OVERDUE", "INDETERMINATE")
 LATE_STATES = ("OVERDUE", "INDETERMINATE")
@@ -140,6 +143,7 @@ class LoadView:
     commitments: list[dict[str, Any]] = field(default_factory=list)
     reference_corrections: list[dict[str, Any]] = field(default_factory=list)
     duplicate_evidence_arrivals: list[str] = field(default_factory=list)
+    invoice_attributions: list[dict[str, Any]] = field(default_factory=list)   # human acts, in order
     binding_history: list[dict[str, Any]] = field(default_factory=list)
     ambiguous_candidates: list[UnboundItem] = field(default_factory=list)
     timeline: list[OperationalTimelineEntry] = field(default_factory=list)
@@ -585,7 +589,7 @@ class Projector:
 
     def _observe_appointment(self, view: LoadView, observation: Mapping[str, Any],
                              parsed: Mapping[str, Any], payload: Mapping[str, Any], *,
-                             source: str | None = None) -> None:
+                             source: str | None = None, decision_ref: str | None = None) -> None:
         stop = view.stops.get(payload["stop_key"])
         if stop is None:
             return
@@ -598,29 +602,48 @@ class Projector:
             view.appointments[payload["stop_key"]] = appointment
         window = {"start_local": payload["start_local"], "end_local": payload["end_local"],
                   "timezone": payload["timezone"]}
-        appointment.observe("window", self._fact(observation, parsed, window, source=source))
+        appointment.observe("window", self._fact(observation, parsed, window, source=source,
+                                                 decision_ref=decision_ref))
         if payload.get("status"):
             # A claim READ out of free text states a window and nothing more: a counterparty's
             # message can dispute an appointment time, but REQUESTED is not CONFIRMED (CD-13) and a
             # sentence does not make it so.
             appointment.observe("status", self._fact(observation, parsed, payload["status"],
-                                                     source=source))
+                                                     source=source, decision_ref=decision_ref))
+
+    def _attribute(self, view: LoadView, *, movement_key: str | None, carrier_mc: str | None,
+                   ) -> tuple[CarrierMovement | None, str | None, str | None]:
+        """Which movement a carrier-side record belongs to, HOW that is known, or WHY it is not:
+        `(movement, basis, problem)`, exactly one of the last two set.
+
+        By the movement key the record itself carries; else by the carrier's MC, resolved EXACTLY and
+        within this brokerage through the External Entity Mapping, when exactly ONE movement of this
+        load is that carrier's. Otherwise nothing is chosen: a load may be moved by several carriers,
+        and attributing a carrier's paper to "the" movement would be the 1:1 assumption V-21 forbids.
+
+        The MC is an IDENTITY looked up, never a string tidied: "MC 771203" is not "MC-771203" until
+        a recorded mapping says so. Which spellings name one carrier is a rule nobody has supplied
+        (NEEDS VALIDATION), so an unrecognized spelling is a named human's question, not a guess."""
+        if movement_key and movement_key in view.movements:
+            return view.movements[movement_key], "MOVEMENT_KEY", None
+        if not carrier_mc:
+            return None, None, "CARRIER_NOT_STATED"
+        resolution = self._m.resolve(
+            ExternalReference(CARRIER_REGISTRY, "mc_number", str(carrier_mc)),
+            entity_type=Carrier.ENTITY_TYPE)
+        carriers = tuple(dict.fromkeys(m.neyma_entity_id for m in resolution.active))
+        if not carriers:
+            return None, None, "CARRIER_UNRECOGNIZED"
+        if len(carriers) > 1:
+            return None, None, "CARRIER_AMBIGUOUS"
+        matches = [m for m in view.movements.values() if m.carrier_id == carriers[0]]
+        if len(matches) == 1:
+            return matches[0], "CARRIER_MC_EXACT", None
+        return None, None, "CARRIER_AMBIGUOUS" if matches else "CARRIER_NOT_ON_LOAD"
 
     def _movement_for(self, view: LoadView, *, movement_key: str | None,
                       carrier_mc: str | None) -> CarrierMovement | None:
-        """Which movement a carrier-side record belongs to — by the movement key, or by the carrier's
-        MC when exactly ONE movement of this load is that carrier's. Otherwise None: a load may be
-        moved by several carriers, and attributing a carrier's paper to "the" movement would be the
-        1:1 assumption V-21 forbids."""
-        if movement_key and movement_key in view.movements:
-            return view.movements[movement_key]
-        if carrier_mc:
-            matches = [m for m in view.movements.values()
-                       if m.carrier_id and view.carriers[m.carrier_id].value("mc_number")
-                       == carrier_mc]
-            if len(matches) == 1:
-                return matches[0]
-        return None
+        return self._attribute(view, movement_key=movement_key, carrier_mc=carrier_mc)[0]
 
     def _add_tracking(self, view: LoadView, observation: Mapping[str, Any],
                       parsed: Mapping[str, Any], payload: Mapping[str, Any], *,
@@ -689,8 +712,9 @@ class Projector:
         extracted = payload.get("extracted") or {}
         if not extracted or document.lifecycle_state == "ILLEGIBLE":
             return
-        movement = self._movement_for(view, movement_key=extracted.get("movement_key"),
-                                      carrier_mc=extracted.get("carrier_mc"))
+        movement, basis, problem = self._attribute(
+            view, movement_key=extracted.get("movement_key"),
+            carrier_mc=extracted.get("carrier_mc"))
         currency = extracted["currency"]
         lines = sorted(extracted["accessorials"], key=lambda a: a["charge_type"])
         if payload["doc_type"] == "RATE_CON":
@@ -726,12 +750,19 @@ class Projector:
                     payable.duplicate_observation_ids.append(observation["observation_id"])
                     return
             else:
+                # An invoice that cannot be placed on a movement is still a payable someone is
+                # asking for. It is created UNATTRIBUTED, with the reason, so that it is held and a
+                # named human is asked — never quietly parked where no reconciliation looks.
                 payable = CarrierPayable(
                     tenant_id=self._tenant,
                     entity_id=entity_id(self._tenant, "carrier_payable", key),
                     origin_observation_id=observation["observation_id"],
                     movement_id=movement.entity_id if movement else None, load_id=view.load_id,
-                    document_id=document.entity_id)
+                    document_id=document.entity_id, attribution_basis=basis,
+                    attribution_problem=problem,
+                    stated_carrier_mc=(str(extracted["carrier_mc"])
+                                       if extracted.get("carrier_mc") else None),
+                    stated_movement_key=extracted.get("movement_key"))
                 view.payables[key] = payable
             payable.observe("invoice_number", fact(extracted["invoice_number"]))
             payable.observe("linehaul", fact(carrier_owed(extracted["linehaul_minor"], currency)))
@@ -874,6 +905,25 @@ class Projector:
                 provenance_class=assigned, observation_id=observation["observation_id"]))
         elif act == "deny_accessorial":
             view.denied_charge_types.append(payload["charge_type"])
+        elif act == "confirm_appointment":
+            # OWNER_ASSERTED, from how the record was acquired: it answers what was said before it,
+            # and no machine statement overwrites it.
+            self._observe_appointment(view, observation, parsed, {
+                "stop_key": payload["stop_key"], "start_local": payload["start_local"],
+                "end_local": payload["end_local"], "timezone": payload["timezone"],
+                "status": "CONFIRMED"}, decision_ref=decision_ref)
+        elif act == "attribute_carrier_invoice":
+            target = self._f.observation_by_external(payload["target"]["source_system"],
+                                                     payload["target"]["external_id"])
+            if target is not None:
+                # Applied in `_derive`, once every invoice is on the load: the human's act may
+                # arrive before or after the paper it places.
+                view.invoice_attributions.append({
+                    "target_observation_id": target["observation_id"],
+                    "movement_key": payload["movement_key"], "human_id": payload["human_id"],
+                    "decision_ref": decision_ref,
+                    "observation_id": observation["observation_id"],
+                    "received_at": observation["received_at"]})
 
     # ------------------------------------------------------------------ foundation rows
 
@@ -910,8 +960,36 @@ class Projector:
 
     # ------------------------------------------------------------------ derived state
 
+    def _apply_invoice_attributions(self, view: LoadView) -> None:
+        """A recorded human places an invoice on a movement of the load. Hers is the only word that
+        can place paper Neyma could not, and the later of two such acts stands. It names a MOVEMENT;
+        it approves nothing and makes nothing payable — the invoice is then reconciled like any
+        other, and may well not match."""
+        for attribution in view.invoice_attributions:
+            payable = next(
+                (p for p in view.payables.values()
+                 if attribution["target_observation_id"]
+                 in (p.origin_observation_id, *p.duplicate_observation_ids)), None)
+            if payable is None:
+                continue
+            movement = view.movements.get(attribution["movement_key"])
+            if movement is None:
+                # She named a movement this load does not have. Nothing is placed; if nothing else
+                # had placed it either, that is now WHY it is unplaced.
+                if payable.movement_id is None:
+                    payable.attribution_problem = "MOVEMENT_UNKNOWN"
+                    payable.stated_movement_key = attribution["movement_key"]
+                    payable.attributed_by = attribution["human_id"]
+                continue
+            payable.movement_id = movement.entity_id
+            payable.attribution_basis = "HUMAN_ASSERTION"
+            payable.attribution_problem = None
+            payable.attributed_by = attribution["human_id"]
+            payable.attribution_decision_ref = attribution["decision_ref"]
+
     def _derive(self, view: LoadView) -> None:
         tenant = self._tenant
+        self._apply_invoice_attributions(view)
 
         # L-Access: a charge is AUTHORIZED only by a recorded human authorization that covers it.
         for charge_type, charge in view.accessorials.items():
@@ -952,6 +1030,11 @@ class Projector:
                         payable.lifecycle_state = "RECONCILED"
                     elif payable is not None and result.status == "DISCREPANT":
                         payable.lifecycle_state = "HELD"
+        # An invoice no movement claims was compared against NOTHING above. It is HELD: it cannot
+        # be RECONCILED, and "no discrepancy found" about it would be a statement nobody checked.
+        for payable in view.payables.values():
+            if payable.movement_id is None:
+                payable.lifecycle_state = "HELD"
 
         self._derive_requirements(view)
         self._derive_invoice_eligibility(view)
@@ -1061,6 +1144,11 @@ class Projector:
         for result in view.reconciliations:
             if result.status == "COMPUTED" and result.actual is not None:
                 reasons.append("reconciliation_unresolved")
+        for payable in view.payables.values():
+            if payable.movement_id is None:
+                # Read off the payable itself, not off the Exception raised for it: the invoice
+                # needs a human whether or not that row has been written yet.
+                reasons.append(f"invoice_unattributed:{payable.attribution_problem}")
         view.attention = sorted(set(reasons))
         view.housekeeping = sorted(set(housekeeping))
 
@@ -1127,6 +1215,59 @@ def resolve_claim_money(view: LoadView,
     if assumed is None:
         return None, None
     return carrier_owed(item["amount_minor"], assumed), MODEL_INFERRED
+
+
+_ATTRIBUTION_REASONS: dict[str, str] = {
+    "CARRIER_NOT_STATED": "it prints no carrier MC and names no movement",
+    "CARRIER_UNRECOGNIZED": "it prints carrier MC {mc!r}, which names no carrier this brokerage "
+                            "has recorded (an identifier is matched exactly, never tidied)",
+    "CARRIER_NOT_ON_LOAD": "it prints carrier MC {mc!r}, a carrier this brokerage knows that "
+                           "moves no movement of this load",
+    "CARRIER_AMBIGUOUS": "it prints carrier MC {mc!r}, which fits more than one movement of this "
+                         "load",
+    "MOVEMENT_UNKNOWN": "{human} placed it on movement {key!r}, which this load does not have",
+}
+
+
+def movement_candidates(view: LoadView) -> list[dict[str, Any]]:
+    """This load's movements and who moves each — what a human choosing a movement is shown."""
+    out: list[dict[str, Any]] = []
+    for key in sorted(view.movements):
+        movement = view.movements[key]
+        carrier = view.carriers.get(movement.carrier_id or "")
+        out.append({"movement_key": key, "movement_id": movement.entity_id,
+                    "carrier_name": carrier.value("legal_name") if carrier else None,
+                    "carrier_mc": carrier.value("mc_number") if carrier else None})
+    return out
+
+
+def explain_unattributed_invoice(view: LoadView, payable: CarrierPayable) -> dict[str, Any]:
+    """Everything a human needs to place an invoice Neyma could not: which document, what is missing
+    or ambiguous, what evidence there is, and what would clear it. No amount appears here."""
+    number = payable.value("invoice_number")
+    document = next((d for d in view.documents.values()
+                     if d.entity_id == payable.document_id), None)
+    reason = _ATTRIBUTION_REASONS[payable.attribution_problem or "CARRIER_NOT_STATED"].format(
+        mc=payable.stated_carrier_mc, key=payable.stated_movement_key,
+        human=payable.attributed_by)
+    candidates = movement_candidates(view)
+    listed = "; ".join(
+        f"{c['movement_key']} {c['carrier_name'] or 'carrier not recorded'} "
+        f"({c['carrier_mc'] or 'no MC recorded'})" for c in candidates) or "none recorded"
+    return {
+        "invoice_number": number, "problem": payable.attribution_problem,
+        "stated_carrier_mc": payable.stated_carrier_mc,
+        "document_ref": document.ref if document else None,
+        "evidence_id": document.evidence_id if document else None,
+        "observation_id": payable.origin_observation_id, "candidates": candidates,
+        "summary": (f"Carrier invoice {number} is bound to this load and bills no movement Neyma "
+                    f"can name: {reason}. This load's movements: {listed}. It has not been "
+                    f"reconciled and nothing is payable on it."),
+        "question": (f"Which movement of this load does invoice {number} bill? Attribute it to "
+                     f"that movement, or say it is not this load's."),
+        "clears_when": ("a recorded human attributes the invoice to a movement of this load, or "
+                        "the system of record names the carrier the invoice prints"),
+    }
 
 
 def commitment_expectation_id(tenant: str, load_ref: str, commitment: Mapping[str, Any]) -> str:

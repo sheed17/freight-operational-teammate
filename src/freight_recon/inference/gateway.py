@@ -35,6 +35,8 @@ from .contracts import (
     DocumentTextInterpretation,
     DocumentTextRequest,
     InferenceResult,
+    LoadWorkReasoning,
+    LoadWorkRequest,
     MessageInterpretation,
     MessageRequest,
     RoutingViolation,
@@ -43,7 +45,7 @@ from .contracts import (
     Usage,
 )
 from .ledger import CallRecord, InferenceBudget, InferenceLedger
-from .prompts import INSTRUCTIONS, PROMPT_VERSION, render
+from .prompts import INSTRUCTIONS, prompt_version_for, render
 from .recording import RecordingStore, content_digest, request_key
 
 _SECRET = re.compile(r"(sk|rk|pk)-[A-Za-z0-9_\-*.]{6,}")
@@ -118,7 +120,7 @@ def _utc_now() -> datetime:
 
 
 class BaseGateway:
-    """Implements the four task methods over one `_invoke`."""
+    """Implements the five task methods over one `_invoke`."""
 
     provider = "abstract"
     served_from = "live"
@@ -143,7 +145,7 @@ class BaseGateway:
         self._sleep = sleep
         self._retry_backoff_s = retry_backoff_s
 
-    # ------------------------------------------------------------------ the four tasks
+    # ------------------------------------------------------------------ the five tasks
 
     def interpret_message(
             self, request: MessageRequest) -> InferenceResult[MessageInterpretation]:
@@ -160,6 +162,10 @@ class BaseGateway:
     def propose_entity_candidates(
             self, request: CandidateRequest) -> InferenceResult[CandidateProposal]:
         return self._execute(Task.PROPOSE_ENTITY_CANDIDATES, request)
+
+    def reason_load_work(
+            self, request: LoadWorkRequest) -> InferenceResult[LoadWorkReasoning]:
+        return self._execute(Task.REASON_LOAD_WORK, request)
 
     # ------------------------------------------------------------------ provider hook
 
@@ -178,7 +184,8 @@ class BaseGateway:
         call = TaskCall(task=task, request=request, instructions=INSTRUCTIONS[task],
                         rendered_input=render(task, request), output_model=OUTPUT_MODELS[task])
         key = request_key(provider=self.provider, model=self.model, task=task,
-                          prompt_version=PROMPT_VERSION, reasoning_effort=self.reasoning_effort,
+                          prompt_version=prompt_version_for(task),
+                          reasoning_effort=self.reasoning_effort,
                           rendered_input=call.rendered_input)
         digest = content_digest(call.rendered_input)
         started = time.perf_counter()

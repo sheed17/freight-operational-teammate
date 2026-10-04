@@ -1,0 +1,418 @@
+{
+ "entries": {
+  "2daa1d81c379389abcd5d704dd27d1fd416c5accecee9247749ab452eccc7dc4": {
+   "input_digest": "48df062904ba30ec9c53a0a0a328a143e1f74e02401d5581bc5a1474d05e1f80",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-506401d21e38",
+       "ev-cadaa4b1f727",
+       "ev-ea329b9532ad"
+      ],
+      "need_id": "need-daa7c05561c2fb1c9c1b",
+      "reason": "The pending follow-up is not specifically about the missing POD, so request the POD.",
+      "recommended_action": "REQUEST_POD"
+     }
+    ],
+    "explanation": "The POD is still missing, and the carrier\u2019s pending follow-up does not clearly cover it. Address the POD need now; leave the separate promised update pending.",
+    "groups": [],
+    "next_need_id": "need-daa7c05561c2fb1c9c1b",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:38.067Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1318,
+    "output_tokens": 239,
+    "reasoning_tokens": 77
+   }
+  },
+  "3a51d263a26bf07845ff81cb8987993dac33fde4fc321a4d58cda763c8b0f232": {
+   "input_digest": "b7ac9a1a3679078c589015cf0c222b1222736302ef05be5092bfdf0a22cedd73",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-90e02e016df0",
+       "ev-7d4d50083c78",
+       "ev-6885a54bbc1d"
+      ],
+      "need_id": "need-7bd446e5684e028e8da9",
+      "reason": "The carrier\u2019s pending promise to send the scanned delivery receipt addresses the missing POD.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "Wait for the carrier\u2019s promised delivery receipt, which addresses the missing POD. No other work should be done now.",
+    "groups": [],
+    "next_need_id": null,
+    "posture": "WAIT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:30.003Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1330,
+    "output_tokens": 242,
+    "reasoning_tokens": 105
+   }
+  },
+  "48d75815f72577cd1fc3780301899554eb338d688987a86e873066cbfd12ab06": {
+   "input_digest": "d9f6cca487d1258389a21b3c7b881a5cd54579f96a442c4ff76b299d728cfd9c",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-d125bb20c713",
+       "ev-19f93b11b605",
+       "ev-a9c5a93e8349"
+      ],
+      "need_id": "need-c7481ad8d60f6f3dca12",
+      "reason": "The overdue tracking update is not covered by the vague promise to follow up.",
+      "recommended_action": "REQUEST_CARRIER_STATUS"
+     }
+    ],
+    "explanation": "Request the carrier status because the overdue tracking update remains outstanding. The S2 appointment is still within its window, and the carrier\u2019s promised follow-up time has not passed.",
+    "groups": [],
+    "next_need_id": "need-c7481ad8d60f6f3dca12",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:51.296Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1452,
+    "output_tokens": 271,
+    "reasoning_tokens": 108
+   }
+  },
+  "513822bfaca2fa9ba62454c8b05a2335a33b51045fc3a93eede76152e9d6d3f8": {
+   "input_digest": "89c0a11d35d6f14a7a488326fd67963df880f4c40febd4688a2639ce5d4dd95e",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-4015d781a4c2",
+       "ev-6599d2656987"
+      ],
+      "need_id": "need-880666c3f623922298a1",
+      "reason": "The POD is still missing, and the carrier\u2019s follow-up promise does not specifically cover providing it.",
+      "recommended_action": "REQUEST_POD"
+     }
+    ],
+    "explanation": "Address the missing POD with the carrier. The separate promised follow-up is still pending.",
+    "groups": [],
+    "next_need_id": "need-880666c3f623922298a1",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:23.256Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1319,
+    "output_tokens": 243,
+    "reasoning_tokens": 108
+   }
+  },
+  "7a429d0360771dbc5199a79e9fdcd000469f52a9059bb77cb058186e6253fe1e": {
+   "input_digest": "01f0bd74643b7c424286f4c54c76a64815ebb39f5f44d30a0f5b1539141b4bc9",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-1fa68f956bb4",
+       "ev-d6fb06b55188"
+      ],
+      "need_id": "need-21de1cb57b6a5af597e3",
+      "reason": "The carrier's pending promise expressly includes the missing POD.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "The carrier has promised to send the POD, and the promised follow-up time has not passed. Wait for that follow-up.",
+    "groups": [],
+    "next_need_id": null,
+    "posture": "WAIT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:35.172Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1307,
+    "output_tokens": 195,
+    "reasoning_tokens": 72
+   }
+  },
+  "873e4520670907e31831668dfe0aa35e2cee49baa7958c61140dd8c7a88fafbd": {
+   "input_digest": "dcf7025e07487e0ee941f16e6bb418f412575f353d64bd37fe5dc6d398d2a141",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-641f796cae90",
+       "ev-cfaf51d784f5",
+       "ev-65db3d27de26"
+      ],
+      "need_id": "need-92f3b5db9eb551daca2a",
+      "reason": "The carrier's still-pending promise to provide Luis's location directly addresses the missing carrier status.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "Wait for the carrier's promised location update, which is still pending. The arrival appointment is also pending and does not require action now.",
+    "groups": [],
+    "next_need_id": null,
+    "posture": "WAIT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:54.688Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1451,
+    "output_tokens": 315,
+    "reasoning_tokens": 173
+   }
+  },
+  "8a2d2851c5c4682e564657de4e023a4bb67274796ec69a8b9c6bc6b1746b4749": {
+   "input_digest": "d4904411fc1ef40eb950bc4f9e2ba4d359471870ea10c023390346186c608d90",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-babd8d168d5c",
+       "ev-280ec9657b8a",
+       "ev-b248ddb3159d"
+      ],
+      "need_id": "need-febea016b3e720d90c63",
+      "reason": "The overdue tracking update is still missing, and the pending promise is about a lumper receipt rather than carrier status.",
+      "recommended_action": "REQUEST_CARRIER_STATUS"
+     }
+    ],
+    "explanation": "Request the carrier status update first; the pending follow-up concerns a different item. The confirmed S2 arrival remains pending within its window.",
+    "groups": [],
+    "next_need_id": "need-febea016b3e720d90c63",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:48.776Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1444,
+    "output_tokens": 256,
+    "reasoning_tokens": 97
+   }
+  },
+  "a51c2a487e7660964f39abca84ed55c94a9c3d02f5775939801664558ac2a344": {
+   "input_digest": "f11f57467b3892f9871095aeb8940b2229b38ed55028da22d0b53880cd4e3846",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-8c92168c1c1a",
+       "ev-1d1636dff8b9",
+       "ev-f75e1c7e503c",
+       "ev-1690b392d237"
+      ],
+      "need_id": "need-6fa2ec2013458573173e",
+      "reason": "The carrier's pending promise explicitly says it will send the signed POD, which addresses the missing POD.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "The detention authorization question requires human handling. The carrier has promised the missing POD, so wait for that pending promise.",
+    "groups": [],
+    "next_need_id": "need-5dc75f6ae5cfe222d48c",
+    "posture": "HUMAN"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:43.788Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1466,
+    "output_tokens": 420,
+    "reasoning_tokens": 214
+   }
+  },
+  "dafbc49462a5ebbf10ba4853eba846a56ec94c620a6998f16b0e3861b619a613": {
+   "input_digest": "ad15f513c4b46c3120e6a969f34fd1fd4e334dd24eb67494e8c8d2638b3de113",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-c9bc13c7ef05",
+       "ev-b82fc777d418"
+      ],
+      "need_id": "need-a984ba585e6ec00502a3",
+      "reason": "The POD is missing, and the promised update concerns the next load's ETA rather than the POD.",
+      "recommended_action": "REQUEST_POD"
+     }
+    ],
+    "explanation": "Request the missing POD from the carrier; its pending update is about another load's ETA.",
+    "groups": [],
+    "next_need_id": "need-a984ba585e6ec00502a3",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:32.903Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1310,
+    "output_tokens": 275,
+    "reasoning_tokens": 107
+   }
+  },
+  "dcb7ca271cb40b49701e7c6cd3c8dcc7a29c3766206cae65498368c88f4cabf1": {
+   "input_digest": "16957096b2426ccc153895247a297fae55d2fb471c8177a5b4d27c040819b039",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-53800af44874",
+       "ev-3136079eb2fd",
+       "ev-c5c6f48b4e86"
+      ],
+      "need_id": "need-18e7910704fe235ec793",
+      "reason": "The tracking update is overdue, and the pending promise concerns a lumper receipt rather than tracking status.",
+      "recommended_action": "REQUEST_CARRIER_STATUS"
+     }
+    ],
+    "explanation": "The overdue carrier status needs a request; the pending follow-up does not cover it. A human must decide the unauthorized accessorial.",
+    "groups": [],
+    "next_need_id": "need-18e7910704fe235ec793",
+    "posture": "HUMAN"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:57.436Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1588,
+    "output_tokens": 249,
+    "reasoning_tokens": 95
+   }
+  },
+  "e54d499052767551db04022be70179e69a1abca2dd027898ed67f25ff0b977ac": {
+   "input_digest": "67c3c2b3e43717cd1ae9282a2b12d1362564f1a81379160cae9ff75cedcd75c2",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-d759fe366d08",
+       "ev-e7f0e065613a"
+      ],
+      "need_id": "need-b900b4162b52d2f9f535",
+      "reason": "The follow-up is about detention, not the missing POD.",
+      "recommended_action": "REQUEST_POD"
+     }
+    ],
+    "explanation": "The carrier's pending follow-up does not cover the missing POD, so request the POD now. The separate carrier update remains pending.",
+    "groups": [],
+    "next_need_id": "need-b900b4162b52d2f9f535",
+    "posture": "ACT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:26.113Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1313,
+    "output_tokens": 235,
+    "reasoning_tokens": 97
+   }
+  },
+  "eb9e2e471a7337d6311b48557113546f7e99ddf0d3908f73905fce6b49a63443": {
+   "input_digest": "adee7ec6ee2ab452cc608191b16202caad3356ef70302ee6caa80c5c3a29b82d",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-0f6060f9b5c8",
+       "ev-fcb13646487c",
+       "ev-07827d562db7"
+      ],
+      "need_id": "need-aa122e5d082f7eeaaf2f",
+      "reason": "The carrier\u2019s pending callback plainly promises an update about where the driver is.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "The promised carrier callback is still pending and addresses the overdue status update. No other work should be done now.",
+    "groups": [],
+    "next_need_id": null,
+    "posture": "WAIT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:46.197Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1455,
+    "output_tokens": 256,
+    "reasoning_tokens": 122
+   }
+  },
+  "fdee4acdc015d2fab2d91e6364de05593f7b5e8bb53e74886aa1e588a8da9672": {
+   "input_digest": "99560674ae8b3135cb4c5e68e1fce2c0b59bf4c2cf9333ac7661f9f31318d5ef",
+   "model": "gpt-6-luna",
+   "payload": {
+    "advice": [
+     {
+      "evidence_ids": [
+       "ev-20e344b54b2e",
+       "ev-dd3010756174"
+      ],
+      "need_id": "need-4abd32cdd9256e3534e5",
+      "reason": "The carrier explicitly promised to send the signed POD, which is the missing document.",
+      "recommended_action": "WAIT"
+     }
+    ],
+    "explanation": "Wait for the carrier\u2019s promised POD follow-up; the promise directly addresses the open document need.",
+    "groups": [],
+    "next_need_id": null,
+    "posture": "WAIT"
+   },
+   "provider": "openai",
+   "recorded_at": "2026-10-03T09:14:20.265Z",
+   "schema_version": "p9-interpretation-1",
+   "task": "reason_load_work",
+   "usage": {
+    "cached_input_tokens": 0,
+    "input_tokens": 1307,
+    "output_tokens": 227,
+    "reasoning_tokens": 107
+   }
+  }
+ },
+ "format": "neyma-inference-recording-1",
+ "note": "Recorded model readings of a SYNTHETIC development corpus. A development/eval optimization: never business authority."
+}

@@ -204,7 +204,8 @@ def reconcile_movement(
         movement_id=movement.entity_id, status=status, expected=expected_total,
         expected_condition=expected_condition, expected_basis=expected_basis, actual=actual_total,
         actual_condition=actual_condition, discrepancies=tuple(discrepancies),
-        source_observation_ids=tuple(dict.fromkeys(sources)))
+        source_observation_ids=tuple(dict.fromkeys(sources)),
+        payable_id=payable.entity_id if payable is not None else None)
 
 
 def blocking_discrepancies(result: FinancialReconciliationResult) -> list[Discrepancy]:

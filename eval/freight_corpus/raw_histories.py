@@ -269,12 +269,13 @@ def r03_wrong_load_number() -> Any:
         "records": {"carrier-delivered": {"disposition": "BOUND", "load": "LD-51003"},
                     "carrier-correction": {"disposition": "BOUND", "load": "LD-51003"},
                     "triage-corrects": {"disposition": "BOUND", "load": "LD-51004"}},
-        # LD-51003 also ends with an unmet POD expectation: it was raised while the delivery
-        # report was (wrongly) on this load, and nothing withdraws an Expectation when the binding
-        # it rested on is corrected (debt P9-D2). It is owned and visible, which is the safe side.
+        # LD-51003's POD expectation was raised while the delivery report was (wrongly) on this
+        # load. When the binding it rested on is corrected the reason for it is gone, and it is
+        # CANCELLED (M8 EX-6) rather than left to go overdue on a load nobody says was delivered.
+        # (Until P9-CP-3 it stayed owed and this list also named `expectation_unmet` - debt
+        # P9-D2, which the work engine turned from "owned and visible" into a silent stall.)
         "loads": {"LD-51003": {"delivered_claimed": False,
-                               "exception_types": ["counterparty_reference_correction",
-                                                   "expectation_unmet"],
+                               "exception_types": ["counterparty_reference_correction"],
                                "needs_human": True,
                                "timeline_kinds": ["binding_correction"]},
                   "LD-51004": {"delivered_claimed": True}},

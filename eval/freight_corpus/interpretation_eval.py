@@ -10,6 +10,10 @@ spend. Nothing in this module can make a paid call on its own.
     corpus     the twenty hostile histories in raw form, through the real spine: the histories' own
                labeled outcomes, and per-message agreement with the fixtures' structured asserts
     scenarios  the nine raw-language histories, through the real spine
+    load_work  thirteen operational states where act-or-wait is not settled by the record, each
+               routed to the load-work reasoning task and scored on what the APPLICATION would use;
+               plus four control states the deterministic projection settles alone, counted as NOT
+               sent. Not part of `all`: it has its own recording and its own, smaller, budget.
 
 ### THE DENOMINATOR IS ALWAYS REPORTED. Every score is `passed / checked`, with the failed checks
 listed. A stage that checked nothing reports zero checks, never a pass.
@@ -29,6 +33,7 @@ if str(ROOT / "src") not in sys.path:
 
 from freight_recon.freight_domain.corpus_run import CorpusResult, run_corpus
 from freight_recon.freight_domain.history import FreightHistory, parse_record
+from freight_recon.freight_domain.intake import FreightIntake
 from freight_recon.freight_domain.interpretation import (
     FreightInterpreter,
     commitment_deadline,
@@ -44,10 +49,16 @@ from freight_recon.inference.contracts import (
     Status,
     Task,
 )
+from freight_recon.freight_domain.work_reasoning import (
+    FAILED,
+    LoadWorkReasoner,
+    route_load_work,
+)
 from freight_recon.inference.ledger import InferenceLedger
 from freight_recon.workflow import WorkflowStore
 
 from .histories import build_corpus
+from .work_histories import WORK_SETUPS
 from .interpretation_cases import (
     CORRELATION_CASES,
     LABELED_MESSAGES,
@@ -58,12 +69,19 @@ from .interpretation_cases import (
     score_correlation,
     score_message,
 )
-from .parties import SETUPS
+from .parties import NORTHLINE, SETUPS
 from .raw import build_raw_corpus, raw_message_labels
 from .raw_histories import build_raw_histories
+from .work_reasoning_cases import CONTROL_STATES, REASONING_CASES, build_states, score_advice
 
 SMOKE_CASES: tuple[str, ...] = ("LM01", "LM02", "LM05", "LM07", "LM10")
 STAGES: tuple[str, ...] = ("smoke", "labeled", "corpus", "scenarios")
+#: The load-work reasoning eval. Run by name, never as part of `all`.
+LOAD_WORK_STAGE = "load_work"
+_ID_REFUSALS: tuple[str, ...] = (
+    "need_id_not_supplied", "action_not_offered_for_need", "evidence_id_not_supplied",
+    "next_need_id_not_supplied", "group_names_a_need_not_supplied",
+)
 #: The stop keys every corpus load uses. A fixture names a stop by key; a reading names its kind.
 _STOP_KIND = {"S1": "PICKUP", "S2": "DELIVERY", None: None}
 
@@ -262,7 +280,64 @@ def run_raw_histories(gateway: InferenceGateway, ledger: InferenceLedger) -> dic
     return _through_spine(gateway, ledger, build_raw_histories())
 
 
+def run_load_work_reasoning(gateway: InferenceGateway,
+                            ledger: InferenceLedger) -> dict[str, Any]:
+    """Thirteen labeled states and four controls, each ROUTED first. A case is scored on what the
+    application would use — the reply after every part it was not entitled to say was refused."""
+    with tempfile.TemporaryDirectory(prefix="neyma-load-work-eval-") as scratch:
+        store = WorkflowStore(Path(scratch) / "eval.db", tenant=NORTHLINE)
+        try:
+            cases, controls = build_states(store.conn)
+            effects = sum(FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+                          .foundation.effect_surface_counts().values())
+        finally:
+            store.close()
+    reasoner = LoadWorkReasoner(gateway, ledger)
+    results: list[dict[str, Any]] = []
+    for case in REASONING_CASES:
+        advice = reasoner.advise(cases[case.case_id])
+        if advice.status == FAILED:
+            results.append({"case": case.case_id, "tags": list(case.tags), "ok": False,
+                            "call": advice.failure, "refused": []})
+            continue
+        results.append({**score_advice(case, cases[case.case_id], advice), "call": "OK",
+                        "explanation": advice.explanation})
+    sent = 0
+    control_rows: list[dict[str, Any]] = []
+    for case_id, what in CONTROL_STATES:
+        before = len(ledger.calls)
+        advice = reasoner.advise(controls[case_id])
+        called = len(ledger.calls) - before
+        sent += called
+        control_rows.append({"case": case_id, "situation": what,
+                             "route_reason": route_load_work(controls[case_id]).reason,
+                             "sent_to_model": bool(called), "status": advice.status})
+    scored = [r for r in results if r.get("call") == "OK"]
+    waits = [r for r in scored if r["wait_expected"]]
+    humans = [r for r in scored if "human_need_also_open" in r["tags"]]
+    refusals = [code for r in scored for code in r["refused"]]
+    return {
+        "cases": len(REASONING_CASES), "cases_correct": sum(bool(r["ok"]) for r in results),
+        "failed_calls": len(results) - len(scored),
+        "wait_expected": len(waits),
+        "wait_correctly_selected": sum(bool(r["wait_selected"]) for r in waits),
+        "act_expected": len(scored) - len(waits),
+        "act_correctly_selected": sum(not r["wait_selected"] and r["observed"] == r["expected"]
+                                      for r in scored if not r["wait_expected"]),
+        "human_cases": len(humans),
+        "human_required_preserved": sum(bool(r["human_need_preserved"]) for r in humans),
+        "stated_posture_agreement": sum(bool(r["stated_posture_agrees"]) for r in scored),
+        "refused_parts": len(refusals),
+        "unknown_id_or_action_refusals": len([c for c in refusals if c in _ID_REFUSALS]),
+        "controls": len(CONTROL_STATES), "unnecessary_model_calls": sent,
+        "external_effect_rows": effects, "results": results, "control_results": control_rows,
+        "reasoning": reasoner.summary(loads=len(REASONING_CASES) + len(CONTROL_STATES)),
+    }
+
+
 def run_stage(stage: str, gateway: InferenceGateway, ledger: InferenceLedger) -> dict[str, Any]:
+    if stage == LOAD_WORK_STAGE:
+        return {"load_work": run_load_work_reasoning(gateway, ledger)}
     if stage == "smoke":
         cases = [c for c in LABELED_MESSAGES if c.case_id in SMOKE_CASES]
         return {"messages": run_labeled_messages(gateway, cases)}
@@ -274,7 +349,8 @@ def run_stage(stage: str, gateway: InferenceGateway, ledger: InferenceLedger) ->
         return run_raw_corpus(gateway, ledger)
     if stage == "scenarios":
         return run_raw_histories(gateway, ledger)
-    raise ValueError(f"unknown stage {stage!r}; the stages are {list(STAGES)}")
+    raise ValueError(f"unknown stage {stage!r}; the stages are "
+                     f"{[*STAGES, LOAD_WORK_STAGE]}")
 
 
 def calls_failed(ledger: InferenceLedger) -> dict[str, int]:

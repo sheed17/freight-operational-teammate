@@ -451,6 +451,23 @@ class FreightFoundation:
                      for observation_id, provenance, stated in parties])
         return not result.coalesced
 
+    def resolve_conflict_by_human(self, *, entity_ref: str, field: str, human_id: str,
+                                  decision_ref: str) -> str | None:
+        """CF-4 — a recorded, ACTIVE human of this tenant decides a disputed field. M7 refuses a
+        machine, a model or a counterparty in that seat, and it keeps every party's statement: the
+        row moves to RESOLVED_BY_HUMAN and nothing is deleted. A RAISED conflict is acknowledged by
+        the same human first (CF-2), because M7 resolves only a conflict somebody owns. Returns the
+        conflict id, or None when the field has no open conflict."""
+        conflict = self._m7.open_conflict_for(entity_ref, field)
+        if conflict is None:
+            return None
+        if conflict.state.value == "RAISED":
+            self._m7.acknowledge(conflict.conflict_id, actor_id=human_id, actor_kind="human")
+        self._m7.resolve_by_human(
+            conflict.conflict_id, decision_ref=decision_ref, decision_human_id=human_id,
+            actor_id=human_id, actor_kind="human")
+        return conflict.conflict_id
+
     # ------------------------------------------------------------------ expectation (M8)
 
     def record_coverage(self, *, coverage_id: str, channel: str, window_start: str,
@@ -495,6 +512,29 @@ class FreightFoundation:
             return False
         self._m8.discharge(expectation_id, observation_id=observation_id,
                            actor_id="freight-domain")
+        return True
+
+    def amend_deadline(self, expectation_id: str, *, deadline_utc: str) -> bool:
+        """EX-5 — the thing is still owed, by a DIFFERENT time: an appointment was moved. M8
+        re-versions the deadline, retains the prior one in `deadline_history`, and re-arms its
+        timer. Only a RAISED expectation is amended; one already judged is not un-judged."""
+        expectation = self._m8.get(expectation_id)
+        if expectation is None or expectation.state is not ExState.RAISED \
+                or expectation.deadline_utc == deadline_utc:
+            return False
+        self._m8.amend_deadline(expectation_id, new_deadline_utc=deadline_utc,
+                                actor_id="freight-domain", actor_kind="system")
+        return True
+
+    def cancel_expectation(self, expectation_id: str, *, reason: str) -> bool:
+        """EX-6 — the REASON for an expectation disappeared: what it was waiting for is no longer
+        what is owed. The row is retained as CANCELLED with the reason. M8 has no such exit from
+        INDETERMINATE, and none is invented here: that one stays a named human's."""
+        expectation = self._m8.get(expectation_id)
+        if expectation is None or expectation.state not in (ExState.RAISED, ExState.OVERDUE):
+            return False
+        self._m8.cancel(expectation_id, reason=reason, actor_id="freight-domain",
+                        actor_kind="system")
         return True
 
     def evaluate_due(self, *, owner_id: str) -> list[tuple[str, str]]:

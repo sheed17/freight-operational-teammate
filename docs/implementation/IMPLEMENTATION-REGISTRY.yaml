@@ -9407,11 +9407,13 @@ units:
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
     # ### P9 IS `READY` / `IN_PROGRESS` / `CHECKPOINT_IMPLEMENTED` (2026-10-01, P9 deep-end 1;
-    # unchanged by deep-end 2 on 2026-10-02, which adds a second landed checkpoint).
+    # unchanged by deep-end 2 on 2026-10-02, which adds a second landed checkpoint, and by deep-end 3
+    # on 2026-10-03, which adds a third).
     # `status` STAYS `READY`: it is the SELECTOR, and meta.status_model.status allows a unit to leave
     # READY only when a successor takes it in the same commit (P5 is the precedent for READY +
-    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - two entries
-    # in `landed_checkpoints`, each with evidence on disk. (Until P9-CP-2 this said "one entry".) `checkpoint_state` is CHECKPOINT_IMPLEMENTED
+    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - three entries
+    # in `landed_checkpoints`, each with evidence on disk. (Until P9-CP-3 this said "two entries";
+    # until P9-CP-2, "one entry".) `checkpoint_state` is CHECKPOINT_IMPLEMENTED
     # and NOT higher: the work landed and NO independent review has been performed.
     # ### THIS IS NOT ACCEPTANCE AND NOT ENABLEMENT. P9 carries no `acceptance_criteria` block, not
     # one criterion is scored, the 40-entity model is partially exercised, and it ships dark. P10
@@ -9475,6 +9477,47 @@ units:
           (scripts/mutate_p9_interpretation.py). CLAUDE.md sec 7 still requires ONE focused
           independent review by someone who did not write it BEFORE MERGE. That review is owed and
           is not claimed here.
+        criteria_scored: []
+      - id: P9-CP-3
+        name: Operational work engine and shadow load reasoning
+        checkpoint_state: CHECKPOINT_IMPLEMENTED
+        summary: >-
+          A read model that answers, for one load at one instant, what operational work remains:
+          freight_domain/load_work.py projects a LoadView into a closed vocabulary of
+          OperationalNeeds (sixteen kinds, five handling classes, ten shadow actions), each with
+          an identity derived from its CAUSE, the canonical signals behind it, an accountable
+          owner, a due time where one is deterministic, and whether a human is required. It
+          writes nothing. Work is read off the cause, not off the rows raised about it: one
+          missing POD is one need however many Expectation and Exception rows describe it, and an
+          M9 Exception whose cause is cured is housekeeping, never a task - M9 is NOT weakened
+          and still closes only by a recorded human decision. P9-D23 is closed: a carrier invoice
+          that cannot be placed on a movement is HELD, compared against nothing, raised to a
+          named human with the reason and the evidence, and never guessed onto a carrier; the
+          MC is resolved exactly through the tenant-scoped External Entity Mapping and never
+          tidied. Four spine corrections the work engine forced: an owner's decision settles a
+          disputed field and a later new statement re-disputes it; a moved appointment moves the
+          M8 deadline being watched (EX-5) instead of leaving the old one; a delivery report
+          that names no stop answers the arrival it implies; and a document Expectation whose
+          reason disappeared is cancelled (EX-6) rather than left owed. One bounded reasoning task
+          (reason_load_work) is added behind the EXISTING inference boundary and is routed only
+          when act-or-wait is not settled by the record; every id it returns is screened against
+          what it was handed, it cannot suppress a human's need, and its advice is laid beside
+          the deterministic work, never in it. Fifteen through-time histories with 58 labeled
+          moments, a deterministic hostile mutation layer with an independent oracle, and a
+          thirteen-state live eval of gpt-6-luna. No production caller, no external effect.
+          Ships dark.
+        implementer_evidence: docs/implementation/p9-de3-operational-work-engine-implementation-record.md
+        independent_review_report: null
+        independent_review_note: >-
+          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 surfaces
+          (CLAUDE.md sec 7): the attribution of a carrier invoice to a movement (a financial
+          surface, and tenant isolation of the mapping it resolves through), the canonical
+          meaning of an OWNER_ASSERTED fact on a contested field, a new call path into M7
+          resolve-by-human and M8 amend/cancel through the one composition module, and a fifth
+          task on the inference boundary. It also changes tier-2 behaviour in the detectors.
+          The guards carry a mutation proof (scripts/mutate_p9_load_work.py). CLAUDE.md sec 7
+          still requires ONE focused independent review by someone who did not write it BEFORE
+          MERGE. That review is owed and is not claimed here.
         criteria_scored: []
     objective: >-
       The 40 domain entities, External Entity Mapping, field-level authority — plus inbound

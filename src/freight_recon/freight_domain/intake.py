@@ -39,6 +39,8 @@ from typing import Any
 
 from ..inference.contracts import CandidateOption
 from .detectors import (
+    AmendExpectation,
+    CancelExpectation,
     DischargeExpectation,
     Intent,
     RaiseConflict,
@@ -149,8 +151,11 @@ class IntakeStats:
     late_bindings: int = 0
     human_bindings: int = 0
     conflicts_raised: int = 0
+    conflicts_resolved: int = 0
     expectations_raised: int = 0
     expectations_discharged: int = 0
+    expectations_amended: int = 0
+    expectations_cancelled: int = 0
     exceptions_raised: int = 0
     settle_passes: int = 0
     writes_after_settle: int = 0
@@ -683,8 +688,62 @@ class FreightIntake:
                         decision_human_id=human_id, source_observation_id=observation_id,
                         reason=payload["note"] or "corrected by a human")
                     self.stats.mappings_recorded += 1
+        elif act == "attribute_carrier_invoice":
+            detail = self._attribute_invoice(observation_id, load_ref, payload)
+        elif act == "confirm_appointment":
+            detail = self._confirm_appointment(observation_id, load_ref, payload,
+                                               human_id=human_id, decision_ref=decision_ref)
         return RecordOutcome(record.label, BOUND, observation_id=observation_id,
                              load_id=split_ref(load_ref)[1], detail=detail)
+
+    def _attribute_invoice(self, observation_id: str, load_ref: str,
+                           payload: dict[str, Any]) -> str:
+        """A human placed an invoice on a movement. The act is already a bound, OWNER_ASSERTED
+        Observation and the projection applies it; all intake does is tell a named human when what
+        she said cannot be applied — an invoice Neyma never received, or a movement this load does
+        not have. It is never silently ignored."""
+        target = self.foundation.observation_by_external(
+            payload["target"]["source_system"], payload["target"]["external_id"])
+        view = self.projector.project().loads[split_ref(load_ref)[1]]
+        placed = target is not None and any(
+            target["observation_id"] in (p.origin_observation_id, *p.duplicate_observation_ids)
+            for p in view.payables.values())
+        if placed and payload["movement_key"] in view.movements:
+            return "attribute_carrier_invoice"
+        problem = ("names a movement this load does not have" if placed
+                   else "names no carrier invoice Neyma holds on this load")
+        self._raise_exception(RaiseException(
+            exception_id=stable_id("exc", self.tenant, observation_id, "attribution_unusable"),
+            type="invoice_attribution_unusable", severity="SEV2", source_ref=observation_id,
+            source_kind="observation", owner_id=self.setup.intake_owner, entity_ref=load_ref,
+            summary=f"A human attributed a carrier invoice to movement "
+                    f"{payload['movement_key']!r}, and the attribution {problem}. Nothing was "
+                    f"placed.",
+            specific_question="Which invoice, and which movement of this load, did you mean?"))
+        return "attribution could not be applied"
+
+    def _confirm_appointment(self, observation_id: str, load_ref: str, payload: dict[str, Any], *,
+                             human_id: str, decision_ref: str) -> str:
+        """A human stated the appointment at a stop. If that window was in dispute, her act is the
+        decision M7 was waiting for: the Conflict is resolved BY HER, citing this act, and every
+        party's statement is retained."""
+        view = self.projector.project().loads[split_ref(load_ref)[1]]
+        appointment = view.appointments.get(payload["stop_key"])
+        if appointment is None:
+            self._raise_exception(RaiseException(
+                exception_id=stable_id("exc", self.tenant, observation_id, "no_stop"),
+                type="assertion_target_missing", severity="SEV2", source_ref=observation_id,
+                source_kind="observation", owner_id=self.setup.intake_owner, entity_ref=load_ref,
+                summary=f"A human confirmed an appointment at stop {payload['stop_key']!r}, which "
+                        f"this load does not have. Nothing was recorded against a stop.",
+                specific_question="Which stop of this load did you mean?"))
+            return "stop not found"
+        resolved = self.foundation.resolve_conflict_by_human(
+            entity_ref=appointment.ref, field="window", human_id=human_id,
+            decision_ref=decision_ref)
+        if resolved is not None:
+            self.stats.conflicts_resolved += 1
+        return "confirm_appointment"
 
     # ------------------------------------------------------------------ detect and materialize
 
@@ -720,6 +779,19 @@ class FreightIntake:
             if wrote:
                 # A promise whose deadline had already passed when it arrived is evaluated now.
                 self.foundation.evaluate_due(owner_id=self.setup.load_owner)
+            return wrote
+        if isinstance(intent, AmendExpectation):
+            wrote = self.foundation.amend_deadline(intent.expectation_id,
+                                                   deadline_utc=intent.deadline_utc)
+            self.stats.expectations_amended += int(wrote)
+            if wrote:
+                # The moved deadline may itself already have passed.
+                self.foundation.evaluate_due(owner_id=self.setup.load_owner)
+            return wrote
+        if isinstance(intent, CancelExpectation):
+            wrote = self.foundation.cancel_expectation(intent.expectation_id,
+                                                       reason=intent.reason)
+            self.stats.expectations_cancelled += int(wrote)
             return wrote
         if isinstance(intent, DischargeExpectation):
             bound = {o["observation_id"]: o for o in self.foundation.observations()}

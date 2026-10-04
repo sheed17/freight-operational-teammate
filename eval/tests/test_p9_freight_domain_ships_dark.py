@@ -299,9 +299,10 @@ def _field(block: str, name: str) -> str | None:
 
 
 def test_p9_is_recorded_in_progress_and_unreviewed_and_p10_is_still_blocked():
-    """P9 is IN PROGRESS with two implemented, unreviewed checkpoints, each with evidence on disk. It
-    is not COMPLETE, nothing is scored, its validation blockers stand, and P10 has not been
-    unblocked."""
+    """P9 is IN PROGRESS with three implemented, unreviewed checkpoints, each with evidence on disk.
+    It is not COMPLETE, nothing is scored, its validation blockers stand, and P10 has not been
+    unblocked. (Two checkpoints until P9-CP-3; the assertion below is exact, so recording a fourth
+    — or dropping one — fails here.)"""
     text = REGISTRY.read_text(encoding="utf-8")
     p9, p10 = _unit_block(text, "P9", "P10"), _unit_block(text, "P10", "P11")
     assert (_field(p9, "status"), _field(p9, "execution_state"), _field(p9, "checkpoint_state")) == (
@@ -313,7 +314,7 @@ def test_p9_is_recorded_in_progress_and_unreviewed_and_p10_is_still_blocked():
     assert not re.search(r"(?m)^\s*result:\s*PASS\b", p9), "a P9 criterion was scored PASS"
     assert "readiness_target: LOCALLY_IMPLEMENTED" in p9
     checkpoints = re.findall(r"(?m)^      - id: (P9-CP-\d+)\s*$", p9)
-    assert checkpoints == ["P9-CP-1", "P9-CP-2"], checkpoints
+    assert checkpoints == ["P9-CP-1", "P9-CP-2", "P9-CP-3"], checkpoints
     evidence = re.findall(r"(?m)^\s*implementer_evidence:\s*(\S+)\s*$", p9)
     assert len(evidence) == len(checkpoints), (
         f"P9 names {len(evidence)} evidence file(s) for {len(checkpoints)} landed checkpoint(s)")

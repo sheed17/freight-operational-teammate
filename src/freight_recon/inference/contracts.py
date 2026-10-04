@@ -1,12 +1,21 @@
 """The Neyma task contracts for model interpretation: what may be asked, and the shape of the answer.
 
-### FOUR TASKS, AND NO GENERAL-PURPOSE CALL. A caller cannot send a prompt. It can ask for one of four
-readings, each with a typed request and a strict typed output:
+### FIVE TASKS, AND NO GENERAL-PURPOSE CALL. A caller cannot send a prompt. It can ask for one of
+four readings and one bounded choice, each with a typed request and a strict typed output:
 
     interpret_message          one freight message      -> MessageInterpretation
     interpret_document_text    one document's text      -> DocumentTextInterpretation
     extract_commitments        one freight message      -> CommitmentExtraction
     propose_entity_candidates  text + supplied load ids -> CandidateProposal
+    reason_load_work           supplied needs + actions -> LoadWorkReasoning
+
+### THE FIFTH TASK CHOOSES; IT STILL DECIDES NOTHING. `reason_load_work` is handed the open needs a
+deterministic projection already worked out, the closed set of shadow actions each one may take, and
+the evidence behind them. It may say which supplied action fits a supplied need, which need comes
+first, and which can share one outreach. It names things only by the ids it was handed — an id it was
+not handed is refused by the application — and what it returns is advice laid BESIDE the
+deterministic work: it creates no fact, no deadline and no need, and it cannot make a need a human
+must decide into anything else.
 
 ### EVIDENCE FIRST. Every reported item carries `evidence_text`: a verbatim quote from the supplied
 content. The application checks that the quote is really there and discards any item whose quote is
@@ -44,6 +53,7 @@ class Task(str, enum.Enum):
     INTERPRET_DOCUMENT_TEXT = "interpret_document_text"
     EXTRACT_COMMITMENTS = "extract_commitments"
     PROPOSE_ENTITY_CANDIDATES = "propose_entity_candidates"
+    REASON_LOAD_WORK = "reason_load_work"
 
 
 class Status(str, enum.Enum):
@@ -109,6 +119,47 @@ class CandidateRequest:
     source_id: str
     text: str
     options: tuple[CandidateOption, ...]
+    correlation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkNeedOption:
+    """One open need, as a model is shown it. `actions` is the WHOLE set it may choose from for this
+    need. `human_required` is a fact about the need, stated to the model and never changed by it."""
+
+    need_id: str
+    kind: str
+    status: str
+    handling: str
+    human_required: bool
+    reasons: tuple[str, ...]
+    summary: str
+    due_by: str | None
+    actions: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    counterparty: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkEvidenceItem:
+    """One canonical record behind a need. `excerpt` is a counterparty's own words: untrusted data."""
+
+    evidence_id: str
+    kind: str
+    note: str
+    excerpt: str | None = None
+
+
+@dataclass(frozen=True)
+class LoadWorkRequest:
+    """A BOUNDED canonical summary of one load's open work. It carries no money and no authority."""
+
+    route: Route
+    source_id: str
+    as_of: str
+    stage: str
+    needs: tuple[WorkNeedOption, ...]
+    evidence: tuple[WorkEvidenceItem, ...]
     correlation_id: str | None = None
 
 
@@ -266,11 +317,38 @@ class CandidateProposal(_Strict):
     candidates: list[ProposedCandidate]
 
 
+class NeedAdvice(_Strict):
+    """Which supplied action fits one supplied need. `need_id`, `recommended_action` and every
+    `evidence_ids` entry must be copied from the request; the application refuses any that was not
+    there. They are plain strings, not enums, precisely so that a wrong one can be REFUSED in part
+    rather than failing the whole reply."""
+
+    need_id: str
+    recommended_action: str
+    evidence_ids: list[str]
+    reason: str
+
+
+class OutreachGroup(_Strict):
+    """Supplied needs that one message to one counterparty would cover."""
+
+    need_ids: list[str]
+
+
+class LoadWorkReasoning(_Strict):
+    posture: Literal["WAIT", "ACT", "HUMAN"]
+    next_need_id: str | None
+    advice: list[NeedAdvice]
+    groups: list[OutreachGroup]
+    explanation: str
+
+
 OUTPUT_MODELS: dict[Task, type[BaseModel]] = {
     Task.INTERPRET_MESSAGE: MessageInterpretation,
     Task.INTERPRET_DOCUMENT_TEXT: DocumentTextInterpretation,
     Task.EXTRACT_COMMITMENTS: CommitmentExtraction,
     Task.PROPOSE_ENTITY_CANDIDATES: CandidateProposal,
+    Task.REASON_LOAD_WORK: LoadWorkReasoning,
 }
 
 
@@ -337,3 +415,6 @@ class InferenceGateway(Protocol):
 
     def propose_entity_candidates(
             self, request: CandidateRequest) -> InferenceResult[CandidateProposal]: ...
+
+    def reason_load_work(
+            self, request: LoadWorkRequest) -> InferenceResult[LoadWorkReasoning]: ...

@@ -10,6 +10,11 @@
 Stages, smallest first: smoke (5 messages) | labeled (24 messages + 6 correlation cases) |
 corpus (the twenty hostile histories, raw) | scenarios (nine raw-language histories) | all
 
+    # LOAD-WORK REASONING: thirteen operational states where act-or-wait is not settled by the
+    # canonical record, plus four the projection settles alone (counted as NOT sent). Run by name;
+    # it is not part of `all`, keeps its own recording, and is capped at 20 calls unless told more.
+    .venv/bin/python scripts/run_freight_interpretation_eval.py --stage load_work
+
 A live run records every reading it pays for, so the next run of the same stage replays it for
 free. A recorded reading is a development/eval optimization and never business authority: it goes
 through exactly the grounding and normalization a live one does.
@@ -34,7 +39,12 @@ for entry in (str(ROOT / "src"), str(ROOT / "eval")):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from freight_corpus.interpretation_eval import STAGES, calls_failed, run_stage  # noqa: E402
+from freight_corpus.interpretation_eval import (  # noqa: E402
+    LOAD_WORK_STAGE,
+    STAGES,
+    calls_failed,
+    run_stage,
+)
 from freight_recon.inference.contracts import Usage  # noqa: E402
 from freight_recon.inference.gateway import ReplayGateway  # noqa: E402
 from freight_recon.inference.ledger import InferenceBudget, InferenceLedger  # noqa: E402
@@ -50,8 +60,11 @@ RECORDINGS = ROOT / "eval" / "freight_corpus" / "recordings"
 
 
 def _load_dotenv() -> None:
-    """Pick up a local .env when one is readable. A missing or unreadable file is not an error: the
-    key may simply be in the process environment already."""
+    """Pick up a local .env when one is readable, and ONLY when the key is not already in the
+    process environment: a run handed its credential by the environment reads no file at all. A
+    missing or unreadable file is not an error."""
+    if os.environ.get("OPENAI_API_KEY"):
+        return
     try:
         from dotenv import load_dotenv
 
@@ -77,8 +90,40 @@ def _gateway(args: argparse.Namespace, ledger: InferenceLedger, budget: Inferenc
         timeout_s=args.timeout, max_output_tokens=args.max_output_tokens_per_call), recording
 
 
+def _print_load_work(work: dict) -> None:
+    print(f"  cases: {work['cases_correct']}/{work['cases']} correct; failed calls "
+          f"{work['failed_calls']}")
+    print(f"  WAIT correctly selected: {work['wait_correctly_selected']}/{work['wait_expected']}; "
+          f"action correctly selected: {work['act_correctly_selected']}/{work['act_expected']}")
+    print(f"  human-required preserved: {work['human_required_preserved']}/{work['human_cases']}; "
+          f"stated posture agreed with the work: {work['stated_posture_agreement']}/"
+          f"{work['cases'] - work['failed_calls']}")
+    print(f"  refused parts: {work['refused_parts']} (unknown need/action/evidence id: "
+          f"{work['unknown_id_or_action_refusals']})")
+    print(f"  controls settled deterministically: "
+          f"{work['controls'] - work['unnecessary_model_calls']}/{work['controls']}; "
+          f"unnecessary model calls: {work['unnecessary_model_calls']}; external-effect rows: "
+          f"{work['external_effect_rows']}")
+    for row in work["results"]:
+        if row.get("call") != "OK":
+            print(f"    {row['case']}: CALL FAILED {row['call']}")
+        elif not row["ok"]:
+            print(f"    {row['case']} {row['tags']}: expected {row['expected']} "
+                  f"{row['expected_posture']} got {row['observed']} {row['observed_posture']} "
+                  f"refused {row['refused']}")
+    for row in work["control_results"]:
+        print(f"    {row['case']} {row['situation']}: {row['route_reason']} "
+              f"sent_to_model={row['sent_to_model']}")
+
+
 def _print_stage(name: str, stage: dict, show: bool) -> None:
     print(f"\n=== {name}")
+    if "load_work" in stage:
+        _print_load_work(stage["load_work"])
+        if show:
+            for row in stage["load_work"]["results"]:
+                print(f"    {row['case']}: {row.get('observed')} - {row.get('explanation', '')}")
+        return
     messages = stage.get("messages")
     if messages:
         print(f"  messages: {messages['cases_fully_correct']}/{messages['cases']} fully correct; "
@@ -134,7 +179,7 @@ def _print_stage(name: str, stage: dict, show: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--stage", choices=[*STAGES, "all"], default="smoke")
+    parser.add_argument("--stage", choices=[*STAGES, LOAD_WORK_STAGE, "all"], default="smoke")
     parser.add_argument("--live", action="store_true",
                         help=f"make paid model calls (also requires {LIVE_ENV}=1)")
     parser.add_argument("--model", help="the model to evaluate (default: NEYMA_INFERENCE_MODEL, "
@@ -143,7 +188,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="reasoning effort sent to the model, or 'default' to send none "
                              "(default: NEYMA_INFERENCE_REASONING_EFFORT, then low)")
     parser.add_argument("--recording", help="recorded readings file (default: per model/effort)")
-    parser.add_argument("--max-calls", type=int, default=150)
+    parser.add_argument("--max-calls", type=int,
+                        help="call budget for the run (default 150; 20 for load_work)")
     parser.add_argument("--max-input-tokens", type=int, default=400_000)
     parser.add_argument("--max-output-tokens", type=int, default=150_000)
     parser.add_argument("--max-output-tokens-per-call", type=int, default=4000)
@@ -165,8 +211,13 @@ def main(argv: list[str] | None = None) -> int:
     model_source = "--model" if args.model else settings.model_source
     args.model = args.model or settings.model
     args.reasoning_effort = (args.reasoning_effort or settings.reasoning_effort or "default")
+    load_work = args.stage == LOAD_WORK_STAGE
+    if args.max_calls is None:
+        args.max_calls = 20 if load_work else 150
     if not args.recording:
-        args.recording = str(RECORDINGS / f"{args.model}.effort-{args.reasoning_effort}.json")
+        suffix = ".load-work" if load_work else ""
+        args.recording = str(
+            RECORDINGS / f"{args.model}.effort-{args.reasoning_effort}{suffix}.json")
 
     ledger = InferenceLedger(sink=Path(args.ledger) if args.ledger else None)
     budget = InferenceBudget(max_calls=args.max_calls, max_input_tokens=args.max_input_tokens,

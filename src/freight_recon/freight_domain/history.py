@@ -58,7 +58,7 @@ LEGAL_CHANNELS: dict[str, tuple[str, ...]] = {
 
 HUMAN_ACTS: tuple[str, ...] = (
     "bind_observation", "correct_binding", "authorize_accessorial", "deny_accessorial",
-    "correct_reference",
+    "correct_reference", "attribute_carrier_invoice", "confirm_appointment",
 )
 ASSERT_TYPES: tuple[str, ...] = (
     "status", "commitment", "appointment", "accessorial_claim", "rate", "delay",
@@ -359,10 +359,19 @@ def _parse_human_assertion(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise UnparseableRecord(f"human act {act!r} is not one of {list(HUMAN_ACTS)}")
     parsed: dict[str, Any] = {"act": act, "human_id": str(_require(payload, "human_id", what=what)),
                               "note": str(payload.get("note", ""))}
-    if act in ("bind_observation", "correct_binding"):
+    if act in ("bind_observation", "correct_binding", "attribute_carrier_invoice"):
         target = dict(_require(payload, "target", what=act))
         parsed["target"] = {"source_system": str(_require(target, "source_system", what=act)),
                             "external_id": str(_require(target, "external_id", what=act))}
+        if act == "attribute_carrier_invoice":
+            # WHICH movement of the load the invoice bills. The human names the movement; the
+            # carrier follows from it. Nothing here names a payee or an amount.
+            parsed["movement_key"] = str(_require(payload, "movement_key", what=act))
+    elif act == "confirm_appointment":
+        # A recorded human states the appointment at one stop, in the FACILITY's wall time. It is
+        # the only thing that settles a disputed window; a counterparty's sentence cannot.
+        parsed["stop_key"] = str(_require(payload, "stop_key", what=act))
+        parsed.update(_parse_window(payload, what=act))
     elif act in ("authorize_accessorial", "deny_accessorial"):
         parsed["charge_type"] = str(_require(payload, "charge_type", what=act)).upper()
         if act == "authorize_accessorial":
@@ -481,8 +490,19 @@ class TenantSetup:
     recorded_by: str
     document_requirements: tuple[DocumentRequirementConfig, ...] = ()
     arrival_tracking_channel: str | None = None
+    # How often a MOVING truck is expected to be heard from, on `arrival_tracking_channel`. The
+    # brokerage's own cadence, or None: with none configured there is no staleness clock, because a
+    # cadence nobody chose would be a freight rule nobody chose (NEEDS VALIDATION).
+    tracking_update_cadence_minutes: int | None = None
 
     def __post_init__(self) -> None:
+        if self.tracking_update_cadence_minutes is not None and (
+                isinstance(self.tracking_update_cadence_minutes, bool)
+                or not isinstance(self.tracking_update_cadence_minutes, int)
+                or self.tracking_update_cadence_minutes <= 0):
+            raise MalformedHistory(
+                f"{self.tenant}: tracking_update_cadence_minutes must be a positive whole number "
+                f"of minutes or None, got {self.tracking_update_cadence_minutes!r}")
         known = {h["human_id"] for h in self.humans}
         for role, owner in (("load_owner", self.load_owner), ("intake_owner", self.intake_owner)):
             if owner not in known:
