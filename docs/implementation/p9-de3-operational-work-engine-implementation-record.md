@@ -488,9 +488,15 @@ throughout; nothing below is design-partner evidence.
   **A defect the "promise fulfilled" regression exposed, and fixed.** A promise to send a document
   was answered only by another MESSAGE. "I'll send the POD by 2", POD arrives at 1: the POD need
   closed, but at 2 the promise went OVERDUE — Neyma proposed chasing a carrier who had done exactly
-  what they said, and M9 raised a human-owned Exception for it. A `send_document` promise is now
-  discharged by a required document that arrives after it and satisfies its requirement. An
-  unusable copy (unsigned) keeps nothing.
+  what they said, and M9 raised a human-owned Exception for it. A `send_document` promise made by
+  the **carrier side** (the existing `CARRIER_SIDE_ROLES` classification) is now discharged by a
+  required document that arrives after it and satisfies its requirement. The document must still
+  pass every existing requirement check — an unusable copy (unsigned) keeps nothing. A document
+  never discharges a customer's or any other non-carrier party's promise: that promise is still
+  answered only by a later inbound message from that same side, and otherwise goes overdue to a
+  named human (the carrier-side limit is `3a0cdd3`; as first written in `f2ed10a` the discharge
+  answered any party's promise). This is deliberately narrow: a commitment records no document
+  type and none is inferred, so nothing here decides WHICH document was promised.
 
 ### R03's label change
 
