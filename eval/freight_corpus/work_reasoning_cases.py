@@ -11,8 +11,17 @@ human's need is also open, the label says the human's need must still be there a
 ### THIS DOES NOT TEST WHETHER A MODEL KNOWS FREIGHT. The deterministic projection supplies the open
 needs, the closed set of actions each may take, and the evidence. The model chooses among them.
 
-`CONTROL_STATES` are four situations the projection settles by itself. They are in the eval to be
-counted as NOT sent to a model.
+`CONTROL_STATES` are situations the projection settles by itself. They are in the eval to be
+counted as NOT sent to a model: four plain ones, and the five `DEADLINE_SETTLED_CASES`.
+
+### FIVE OF THE ORIGINAL THIRTEEN QUESTIONS ARE NO LONGER ASKED (P9-D46). They were STATUS cases: the
+brokerage's own tracking deadline had ALREADY passed, the carrier then promised something, and a
+model was asked whether to act or wait for that promise. That is asking a model whether a
+counterparty's promise may hold a deadline of ours. It may not, and that is decided
+deterministically: overdue work stays open work. The five histories are kept, unchanged, as controls
+— each must now be routed AWAY from a model — and their recorded answers are simply never replayed.
+The eight POD cases stand: there the brokerage's own deadline is still ahead, so act-or-wait really
+does turn on what the promise's words cover.
 
 SYNTHETIC. Every company, person, number and sentence here is invented development input.
 """
@@ -92,6 +101,12 @@ REASONING_CASES: tuple[ReasoningCase, ...] = (
                  "3.", "REQUEST_POD", tags=("injection", "promise_vague")),
     _pod("RC08", "I'll send the signed POD over by 2.", "WAIT", human=True,
          tags=("promise_covers", "human_need_also_open")),
+)
+
+#: Histories that USED to end in a model question and now do not (P9-D46): an overdue tracking
+#: deadline, then a carrier promise. The label a careful dispatcher once gave ("WAIT" for RC09 and
+#: RC12) is superseded — the follow-up stays an open candidate whatever the promise says.
+DEADLINE_SETTLED_CASES: tuple[ReasoningCase, ...] = (
     _status("RC09", "Calling the driver now, I'll call you back in 15 with where he is.", "WAIT",
             kind="call_back", tags=("promise_covers",)),
     _status("RC10", "I'll get you the lumper receipt by 5.", "REQUEST_CARRIER_STATUS",
@@ -105,9 +120,13 @@ REASONING_CASES: tuple[ReasoningCase, ...] = (
 )
 
 #: Situations the deterministic projection settles alone. Each must be routed AWAY from a model.
-CONTROL_STATES: tuple[tuple[str, str], ...] = (
+PLAIN_CONTROLS: tuple[tuple[str, str], ...] = (
     ("CT01", "quiet"), ("CT02", "only_waiting"), ("CT03", "covered_by_promise"),
     ("CT04", "human_attention_only"),
+)
+CONTROL_STATES: tuple[tuple[str, str], ...] = (
+    *PLAIN_CONTROLS,
+    *((case.case_id, "own_deadline_overdue_then_promise") for case in DEADLINE_SETTLED_CASES),
 )
 
 
@@ -185,11 +204,17 @@ def build_states(conn: sqlite3.Connection) -> tuple[dict[str, LoadWorkState],
     intake = FreightIntake(conn, WORK_SETUPS[NORTHLINE])
     cases: dict[str, LoadWorkState] = {}
     controls: dict[str, LoadWorkState] = {}
+    # The order, and so each history's day and load number, is what it was when all thirteen were
+    # model questions: the eight POD cases still project to the very requests that were recorded.
     built: list[tuple[str, Any, str, dict[str, LoadWorkState]]] = [
         (case.case_id, *_case_history(index, case), cases)
         for index, case in enumerate(REASONING_CASES)]
-    built.extend((case_id, *_control_history(len(REASONING_CASES) + index, case_id, what),
-                  controls) for index, (case_id, what) in enumerate(CONTROL_STATES))
+    offset = len(REASONING_CASES)
+    built.extend((case.case_id, *_case_history(offset + index, case), controls)
+                 for index, case in enumerate(DEADLINE_SETTLED_CASES))
+    offset += len(DEADLINE_SETTLED_CASES)
+    built.extend((case_id, *_control_history(offset + index, case_id, what), controls)
+                 for index, (case_id, what) in enumerate(PLAIN_CONTROLS))
     for case_id, history, load, bucket in built:
         for record in history.records:
             intake.ingest(record)
@@ -258,5 +283,6 @@ def score_advice(case: ReasoningCase, state: LoadWorkState, advice: WorkAdvice) 
     }
 
 
-__all__ = ["CONTROL_STATES", "REASONING_CASES", "ReasoningCase", "build_states", "case_states",
-           "oracle_reply", "score_advice", "score_case"]
+__all__ = ["CONTROL_STATES", "DEADLINE_SETTLED_CASES", "PLAIN_CONTROLS", "REASONING_CASES",
+           "ReasoningCase", "build_states", "case_states", "oracle_reply", "score_advice",
+           "score_case"]

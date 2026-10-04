@@ -282,8 +282,10 @@ def run_raw_histories(gateway: InferenceGateway, ledger: InferenceLedger) -> dic
 
 def run_load_work_reasoning(gateway: InferenceGateway,
                             ledger: InferenceLedger) -> dict[str, Any]:
-    """Thirteen labeled states and four controls, each ROUTED first. A case is scored on what the
-    application would use — the reply after every part it was not entitled to say was refused."""
+    """Eight labeled states and nine controls, each ROUTED first. A case is scored on what the
+    application would use — the reply after every part it was not entitled to say was refused.
+    (Thirteen and four until P9-D46: five states whose own deadline had already passed are now
+    settled without a model, and are counted among the controls.)"""
     with tempfile.TemporaryDirectory(prefix="neyma-load-work-eval-") as scratch:
         store = WorkflowStore(Path(scratch) / "eval.db", tenant=NORTHLINE)
         try:

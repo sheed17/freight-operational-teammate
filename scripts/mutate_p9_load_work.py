@@ -85,6 +85,14 @@ RESOLVED = (f"{T}::test_a_humans_explicit_resolution_closes_the_exception_and_it
 CURED = f"{T}::test_a_cured_exception_is_closed_only_by_a_human_and_then_is_not_housekeeping"
 EXACT = f"{T}::test_a_resolution_closes_only_the_exception_it_names_on_the_load_it_names"
 STANDS = f"{T}::test_closing_the_exception_does_not_finish_the_work_it_was_raised_for"
+NOT_CLOSED = (f"{T}::test_customer_billing_ready_is_not_financially_closed_and_such_a_load_"
+              f"is_never_quiet")
+LATER = f"{T}::test_a_promise_for_later_than_our_deadline_does_not_extend_it"
+AFTER = (f"{T}::test_a_promise_made_after_our_deadline_passed_does_not_turn_overdue_work_"
+         f"into_a_wait")
+KEPT = (f"{T}::test_a_kept_promise_leaves_nothing_behind_and_an_unusable_document_does_"
+        f"not_keep_it")
+CONTROLS = f"{T}::test_the_control_states_are_settled_without_a_model"
 
 
 def purge_pycache() -> None:
@@ -254,6 +262,49 @@ CASES = [
        '                                       source_ref=payable.origin_observation_id)\n'
        '        if not raised:  # MUTANT\n            continue\n')],
      STANDS),
+
+    # ------------------------------------------------------------------ P9-D41 / P9-D46
+    ("a customer-billing-ready load is called QUIET whatever its carrier invoice says - billing "
+     "ready is read as financially closed (P9-D41)",
+     [(WORK, '        return not self.needs\n',
+       '        return not self.needs or self.billing_ready  # MUTANT\n')],
+     NOT_CLOSED),
+
+    ("a carrier's promise turns OVERDUE work back into a wait - or into a model's question "
+     "(P9-D46)",
+     [(WORK, '        if own_passed:\n            continue'
+             '                                  # our deadline passed: nothing defers it\n',
+       '        if False:  # MUTANT\n            continue'
+       '                                  # our deadline passed: nothing defers it\n')],
+     AFTER),
+
+    ("a promise for LATER than our deadline extends it - the wait runs to the time the carrier "
+     "named (P9-D46)",
+     [(WORK, '            horizon = min(d for d in (own_deadline, promise["due_by"]) '
+             'if d is not None)\n',
+       '            horizon = promise["due_by"]  # MUTANT\n')],
+     LATER),
+
+    ("a required document's deadline is never seen to have PASSED - an overdue POD is still "
+     "waited on (P9-D46)",
+     [(WORK, '            build.own_deadline[required.need_id] = '
+             '(due_by, status is not NeedStatus.OPEN)\n',
+       '            build.own_deadline[required.need_id] = (due_by, False)  # MUTANT\n')],
+     AFTER),
+
+    ("a missed arrival window or tracking cadence is not counted as a deadline of OURS - a "
+     "promise holds it, and a model is asked whether it should (P9-D46)",
+     [(WORK, '        if ours:\n            build.own_deadline[follow_up.need_id] = '
+             '(min(ours), True)\n',
+       '        if False:  # MUTANT\n            build.own_deadline[follow_up.need_id] = '
+       '(min(ours), True)\n')],
+     CONTROLS),
+
+    ("a KEPT promise is still chased - the promised document does not answer the promise, so the "
+     "carrier is called late for doing what they said",
+     [(DETECTORS, '        if commitment["commitment_kind"] == "send_document":\n',
+       '        if False:  # MUTANT\n')],
+     KEPT),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',

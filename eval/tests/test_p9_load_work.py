@@ -66,9 +66,11 @@ from freight_corpus.work_histories import (  # noqa: E402
     _delivered,
     _invoice_as,
     build_work_histories,
+    promise,
 )
 from freight_corpus.work_reasoning_cases import (  # noqa: E402
     CONTROL_STATES,
+    DEADLINE_SETTLED_CASES,
     REASONING_CASES,
     build_states,
     case_states,
@@ -76,7 +78,12 @@ from freight_corpus.work_reasoning_cases import (  # noqa: E402
     score_case,
 )
 from freight_recon.freight_domain.corpus_run import cross_tenant_violations  # noqa: E402
-from freight_recon.freight_domain.history import FreightHistory  # noqa: E402
+from freight_recon.freight_domain.financial import blocking_discrepancies  # noqa: E402
+from freight_recon.freight_domain.history import (  # noqa: E402
+    DocumentRequirementConfig,
+    FreightHistory,
+    to_utc,
+)
 from freight_recon.freight_domain.intake import FreightIntake  # noqa: E402
 from freight_recon.freight_domain.interpretation import FreightInterpreter  # noqa: E402
 from freight_recon.freight_domain.load_work import (  # noqa: E402
@@ -1415,6 +1422,321 @@ def test_only_a_humans_act_reaches_the_exception_closure_and_the_work_engine_nev
         assert "resolve_exception_by_human" not in text and "resolve_by_human" not in text, module
 
 
+# ============================================================ P9-D41: billing-ready is not closed
+
+def test_customer_billing_ready_is_not_financially_closed_and_such_a_load_is_never_quiet(tmp_path):
+    """P9-D41. `billing_ready` is CUSTOMER billing readiness (W8-1): delivered, sell rate settled,
+    required documents on file. It says nothing about the carrier's side. A carrier invoice may be
+    on no movement, in discrepancy, or carrying an accessorial nobody authorized while the customer
+    can be billed — and that carrier-side work must still be work:
+
+        customer billing ready  +  open carrier-side payable / reconciliation work  =>  NOT quiet
+
+    The carrier-side work is read here from the canonical VIEW (payables, reconciliations,
+    Conflicts), not from the needs, after every record of every through-time history."""
+    store = _store(tmp_path, "billing.db")
+    intakes: dict[str, FreightIntake] = {}
+    seen: dict[str, int] = {"unplaced_invoice": 0, "invoice_discrepant": 0,
+                            "accessorial_unauthorized": 0, "owed_conflict_open": 0}
+    ready_and_clean = 0
+    for history in build_work_histories():
+        intake = intakes.setdefault(history.tenant,
+                                    FreightIntake(store.conn, WORK_SETUPS[history.tenant]))
+        for record in history.records:
+            intake.ingest(record)
+            as_of = intake.foundation.now()
+            for view in intake.projection().loads.values():
+                billed = [r for r in view.reconciliations if r.payable_id is not None]
+                carrier_side = {
+                    "unplaced_invoice": any(p.movement_id is None for p in view.payables.values()),
+                    "invoice_discrepant": any(r.status == "DISCREPANT" for r in billed),
+                    "accessorial_unauthorized": any(
+                        d.code == "ACCESSORIAL_NOT_ON_RATE_CONFIRMATION"
+                        for r in billed for d in blocking_discrepancies(r)),
+                    "owed_conflict_open": any(c["entity_ref"].startswith("carrier_movement:")
+                                              for c in view.open_conflicts()),
+                }
+                state = evaluate_load_work(view, setup=intake.setup, as_of=as_of)
+                customer_ready = view.invoice.lifecycle_state == "ELIGIBLE"
+                assert state.billing_ready == customer_ready
+                if not customer_ready:
+                    continue
+                if not any(carrier_side.values()):
+                    ready_and_clean += state.routine_work_is_zero
+                    continue
+                where = f"{history.history_id}/{record.label}/{state.load_number}"
+                for issue, present in carrier_side.items():
+                    seen[issue] += present
+                assert not state.routine_work_is_zero, f"{where}: billing-ready, so called quiet"
+                assert state.posture is Posture.HUMAN_ATTENTION, where
+                assert {n.kind for n in state.human_attention} & {
+                    NeedKind.INVOICE_UNATTRIBUTED, NeedKind.INVOICE_DISCREPANCY,
+                    NeedKind.ACCESSORIAL_UNAUTHORIZED, NeedKind.RECONCILIATION_BLOCKED,
+                    NeedKind.EVIDENCE_CONFLICT}, where
+    store.close()
+    # Each carrier-side issue was actually met while the customer could be billed...
+    assert all(count > 0 for count in seen.values()), seen
+    # ...and a load with NO carrier-side issue does reach billing-ready AND quiet.
+    assert ready_and_clean > 0
+
+
+# ============================================================ P9-D46: a promise and a deadline of ours
+
+def _delivered_owing_a_pod(tag, *, day="2026-08-10"):
+    """A covered, tracked Northline load reported DELIVERED at 10:00 with no POD. Northline's own
+    configured deadline for the POD is 24 hours after delivery: T1 = the next day at 10:00."""
+    h = HistoryBuilder(tag, f"a POD owed and a promise ({tag})", NORTHLINE, day=day,
+                       zone="America/Chicago", hostile=("promise_and_own_deadline",))
+    load = f"LD-496{sum(map(ord, tag)) % 90 + 10}"
+    refs = (load_ref(load),)
+    stops = _stops(h, pickup="Prairie Ag Sterling", delivery="Stark County Feed",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED")
+    _cover(h, NORTHLINE_SMS, NORTHLINE_OPS, NORTHLINE_PODS, "tracking:macropoint")
+    customer, carrier = _covered(h, load=load, customer="prairie_ag", carrier="summit",
+                                 po=f"PO-{tag}", bol=f"BOL-{tag}", pro=f"PRO-{tag}", sell=193000,
+                                 stops=stops, at=("07:30", "08:00"))
+    h.track("loaded", h.t("09:00"), "LOADED", refs=refs, stop_key="S1")
+    h.track("at-delivery", h.t("09:45"), "AT_DELIVERY", refs=refs, stop_key="S2")
+    _delivered(h, "delivered", h.t("10:00"), load=load, customer=customer, carrier=carrier,
+               po=f"PO-{tag}", bol=f"BOL-{tag}", pro=f"PRO-{tag}", sell=193000, stops=stops)
+    return h, load, refs
+
+
+def _promises(h, label, at, refs, body, due_by, kind="send_document", *, external_id=None):
+    h.message(label, at, channel="email", source_system=NORTHLINE_OPS,
+              sender=dispatcher("summit"), thread="re-pod", subject="RE: POD", body=body,
+              refs=refs, asserts=(promise(due_by, kind),), external_id=external_id)
+
+
+def _later_than_our_deadline():
+    """The carrier promises the POD for 18:00 TOMORROW; Northline's own deadline is 10:00 tomorrow."""
+    h, load, refs = _delivered_owing_a_pod("LATE")
+    _promises(h, "pod-tomorrow-evening", h.t("10:30"), refs, "I'll send the POD by 6pm tomorrow.",
+              h.t("18:00", 1))
+    return (h, load, refs, to_utc(h.t("10:00", 1), what="our deadline"),
+            to_utc(h.t("18:00", 1), what="their promise"))
+
+
+def test_a_promise_for_later_than_our_deadline_does_not_extend_it(tmp_path):
+    """T1 (ours) < T2 (theirs). The need may be waited on — the carrier said the POD is coming —
+    but only until T1. At T1, with nothing new arriving, it is Neyma's to chase again, and it stays
+    that way while the carrier's promise is still pending."""
+    h, load, refs, ours, theirs = _later_than_our_deadline()
+    h.clock("our-deadline-passes", h.t("10:05", 1))
+    assert ours < theirs
+    store = _store(tmp_path, "later.db")
+    history = h.build({})
+    intake = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+    for record in history.records[:-1]:
+        intake.ingest(record)
+    promised = next(iter(work_states(intake).values()))
+    need = promised.need(NeedKind.DOCUMENT_REQUIRED)
+    assert need.handling is Handling.WAIT and promised.posture is Posture.WAIT
+    assert need.due_by == ours, "the carrier's later promise replaced our deadline"
+    assert {"COVERED_BY_PENDING_PROMISE", "OWN_DEADLINE_STILL_CONTROLS"} <= set(need.reason_codes)
+    assert promised.need(NeedKind.CARRIER_UPDATE_PENDING).due_by == theirs
+
+    # Time passes and NOTHING arrives. Asked one minute after our deadline, before M8 has ruled:
+    rows = row_counts(store.conn)
+    asked = next(iter(work_states(intake, as_of="2026-08-11T15:01:00.000Z").values()))
+    assert row_counts(store.conn) == rows
+    due = asked.need(NeedKind.DOCUMENT_REQUIRED)
+    assert due.need_id == need.need_id and due.status is NeedStatus.DUE
+    assert due.handling is Handling.NEYMA_ACTION_CANDIDATE, "waited past our own deadline"
+    assert due.actions == (ShadowAction.REQUEST_POD,) and asked.posture is Posture.NEYMA_CAN_ACT
+
+    intake.ingest(history.records[-1])                      # the clock ticks; M8 rules
+    after = next(iter(work_states(intake).values()))
+    late = after.need(NeedKind.DOCUMENT_REQUIRED)
+    assert late.status is NeedStatus.OVERDUE and late.due_by == ours
+    assert late.handling is Handling.NEYMA_ACTION_CANDIDATE
+    assert late.actions == (ShadowAction.REQUEST_POD,)
+    assert "COVERED_BY_PENDING_PROMISE" not in late.reason_codes
+    still = after.need(NeedKind.CARRIER_UPDATE_PENDING)
+    assert still is not None and still.handling is Handling.WAIT and still.due_by == theirs, \
+        "the trap needs the carrier's promise STILL pending when our deadline passes"
+    assert after.posture is Posture.NEYMA_CAN_ACT and not route_load_work(after).model_needed
+    view = intake.projection().view_by_load_ref(load)
+    assert audit_state(after, view, tenant=NORTHLINE) == []
+    store.close()
+
+
+def test_a_promise_for_earlier_than_our_deadline_brings_the_follow_up_forward(run):
+    """T2 (theirs) < T1 (ours). W15: the POD is promised by 14:00 today; ours is tomorrow. The
+    wait runs to the EARLIER time, and when that passes unkept the POD is Neyma's to chase — a day
+    before our own deadline would have said so."""
+    result, conn = run
+    covered = result.at("W15", "pod-by-two", "LD-49015")
+    need = covered.need(NeedKind.DOCUMENT_REQUIRED)
+    ours = conn.execute(
+        "SELECT deadline_utc FROM expectations WHERE tenant = ? AND expectation_id = ?",
+        (NORTHLINE, next(o for o in need.origins if o.startswith("expectation:")
+                         ).split(":", 1)[1])).fetchone()[0]
+    assert need.handling is Handling.WAIT and need.due_by == "2026-07-23T19:00:00.000Z"
+    assert need.due_by < ours, "the trap needs the promise EARLIER than our deadline"
+    assert "OWN_DEADLINE_STILL_CONTROLS" not in need.reason_codes
+    passed = result.at("W15", "two-passes", "LD-49015")
+    chase = passed.need(NeedKind.DOCUMENT_REQUIRED)
+    assert chase.handling is Handling.NEYMA_ACTION_CANDIDATE and chase.status is NeedStatus.OPEN
+    assert chase.due_by == ours, "our own deadline was lost when the promise lapsed"
+    assert passed.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
+
+
+@pytest.mark.parametrize("kind,said", [("send_document", "I'll send the POD by 3."),
+                                       ("other", "I'll get back to you by 3.")])
+def test_a_promise_made_after_our_deadline_passed_does_not_turn_overdue_work_into_a_wait(
+        tmp_path, kind, said):
+    """T1 is ALREADY overdue when the carrier promises. Overdue work stays open work: not a wait
+    when the promise plainly covers it, and not a model's question when its words are vague —
+    which deadline governs is decided here, never by a model."""
+    h, load, refs = _delivered_owing_a_pod("OVER")
+    h.clock("our-deadline-passes", h.t("10:05", 1))
+    _promises(h, "promised-after", h.t("10:30", 1), refs, said, h.t("15:00", 1), kind)
+    store = _store(tmp_path, "overdue.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    before = result.at("OVER", "our-deadline-passes", load).need(NeedKind.DOCUMENT_REQUIRED)
+    assert before.status is NeedStatus.OVERDUE
+    state = result.state(NORTHLINE, load)
+    need = state.need(NeedKind.DOCUMENT_REQUIRED)
+    assert need.need_id == before.need_id and need.status is NeedStatus.OVERDUE
+    assert need.handling is Handling.NEYMA_ACTION_CANDIDATE, f"overdue work became {need.handling}"
+    assert need.actions == (ShadowAction.REQUEST_POD,), "WAIT is on offer for overdue work"
+    assert not {"COVERED_BY_PENDING_PROMISE", "PENDING_PROMISE_OF_UNSETTLED_SCOPE"} & set(
+        need.reason_codes)
+    pending = state.need(NeedKind.CARRIER_UPDATE_PENDING)
+    assert pending is not None and pending.handling is Handling.WAIT, \
+        "the trap needs the carrier's promise pending"
+    assert state.posture is Posture.NEYMA_CAN_ACT
+    # No model is asked, and one that WOULD say "wait" is never reached.
+    assert not route_load_work(state).model_needed
+    ledger = InferenceLedger()
+    gateway = ScriptedGateway(lambda task, request: {"posture": "WAIT", "next_need_id": None,
+                                                     "advice": [], "groups": [],
+                                                     "explanation": "wait for the carrier"},
+                              ledger=ledger)
+    advice = LoadWorkReasoner(gateway, ledger).advise(state)
+    assert advice.status == NOT_NEEDED and gateway.invocations == []
+    assert advice.posture == Posture.NEYMA_CAN_ACT.value
+    store.close()
+
+
+def test_with_no_deadline_of_our_own_a_promise_is_the_only_clock(tmp_path):
+    """A brokerage that requires a POD and has configured NO deadline for it. Nothing of ours is
+    extended, because nothing of ours exists: the carrier's promise is the wait, until its own due
+    time and no longer. (No deadline is invented to stand in for the missing one.)"""
+    setups = {**WORK_SETUPS, NORTHLINE: replace(
+        WORK_SETUPS[NORTHLINE], document_requirements=(
+            DocumentRequirementConfig(gate="RAISE_INVOICE", required_doc_type="POD"),))}
+    h, load, refs = _delivered_owing_a_pod("NONE")
+    _promises(h, "pod-by-two", h.t("11:00"), refs, "I'll send the POD by 2.", h.t("14:00"))
+    store = _store(tmp_path, "none.db")
+    intake = FreightIntake(store.conn, setups[NORTHLINE])
+    history = h.build({})
+    for record in history.records[:-1]:
+        intake.ingest(record)
+    owed = next(iter(work_states(intake).values())).need(NeedKind.DOCUMENT_REQUIRED)
+    assert owed.handling is Handling.NEYMA_ACTION_CANDIDATE and owed.due_by is None
+    assert store.conn.execute("SELECT COUNT(*) FROM expectations WHERE tenant = ? AND "
+                              "expected_type = 'document:POD'", (NORTHLINE,)).fetchone()[0] == 0
+    intake.ingest(history.records[-1])
+    waited = next(iter(work_states(intake).values())).need(NeedKind.DOCUMENT_REQUIRED)
+    assert waited.handling is Handling.WAIT and waited.due_by == "2026-08-10T19:00:00.000Z"
+    assert "OWN_DEADLINE_STILL_CONTROLS" not in waited.reason_codes
+    lapsed = next(iter(work_states(intake, as_of="2026-08-10T19:01:00.000Z").values()))
+    assert lapsed.need(NeedKind.DOCUMENT_REQUIRED).handling is Handling.NEYMA_ACTION_CANDIDATE
+    store.close()
+
+
+def test_a_kept_promise_leaves_nothing_behind_and_an_unusable_document_does_not_keep_it(tmp_path):
+    """"I'll send the POD by 2", and the signed POD arrives at 1. The promise was KEPT: the POD is
+    no longer owed, the wait is over, and when 2 o'clock passes nobody is called late and no
+    human is handed an Exception for it. An UNSIGNED copy at 1 keeps nothing."""
+    outcomes = {}
+    for signed in (True, False):
+        h, load, refs = _delivered_owing_a_pod("KEPT" if signed else "UNSIGNED")
+        _promises(h, "pod-by-two", h.t("11:00"), refs, "I'll send the POD by 2.", h.t("14:00"))
+        h.document("pod", h.t("13:00"), "POD", f"PROOF OF DELIVERY | load {load}", refs=refs,
+                   via=NORTHLINE_PODS, signed=signed)
+        h.clock("two-passes", h.t("14:05"))
+        store = _store(tmp_path, f"kept-{signed}.db")
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        final = result.state(NORTHLINE, load)
+        promise_state = store.conn.execute(
+            "SELECT state, late FROM expectations WHERE tenant = ? AND "
+            "expected_type = 'counterparty_update'", (NORTHLINE,)).fetchall()
+        unmet = store.conn.execute(
+            "SELECT COUNT(*) FROM exceptions WHERE tenant = ? AND type = 'expectation_unmet'",
+            (NORTHLINE,)).fetchone()[0]
+        outcomes[signed] = (final, [tuple(r) for r in promise_state], unmet,
+                            result.at(h.history_id, "pod", load))
+        store.close()
+
+    kept, promises_kept, unmet, at_pod = outcomes[True]
+    assert at_pod.routine_work_is_zero and kept.routine_work_is_zero, \
+        [n.kind.value for n in kept.needs]
+    assert kept.need(NeedKind.CARRIER_STATUS_OVERDUE) is None, "a kept promise is being chased"
+    assert [state for state, _ in promises_kept] == ["DISCHARGED"] and unmet == 0
+    assert not promises_kept[0][1], "a promise kept an hour early was marked late"
+    assert {(s.kind, s.how) for s in kept.settled} >= {
+        (NeedKind.DOCUMENT_REQUIRED, "SATISFIED"), (NeedKind.CARRIER_UPDATE_PENDING, "SATISFIED")}
+
+    broken, promises_broken, unmet, _ = outcomes[False]
+    assert [state for state, _ in promises_broken] == ["OVERDUE"] and unmet == 1
+    assert broken.need(NeedKind.CARRIER_STATUS_OVERDUE) is not None
+    document = broken.need(NeedKind.DOCUMENT_REQUIRED)
+    assert document is not None and "DOCUMENT_RECEIVED_UNUSABLE" in document.reason_codes
+
+
+def test_deadline_precedence_is_the_same_work_on_replay_and_after_a_restart(tmp_path):
+    """The same history, in another database and after the process is thrown away and rebuilt from
+    the rows: the same wait until OUR deadline, and the same open work after it."""
+    waits, finals = [], []
+    for name in ("one.db", "two.db"):
+        h, load, refs, ours, _ = _later_than_our_deadline()
+        h.clock("our-deadline-passes", h.t("10:05", 1))
+        store = _store(tmp_path, name)
+        result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+        waits.append(result.at("LATE", "pod-tomorrow-evening", load))
+        final = result.state(NORTHLINE, load)
+        rebuilt = FreightIntake(store.conn, WORK_SETUPS[NORTHLINE])
+        again = next(iter(work_states(
+            rebuilt, as_of=result.intakes[NORTHLINE].foundation.now()).values()))
+        assert again.digest() == final.digest()
+        finals.append(final)
+        store.close()
+    assert waits[0].digest() == waits[1].digest() and finals[0].digest() == finals[1].digest()
+    assert waits[0].need(NeedKind.DOCUMENT_REQUIRED).due_by == ours
+    assert finals[0].need(NeedKind.DOCUMENT_REQUIRED).handling is Handling.NEYMA_ACTION_CANDIDATE
+
+
+def test_a_promise_said_twice_extends_nothing_either(tmp_path):
+    """The same later promise, sent again as a NEW message - before our deadline, and once more
+    after it has passed. One need throughout, the same one; our deadline still controls; and the
+    repeat after the deadline does not turn the overdue POD back into a wait."""
+    h, load, refs, ours, theirs = _later_than_our_deadline()
+    _promises(h, "said-again", h.t("10:31"), refs, "I'll send the POD by 6pm tomorrow.",
+              h.t("18:00", 1), external_id="<said-again>")
+    h.clock("our-deadline-passes", h.t("10:05", 1))
+    _promises(h, "said-a-third-time", h.t("10:20", 1), refs, "POD by 6 tonight, promise.",
+              h.t("18:00", 1), external_id="<said-a-third-time>")
+    store = _store(tmp_path, "twice.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    once = result.at("LATE", "pod-tomorrow-evening", load)
+    twice = result.at("LATE", "said-again", load)
+    thrice = result.state(NORTHLINE, load)
+    for state in (once, twice, thrice):
+        assert len([n for n in state.needs if n.kind is NeedKind.DOCUMENT_REQUIRED]) == 1
+        ids = [n.need_id for n in state.needs]
+        assert len(ids) == len(set(ids))
+    first, second, third = (s.need(NeedKind.DOCUMENT_REQUIRED) for s in (once, twice, thrice))
+    assert first.need_id == second.need_id == third.need_id
+    assert (second.handling, second.due_by) == (Handling.WAIT, ours)
+    assert (third.handling, third.status) == (Handling.NEYMA_ACTION_CANDIDATE, NeedStatus.OVERDUE)
+    assert third.actions == (ShadowAction.REQUEST_POD,)
+    assert thrice.need(NeedKind.CARRIER_UPDATE_PENDING) is not None, "the repeat is still pending"
+    store.close()
+
+
 # ============================================================ shadow reasoning
 
 def _undecided(run):
@@ -1624,7 +1946,7 @@ def test_only_the_work_reasoner_calls_the_load_work_task_and_its_prompt_cannot_d
 def test_the_labeled_reasoning_cases_are_real_states_and_the_scorer_can_fail(tmp_path):
     """The live eval's cases are real projected states, each genuinely routed to a model, each
     labeled. With the oracle's answers every case scores; with a wrong one the scorer says so."""
-    assert 10 <= len(REASONING_CASES) <= 15
+    assert len(REASONING_CASES) == 8, "thirteen until P9-D46 settled five without a model"
     store = _store(tmp_path)
     states = case_states(store.conn)
     store.close()
@@ -1645,21 +1967,42 @@ def test_the_labeled_reasoning_cases_are_real_states_and_the_scorer_can_fail(tmp
                  for kind, action in case.picks.items()}
         bad = LoadWorkReasoning.model_validate(oracle_reply(request, other))
         assert not score_case(case, state, request, bad)["ok"], f"{case.case_id} cannot fail"
-    assert all(count >= 2 for count in expectations.values()), expectations
+    assert expectations == {"WAIT": 3, "ACT": 4, "HUMAN": 1}, expectations
 
 
 def test_the_control_states_are_settled_without_a_model(tmp_path):
-    """Four situations the projection answers alone are in the eval to be counted as NOT sent."""
+    """Nine situations the projection answers alone are in the eval to be counted as NOT sent:
+    four plain ones, and the five that were model questions until P9-D46."""
     store = _store(tmp_path)
     _, controls = build_states(store.conn)
     store.close()
-    assert set(controls) == {case_id for case_id, _ in CONTROL_STATES}
+    assert set(controls) == {case_id for case_id, _ in CONTROL_STATES} and len(controls) == 9
     reasons = {case_id: route_load_work(state) for case_id, state in controls.items()}
     assert not any(route.model_needed for route in reasons.values())
-    assert sorted(route.reason for route in reasons.values()) == [
-        "deterministic_work_is_sufficient", "human_attention_only", "only_waiting", "quiet"] or \
-        sorted(route.reason for route in reasons.values()) == [
-        "human_attention_only", "only_waiting", "only_waiting", "quiet"]
+    plain = sorted(reasons[case_id].reason for case_id in ("CT01", "CT02", "CT03", "CT04"))
+    assert plain in (["deterministic_work_is_sufficient", "human_attention_only", "only_waiting",
+                      "quiet"], ["human_attention_only", "only_waiting", "only_waiting", "quiet"])
+    # P9-D46: the tracking deadline had ALREADY passed when the carrier promised something. The
+    # follow-up stays an open candidate with ONE action - not a wait, and not a model's question -
+    # including where the promise plainly covers it (RC09, RC12) and where a human's need is also
+    # open (RC13).
+    assert [c.case_id for c in DEADLINE_SETTLED_CASES] == ["RC09", "RC10", "RC11", "RC12", "RC13"]
+    for case in DEADLINE_SETTLED_CASES:
+        state = controls[case.case_id]
+        follow_up = state.need(NeedKind.CARRIER_STATUS_OVERDUE)
+        assert follow_up.status is NeedStatus.OVERDUE, case.case_id
+        assert follow_up.handling is Handling.NEYMA_ACTION_CANDIDATE, case.case_id
+        assert follow_up.actions == (ShadowAction.REQUEST_CARRIER_STATUS,), case.case_id
+        assert "TRACKING_OVERDUE" in follow_up.reason_codes
+        promised = state.need(NeedKind.CARRIER_UPDATE_PENDING)
+        assert promised is not None and promised.handling is Handling.WAIT, \
+            "the trap needs the carrier's promise still pending"
+        assert promised.due_by > follow_up.due_by, "the promise is LATER than our deadline"
+        assert not [n for n in state.needs if n.handling is Handling.MODEL_REASONING]
+        assert reasons[case.case_id].reason == "deterministic_work_is_sufficient"
+        assert bool(state.human_attention) == case.human_need
+        assert state.posture is (Posture.HUMAN_ATTENTION if case.human_need
+                                 else Posture.NEYMA_CAN_ACT)
 
 
 LUNA_WORK_RECORDING = (ROOT / "eval" / "freight_corpus" / "recordings"
@@ -1678,7 +2021,13 @@ def test_the_recorded_luna_reasoning_replays_offline_and_reproduces_the_measured
             --live --stage load_work
 
     ### ONE RUN OF ONE MODEL ON THIRTEEN SYNTHETIC STATES. Not evidence about customers, and the
-    recording is a development optimization: nothing consequential reads it."""
+    recording is a development optimization: nothing consequential reads it.
+
+    ### EIGHT OF THE THIRTEEN ARE STILL ASKED (P9-D46). The run asked thirteen questions and got
+    thirteen right. Five of them asked whether a carrier's promise should hold a tracking deadline
+    that had already passed; that is now decided deterministically and no longer asked, so their
+    five recorded answers are never replayed. The eight that remain replay exactly: the questions
+    did not change, which is why no new live run was needed."""
     from freight_corpus.interpretation_eval import run_stage
     from freight_recon.inference.gateway import ReplayGateway
     from freight_recon.inference.recording import RecordingStore
@@ -1691,17 +2040,19 @@ def test_the_recorded_luna_reasoning_replays_offline_and_reproduces_the_measured
     assert work["failed_calls"] == 0, (
         "the committed recording no longer answers the questions the code asks. Re-measure "
         "with the live eval and commit the new recording.")
-    assert (work["cases"], work["cases_correct"]) == (13, 13)
-    assert (work["wait_expected"], work["wait_correctly_selected"]) == (6, 6)
-    assert (work["act_expected"], work["act_correctly_selected"]) == (7, 7)
-    assert (work["human_cases"], work["human_required_preserved"]) == (2, 2)
+    assert (work["cases"], work["cases_correct"]) == (8, 8)
+    assert (work["wait_expected"], work["wait_correctly_selected"]) == (4, 4)
+    assert (work["act_expected"], work["act_correctly_selected"]) == (4, 4)
+    assert (work["human_cases"], work["human_required_preserved"]) == (1, 1)
     assert work["refused_parts"] == 0 and work["unknown_id_or_action_refusals"] == 0
-    assert work["controls"] == 4 and work["unnecessary_model_calls"] == 0
+    assert work["controls"] == 9 and work["unnecessary_model_calls"] == 0
     assert work["external_effect_rows"] == 0
     summary = ledger.summary()
-    assert summary["served_from"] == {"replay": 13}
+    assert summary["served_from"] == {"replay": 8}
     assert set(summary["calls_by_task"]) == {"reason_load_work"}
-    assert summary["routing"]["settled_deterministically"] == 4
+    assert summary["routing"]["settled_deterministically"] == 9
+    # The recording still holds all thirteen answers that were paid for; five are simply unasked.
+    assert len(json.loads(LUNA_WORK_RECORDING.read_text(encoding="utf-8"))["entries"]) == 13
     recorded = LUNA_WORK_RECORDING.read_text(encoding="utf-8")
     assert "USD" not in recorded and "$" not in recorded and "sk-" not in recorded
 

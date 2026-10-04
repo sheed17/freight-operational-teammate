@@ -399,8 +399,21 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             and o["parsed"]["kind"] == "message"
             and o["parsed"]["payload"]["direction"] == "inbound"
             and o["parsed"]["payload"]["sender"]["role"] in side]
+        if commitment["commitment_kind"] == "send_document":
+            # A promise to send paper is kept by the PAPER, not only by another message: a required
+            # document that arrived after the promise and satisfies its requirement answers it.
+            # Without this a carrier who did exactly what they said is called late for it.
+            received = {o["observation_id"]: o["received_at"] for o in view.observations}
+            for requirement in view.requirements:
+                if requirement.state != "SATISFIED" or requirement.satisfied_by_document_id is None:
+                    continue
+                document = next(d for d in view.documents.values()
+                                if d.entity_id == requirement.satisfied_by_document_id)
+                answers += [oid for oid in document.arrivals
+                            if received.get(oid, "") > commitment["received_at"]]
         if answers:
-            out.append(DischargeExpectation(expectation["expectation_id"], tuple(answers)))
+            out.append(DischargeExpectation(expectation["expectation_id"],
+                                            tuple(dict.fromkeys(answers))))
 
     # A required document is discharged by the document itself — or, when a human moved it onto
     # this load, by the human's act, because M5 has no re-bind and the document's own row still

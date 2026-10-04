@@ -10,8 +10,8 @@
 Stages, smallest first: smoke (5 messages) | labeled (24 messages + 6 correlation cases) |
 corpus (the twenty hostile histories, raw) | scenarios (nine raw-language histories) | all
 
-    # LOAD-WORK REASONING: thirteen operational states where act-or-wait is not settled by the
-    # canonical record, plus four the projection settles alone (counted as NOT sent). Run by name;
+    # LOAD-WORK REASONING: eight operational states where act-or-wait is not settled by the
+    # canonical record, plus nine the projection settles alone (counted as NOT sent). Run by name;
     # it is not part of `all`, keeps its own recording, and is capped at 20 calls unless told more.
     .venv/bin/python scripts/run_freight_interpretation_eval.py --stage load_work
 

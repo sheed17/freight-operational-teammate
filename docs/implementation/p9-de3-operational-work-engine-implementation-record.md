@@ -440,6 +440,58 @@ throughout; nothing below is design-partner evidence.
   them. The cadence is tenant configuration and `None` by default; the unconfirmed-appointment rule
   is always on and is **not** yet tenant-configurable. Both yield shadow candidates only.
 
+- **D41 — `billing_ready` means CUSTOMER billing readiness, and that is not "financially closed".**
+  Decided 2026-10-03; W8-1 is not redesigned and no financial-close model is built.
+  `billing_ready` is the W8-1 / L-Invoice `ELIGIBLE` predicate and nothing else: delivery reported,
+  sell rate consistent, the brokerage's required documents on file, no billing Conflict. It is
+  **true** while a carrier invoice is unattributed, discrepant, unreconciled or carrying an
+  unauthorized accessorial — those are the carrier's side (AP) and do not gate billing the customer
+  (AR). **What they do gate is QUIET**: every one of them is operational work, in `needs`, a named
+  human's, and a load with any of them is never reported as having nothing to do.
+
+  | | customer billing ready | quiet |
+  |---|---|---|
+  | delivered, POD on file, carrier invoice reconciled | yes | **yes** |
+  | delivered, POD on file, carrier invoice unplaced / discrepant / unauthorized accessorial | yes | **no** — `HUMAN_ATTENTION` |
+  | delivered, POD missing or unusable | no | no |
+
+  Regression: `test_customer_billing_ready_is_not_financially_closed_and_such_a_load_is_never_quiet`
+  reads the carrier-side work from the canonical view (not from the needs) after every record of
+  every through-time history, and proves each of the four carrier-side issues was actually met
+  while the customer could be billed. A mutant that reads billing-ready as quiet is caught.
+- **D46 — a counterparty's promise never extends a deadline of ours.** Decided 2026-10-03 and
+  fixed. A carrier's promise may create an Expectation and may make the follow-up point EARLIER; it
+  may not postpone, replace or suppress the brokerage's, the system's or the facility's own
+  deadline (a required document's configured deadline, a confirmed appointment window, the
+  tenant's tracking cadence). With our deadline T1 and the promise's T2, the effective deadline is
+  the earlier one:
+
+  | Situation | Behaviour |
+  |---|---|
+  | T1 already passed when the carrier promises | The need is untouched: it stays open work with its one action. Not `WAIT`, and not a model's question. |
+  | T1 < T2 (promised for later than our deadline) | Waited on **until T1 only** (`OWN_DEADLINE_STILL_CONTROLS`). At T1, with nothing new arriving, it is Neyma's to chase again, although the promise is still pending. |
+  | T2 < T1 (promised for earlier) | Waited on until T2 — the earlier follow-up point. Our own T1 is still on the need afterwards. |
+  | No T1 (the brokerage configured none) | The promise is the only clock: waited on until T2. No deadline is invented. |
+
+  Deterministic; no model decides which deadline governs. `P9-D32` is untouched: no cadence is
+  invented, and this only orders deadlines that already exist.
+
+  **Consequence for the live reasoning eval — stated, not buried.** The live run asked thirteen
+  questions and got thirteen right. Five of them (RC09–RC13) asked whether to act or wait for a
+  carrier's promise when the tracking deadline had **already passed**. Under D46 that is not a
+  model's question, so those five states are now settled deterministically and counted among the
+  controls (nine controls, none sent to a model). **Eight questions are still asked, and replay
+  8 of 8** (WAIT 4/4, action 4/4, human-required preserved 1/1) from the committed recording: their
+  requests are byte-identical, so no new live run was made. §4's "13 / 13" remains what the run
+  measured; it is no longer what the engine asks.
+
+  **A defect the "promise fulfilled" regression exposed, and fixed.** A promise to send a document
+  was answered only by another MESSAGE. "I'll send the POD by 2", POD arrives at 1: the POD need
+  closed, but at 2 the promise went OVERDUE — Neyma proposed chasing a carrier who had done exactly
+  what they said, and M9 raised a human-owned Exception for it. A `send_document` promise is now
+  discharged by a required document that arrives after it and satisfies its requirement. An
+  unusable copy (unsigned) keeps nothing.
+
 ### R03's label change
 
 **Correct, not a hidden regression.** M8's own spec says a wrong expectation is `CANCELLED`
@@ -454,9 +506,9 @@ POD Expectation is raised with its own deadline and goes overdue normally.
 | `P9-D30` | **Addressed.** Remaining: an Exception closed by a human while its cause still stands is not re-raised in M9 (the spine's exception ids are deterministic), so that need then lives in the work projection alone; and an Exception attached to no load cannot be closed by `resolve_exception`. | Owned, visible, never quiet. |
 | `P9-D31` | **Closed** for invoice attribution. Remaining: the TMS side still keys a carrier on the raw string, so one carrier the system of record spells two ways is two carrier rows, and its invoices are `CARRIER_AMBIGUOUS`. | Fails closed to a named human. |
 | `P9-D39` | An owed-line Conflict that outlives its discrepancy is a human's need with no act that resolves it (extends `P9-D37`). | Truthful and owned; a financial resolution is P12. |
-| `P9-D41` | `billing_ready` is the W8-1 customer-invoice eligibility predicate (delivered, sell rate consistent, document packet satisfied, no billing Conflict). It is TRUE while carrier-side human needs are open — an unplaced or discrepant carrier invoice, an unauthorized accessorial. Whether a carrier-side dispute should hold customer billing is **NEEDS VALIDATION**. | Canonical per W8-1 / E30 (AR is POD-gated; AP is a separate obligation). Such a load is never QUIET. |
+| `P9-D41` | **DECIDED** (above): customer billing ready is not financially closed; carrier-side work never gates billing readiness and always prevents QUIET. A financial-close model is future work and is not started here. | Regression and mutant in place. |
 | `P9-D42` | The frozen M9 machine spec (EC-3/EC-6), K-1, and debts `P6-D1` / `M9-AQ-1` still describe only the prior-event referent. | Spec text is the spec owner's to amend. Code and decision are recorded here. |
 | `P9-D44` | The hostile layer never repeats, reverses or re-targets a human act. | Covered by dedicated tests for the two states found. |
 | `P9-D45` | A human act that arrives BEFORE the record it names (an attribution before its invoice) raises `invoice_attribution_unusable`. When the invoice arrives the projection applies her attribution, and the Exception — which still says nothing was placed — stays her question until she closes it. Found by comparing every reordered / late-arrival mutant with its base: 30 of 32 end in exactly the base's work; this is one, and the other is conversation order, which is meaning. | Extra human burden, never quiet; closable since D30. |
-| `P9-D46` | A carrier promise recorded as being ABOUT the missing thing turns a Neyma candidate into `WAIT` until the promised time — even after the brokerage's own deadline has passed, and the promise's kind may be a model's reading. Whether a counterparty's promise should extend the brokerage's own deadline is tenant policy: **NEEDS VALIDATION**. | Bounded by M8's ruling on the promise; a shadow candidate deferred, never a human's need and never authority. |
+| `P9-D46` | **FIXED** (above): a counterparty's promise never extends, replaces or suppresses a deadline of ours. Remaining: a promise of unsettled scope ("I'll get back to you") is still not answered by a document, only by the carrier's next message. | Seven regressions and five mutants in place. |
 

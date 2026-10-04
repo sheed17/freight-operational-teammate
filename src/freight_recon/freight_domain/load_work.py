@@ -237,6 +237,11 @@ class LoadWorkState:
     needs: tuple[OperationalNeed, ...]
     settled: tuple[SettledNeed, ...]
     housekeeping: tuple[str, ...]
+    #: CUSTOMER billing readiness — the W8-1 / L-Invoice ELIGIBLE predicate (delivered, sell rate
+    #: consistent, required documents on file, no billing Conflict). It is NOT "financially closed"
+    #: (P9-D41): a carrier invoice may still be unplaced, discrepant or unreconciled, or carry an
+    #: unauthorized accessorial. That is carrier-side WORK, it is in `needs`, and a load with it is
+    #: never quiet — whatever this flag says.
     billing_ready: bool
     billing_blockers: tuple[str, ...]
     reconciliation: tuple[str, ...]
@@ -354,6 +359,11 @@ class _Build:
     settled: list[SettledNeed] = field(default_factory=list)
     housekeeping: list[str] = field(default_factory=list)
     claimed_exceptions: set[str] = field(default_factory=set)
+    #: need id -> (its OWN authoritative deadline, whether that deadline has already passed). "Own"
+    #: is the brokerage's, the system's or the facility's: a required document's configured
+    #: deadline, a confirmed appointment window, the tenant's tracking cadence. A counterparty's
+    #: promise is never one of these.
+    own_deadline: dict[str, tuple[str, bool]] = field(default_factory=dict)
 
     @property
     def tenant(self) -> str:
@@ -642,7 +652,7 @@ def _expectation_needs(build: _Build) -> list[dict[str, Any]]:
         worst = (NeedStatus.OVERDUE if NeedStatus.OVERDUE in statuses
                  else NeedStatus.UNVERIFIED if NeedStatus.UNVERIFIED in statuses
                  else NeedStatus.DUE)
-        build.add(
+        follow_up = build.add(
             NeedKind.CARRIER_STATUS_OVERDUE, (), status=worst,
             handling=Handling.DETERMINISTIC if only_due else Handling.NEYMA_ACTION_CANDIDATE,
             reason_codes=[r for _, _, r in late],
@@ -653,6 +663,12 @@ def _expectation_needs(build: _Build) -> list[dict[str, Any]]:
             counterparty="carrier", origins=origins, evidence=evidence,
             opened_at=min(e["deadline_utc"] for e, _, _ in late),
             due_by=min(e["deadline_utc"] for e, _, _ in late))
+        # A missed arrival window or tracking cadence is a deadline of OURS that has passed. A
+        # promise that itself went unanswered is not: it was only ever the counterparty's word.
+        ours = [e["deadline_utc"] for e, _, _ in late
+                if e["expected_type"] != "counterparty_update"]
+        if ours:
+            build.own_deadline[follow_up.need_id] = (min(ours), True)
 
     # An Exception raised for a deadline that has since been met: retained, owned, and not a task.
     for exception in view.open_exceptions():
@@ -710,12 +726,14 @@ def _document_needs(build: _Build) -> None:
             # paper is a human's to chase.
             handling, actions = Handling.HUMAN_REQUIRED, (ShadowAction.ASK_HUMAN_REVIEW_DOCUMENT,)
             question = f"How should the missing {doc_type} be obtained?"
-        build.add(
+        required = build.add(
             NeedKind.DOCUMENT_REQUIRED, (doc_type,), status=status, handling=handling,
             reason_codes=reasons,
             why=f"Delivery has been reported and no usable {doc_type} is on file.",
             actions=actions, counterparty="carrier", origins=origins, evidence=evidence,
             opened_at=opened_at, due_by=due_by, question=question)
+        if due_by is not None:
+            build.own_deadline[required.need_id] = (due_by, status is not NeedStatus.OPEN)
 
     # A document still OWED in M8 that no outstanding requirement explains: the delivery report it
     # was raised for has been moved off this load, and M8 could not cancel it. It is not a request
@@ -1109,7 +1127,20 @@ def _apply_pending_promises(build: _Build, pending: Sequence[Mapping[str, Any]])
     only nag: the need WAITS until the promise falls due. If it is recorded as about something
     else, it changes nothing. If the record does not settle what it was about — only its words do —
     then act-or-wait is not a deterministic question, and the need says so (MODEL_REASONING) with
-    both answers on offer. A human's need is never touched by any of this."""
+    both answers on offer. A human's need is never touched by any of this.
+
+    ### A COUNTERPARTY'S PROMISE NEVER EXTENDS A DEADLINE OF OURS (P9-D46). A promise can make the
+    follow-up point EARLIER; it cannot postpone, replace or suppress the brokerage's, the system's
+    or the facility's own deadline. With that deadline T1 and the promise's T2:
+
+      * T1 already passed  -> the need is untouched. Overdue work stays open work: a promise made
+                              after the fact does not turn it back into a wait, and no model is
+                              asked whether it should.
+      * T1 still ahead     -> the wait ends at the EARLIER of T1 and T2. Promised for later than
+                              T1, the need is waited on only until T1.
+      * no T1 at all       -> the promise is the only clock there is: wait until T2.
+
+    Deterministic, and decided here: which deadline governs is never a question for a model."""
     carrier_side = [p for p in pending if _side(p["sender_role"]) == "carrier"]
     if not carrier_side:
         return
@@ -1118,14 +1149,20 @@ def _apply_pending_promises(build: _Build, pending: Sequence[Mapping[str, Any]])
         if covers is None or need.human_required \
                 or need.handling is not Handling.NEYMA_ACTION_CANDIDATE:
             continue
+        own_deadline, own_passed = build.own_deadline.get(need.need_id, (None, False))
+        if own_passed:
+            continue                                  # our deadline passed: nothing defers it
         exact = [p for p in carrier_side if p["kind"] == covers]
         unsettled = [p for p in carrier_side if p["kind"] in _UNSETTLED_PROMISE_KINDS]
         if exact:
             promise = min(exact, key=lambda p: p["due_by"])
+            horizon = min(d for d in (own_deadline, promise["due_by"]) if d is not None)
             build.needs[index] = _replace(
                 need, handling=Handling.WAIT, actions=(ShadowAction.WAIT,),
-                due_by=promise["due_by"],
-                reason_codes=(*need.reason_codes, "COVERED_BY_PENDING_PROMISE"),
+                due_by=horizon,
+                reason_codes=(*need.reason_codes, "COVERED_BY_PENDING_PROMISE",
+                              *(("OWN_DEADLINE_STILL_CONTROLS",)
+                                if horizon != promise["due_by"] else ())),
                 origins=(*need.origins, *promise["need"].origins[:1]),
                 evidence=(*need.evidence, *promise["need"].evidence))
         elif unsettled:
