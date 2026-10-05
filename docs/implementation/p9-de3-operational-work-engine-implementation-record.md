@@ -514,6 +514,17 @@ throughout; nothing below is design-partner evidence.
   asked who anybody is. The carrier-side paper discharge above is a separate rule and is
   unchanged - an address-less dispatcher's promised POD still keeps that promise.
 
+  **That repair still let two address-less senders be one, and reading it back found it.** As
+  written in `bc3a689` the message parser kept the address as `str(address)`, so a record that
+  said `null` for it carried the TEXT "None" - an "identity" every such record shared. The
+  shipper's dock promised from a record with a null address, the receiver's dock wrote from
+  another, and the promise was DISCHARGED citing the receiver's word: the same false QUIET, by a
+  record shape the regressions had not tried (they covered an empty string only). **An address is
+  now kept only as the text the record carries**; a null, a number or a structure is no address
+  (`history._parse_message`), so such a sender has no identity and is matched to nothing. Five
+  regression cases, each RED before the change on the discharged promise itself, and one mutant
+  that restores the coercion.
+
   **What this changes besides the defect - stated, not buried.** A dispatcher's promise is no
   longer answered by the driver's text, nor a contact's by a colleague's reply, nor anyone's by
   their own word from a second address. The code said the first of those was intended; nothing
@@ -541,5 +552,5 @@ POD Expectation is raised with its own deadline and goes overdue normally.
 | `P9-D44` | The hostile layer never repeats, reverses or re-targets a human act. | Covered by dedicated tests for the two states found. |
 | `P9-D45` | A human act that arrives BEFORE the record it names (an attribution before its invoice) raises `invoice_attribution_unusable`. When the invoice arrives the projection applies her attribution, and the Exception — which still says nothing was placed — stays her question until she closes it. Found by comparing every reordered / late-arrival mutant with its base: 30 of 32 end in exactly the base's work; this is one, and the other is conversation order, which is meaning. | Extra human burden, never quiet; closable since D30. |
 | `P9-D46` | **FIXED** (above): a counterparty's promise never extends, replaces or suppresses a deadline of ours. Remaining: a promise of unsettled scope ("I'll get back to you") is still not answered by a document, only by the promiser's own next message. | Seven regressions and five mutants in place. |
-| `P9-D47` | A promise is answered by word only from the exact sender address that made it. Resolving a sender to a PARTY - which contacts, drivers and addresses may answer for one another - is not built, and that rule is `NEEDS VALIDATION`: until it is chosen, a driver does not answer for the dispatcher, a colleague does not answer for a contact, and a sender writing from a second address is not recognised. While such a promise is still owed, another sender's promise on the same load coalesces into it (`P9-D6`). | Fails closed: overdue, owned, never quiet. Eight regression cases and three mutants in place. |
+| `P9-D47` | A promise is answered by word only from the exact sender address that made it. Resolving a sender to a PARTY - which contacts, drivers and addresses may answer for one another - is not built, and that rule is `NEEDS VALIDATION`: until it is chosen, a driver does not answer for the dispatcher, a colleague does not answer for a contact, and a sender writing from a second address is not recognised. While such a promise is still owed, another sender's promise on the same load coalesces into it (`P9-D6`). The parser still turns a null sender NAME into the text "None"; a name is displayed and is never a match key, so that is cosmetic and left as it is. | Fails closed: overdue, owned, never quiet. Thirteen regression cases and four mutants in place. |
 

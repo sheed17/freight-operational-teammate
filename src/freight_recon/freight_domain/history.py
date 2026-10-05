@@ -339,11 +339,15 @@ def _parse_message(payload: Mapping[str, Any]) -> dict[str, Any]:
     role = str(_require(sender, "role", what="message sender"))
     if role not in SENDER_ROLES:
         raise UnparseableRecord(f"sender role {role!r} is not one of {list(SENDER_ROLES)}")
+    # The address is the sender's IDENTITY (`projection.sender_identity`), so it is kept only as the
+    # text the record carries. A null, a number or a structure is NO address and is not turned into
+    # one: `str(None)` is the text "None", and two senders with no address would then be one sender.
+    address = sender.get("address")
     return {
         "direction": direction,
         "thread_key": str(_require(payload, "thread_key", what=what)),
         "sender": {"role": role, "name": str(sender.get("name", "")),
-                   "address": str(sender.get("address", ""))},
+                   "address": address if isinstance(address, str) else ""},
         "subject": str(payload.get("subject", "")),
         "body": str(_require(payload, "body", what=what)),
         "quoted_external_ids": [str(x) for x in payload.get("quoted_external_ids", ())],

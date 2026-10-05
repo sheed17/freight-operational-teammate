@@ -49,6 +49,7 @@ DETECTORS = f"{FD}/detectors.py"
 MODEL = f"{FD}/model.py"
 MAPPING = f"{FD}/entity_mapping.py"
 INTAKE = f"{FD}/intake.py"
+HISTORY = f"{FD}/history.py"
 
 T = "eval/tests/test_p9_load_work.py"
 
@@ -96,6 +97,7 @@ WHOSE = f"{T}::test_a_carriers_document_does_not_keep_somebody_elses_promise"
 WORD = f"{T}::test_a_promise_is_kept_only_by_a_word_from_the_sender_who_made_it"
 ANON = (f"{T}::test_a_sender_with_no_address_keeps_no_promise_by_word_and_paper_is_another_"
         f"matter")
+NOT_TEXT = f"{T}::test_an_address_the_record_does_not_carry_as_text_is_no_identity"
 CONTROLS = f"{T}::test_the_control_states_are_settled_without_a_model"
 
 
@@ -339,6 +341,12 @@ CASES = [
      [(PROJECTION, '    return address if address.strip() else None\n',
        '    return address if address.strip() else payload["sender"]["name"]  # MUTANT\n')],
      ANON),
+
+    ("an address that is NOT TEXT is turned into text - a null becomes the text \"None\", so two "
+     "senders whose records carry no address have one identity and answer each other's promise",
+     [(HISTORY, '                   "address": address if isinstance(address, str) else ""},\n',
+       '                   "address": str(sender.get("address", ""))},  # MUTANT\n')],
+     NOT_TEXT),
 
     ("a blocked load is called billing-ready",
      [(WORK, '        billing_ready=invoice is not None and invoice.lifecycle_state == "ELIGIBLE",\n',

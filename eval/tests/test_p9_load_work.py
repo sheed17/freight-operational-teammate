@@ -1949,11 +1949,17 @@ def _two_carriers_delivered(tag, *, day="2026-08-10"):
     return h, load, refs
 
 
+def _texted(sender):
+    """A sender whose address is a phone number wrote a text; anybody else an email - and so did a
+    sender whose record carries no address, or carries something that is not text at all."""
+    return isinstance(sender[2], str) and sender[2].startswith("+")
+
+
 def _writes(h, label, at, refs, sender, body, *, due_by=None, kind="status_update",
             external_id=None):
     """One inbound message from `sender` - a text when the address is a phone number, an email
     otherwise - promising a follow-up by `due_by` when one is given."""
-    texted = sender[2].startswith("+")
+    texted = _texted(sender)
     h.message(label, at, channel="sms" if texted else "email",
               source_system=NORTHLINE_SMS if texted else NORTHLINE_OPS, sender=sender,
               thread=f"{label}-thread", subject="" if texted else "RE: your load", body=body,
@@ -1991,7 +1997,7 @@ def _what_the_word_did(store, result, load, speaker):
         "SELECT subject_ref FROM expectations WHERE tenant = ? AND expectation_id = ?",
         (NORTHLINE, expectation_id)).fetchone()[0]
     word = intake.foundation.observation_by_external(
-        NORTHLINE_SMS if speaker[2].startswith("+") else NORTHLINE_OPS, "<a-word>")
+        NORTHLINE_SMS if _texted(speaker) else NORTHLINE_OPS, "<a-word>")
     unmet = [tuple(r) for r in store.conn.execute(
         "SELECT state, owner_id, source_ref FROM exceptions WHERE tenant = ? "
         "AND type = 'expectation_unmet'", (NORTHLINE,))]
@@ -2090,6 +2096,46 @@ def test_a_sender_with_no_address_keeps_no_promise_by_word_and_paper_is_another_
     assert (promised, bool(late), discharged_by) == ("DISCHARGED", False, paper["observation_id"])
     assert result.state(NORTHLINE, load).routine_work_is_zero
     store.close()
+
+
+@pytest.mark.parametrize("promiser_address,speaker_address", [
+    (None, None), (None, "None"), (0, 0), ([], []), ({}, {}),
+], ids=["a-null-and-a-null", "a-null-and-the-text-None", "a-zero-and-a-zero",
+        "an-empty-list-and-another", "an-empty-object-and-another"])
+def test_an_address_the_record_does_not_carry_as_text_is_no_identity(
+        tmp_path, promiser_address, speaker_address):
+    """An address is an identity only as the TEXT a record carries. A record that says `null` for
+    it - or a number, or a structure - has no address, and it is not given one by being turned
+    into text: the shipper's dock promises by 2 from a record with no address, the receiver's dock
+    writes at 1 from another, and the two are NOT one sender. The promise is OVERDUE at 2:05,
+    nothing is cited for it, M9 holds one owned Exception, and the load is not quiet.
+    (Reading back the third review's repair: the parser wrote `str(address)`, so a null became the
+    text "None", two address-less senders had the same "identity", and the receiver's word kept
+    the shipper's promise - the false QUIET that repair was for, by a record shape it did not
+    try.)"""
+    shipper = (SHIPPER_DOCK[0], SHIPPER_DOCK[1], promiser_address)
+    receiver = (RECEIVER_DOCK[0], RECEIVER_DOCK[1], speaker_address)
+    h, load = _a_promise_and_then_a_word("NOTXT", shipper, receiver, "status_update")
+    store = _store(tmp_path, "not-text.db")
+    result = run_work_histories(store.conn, WORK_SETUPS, [h.build({})])
+    state, (expectation_id, promised, _, discharged_by), (word, subject), unmet = \
+        _what_the_word_did(store, result, load, receiver)
+    promise_record, = (o for o in result.intakes[NORTHLINE].foundation.observations()
+                       if o["parsed"]["kind"] == "message" and o["parsed"]["payload"]["asserts"])
+    store.close()
+
+    # The trap is real: the other dock's word IS on this load, from the promiser's own role.
+    assert word is not None and (word["state"], word["bound_entity_ref"]) == ("BOUND", subject)
+    assert word["parsed"]["payload"]["sender"]["role"] == shipper[0]
+    assert (promised, discharged_by) == ("OVERDUE", None), \
+        f"a sender whose address is {speaker_address!r} kept the promise of one whose is " \
+        f"{promiser_address!r}"
+    assert unmet == [("OPEN", "dana.ortiz", expectation_id)], unmet
+    assert state.posture is Posture.HUMAN_ATTENTION and not state.routine_work_is_zero
+    # And why: what is not text is kept as NO address - never as the text of whatever it was.
+    for record, address in ((promise_record, promiser_address), (word, speaker_address)):
+        assert record["parsed"]["payload"]["sender"]["address"] == (
+            address if isinstance(address, str) else ""), record["parsed"]["payload"]["sender"]
 
 
 def test_a_word_keeps_a_promise_once_and_the_same_way_on_replay_and_after_a_restart(tmp_path):
