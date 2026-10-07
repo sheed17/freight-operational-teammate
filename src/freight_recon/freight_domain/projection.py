@@ -199,10 +199,16 @@ class LoadView:
     def entity_refs(self) -> set[str]:
         return {e.ref for e in self.entities()}
 
+    def standing_tracking(self) -> list[TrackingEvent]:
+        """Every movement claim that still STANDS. One a recorded human overruled stays in
+        `tracking` as what its source SAID, and it is no longer evidence of where the truck has
+        been: it reaches no stop, reports no delivery, starts no watch and puts the load at no
+        stage. Whatever CONCLUDES where the truck has been reads this, never `tracking`."""
+        return [t for t in self.tracking if t.overruled_by is None]
+
     def delivered_claims(self) -> list[TrackingEvent]:
         """Every source that has SAID this load delivered. A claim, from each of them (CD-15)."""
-        return [t for t in self.tracking
-                if t.value("status") == "DELIVERED" and t.overruled_by is None]
+        return [t for t in self.standing_tracking() if t.value("status") == "DELIVERED"]
 
     def open_conflicts(self) -> list[dict[str, Any]]:
         return [c for c in self.conflicts if c["state"] in OPEN_CONFLICT_STATES]

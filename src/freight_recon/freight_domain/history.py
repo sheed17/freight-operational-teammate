@@ -479,6 +479,18 @@ def parse_record(record: InboundRecord) -> dict[str, Any]:
             f"{list(LEGAL_CHANNELS[record.kind])}")
     if not isinstance(record.payload, Mapping):
         raise UnparseableRecord("the record payload is not a mapping")
+    if record.kind == "human_assertion" and (to_utc(record.as_of, what="as_of")
+                                             > to_utc(record.received_at, what="received_at")):
+        # ### A HUMAN ACT CANNOT KNOW THE FUTURE. A human's decision settles what was said BEFORE
+        # it, and "before" is read from this instant - so an act dated after it was received would
+        # settle everything said until then, in advance, including what nobody has said yet. It is
+        # not a decision about an earlier moment recorded late (that is legal, and ordinary); it is
+        # a record that contradicts itself, and it is held unreadable for a named human rather than
+        # applied as authority. The rule is this console path's alone: a source's own clock running
+        # ahead is not a claim to authority and is not judged here.
+        raise UnparseableRecord(
+            f"a human act cannot be about a moment later than it was received: as_of "
+            f"{record.as_of!r} is later than received_at {record.received_at!r}")
     return {
         "kind": record.kind,
         "channel": record.channel,

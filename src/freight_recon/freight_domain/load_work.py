@@ -45,7 +45,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from .detectors import STAGES_PAST_STOP, TRACKING_UPDATE, UNDER_WAY_STATUSES
+from .detectors import ARRIVAL_STATUSES, STAGES_PAST_STOP, TRACKING_UPDATE, UNDER_WAY_STATUSES
 from .financial import blocking_discrepancies
 from .foundation import EvidenceCondition, stable_id
 from .history import CARRIER_SIDE_ROLES, TenantSetup, utc_datetime
@@ -477,7 +477,8 @@ def _stage(view: LoadView) -> Stage:
         return Stage.DISPUTED
     if view.delivered_claims():
         return Stage.DELIVERED
-    statuses = {t.value("status") for t in view.tracking}
+    # Where the load IS is read from the claims that stand: one a human overruled puts it nowhere.
+    statuses = {t.value("status") for t in view.standing_tracking()}
     if statuses & set(UNDER_WAY_STATUSES):
         return Stage.IN_TRANSIT
     if "AT_PICKUP" in statuses:
@@ -995,10 +996,14 @@ def _financial_needs(build: _Build) -> None:
 # --------------------------------------------------------------------------------- appointments
 
 def _stop_reached(view: LoadView, stop_key: str) -> bool:
+    """Whether a STANDING claim puts the truck at this stop or past it. A stop's reported arrival
+    and departure are the claims made AT it, and they are read here from the claims themselves:
+    one a recorded human overruled is still on the stop as what was said, and reaches nothing."""
     stop = view.stops[stop_key]
-    if stop.field_of("reported_arrival").facts or stop.field_of("reported_departure").facts:
+    standing = view.standing_tracking()
+    if any(t.stop_key == stop_key and t.value("status") in ARRIVAL_STATUSES for t in standing):
         return True
-    statuses = {t.value("status") for t in view.tracking}
+    statuses = {t.value("status") for t in standing}
     return bool(statuses & set(STAGES_PAST_STOP.get(stop.value("stop_type"), ())))
 
 
@@ -1210,6 +1215,12 @@ def _settlements(build: _Build) -> None:
         if identity not in open_ids:
             build.settled.append(SettledNeed(identity, kind, how, by))
 
+    # A movement watch is SATISFIED by the record that answered it only while that record stands.
+    # One a recorded human has since overruled satisfied nothing: the watch it answered ended by
+    # HER decision, and - when nothing else answers it - is owed again as a need of its own.
+    overruled = {t.origin_observation_id: t.overruled_by for t in view.tracking
+                 if t.overruled_by is not None}
+    standing = {t.origin_observation_id for t in view.standing_tracking()}
     late_types: set[str] = set()
     for expectation in view.expectations:
         etype, state = expectation["expected_type"], expectation["state"]
@@ -1219,6 +1230,14 @@ def _settlements(build: _Build) -> None:
         by = (f"observation:{expectation['discharge_observation_id']}"
               if expectation["discharge_observation_id"]
               else f"expectation:{expectation['expectation_id']}")
+        answer = expectation["discharge_observation_id"]
+        if state == "DISCHARGED" and answer in overruled and answer not in standing \
+                and (etype == TRACKING_UPDATE or etype.startswith("arrival:")):
+            kind = (NeedKind.TRACKING_UPDATE_PENDING if etype == TRACKING_UPDATE
+                    else NeedKind.ARRIVAL_PENDING)
+            settle(kind, () if etype == TRACKING_UPDATE else (etype.split(":", 1)[1],),
+                   "SUPERSEDED", f"observation:{overruled[answer]}")
+            continue
         if etype == "counterparty_update":
             settle(NeedKind.CARRIER_UPDATE_PENDING, (expectation["expectation_id"],), how, by,
                    scope="tenant")

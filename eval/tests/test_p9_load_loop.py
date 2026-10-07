@@ -37,14 +37,15 @@ for _entry in (str(ROOT / "src"), str(ROOT / "eval")):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-from freight_corpus.builders import says  # noqa: E402
+from freight_corpus.builders import TRACKING, says  # noqa: E402
 from freight_corpus.loop_histories import (  # noqa: E402
     LOOP_SETUPS,
     Load,
     _builder,
+    _in_arrival_order,
     build_loop_histories,
 )
-from freight_corpus.parties import CEDAR, NORTHLINE  # noqa: E402
+from freight_corpus.parties import CEDAR, CEDAR_OPS, NORTHLINE, SETUPS  # noqa: E402
 from freight_corpus.work_attack import (  # noqa: E402
     _MONEY,
     Mutant,
@@ -73,6 +74,7 @@ from freight_recon.freight_domain.load_loop import (  # noqa: E402
 )
 from freight_recon.freight_domain.load_work import (  # noqa: E402
     NeedKind,
+    NeedStatus,
     ShadowAction,
     Stage,
     evaluate_load_work,
@@ -93,16 +95,45 @@ REQUIRED_TROUBLE = frozenset({
 })
 
 
-def _audit(state, view, tenant):
-    return audit_state(state, view, tenant=tenant)
+_OWED = ("RAISED", "OVERDUE", "INDETERMINATE")
+_AT_A_STOP = frozenset({"AT_PICKUP", "LOADED", "AT_DELIVERY", "DELIVERED"})
+_PAST_A_STOP = {"PICKUP": frozenset({"LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED"}),
+                "DELIVERY": frozenset({"AT_DELIVERY", "DELIVERED"})}
 
 
-def _run(path: Path, histories=None, **kw) -> tuple[LoopRunResult, WorkflowStore]:
+def _unwatched_stops(view, setup) -> list[str]:
+    """A SECOND ORACLE, written without the detectors: at a brokerage that watches arrivals, a stop
+    with a confirmed appointment has either a STANDING claim that the truck has been there, or a
+    live watch. Neither means nobody is waiting for that truck - which is how a load whose only
+    delivery report a human overruled went quiet. `audit_state` cannot see it: it reads what the
+    record still OWES, and a watch that was wrongly answered owes nothing."""
+    if setup.arrival_tracking_channel is None:
+        return []
+    out: list[str] = []
+    for stop_key, appointment in sorted(view.appointments.items()):
+        if appointment.value("status") != "CONFIRMED" or appointment.value("window") is None:
+            continue
+        kind = view.stops[stop_key].value("stop_type")
+        only = len([s for s in view.stops.values() if s.value("stop_type") == kind]) == 1
+        been = [t for t in view.tracking if t.overruled_by is None and (
+            (t.stop_key == stop_key and t.value("status") in _AT_A_STOP)
+            or (only and t.stop_key is None and t.value("status") in _PAST_A_STOP[kind]))]
+        live = [e for e in view.expectations
+                if e["expected_type"] == f"arrival:{stop_key}" and e["state"] in _OWED]
+        if not been and not live:
+            out.append(f"{view.load.value('load_ref')}: UNWATCHED STOP - nothing standing says "
+                       f"the truck reached {stop_key}, and nothing is waiting for it")
+    return out
+
+
+def _run(path: Path, histories=None, *, setups=LOOP_SETUPS,
+         **kw) -> tuple[LoopRunResult, WorkflowStore]:
     histories = build_loop_histories() if histories is None else histories
     path.mkdir(parents=True, exist_ok=True)
     store = WorkflowStore(path / "loop.db", tenant=histories[0].tenant)
-    kw.setdefault("audit", _audit)
-    return run_load_loop(store.conn, LOOP_SETUPS, histories, **kw), store
+    kw.setdefault("audit", lambda state, view, tenant: [
+        *audit_state(state, view, tenant=tenant), *_unwatched_stops(view, setups[tenant])])
+    return run_load_loop(store.conn, setups, histories, **kw), store
 
 
 @pytest.fixture(scope="module")
@@ -207,6 +238,33 @@ def test_the_oracle_fires_when_a_load_is_made_falsely_quiet(loop):
     assert honest.needs and audit_state(honest, view, tenant=NORTHLINE) == []
     findings = audit_state(replace(honest, needs=()), view, tenant=NORTHLINE)
     assert any("FALSE QUIET" in f for f in findings) and any("SILENT STALL" in f for f in findings)
+
+
+def test_the_second_oracle_fires_when_a_stop_is_left_unwatched(loop):
+    """Anti-vacuity for `_unwatched_stops`, which every run in this file applies to every
+    evaluation of every load. It is quiet about the loads as they are - over a population that is
+    counted - and it objects the moment every claim that answered a watch is overruled and no
+    watch is owed in its place: the state the unrepaired spine left a load in."""
+    result, _ = loop
+    setup = LOOP_SETUPS[NORTHLINE]
+    views = result.intakes[NORTHLINE].projection().loads
+    confirmed = [(view, key) for view in views.values() for key, a in view.appointments.items()
+                 if a.value("status") == "CONFIRMED"]
+    assert len(views) == 21 and len(confirmed) >= 30
+    assert [f for view in views.values() for f in _unwatched_stops(view, setup)] == []
+
+    late = views[result.story(NORTHLINE, "LD-50014").load_id]         # delivered, POD never came
+    answered = [t for t in late.tracking if t.stop_key == "S2"]
+    assert answered and not [e for e in late.expectations
+                             if e["expected_type"] == "arrival:S2" and e["state"] in _OWED]
+    for event in answered:
+        event.overruled_by = "obs-nobody"                # as if a human had overruled every one
+    bare = [t for t in late.tracking if t.stop_key is None and t.overruled_by is None
+            and t.value("status") in _PAST_A_STOP["DELIVERY"]]
+    for event in bare:
+        event.overruled_by = "obs-nobody"
+    assert [f.split(": ", 1)[1][:14] for f in _unwatched_stops(late, setup)] == ["UNWATCHED STOP"]
+    assert _unwatched_stops(late, replace(setup, arrival_tracking_channel=None)) == []
 
 
 def test_a_load_nobody_has_booked_is_never_called_quiet(few):
@@ -524,6 +582,8 @@ def test_a_human_who_says_it_has_not_delivered_overrules_the_claim(tmp_path):
         assert not moving.escalations and not moving.billing_ready
         assert moving.state.need(NeedKind.DOCUMENT_REQUIRED) is None
         assert moving.state.need(NeedKind.TRACKING_UPDATE_PENDING) is not None
+        # ... and to watching the DELIVERY: the appointment his "delivered" had answered is owed.
+        assert moving.state.need(NeedKind.ARRIVAL_PENDING) is not None
         overruled = [t for t in view.tracking if t.overruled_by]
         assert [(t.value("signal"), t.value("status")) for t in overruled] \
             == [("driver_assertion", "DELIVERED")]
@@ -572,6 +632,498 @@ def test_no_source_but_a_recorded_human_can_speak_as_the_owner():
     with pytest.raises(UnparseableRecord, match="owner_confirmation"):
         parse_record(forged)
     assert parse_record(h.records[-1])["payload"]["signal"] == "tracking_provider_position"
+
+
+# ============================================================ an overruled claim answers nothing
+
+#: Northline as the freight corpus ships it: an arrival watch and NO tracking cadence. Whatever
+#: keeps a load from going falsely quiet under these setups is not the optional cadence.
+NO_CADENCE = SETUPS
+#: The delivery appointment below is 09:00-11:00 Eastern on the second day.
+WINDOW_CLOSES = "2026-09-02T15:00:00.000Z"
+LOOKS_AGAIN = "2026-09-02T15:01:00.000Z"
+
+
+def _picked_up(history_id: str, *, tenant: str = NORTHLINE, **load):
+    """A booked load, picked up inside its window and pinged inside the cadence overnight."""
+    h = _builder(history_id, "an overruled claim", "2026-09-01", "contradictory_tracking",
+                 tenant=tenant)
+    cargo = Load(h, "LD-59001", customer="great_lakes_bev", carrier="summit", sell=172000,
+                 buy=141000, serial="79001", pickup="Great Lakes Beverage Bloomington",
+                 delivery="Maumee Distributing", delivery_zone="America/New_York", **load)
+    cargo.book()
+    cargo.track("at-pickup", h.t("10:10"), "AT_PICKUP", "S1")
+    cargo.track("loaded", h.t("11:00"), "LOADED", "S1")
+    cargo.pings(("14:30", 0), ("18:00", 0), ("21:30", 0), ("01:00", 1), ("04:30", 1))
+    return h, cargo
+
+
+def _falsely_delivered(history_id: str, *, overruled: bool = True, **load):
+    """The driver says delivered before the delivery window opens. The provider puts him on the
+    road. Then - unless `overruled` is False - Dana says he has NOT delivered."""
+    h, cargo = _picked_up(history_id, **load)
+    cargo.sms("driver-says-delivered", h.t("07:30", 1), "delivered, empty",
+              says("DELIVERED", "S2"))
+    cargo.track("provider-says-moving", h.t("07:35", 1), "IN_TRANSIT", position="I-75 N")
+    if overruled:
+        h.human("dana-says-moving", h.t("08:00", 1), "dana.ortiz", "confirm_movement_status",
+                refs=cargo.refs, status="IN_TRANSIT", note="receiver has not seen him")
+    return h, cargo
+
+
+def _watches(view, expected_type: str) -> list[dict]:
+    return [e for e in view.expectations if e["expected_type"] == expected_type]
+
+
+def _work(moment) -> list[tuple]:
+    return [(n.kind, n.status, n.reason_codes, n.due_by) for n in moment.state.needs]
+
+
+def _view(result: LoopRunResult, tenant: str = NORTHLINE):
+    story = result.story(tenant, "LD-59001")
+    return story, result.intakes[tenant].projection().loads[story.load_id]
+
+
+def test_an_overruled_delivery_claim_stops_answering_the_delivery_watch(tmp_path):
+    """THE REVIEW'S REPRODUCTION, with no tracking cadence to hide behind. The driver's "delivered"
+    answered the delivery appointment's watch. Dana overrules him - and the watch his word answered
+    is OWED AGAIN: the load is not quiet, the window closes with nobody at the dock, and the late
+    delivery is work, exactly as it is for a truck that is simply late. His claim, the watch it
+    once answered and her decision are all still on the record."""
+    h, cargo = _falsely_delivered("QA")
+    cargo.track("still-moving", h.t("16:30", 1), "IN_TRANSIT", position="I-75 N")
+    h.clock("end", h.t("22:00", 1))
+    g, plain = _picked_up("QA")
+    plain.track("provider-says-moving", g.t("07:35", 1), "IN_TRANSIT", position="I-75 N")
+    plain.track("still-moving", g.t("16:30", 1), "IN_TRANSIT", position="I-75 N")
+    g.clock("end", g.t("22:00", 1))
+    result, store = _run(tmp_path / "overruled", [h.build({})], setups=NO_CADENCE)
+    simply_late, late_store = _run(tmp_path / "late", [g.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("driver-says-delivered").state.stage is Stage.DELIVERED
+        decided = story.at("dana-says-moving")
+        assert decided.state.stage is Stage.IN_TRANSIT and not decided.quiet
+        watch = decided.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == WINDOW_CLOSES
+        assert decided.next_step == "WAIT" and not decided.escalations
+
+        closed = [m for m in story.moments if m.trigger_kind == "tick"]
+        assert [m.as_of for m in closed] == [LOOKS_AGAIN]
+        assert [n.kind for n in closed[0].overdue] == [NeedKind.CARRIER_STATUS_OVERDUE]
+        assert closed[0].overdue[0].reason_codes == ("ARRIVAL:S2_OVERDUE",)
+        assert closed[0].next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+
+        last = story.last
+        assert not last.quiet and last.next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+        assert [m.trigger for m in story.moments if m.quiet] == []
+        # The work is what a truck that is simply late owes: no less, and no second copy.
+        plain_last = simply_late.story(NORTHLINE, "LD-59001").last
+        assert _work(last) == _work(plain_last) and len(_work(last)) == 1
+
+        # NOTHING WAS REWRITTEN TO GET THERE. The watch his claim answered is still DISCHARGED, by
+        # his record; the watch that is owed is a second row; his claim is still on the load,
+        # overruled; and her decision still holds the dispute it settled, with both parties.
+        watches = _watches(view, "arrival:S2")
+        assert [e["state"] for e in watches] == ["DISCHARGED", "OVERDUE"]
+        claim = [t for t in view.tracking if t.overruled_by]
+        assert [(t.value("signal"), t.value("status")) for t in claim] \
+            == [("driver_assertion", "DELIVERED")]
+        assert watches[0]["discharge_observation_id"] == claim[0].origin_observation_id
+        conflicts = [c for c in view.conflicts if c["field"] == "tracking_status"]
+        assert [(c["state"], len(c["parties"])) for c in conflicts] == [("RESOLVED_BY_HUMAN", 2)]
+        # ... and the picture never says his overruled word SATISFIED anything.
+        told = {(s.kind, s.how, s.by) for m in story.moments if m.index >= decided.index
+                for s in m.state.settled}
+        assert len(told) >= 4
+        assert not [t for t in told if t[1] == "SATISFIED"
+                    and t[2] == f"observation:{claim[0].origin_observation_id}"]
+        assert (NeedKind.ARRIVAL_PENDING, "SUPERSEDED",
+                f"observation:{claim[0].overruled_by}") in told
+        assert result.findings == [] and simply_late.findings == []
+        assert result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+        late_store.close()
+
+
+def test_a_missed_delivery_is_work_of_its_own_beside_the_tracking_cadence(tmp_path):
+    """The same load at a brokerage that DOES have a tracking cadence, with the provider pinging
+    inside it all day. The cadence is satisfied the whole time - and the missed delivery
+    appointment is overdue anyway, under its own reason. The cadence is extra work; it is not what
+    stands between this load and silence."""
+    h, cargo = _falsely_delivered("QB")
+    for clock in ("10:30", "13:30", "16:30", "19:30"):
+        cargo.track(f"still-moving-{clock.replace(':', '')}", h.t(clock, 1), "IN_TRANSIT",
+                    position="I-75 N")
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        decided = story.at("dana-says-moving")
+        assert {n.kind for n in decided.state.needs} \
+            == {NeedKind.ARRIVAL_PENDING, NeedKind.TRACKING_UPDATE_PENDING}
+        after = [m for m in story.moments if m.as_of >= LOOKS_AGAIN]
+        assert len(after) >= 5 and after[0].trigger_kind == "tick"
+        for moment in after:
+            late = moment.state.need(NeedKind.CARRIER_STATUS_OVERDUE)
+            assert late is not None and late.reason_codes == ("ARRIVAL:S2_OVERDUE",)
+            assert late.due_by == WINDOW_CLOSES and not moment.quiet
+            cadence = moment.state.need(NeedKind.TRACKING_UPDATE_PENDING)
+            assert cadence is not None and cadence.status is NeedStatus.PENDING
+        assert [e["state"] for e in _watches(view, "arrival:S2")] == ["DISCHARGED", "OVERDUE"]
+        assert result.findings == [] and result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+
+
+def test_the_watch_an_overruled_claim_answered_is_answered_by_a_real_delivery(tmp_path):
+    """After Dana overrules him the truck really arrives, inside the window. The watch that became
+    owed again is discharged by THAT record, on time; there is one owed watch at a time and never
+    a third row; and with the POD on file the load is quiet and billing-ready."""
+    h, cargo = _falsely_delivered("QC")
+    cargo.track("at-delivery", h.t("08:40", 1), "AT_DELIVERY", "S2")
+    cargo.delivered("delivered", h.t("08:55", 1))
+    cargo.pod("pod", h.t("09:30", 1))
+    h.clock("end", h.t("12:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("dana-says-moving").state.need(NeedKind.ARRIVAL_PENDING) is not None
+        arrived = story.at("at-delivery")
+        assert arrived.state.need(NeedKind.ARRIVAL_PENDING) is None and not arrived.overdue
+        watches = _watches(view, "arrival:S2")
+        assert [(e["state"], bool(e["late"])) for e in watches] \
+            == [("DISCHARGED", False), ("DISCHARGED", False)]
+        assert len({e["expectation_id"] for e in watches}) == 2
+        real = next(o["observation_id"] for o in view.observations
+                    if o["parsed"]["kind"] == "tracking_event"
+                    and o["parsed"]["payload"]["status"] == "AT_DELIVERY")
+        assert watches[1]["discharge_observation_id"] == real
+        waiting = [[n for n in m.state.needs if n.reason_codes == ("ARRIVAL_EXPECTED:S2",)]
+                   for m in story.moments]
+        assert max(len(w) for w in waiting) == 1 and len([w for w in waiting if w]) >= 5
+        assert not [m for m in story.moments if m.overdue], "an on-time delivery was called late"
+        done = story.at("pod")
+        assert done.state.stage is Stage.DELIVERED and done.quiet and done.billing_ready
+        assert story.last.quiet and result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_watch_other_standing_evidence_answers_is_not_reopened(tmp_path):
+    """The driver says delivered; the provider has him AT the dock. Dana says: at the dock, not
+    unloaded. His "delivered" is overruled - and the delivery appointment's watch is NOT owed
+    again, because the truck's arrival is still evidenced by the provider and by her."""
+    h, cargo = _picked_up("QD")
+    cargo.sms("driver-says-delivered", h.t("07:30", 1), "delivered, empty",
+              says("DELIVERED", "S2"))
+    cargo.track("provider-at-the-dock", h.t("07:35", 1), "AT_DELIVERY", "S2")
+    h.human("dana-says-at-the-dock", h.t("08:00", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="AT_DELIVERY", stop_key="S2", note="checked in, not unloaded")
+    h.clock("end", h.t("12:00", 1))                          # two hours after the window closed
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("provider-at-the-dock").state.stage is Stage.DISPUTED
+        decided = story.at("dana-says-at-the-dock")
+        assert [(t.value("signal"), t.value("status")) for t in view.tracking if t.overruled_by] \
+            == [("driver_assertion", "DELIVERED")]
+        assert [e["state"] for e in _watches(view, "arrival:S2")] == ["DISCHARGED"]
+        later = [m for m in story.moments if m.index >= decided.index]
+        assert later and not [m for m in later if m.overdue]
+        assert not [m for m in later if m.state.need(NeedKind.ARRIVAL_PENDING)]
+        assert decided.state.stage is Stage.IN_TRANSIT and not decided.billing_ready
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_an_overruled_claim_reaches_no_stop(tmp_path):
+    """The delivery appointment was never confirmed, so verifying it is work while the truck is on
+    its way. The driver's "delivered" ends that work; Dana overrules him; and the work is back -
+    an overruled claim does not make a stop reached."""
+    h = _falsely_delivered("QU", delivery_status="REQUESTED")[0]
+    h.clock("end", h.t("12:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, _ = _view(result)
+        before = story.at("loaded").state.need(NeedKind.APPOINTMENT_UNCONFIRMED)
+        assert before is not None and before.reason_codes == ("APPOINTMENT_NOT_CONFIRMED:S2",)
+        assert story.at("driver-says-delivered").state.need(
+            NeedKind.APPOINTMENT_UNCONFIRMED) is None
+        decided = story.at("dana-says-moving")
+        assert not decided.quiet and decided.next_step == "NEYMA:VERIFY_APPOINTMENT"
+        assert _work(decided) == _work(story.at("loaded"))
+        assert not story.last.quiet and result.findings == []
+    finally:
+        store.close()
+
+
+def test_the_stage_of_a_load_does_not_rest_on_an_overruled_claim(tmp_path):
+    """The driver says loaded; the provider still has him at the pickup. Dana says: at the pickup.
+    The picture says so too - it does not go on calling the load picked up and rolling."""
+    h = _builder("QP", "an overruled claim", "2026-09-01", "contradictory_tracking")
+    cargo = Load(h, "LD-59001", customer="great_lakes_bev", carrier="summit", sell=172000,
+                 buy=141000, serial="79001", pickup="Great Lakes Beverage Bloomington",
+                 delivery="Maumee Distributing", delivery_zone="America/New_York")
+    cargo.book()
+    cargo.track("at-pickup", h.t("10:10"), "AT_PICKUP", "S1")
+    cargo.sms("driver-says-loaded", h.t("10:30"), "loaded, rolling", says("LOADED", "S1"))
+    cargo.track("provider-still-at-pickup", h.t("10:40"), "AT_PICKUP", "S1")
+    h.human("dana-says-at-pickup", h.t("11:00"), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="AT_PICKUP", stop_key="S1", note="shipper: still on the dock")
+    h.clock("end", h.t("11:30"))
+    result, store = _run(tmp_path / "plain", [h.build({})], setups=NO_CADENCE)
+    timed, timed_store = _run(tmp_path / "cadence", [h.build({})])
+    try:
+        story, view = _view(result)
+        assert story.at("driver-says-loaded").state.stage is Stage.IN_TRANSIT
+        assert story.at("provider-still-at-pickup").state.stage is Stage.DISPUTED
+        decided = story.at("dana-says-at-pickup")
+        assert decided.state.stage is Stage.AT_PICKUP
+        assert "at the pickup" in decided.happening and "in transit" not in decided.happening
+        # The pickup itself was evidenced by the provider, and still is: nothing there is reopened.
+        assert [e["state"] for e in _watches(view, "arrival:S1")] == ["DISCHARGED"]
+        assert not decided.quiet and decided.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        assert result.findings == []
+
+        # Where there IS a tracking cadence, his "loaded" started its clock - and, overruled, it
+        # starts none: a truck a human says is still on the dock is not under way.
+        clocked = timed.story(NORTHLINE, "LD-59001")
+        assert clocked.at("driver-says-loaded").state.need(
+            NeedKind.TRACKING_UPDATE_PENDING) is not None
+        settled = clocked.at("dana-says-at-pickup")
+        assert settled.state.stage is Stage.AT_PICKUP
+        assert {n.kind for n in settled.state.needs} == {NeedKind.ARRIVAL_PENDING}
+        assert timed.findings == []
+    finally:
+        store.close()
+        timed_store.close()
+
+
+def test_a_tracking_watch_an_overruled_claim_answered_is_owed_again(tmp_path):
+    """The driver's "delivered at 7:30" arrives late, after an 08:00 ping, and answers the watch
+    that ping started. Dana records that as of 07:45 he had not delivered: her decision is about a
+    moment BEFORE the ping, so the ping is still the last anyone heard - and the watch it started
+    is owed again, with the delivery's, rather than left answered by a word she overruled."""
+    h, cargo = _picked_up("QT")
+    cargo.track("ping-0800", h.t("08:00", 1), "IN_TRANSIT", position="I-75 N")
+    cargo.sms("driver-says-delivered", h.t("09:00", 1), "delivered at 7:30, empty",
+              says("DELIVERED", "S2"))
+    h.records[-1] = replace(h.records[-1], as_of=h.t("07:30", 1))
+    h.human("dana-says-moving", h.t("09:30", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="IN_TRANSIT", note="as of 07:45 the receiver had not seen him")
+    h.records[-1] = replace(h.records[-1], as_of=h.t("07:45", 1))
+    h.clock("end", h.t("13:00", 1))
+    result, store = _run(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        decided = story.at("dana-says-moving")
+        assert decided.state.stage is Stage.IN_TRANSIT and not decided.escalations
+        assert {n.kind: n.due_by for n in decided.state.needs} == {
+            NeedKind.ARRIVAL_PENDING: WINDOW_CLOSES,
+            NeedKind.TRACKING_UPDATE_PENDING: "2026-09-02T17:00:00.000Z"}       # 08:00 + 4h
+        assert [sorted(n.reason_codes) for n in story.last.overdue] \
+            == [["ARRIVAL:S2_OVERDUE", "TRACKING_OVERDUE"]]
+        owed = [e for e in view.expectations if e["state"] in _OWED]
+        assert sorted(e["expected_type"] for e in owed) == ["arrival:S2", "tracking_update"]
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_record_a_human_moves_to_another_load_stops_answering_this_ones_watch(tmp_path):
+    """The same rule, reached by the other human act that invalidates evidence. The provider
+    reports a truck at the dock under THIS load's number; that answers this load's delivery watch.
+    Priya moves the record to the load it is really about. Nothing standing now says this truck
+    reached its dock, so its watch is owed again - and the window closing is work."""
+    h = _builder("QM", "a misfiled arrival", "2026-09-01", "pod_attached_to_wrong_load")
+    same = dict(customer="great_lakes_bev", carrier="summit", sell=172000, buy=141000,
+                pickup="Great Lakes Beverage Bloomington", delivery="Maumee Distributing",
+                delivery_zone="America/New_York")
+    this = Load(h, "LD-59001", serial="79001", **same)
+    other = Load(h, "LD-59002", serial="79002", tag="-b", **same)
+    for cargo, clock in ((this, ("07:30", "08:00", "08:20", "10:10", "11:00")),
+                         (other, ("07:35", "08:05", "08:25", "10:15", "11:05"))):
+        cargo.book(tender=clock[0], cover=clock[1], rate_con=clock[2])
+        cargo.track(f"at-pickup{cargo.tag}", h.t(clock[3]), "AT_PICKUP", "S1")
+        cargo.track(f"loaded{cargo.tag}", h.t(clock[4]), "LOADED", "S1")
+    h.track("misfiled-at-the-dock", h.t("07:30", 1), "AT_DELIVERY", refs=this.refs, stop_key="S2",
+            external_id="ping-misfiled")
+    h.human("priya-moves-it", h.t("08:00", 1), "priya.nair", "correct_binding", refs=other.refs,
+            target={"source_system": TRACKING, "external_id": "ping-misfiled"},
+            note="that is LD-59002's truck")
+    h.clock("end", h.t("12:00", 1))
+    _in_arrival_order(h)
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("misfiled-at-the-dock").state.need(NeedKind.ARRIVAL_PENDING) is None
+        moved = story.at("priya-moves-it")
+        watch = moved.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == WINDOW_CLOSES and not moved.quiet
+        assert [e["state"] for e in _watches(view, "arrival:S2")] == ["DISCHARGED", "OVERDUE"]
+        assert not [t for t in view.tracking if t.stop_key == "S2"], "the record is still here"
+        assert [n.reason_codes for n in story.last.overdue] == [("ARRIVAL:S2_OVERDUE",)]
+        assert not story.last.quiet and result.findings == []
+    finally:
+        store.close()
+
+
+# ============================================================ a human act cannot know the future
+
+def test_a_future_dated_human_act_is_not_authority_and_silences_nothing(tmp_path):
+    """THE REVIEW'S SECOND ATTACK. Dana's confirmation carries an `as_of` ten days after it was
+    received. A decision settles what was said BEFORE it, so a decision dated in the future would
+    settle everything said for ten days. It is not applied at all: it is held, unreadable, in front
+    of a named human; the dispute it was meant to settle is still open; and the provider's later
+    contradiction is not silenced."""
+    h, cargo = _falsely_delivered("QF", overruled=False)
+    h.human("dana-confirms", h.t("08:00", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="DELIVERED", stop_key="S2", note="receiver confirmed")
+    honest = h.records[-1]
+    h.records[-1] = replace(honest, as_of=h.t("08:00", 11))
+    cargo.pod("pod", h.t("08:30", 1))
+    cargo.track("provider-moving-again", h.t("09:00", 1), "IN_TRANSIT", position="I-75 S")
+    h.clock("end", h.t("12:00", 1))
+    with pytest.raises(UnparseableRecord, match="later than"):
+        parse_record(h.records[-4])
+    result, store = _run(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        assert h.records[-4].label == "dana-confirms"
+        assert not [t for t in view.tracking if t.value("signal") == "owner_confirmation"]
+        assert [c["state"] for c in view.conflicts if c["field"] == "tracking_status"] == ["RAISED"]
+        last = story.last
+        assert last.state.stage is Stage.DISPUTED and not last.quiet and not last.billing_ready
+        assert [e.kind for e in last.escalations] == ["EVIDENCE_CONFLICT"]
+        assert last.touches.acts == 0
+        moving = story.at("provider-moving-again")
+        assert moving.state.stage is Stage.DISPUTED and not moving.quiet
+        held = result.unplaced[NORTHLINE]
+        assert [(n.kind, n.reason_codes, n.owner_id) for n in held] \
+            == [(NeedKind.IDENTITY_UNRESOLVED, ("UNREADABLE_RECORD",), "priya.nair")]
+        assert result.findings == [] and result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+
+    # The rule is about a HUMAN ACT and about the FUTURE, and about nothing else: an act dated at
+    # the instant it was received is read, so is one about an earlier moment, and so is a tracking
+    # record whose source's clock runs ahead.
+    assert parse_record(honest)["payload"]["status"] == "DELIVERED"
+    assert parse_record(replace(honest, as_of=h.t("07:00", 1)))["payload"]["act"] \
+        == "confirm_movement_status"
+    with pytest.raises(UnparseableRecord, match="later than"):
+        parse_record(replace(honest, as_of=h.t("08:01", 1)))
+    ahead = next(r for r in h.records if r.label == "provider-says-moving")
+    assert parse_record(replace(ahead, as_of=h.t("08:00", 11)))["kind"] == "tracking_event"
+
+
+def test_a_human_act_about_an_earlier_moment_still_settles_the_dispute(tmp_path):
+    """Refusing the future refuses nothing else: recorded at 08:00 about 07:40, her decision is
+    applied, and it settles what was said up to 07:40."""
+    h, cargo = _falsely_delivered("QG", overruled=False)
+    h.human("dana-says-moving", h.t("08:00", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="IN_TRANSIT", note="as of 07:40 he was still rolling")
+    h.records[-1] = replace(h.records[-1], as_of=h.t("07:40", 1))
+    h.clock("end", h.t("08:30", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        decided = story.at("dana-says-moving")
+        assert decided.state.stage is Stage.IN_TRANSIT and decided.touches.acts == 1
+        assert [c["state"] for c in view.conflicts if c["field"] == "tracking_status"] \
+            == ["RESOLVED_BY_HUMAN"]
+        assert decided.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        assert result.unplaced[NORTHLINE] == () and result.findings == []
+    finally:
+        store.close()
+
+
+# ============================================================ the repaired load, replayed
+
+def test_the_reopened_watch_survives_replay_restart_and_a_doubled_inbox(tmp_path):
+    """The overruled-claim load again: replayed, restarted just before Dana acts, just after she
+    acts, and after the window has closed, and with every record delivered twice. Every picture is
+    the uninterrupted run's, and the delivery appointment has exactly two watches - the one his
+    claim answered and the one owed again - never a third."""
+    def history():
+        h, cargo = _falsely_delivered("QR")
+        cargo.track("still-moving", h.t("16:30", 1), "IN_TRANSIT", position="I-75 N")
+        cargo.track("still-moving-late", h.t("19:30", 1), "IN_TRANSIT", position="I-75 N")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expected_type"], e["state"]) for e in view.expectations]
+
+    whole, store = _run(tmp_path / "whole", [history()], setups=NO_CADENCE)
+    stores = [store]
+    try:
+        assert sum(len(v) for v in _digests(whole).values()) >= 10
+        assert rows(whole).count(("arrival:S2", "DISCHARGED")) == 1
+        assert rows(whole).count(("arrival:S2", "OVERDUE")) == 1 and not whole.story(
+            NORTHLINE, "LD-59001").last.quiet
+        again, store = _run(tmp_path / "again", [history()], setups=NO_CADENCE)
+        stores.append(store)
+        assert _digests(again) == _digests(whole) and rows(again) == rows(whole)
+        cuts = ("provider-says-moving", "dana-says-moving", "still-moving")
+        for cut in cuts:
+            restarted, store = _run(tmp_path / cut, [history()], setups=NO_CADENCE,
+                                    restart_after={"QR": cut})
+            stores.append(store)
+            assert _digests(restarted) == _digests(whole), f"a restart after {cut} differs"
+            assert rows(restarted) == rows(whole) and restarted.findings == []
+        doubled, store = _run(tmp_path / "doubled", [duplicate_every_record(history())],
+                              setups=NO_CADENCE)
+        stores.append(store)
+        assert _final(doubled) == _final(whole) and rows(doubled) == rows(whole)
+        assert doubled.findings == [] and whole.findings == []
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_one_brokerages_decision_reopens_nothing_at_another(tmp_path):
+    """The same load number at two brokerages, the same false "delivered", the same contradiction.
+    Northline's Dana overrules it. At Northline the delivery watch is owed again. At Cedar Ridge
+    nobody has decided anything: the claim stands, its watch stays answered, the dispute is still
+    open - and Dana's name in Cedar Ridge's inbox is nobody's authority there."""
+    watching = {**NO_CADENCE, CEDAR: replace(NO_CADENCE[CEDAR], arrival_tracking_channel=TRACKING)}
+    n = _falsely_delivered("QN")[0]
+    n.clock("end", n.t("12:00", 1))
+    c, cedar_load = _falsely_delivered("QS", overruled=False, tenant=CEDAR, ops=CEDAR_OPS,
+                                       pods=CEDAR_OPS)
+    c.human("dana-in-cedar", c.t("08:10", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cedar_load.refs, status="IN_TRANSIT")
+    c.clock("end", c.t("12:00", 1))
+    result, store = _run(tmp_path, [n.build({}), c.build({})], setups=watching)
+    try:
+        north, north_view = _view(result, NORTHLINE)
+        cedar, cedar_view = _view(result, CEDAR)
+        assert north.load_id != cedar.load_id
+        assert [e["state"] for e in _watches(north_view, "arrival:S2")] == ["DISCHARGED", "OVERDUE"]
+        assert north.last.state.stage is Stage.IN_TRANSIT and north.last.overdue
+        assert [e["state"] for e in _watches(cedar_view, "arrival:S2")] == ["DISCHARGED"]
+        assert not [t for t in cedar_view.tracking if t.overruled_by]
+        assert cedar.last.state.stage is Stage.DISPUTED and not cedar.last.quiet
+        assert [c["state"] for c in cedar_view.conflicts if c["field"] == "tracking_status"] \
+            == ["RAISED"]
+        assert cedar.last.touches.acts == 0 and not cedar.last.overdue
+        assert [n.reason_codes for n in result.unplaced[CEDAR]] \
+            == [("UNAUTHENTICATED_HUMAN_ASSERTION",)]
+        assert {e["tenant"] for e in north_view.expectations} == {NORTHLINE}
+        assert {e["tenant"] for e in cedar_view.expectations} == {CEDAR}
+        assert {e["expectation_id"] for e in north_view.expectations}.isdisjoint(
+            e["expectation_id"] for e in cedar_view.expectations)
+        assert cross_tenant_violations(store.conn) == [] and result.findings == []
+        assert {tenant: sum(counts.values())
+                for tenant, counts in result.report["effect_surface_rows"].items()} \
+            == {CEDAR: 0, NORTHLINE: 0}
+    finally:
+        store.close()
 
 
 # ============================================================ words, not effects

@@ -30,6 +30,14 @@ turn RED under it. Four families:
     reported as sent; money in the picture; work on no load left off the board; a refused record
     counted twice.
 
+  * AN OVERRULED CLAIM ANSWERS NOTHING (the CP-4 review repair). An overruled claim that still
+    counts as arrival evidence; a watch it answered that is never owed again; a watch something
+    else still answers reopened anyway; a watch owed again raised a third time; an overruled claim
+    that still reaches a stop, still sets the stage, still starts the tracking clock; a tracking
+    watch an overruled delivery report answered left answered; a picture that says the overruled
+    claim satisfied something; a human act dated in the future read as authority; and the same
+    rule refusing an act dated at the instant it arrived.
+
 It mutates TEXT and shells out to pytest; it NEVER imports the code under test, and it NEVER uses git
 to undo a mutation. Originals are held in memory and restored unconditionally; `__pycache__` is purged
 around every run so a same-length restore cannot leave poisoned bytecode and a false green.
@@ -73,6 +81,8 @@ MC_OTHER = f"{T}::test_an_mc_with_different_or_missing_digits_is_never_matched"
 MC_NEXT_DOOR = f"{T}::test_an_mc_is_never_looked_up_next_door"
 MC_TWINS = f"{T}::test_one_mc_recorded_under_two_carriers_places_nothing"
 POD = f"{T}::test_delivered_without_a_pod_is_work_and_a_usable_pod_closes_it"
+OVERRULED = f"{L}::test_an_overruled_delivery_claim_stops_answering_the_delivery_watch"
+FUTURE = f"{L}::test_a_future_dated_human_act_is_not_authority_and_silences_nothing"
 TWICE = f"{T}::test_evaluating_the_same_state_twice_creates_nothing"
 TENANT = f"{T}::test_the_same_invoice_at_another_brokerage_cannot_be_reached"
 ROUTED = f"{T}::test_the_model_is_asked_only_when_the_record_leaves_act_or_wait_open"
@@ -429,8 +439,8 @@ CASES = [
 
     ("a bare DELIVERED never answers the arrival it implies - a delivered load goes on asking "
      "where the truck is",
-     [(DETECTORS, '        if kind in STAGES_PAST_STOP and len(\n',
-       '        if False and len(  # MUTANT\n')],
+     [(DETECTORS, '    if kind in STAGES_PAST_STOP and len(\n',
+       '    if False and len(  # MUTANT\n')],
      BARE),
 
     # ------------------------------------------------------------------ what a model may do
@@ -532,8 +542,8 @@ CASES = [
 
     ("a claim a human OVERRULED still counts - she says it has not delivered, and the driver's "
      "'delivered' goes on making the load delivered",
-     [(PROJECTION, '                if t.value("status") == "DELIVERED" and t.overruled_by is None]',
-       '                if t.value("status") == "DELIVERED"]  # MUTANT')],
+     [(PROJECTION, '        return [t for t in self.tracking if t.overruled_by is None]',
+       '        return list(self.tracking)  # MUTANT')],
      f"{L}::test_a_human_who_says_it_has_not_delivered_overrules_the_claim"),
 
     ("a tracking record may SPEAK AS THE OWNER - the owner's confirmation is admitted as a signal "
@@ -569,6 +579,79 @@ CASES = [
      "put in front of a human",
      [(WORK, "        if item.observation_id in explained:\n", "        if False:  # MUTANT\n")],
      f"{L}::test_only_a_recorded_human_and_only_a_real_status_can_settle_it"),
+
+    # ------------------------------------------------------------------ an overruled claim
+    ("an OVERRULED claim is still arrival evidence - the driver's 'delivered' goes on answering "
+     "the delivery appointment's watch after a human says he has not delivered",
+     [(DETECTORS, "    standing = view.standing_tracking()\n    arrivals = [",
+       "    standing = view.tracking  # MUTANT\n    arrivals = [")],
+     OVERRULED),
+
+    ("the watch an overruled claim answered is NEVER OWED AGAIN - it is raised under the id M8 "
+     "already holds DISCHARGED, so the load goes quiet and the missed delivery is never late",
+     [(DETECTORS, "                            if arrival_evidence(view, stop_key)\n",
+       "                            if True  # MUTANT\n")],
+     OVERRULED),
+
+    ("a watch something ELSE still answers is reopened anyway - overruling one claim re-asks for "
+     "an arrival the provider and the human both still evidence",
+     [(DETECTORS, "                            if arrival_evidence(view, stop_key)\n",
+       "                            if False  # MUTANT\n")],
+     f"{L}::test_a_watch_other_standing_evidence_answers_is_not_reopened"),
+
+    ("a watch that is owed again is raised a THIRD time once it goes overdue - one missed "
+     "delivery becomes two pieces of work",
+     [(DETECTORS, '        if states.get(expectation_id) != "DISCHARGED":\n',
+       '        if states.get(expectation_id) not in ("DISCHARGED", "OVERDUE"):  # MUTANT\n')],
+     OVERRULED),
+
+    ("the picture says an overruled claim SATISFIED the watch - the load is late for delivery and "
+     "its history says the delivery was answered by the driver's word",
+     [(WORK, '        if state == "DISCHARGED" and answer in overruled and answer not in standing ',
+       '        if False and answer in overruled and answer not in standing ')],
+     OVERRULED),
+
+    ("an overruled claim still REACHES A STOP - an unconfirmed delivery appointment stops being "
+     "work because of a 'delivered' a human overruled",
+     [(WORK, "    standing = view.standing_tracking()\n    if any(t.stop_key == stop_key",
+       "    standing = view.tracking  # MUTANT\n    if any(t.stop_key == stop_key")],
+     f"{L}::test_an_overruled_claim_reaches_no_stop"),
+
+    ("the STAGE rests on an overruled claim - a human says the truck is on the dock and the "
+     "picture goes on calling the load picked up and in transit",
+     [(WORK, '    statuses = {t.value("status") for t in view.standing_tracking()}\n'
+             "    if statuses & set(UNDER_WAY_STATUSES):",
+       '    statuses = {t.value("status") for t in view.tracking}  # MUTANT\n'
+       "    if statuses & set(UNDER_WAY_STATUSES):")],
+     f"{L}::test_the_stage_of_a_load_does_not_rest_on_an_overruled_claim"),
+
+    ("an overruled 'loaded' STARTS THE TRACKING CLOCK - a truck a human says is on the dock is "
+     "watched as if it were under way",
+     [(DETECTORS, "                                          for t in view.standing_tracking()):\n",
+       "                                          for t in signals):  # MUTANT\n")],
+     f"{L}::test_the_stage_of_a_load_does_not_rest_on_an_overruled_claim"),
+
+    ("the tracking watch an overruled DELIVERY REPORT answered is left answered - nobody is "
+     "waiting to hear from a truck a human says is still on the road",
+     [(DETECTORS,
+       "    return _owed_again_id(view, TRACKING_UPDATE, anchor.origin_observation_id)\n",
+       '    return stable_id("exp", view.load.tenant_id, view.ref, TRACKING_UPDATE,  # MUTANT\n'
+       "                     anchor.origin_observation_id)\n")],
+     f"{L}::test_a_tracking_watch_an_overruled_claim_answered_is_owed_again"),
+
+    ("a human act dated IN THE FUTURE is authority - it settles everything said until then, and "
+     "the provider's later contradiction is silenced",
+     [(HISTORY, '    if record.kind == "human_assertion" and (to_utc(',
+       '    if False and record.kind == "human_assertion" and (to_utc(')],
+     FUTURE),
+
+    ("the future rule refuses a human act dated at the INSTANT it was received - every ordinary "
+     "decision is held unreadable",
+     [(HISTORY, '                                             > to_utc(record.received_at, '
+                'what="received_at")):\n',
+       '                                             >= to_utc(record.received_at, '
+       'what="received_at")):\n')],
+     FUTURE),
 ]
 
 

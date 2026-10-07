@@ -8,8 +8,11 @@
 > opened nothing and enabled nothing.
 > **The corpus is synthetic development input.** Nothing here is a design-partner observation, no
 > freight rule is validated by it, and no labor time was measured.
-> **No independent review has been performed.** Tier-1 and tier-2 surfaces were touched (§5); one
-> focused independent review is owed before merge ([`CLAUDE.md`](../../CLAUDE.md) §7).
+> **One focused independent review was performed on 2026-10-06 and BLOCKED this checkpoint** (§10).
+> The repair in §10 was written by the session that performed that review, so it is a builder's
+> work and **has not been independently reviewed.** Tier-1 and tier-2 surfaces were touched (§5,
+> §10); one focused independent review of the repair is still owed before merge
+> ([`CLAUDE.md`](../../CLAUDE.md) §7).
 
 ## 1. What a broker can now do that they could not before
 
@@ -154,7 +157,7 @@ are counts on invented freight. They are not a forecast about a brokerage.**
 | `P9-D51` | After a carrier explains a delay, the overdue arrival still proposes asking the carrier for status — and nothing prompts anyone to tell the receiver or the customer. | The lateness is real and stays visible. There is no customer or facility follow-up in the vocabulary (`P9-D33`). Whether a delay notice answers the follow-up is **NEEDS VALIDATION** (V-29). |
 | `P9-D52` | A signed POD on file with no delivery report leaves the load "in transit", and when the cadence passes Neyma would chase the carrier (L21, briefly). | Whether a usable POD is itself a delivery report is **NEEDS VALIDATION** (V-30) — and a POD can be on the wrong load (L12). |
 | `P9-D53` | A carrier's stated new arrival time has nowhere to live. Three later ETAs (L06) create no work until the window has already closed. | An ETA is a forecast, and the spine keeps no forecast as a fact. What an ETA past the window should trigger is **NEEDS VALIDATION** (V-31). |
-| `P9-D54` | An arrival watch discharged by a claim a human later overrules is not restored. | The tracking cadence still catches silence, so the load is not quiet. A missed window on that stop would not be called late. |
+| ~~`P9-D54`~~ | ~~An arrival watch discharged by a claim a human later overrules is not restored.~~ **CLOSED by the review repair (§10).** | The reason recorded here was wrong: the tracking cadence is optional tenant policy, and at a brokerage without one the load went quiet. This was the blocking finding. |
 | `P9-D55` | What changed is said against the previous picture, which the runner holds in memory. A real restart would report its first picture of each load with no changes. | The picture itself is a pure function of the canonical record and survives a restart identically. |
 | `P9-D56` | The loop re-projects the whole brokerage at every record: 22 loads and 425 records take about 25 seconds. | Development scale (`P9-D38`). |
 | `P9-D57` | An uncovered load is outside the loop: reported not quiet, and nothing says who should cover it. | The loop begins at booked, by direction. |
@@ -165,3 +168,83 @@ are counts on invented freight. They are not a forecast about a brokerage.**
 The three product failures to attack first are `P9-D49` (humans closing what Neyma already handled),
 `P9-D50` (a carrier-side question nobody can close) and `P9-D51`/`P9-D53` together (a late load on
 which Neyma asks the wrong party the wrong question, and nobody tells the receiver).
+
+## 10. Independent review — 2026-10-06 — and its repair
+
+### What the review found
+
+**BLOCKED**, on one reachable failure, in class "false quiet":
+
+> The driver says delivered. The tracking provider contradicts him. A recorded human settles it with
+> `confirm_movement_status IN_TRANSIT`. His claim is correctly overruled - but it had already
+> discharged the delivery appointment's arrival watch, M8's `DISCHARGED` is terminal, and the watch
+> could not be raised again under an id that already existed. The POD watch was cancelled, the
+> Conflict was resolved, and **nothing was left on the load: it read `QUIET`, next step `NOTHING`,
+> through a delivery window the truck then missed.** `audit_state` passed it, because it reads what
+> the record still owes and a watch that was wrongly answered owes nothing.
+
+This is `P9-D54`, which §8 had recorded as non-blocking because "the tracking cadence still catches
+silence". The cadence is optional: Northline as the freight corpus ships it has none.
+
+A second, lesser finding on the same seam: a human act could carry an `as_of` later than the instant
+it was received. A decision settles what was said before it, so a future-dated decision settled
+everything said until then - including a contradiction made, and received, after she acted.
+
+### What was repaired
+
+**The rule.** An overruled claim is no longer evidence of where the truck has been. It stays on the
+load as what its source said (`LoadView.tracking`); everything that CONCLUDES something reads
+`LoadView.standing_tracking()` instead:
+
+| Conclusion | Before | Now |
+|---|---|---|
+| The truck arrived at a stop (`detectors.arrival_evidence`, used to discharge an arrival watch) | Any claim at the stop, overruled or not | Standing claims only |
+| A watch that was answered stays answered | Forever: `DISCHARGED` is terminal and the id exists | A watch M8 holds `DISCHARGED` while **nothing standing** answers it is raised again, as the next generation of the same id (`detectors._owed_again_id`) - the pattern `_document_expectations` already uses for a required document. The first generation keeps its id; a generation that is owed, cancelled or expired is returned as itself, so nothing is raised twice and nothing is resurrected. |
+| The tracking-cadence watch a delivery report answered | Left answered | Owed again when that report no longer stands (same helper) |
+| A stop has been reached (`load_work._stop_reached`, which decides whether an unconfirmed appointment is still work) | The stop's reported arrival/departure, from any claim | Standing claims only - **a second false quiet on the unrepaired tree**: an unconfirmed delivery appointment stopped being work because of a "delivered" a human had overruled |
+| The load's stage, and whether it is under way | Any claim | Standing claims only |
+| What the picture says SATISFIED a watch (`load_work._settlements`) | The overruled claim | `SUPERSEDED`, by her decision |
+
+Nothing is rewritten. The watch his claim answered is still `DISCHARGED`, by his record; the watch
+that is owed is a second row; his claim and her decision are both on the load. M8 is untouched.
+
+The rule is written against the view, not against the word "overruled", so it also holds for the
+other human act that invalidates evidence: a tracking record a human **moves to another load**
+(`correct_binding`) no longer answers the watch on the load it was moved off. That was a false quiet
+on the unrepaired tree too, older than this checkpoint; it is closed and pinned by a test.
+
+**A human act cannot know the future.** `parse_record` refuses a `human_assertion` whose `as_of` is
+later than its `received_at`: it is unparseable, held for the intake owner on the board as work on no
+load, and never applied. An act about an EARLIER moment is legal and is still applied; an act dated
+at the instant it arrived is ordinary. The rule is the console path's alone - a tracking provider
+whose clock runs ahead is not judged by it, and no general time framework was added.
+
+### What proves it
+
+| Check | Result | What it could have caught |
+|---|---|---|
+| The review's reproduction, no cadence | **Before:** `IN_TRANSIT`, quiet, next `NOTHING`, 0 moments overdue. **After:** not quiet from the moment she acts; `ARRIVAL_PENDING` due at the window's close; `CARRIER_STATUS_OVERDUE` (`ARRIVAL:S2_OVERDUE`) one minute after it; the same work a truck that is simply late owes | The defect |
+| The same with a cadence, pinged inside it all day | The missed delivery is overdue under its own reason while the cadence need stays `PENDING` | The cadence being the only thing between the load and silence |
+| A real delivery after the overrule | The re-owed watch is discharged by that record, on time; two rows, never three; quiet and billing-ready with the POD | Duplicate watches; a watch that cannot be answered again |
+| Other standing evidence | Overruling "delivered" while the provider and the human both put the truck AT the dock reopens nothing | Over-reopening |
+| Thirteen new tests and one strengthened, in `test_p9_load_loop.py` | all pass; twelve of the fourteen FAIL on the unrepaired tree. The two that pass there are the two that should: one asserts what must not change (a watch other evidence answers is not reopened), one proves the second oracle can fire | - |
+| A second oracle, `_unwatched_stops`, on every evaluation of every loop test | 0 findings; seen to fire | A stop with a confirmed appointment that has neither a standing arrival nor a live watch. Written without the detectors. |
+| Replay; restart before her act, after it, after the window closed; every record twice | Identical pictures, identical watches | A watch re-raised twice, or lost, across a restart |
+| Two brokerages, one load number | Northline's watch is owed again; Cedar Ridge's claim stands, its watch stays answered, its dispute is open | A decision reaching next door |
+| `run_freight_corpus.py --loop` | Every figure in §6 unchanged: 425 records, 4,802 evaluations, 331 moments, 513 labeled checks, 0 failed, 0 audit findings | The repair changing a load that has no overruled claim |
+| The hostile layers | `--loop --attack` 393 mutants, 8,153 evaluations, 0 findings; `--attack` 164 mutants, 1,719 evaluations, 0 findings | - |
+| Mutation | eleven mutants added to `scripts/mutate_p9_load_work.py`, and two whose anchors the repair moved re-pointed at the same defects; each turns its named guard RED | A guard that cannot fail |
+| Effect and authority ledgers | 0 rows in every run | - |
+
+**Rollback:** revert the repair commit. Nothing on a live path reaches any of it.
+
+### Debt recorded by the review and the repair
+
+| ID | Debt | Why it does not block |
+|---|---|---|
+| `P9-D59` | An appointment whose watch was AMENDED to a new window and then went overdue gets a second owed watch for the same stop and deadline (W07 / LD-49006, two `OVERDUE` rows). Present, identically, on the unrepaired tree. | The work engine collapses every missed watch into one follow-up, so one need is shown. It is duplicate canonical state, not duplicate work and not silence. |
+| `P9-D60` | Only a human's LATEST status decision overrules anything. If she says "in transit" and later "delivered", the claim her first decision overruled counts again. | Her later decision is itself a delivery report, so no conclusion rests on the revived claim alone. Whether an earlier decision should outlive a later one is a product question. |
+| `P9-D61` | A record moved to another load does not answer the watch on the load it was moved TO: M5 has no re-bind and M8 refuses a discharging observation bound elsewhere. | The watch stays owed and goes overdue: over-asking, never silence. |
+| `P9-D62` | A human's "at pickup" / "at delivery" with no stop named is not arrival evidence at the only such stop, so a watch can be owed again after she said the truck is there. | Over-asking, and avoidable by naming the stop. The same gap exists for a bare `AT_PICKUP` from any source. |
+| `P9-D63` | `run_load_loop(restart_after=...)` raises if the restart follows a brokerage's last record. | Harness only; no canonical state is involved. |
+| `P9-D64` | A human's decision settles a statement ABOUT an earlier moment even when it ARRIVES after she decided - a late batch of provider pings, say - so she never saw it. | It is more of the evidence she already weighed, and the rule is stated ("what was said before it"). Whether "before" should mean said or received is a product question. |

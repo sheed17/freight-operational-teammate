@@ -321,14 +321,66 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
                            else CancelExpectation(expectation["expectation_id"],
                                                   f"the appointment at {stop_key} was moved"))
             continue
+        watch = (expected_type, window["end_local"], window["timezone"])
         out.append(RaiseExpectation(
-            expectation_id=stable_id("exp", view.load.tenant_id, view.ref, expected_type,
-                                     window["end_local"], window["timezone"]),
+            # Raised under its own id - unless nothing STANDING says the truck reached this stop
+            # (the record that answered the watch was overruled, or moved to another load), in
+            # which case the watch is owed again (`_owed_again_id`).
+            expectation_id=(stable_id("exp", view.load.tenant_id, view.ref, *watch)
+                            if arrival_evidence(view, stop_key)
+                            else _owed_again_id(view, *watch)),
             subject_ref=view.ref, expected_type=expected_type,
             expected_source=setup.arrival_tracking_channel, owner_id=setup.load_owner,
             originating_timezone=window["timezone"],
             appointment_local=datetime.fromisoformat(window["end_local"])))
     return out
+
+
+def arrival_evidence(view: LoadView, stop_key: str) -> list[str]:
+    """The records that STAND as evidence the truck has been to this stop, as observation ids.
+
+    A tracking signal at that stop is one. So is a signal that names NO stop, when the load has
+    exactly one stop of that kind: "loaded" was at the only pickup, "delivered" at the only
+    delivery — the same rule that places a stop named only by kind. Without it a system of
+    record's bare DELIVERED never answers the arrival it implies, and a delivered load goes on
+    asking where the truck is. With two pickups nothing is assumed about which.
+
+    ### A CLAIM A RECORDED HUMAN OVERRULED IS NOT AMONG THEM. It is still on the load as what its
+    source said. It does not say the truck arrived."""
+    standing = view.standing_tracking()
+    arrivals = [t.origin_observation_id for t in standing
+                if t.stop_key == stop_key and t.value("status") in ARRIVAL_STATUSES]
+    stop = view.stops.get(stop_key)
+    kind = stop.value("stop_type") if stop is not None else None
+    if kind in STAGES_PAST_STOP and len(
+            [s for s in view.stops.values() if s.value("stop_type") == kind]) == 1:
+        arrivals += [t.origin_observation_id for t in standing
+                     if t.stop_key is None and t.value("status") in STAGES_PAST_STOP[kind]]
+    return list(dict.fromkeys(arrivals))
+
+
+def _owed_again_id(view: LoadView, *watch: object) -> str:
+    """The id a watch is raised under when NOTHING STANDING answers it.
+
+    ### AN OVERRULED CLAIM CANNOT GO ON DISCHARGING AN EXPECTATION. M8's DISCHARGED is terminal, and
+    it should be: that row is the record that this watch WAS answered, by that record, at that
+    time, and nothing here rewrites it. But a claim a recorded human has since overruled answers
+    nothing — nor does a record she has moved to another load — so when it was the only answer the
+    watch is OWED AGAIN: raised as the next generation of the same id, the way a required document
+    is (`_document_expectations`).
+
+    The first generation is the id the watch always had, so nothing ever raised is renamed. A
+    generation that is owed, cancelled or expired is returned as itself: a watch already owed is
+    not raised twice, and one that was cancelled or aged out is not resurrected. Only a caller
+    that has established that nothing standing answers the watch may ask."""
+    states = {e["expectation_id"]: e["state"] for e in view.expectations}
+    generation = 0
+    while True:
+        expectation_id = stable_id("exp", view.load.tenant_id, view.ref, *watch,
+                                   *((generation,) if generation else ()))
+        if states.get(expectation_id) != "DISCHARGED":
+            return expectation_id
+        generation += 1
 
 
 def movement_signals(view: LoadView) -> list[Any]:
@@ -339,8 +391,9 @@ def movement_signals(view: LoadView) -> list[Any]:
 
 
 def tracking_expectation_id(view: LoadView, anchor: Any) -> str:
-    return stable_id("exp", view.load.tenant_id, view.ref, TRACKING_UPDATE,
-                     anchor.origin_observation_id)
+    """The watch this signal started: its own id, or the generation of it that is owed again when
+    what once answered it no longer stands (`_owed_again_id`)."""
+    return _owed_again_id(view, TRACKING_UPDATE, anchor.origin_observation_id)
 
 
 def _tracking_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
@@ -359,13 +412,18 @@ def _tracking_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
     if cadence is None or setup.arrival_tracking_channel is None:
         return []
     signals = movement_signals(view)
+    # Under way is where the truck has BEEN, so it is read from the claims that stand: a "loaded"
+    # a recorded human overruled starts no clock.
     if view.delivered_claims() or not any(t.value("status") in UNDER_WAY_STATUSES
-                                          for t in signals):
+                                          for t in view.standing_tracking()):
         return []
     if _has_owed(view, TRACKING_UPDATE):
         return []
     anchor = signals[-1]
     fact = anchor.field_of("status").facts[0]
+    # Nothing is owed, no delivery report stands and no signal is later than this one - so if M8
+    # holds the watch this signal started as DISCHARGED, what discharged it no longer stands (a
+    # delivery report a human has since overruled). The truck is still to be heard from.
     return [RaiseExpectation(
         expectation_id=tracking_expectation_id(view, anchor), subject_ref=view.ref,
         expected_type=TRACKING_UPDATE, expected_source=setup.arrival_tracking_channel,
@@ -460,27 +518,13 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             if expectation["expected_type"] == expected_type:
                 out.append(DischargeExpectation(expectation["expectation_id"], candidates))
 
-    # An appointment's arrival is discharged by a tracking signal at that stop.
+    # An appointment's arrival is discharged by a STANDING tracking signal at that stop.
     for expectation in owed:
         if not expectation["expected_type"].startswith("arrival:"):
             continue
-        stop_key = expectation["expected_type"].split(":", 1)[1]
-        arrivals = [t.origin_observation_id for t in view.tracking
-                    if t.stop_key == stop_key and t.value("status") in ARRIVAL_STATUSES]
-        # A signal that names NO stop still says where the freight has been, when the load has
-        # exactly one stop of that kind: "loaded" was at the only pickup, "delivered" at the only
-        # delivery — the same rule that places a stop named only by kind. Without it a system of
-        # record's bare DELIVERED never answers the arrival it implies, and a delivered load goes
-        # on asking where the truck is. With two pickups nothing is assumed about which.
-        stop = view.stops.get(stop_key)
-        kind = stop.value("stop_type") if stop is not None else None
-        if kind in STAGES_PAST_STOP and len(
-                [s for s in view.stops.values() if s.value("stop_type") == kind]) == 1:
-            arrivals += [t.origin_observation_id for t in view.tracking
-                         if t.stop_key is None and t.value("status") in STAGES_PAST_STOP[kind]]
+        arrivals = arrival_evidence(view, expectation["expected_type"].split(":", 1)[1])
         if arrivals:
-            out.append(DischargeExpectation(expectation["expectation_id"],
-                                            tuple(dict.fromkeys(arrivals))))
+            out.append(DischargeExpectation(expectation["expectation_id"], tuple(arrivals)))
     return out
 
 
