@@ -9407,13 +9407,27 @@ units:
   - unit_id: P9
     name: Freight-domain projections, mappings, and communications ingestion
     # ### P9 IS `READY` / `IN_PROGRESS` / `CHECKPOINT_IMPLEMENTED` (2026-10-01, P9 deep-end 1;
-    # unchanged by deep-end 2 on 2026-10-02, which adds a second landed checkpoint, and by deep-end 3
-    # on 2026-10-03, which adds a third).
+    # unchanged by deep-end 2 on 2026-10-02, which adds a second landed checkpoint, by deep-end 3
+    # on 2026-10-03, which adds a third, and by deep-end 4 on 2026-10-06, which adds a fourth).
+    # ### FOUNDER DIRECTION, 2026-10-06 - WHY A FOURTH CHECKPOINT LANDED HERE. The founder STOPPED
+    # the formal P9 acceptance exercise, named c4376b9 the P9 PRODUCT BASELINE, and directed that
+    # the first continuous SHADOW freight operating loop - booked load to customer billing-ready -
+    # be built on the freight spine now, pulling an entity, rule or act into the system only when
+    # the loop needs it. `P9-CP-4` is that work. It is recorded HERE, under the unit that holds the
+    # selector, because that is the only truthful place this registry has for it: ### P9 IS NOT
+    # ACCEPTED, NOTHING IS SCORED, AND P10 IS STILL `BLOCKED`. Building the loop did not accept P9,
+    # did not open P10 and enabled nothing. `prohibited_scope` below still reads "the vertical slice
+    # itself (P10)"; the loop was built under P9 by that direction and not by a change to that
+    # field. Whether P9 is ever formally closed, and how P10 is instantiated around what the loop
+    # has become, are decisions nobody has made. The acceptance-contract work authorized earlier the
+    # same day (ADR-020, a P9 criteria block, a mapping concurrency proof, a CI mutation job) was
+    # finished and then PARKED, unmerged, on local branch `p9/adr-020-closure`; none of it is in
+    # this tree.
     # `status` STAYS `READY`: it is the SELECTOR, and meta.status_model.status allows a unit to leave
     # READY only when a successor takes it in the same commit (P5 is the precedent for READY +
-    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - three entries
-    # in `landed_checkpoints`, each with evidence on disk. (Until P9-CP-3 this said "two entries";
-    # until P9-CP-2, "one entry".) `checkpoint_state` is CHECKPOINT_IMPLEMENTED
+    # IN_PROGRESS). `execution_state` is IN_PROGRESS because implementation has landed - four entries
+    # in `landed_checkpoints`, each with evidence on disk. (Until P9-CP-4 this said "three entries";
+    # until P9-CP-3, "two entries"; until P9-CP-2, "one entry".) `checkpoint_state` is CHECKPOINT_IMPLEMENTED
     # and NOT higher: the work landed and NO independent review has been performed.
     # ### THIS IS NOT ACCEPTANCE AND NOT ENABLEMENT. P9 carries no `acceptance_criteria` block, not
     # one criterion is scored, the 40-entity model is partially exercised, and it ships dark. P10
@@ -9518,6 +9532,44 @@ units:
           The guards carry a mutation proof (scripts/mutate_p9_load_work.py). CLAUDE.md sec 7
           still requires ONE focused independent review by someone who did not write it BEFORE
           MERGE. That review is owed and is not claimed here.
+        criteria_scored: []
+      - id: P9-CP-4
+        name: The continuous load loop - complete loads, booked to customer billing-ready, in shadow
+        checkpoint_state: CHECKPOINT_IMPLEMENTED
+        summary: >-
+          One load's operating picture, kept through its whole life. freight_domain/load_loop.py
+          runs complete loads side by side in one inbox, in the order their records arrived, and
+          at every moment a load's picture changes it answers thirteen things: what is happening
+          and on what evidence, what changed, what work remains, what is overdue, what is waited
+          for, what Neyma would do next, what needs a human and why, whether customer billing is
+          ready, whether carrier-side work is open, whether the load is genuinely quiet, and how
+          many human touches it has cost. It looks again at every deadline the canonical record
+          holds, so a window that closes in silence is a moment of its own. It is a read model:
+          it writes nothing, a proposal is words with a draft nobody sends, and an escalation is
+          a question laid before a named human. Twenty-one synthetic loads (one clean, the rest
+          late, silent, contradicted, mis-papered, mis-billed or out of order) across two
+          brokerages; an independent oracle re-derives "not falsely quiet" from the canonical
+          record at every evaluation. ONE SPINE DEFECT THE LOOP FOUND IS FIXED: a load whose
+          movement sources contradicted each other was disputed FOREVER, because nothing - not
+          the sources later agreeing, and no human act - could close a tracking Conflict. A
+          recorded human can now say where the load is (`confirm_movement_status`); her act
+          resolves the Conflict through M7's own human-resolution transition, overrules what was
+          said before it, and a contradiction made after it is a new dispute. Also: a load nobody
+          has booked is never called quiet; work that is on no load is carried beside the loads;
+          a refused record and the Exception about it are one need, not two. No model is called.
+          No production caller. No external effect. Ships dark.
+        implementer_evidence: docs/implementation/p9-de4-continuous-load-loop-implementation-record.md
+        independent_review_report: null
+        independent_review_note: >-
+          NO INDEPENDENT REVIEW HAS BEEN PERFORMED. This checkpoint touches tier-1 and tier-2
+          surfaces (CLAUDE.md sec 7): a NEW HUMAN ACT that reaches M7's resolve-by-human
+          transition through the one composition module (human authority over a disputed fact);
+          the meaning of a movement-status claim a human has overruled (projection, detectors);
+          a new tracking signal that only that act may produce; and what counts as one need among
+          work on no load. The guards carry a mutation proof (thirteen mutants added to
+          scripts/mutate_p9_load_work.py). CLAUDE.md sec 7 still requires ONE focused independent
+          review by someone who did not write it BEFORE MERGE. That review is owed and is not
+          claimed here.
         criteria_scored: []
     objective: >-
       The 40 domain entities, External Entity Mapping, field-level authority — plus inbound

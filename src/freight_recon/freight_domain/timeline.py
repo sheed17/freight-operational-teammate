@@ -280,6 +280,8 @@ def _human_summary(payload: dict[str, Any]) -> str:
         return f"{who} bound an unbound inbound record to this load"
     if act == "correct_binding":
         return f"{who} corrected a binding: a record bound elsewhere belongs to this load"
+    if act == "confirm_movement_status":
+        return f"{who} confirmed the load is {payload['status']}"
     return f"{who} corrected an external reference"
 
 

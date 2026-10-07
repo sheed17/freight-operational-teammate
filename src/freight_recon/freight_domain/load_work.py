@@ -1292,10 +1292,20 @@ def evaluate_unplaced_work(projection: FreightProjection, *, setup: TenantSetup,
     utc_datetime(as_of)
     tenant = projection.tenant
     attached = {x["exception_id"] for view in projection.loads.values() for x in view.exceptions}
+    # ### ONE CAUSE, ONE NEED - HERE TOO. A record that was REFUSED (an assertion in the name of
+    # nobody the brokerage has recorded) is held unbound AND has an Exception raised about it. That
+    # is one thing for a human to look at, not two: the Exception says what is wrong, and the held
+    # record is the evidence behind it.
+    explained = {x["source_ref"] for x in exceptions
+                 if x["state"] != "RESOLVED" and x["exception_id"] not in attached
+                 and x["source_kind"] == "observation"}
+    held = {item.observation_id for item in projection.unbound if not item.candidate_load_ids}
     needs: list[OperationalNeed] = []
     for item in projection.unbound:
         if item.candidate_load_ids:
             continue                                  # shown on each candidate load
+        if item.observation_id in explained:
+            continue                                  # read with the Exception raised about it
         reason = "UNREADABLE_RECORD" if item.state == "UNPARSEABLE" else "NO_REFERENCE_RESOLVED"
         needs.append(OperationalNeed(
             need_id=need_id(tenant, NeedKind.IDENTITY_UNRESOLVED, item.observation_id),
@@ -1319,7 +1329,11 @@ def evaluate_unplaced_work(projection: FreightProjection, *, setup: TenantSetup,
             kind=NeedKind.UNCLASSIFIED_EXCEPTION, tenant_id=tenant, load_id="",
             status=NeedStatus.OPEN, handling=Handling.HUMAN_REQUIRED, human_required=True,
             reason_codes=(exception["type"].upper(),), why=exception["summary"],
-            owner_id=exception["owner_id"], origins=(exception_origin(exception),),
+            owner_id=exception["owner_id"],
+            origins=(exception_origin(exception),
+                     *((f"observation:{exception['source_ref']}",)
+                       if exception["source_kind"] == "observation"
+                       and exception["source_ref"] in held else ())),
             evidence=(evidence_ref(tenant, exception["source_kind"], exception["source_ref"],
                                    f"{exception['type']} ({exception['severity']})"),),
             opened_at=exception["created_at"], question=exception["specific_question"]))

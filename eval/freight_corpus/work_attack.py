@@ -311,8 +311,10 @@ def at_another_brokerage(base: FreightHistory) -> FreightHistory:
 _DROPPABLE = ("document", "tracking_event", "message", "appointment", "human_assertion")
 
 
-def build_mutants() -> list[Mutant]:
-    """The whole deterministic battery, in a fixed order."""
+def build_mutants(bases: Sequence[FreightHistory] | None = None) -> list[Mutant]:
+    """The whole deterministic battery, in a fixed order. By default it is built over the
+    through-time work histories; hand it other single-brokerage histories and the same operators
+    are applied to them."""
     mutants: list[Mutant] = []
 
     def add(operator: str, base: FreightHistory, histories: Sequence[FreightHistory | None], *,
@@ -324,7 +326,8 @@ def build_mutants() -> list[Mutant]:
             operator=operator, base=base.history_id,
             histories=tuple(h for h in histories if h is not None), **kw))
 
-    bases = [h for h in build_work_histories() if h.tenant == NORTHLINE]
+    if bases is None:
+        bases = [h for h in build_work_histories() if h.tenant == NORTHLINE]
     for base in bases:
         add("duplicate_arrival", base, [duplicate_every_record(base)],
             same_final_work_as_base=True)

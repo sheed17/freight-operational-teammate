@@ -24,7 +24,7 @@ from typing import Any
 from .financial import blocking_discrepancies
 from .foundation import facility_local_deadline, format_instant, stable_id
 from .history import CARRIER_SIDE_ROLES, TenantSetup, utc_datetime
-from .model import TRACKING_PROGRESSION, DirectedMoney, Fact
+from .model import OWNER_CONFIRMATION, TRACKING_PROGRESSION, DirectedMoney, Fact
 from .projection import (
     OPEN_CONFLICT_STATES,
     OWED_STATES,
@@ -190,13 +190,25 @@ def _tracking_conflicts(view: LoadView, setup: TenantSetup) -> list[Intent]:
     contradiction a human looks at. It is never resolved here by recency or by source."""
     staged = [t for t in view.tracking if t.value("status") in TRACKING_PROGRESSION]
     staged.sort(key=lambda t: (t.field_of("status").facts[0].as_of, t.entity_id))
+    # ### A HUMAN'S DECISION SETTLES WHAT WAS SAID BEFORE IT, AND ONLY THAT. Once a recorded human
+    # has said where the load is (`confirm_movement_status`), a contradiction between statements
+    # made up to that instant is HERS, decided, and is not detected again. A statement made AFTER
+    # she decided that contradicts an earlier one - hers included - is a NEW dispute with its own
+    # row; the settled one keeps its row and its parties.
+    decided_at = max((t.field_of("status").facts[0].as_of for t in staged
+                      if t.value("signal") == OWNER_CONFIRMATION), default="")
+    settled = len([c for c in view.conflicts
+                   if c["entity_ref"] == view.ref and c["field"] == "tracking_status"
+                   and c["state"] not in OPEN_CONFLICT_STATES])
     for later in staged:
         later_fact = later.field_of("status").facts[0]
         if later.value("signal") not in CURRENT_STATE_SIGNALS:
             continue
+        if later_fact.as_of <= decided_at:
+            continue
         for earlier in staged:
             earlier_fact = earlier.field_of("status").facts[0]
-            if earlier_fact.as_of >= later_fact.as_of:
+            if earlier_fact.as_of >= later_fact.as_of or earlier.overruled_by is not None:
                 continue
             if earlier_fact.source_system == later_fact.source_system:
                 continue
@@ -207,7 +219,7 @@ def _tracking_conflicts(view: LoadView, setup: TenantSetup) -> list[Intent]:
                 parties = _parties([earlier_fact, later_fact])
                 return [RaiseConflict(
                     conflict_id=stable_id("conf", view.load.tenant_id, view.ref,
-                                          "tracking_status"),
+                                          "tracking_status", *((settled,) if settled else ())),
                     kind=_conflict_kind([p[1] for p in parties]), entity_ref=view.ref,
                     field="tracking_status", parties=parties, owner_id=setup.load_owner)]
     return []

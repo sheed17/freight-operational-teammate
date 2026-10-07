@@ -703,6 +703,15 @@ class FreightIntake:
                                                human_id=human_id, decision_ref=decision_ref)
         elif act == "resolve_exception":
             detail = self._resolve_exception(observation_id, load_ref, payload, human_id=human_id)
+        elif act == "confirm_movement_status":
+            # Her statement is already a bound, OWNER_ASSERTED Observation and the projection gives
+            # it its weight. If the movement sources were in dispute, her act is the decision M7 was
+            # waiting for: the Conflict is resolved BY HER, citing this act, and every party's
+            # statement is retained.
+            if self.foundation.resolve_conflict_by_human(
+                    entity_ref=load_ref, field="tracking_status", human_id=human_id,
+                    decision_ref=decision_ref) is not None:
+                self.stats.conflicts_resolved += 1
         return RecordOutcome(record.label, BOUND, observation_id=observation_id,
                              load_id=split_ref(load_ref)[1], detail=detail)
 

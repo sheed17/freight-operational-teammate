@@ -564,6 +564,10 @@ class CommunicationMessage(Entity):
 TRACKING_SIGNALS: tuple[str, ...] = (
     "tracking_provider_position", "driver_assertion", "carrier_assertion", "tms_status",
 )
+#: A recorded human of the brokerage saying where the load IS (`confirm_movement_status`). It is not
+#: a signal a tracking record may carry — only that human act produces it — and it is the one thing
+#: that settles a dispute between the signals above.
+OWNER_CONFIRMATION = "owner_confirmation"
 
 #: The movement-status progression. Used ONLY to notice that one source reports an EARLIER stage at a
 #: LATER instant than another source's later stage — a contradiction a human must look at. It ranks
@@ -582,6 +586,9 @@ class TrackingEvent(Entity):
     load_id: str | None = None
     movement_id: str | None = None
     stop_key: str | None = None
+    #: The human decision that overruled this claim, if one did. An overruled claim stays on the
+    #: record as what that source SAID; it no longer counts as a claim that the stage was reached.
+    overruled_by: str | None = None
 
     def links(self) -> dict[str, Any]:
         return {"load_id": self.load_id, "movement_id": self.movement_id,

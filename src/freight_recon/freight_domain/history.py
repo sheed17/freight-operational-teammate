@@ -59,6 +59,7 @@ LEGAL_CHANNELS: dict[str, tuple[str, ...]] = {
 HUMAN_ACTS: tuple[str, ...] = (
     "bind_observation", "correct_binding", "authorize_accessorial", "deny_accessorial",
     "correct_reference", "attribute_carrier_invoice", "confirm_appointment", "resolve_exception",
+    "confirm_movement_status",
 )
 ASSERT_TYPES: tuple[str, ...] = (
     "status", "commitment", "appointment", "accessorial_claim", "rate", "delay",
@@ -385,6 +386,16 @@ def _parse_human_assertion(payload: Mapping[str, Any]) -> dict[str, Any]:
         # the only thing that settles a disputed window; a counterparty's sentence cannot.
         parsed["stop_key"] = str(_require(payload, "stop_key", what=act))
         parsed.update(_parse_window(payload, what=act))
+    elif act == "confirm_movement_status":
+        # A recorded human states where the load IS. It is the only thing that settles two
+        # movement sources that contradict each other; no source, and no later arrival, does.
+        status = str(_require(payload, "status", what=act)).upper()
+        if status not in TRACKING_PROGRESSION:
+            raise UnparseableRecord(
+                f"confirm_movement_status names {status!r}, which is not one of "
+                f"{list(TRACKING_PROGRESSION)}")
+        parsed["status"] = status
+        parsed["stop_key"] = payload.get("stop_key")
     elif act in ("authorize_accessorial", "deny_accessorial"):
         parsed["charge_type"] = str(_require(payload, "charge_type", what=act)).upper()
         if act == "authorize_accessorial":

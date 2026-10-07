@@ -214,6 +214,19 @@ These block nothing. **They forbid a hardcoded constant.**
 |---|---|---|
 | **V-09** | ### **What is in their spreadsheets, and why isn't it in the TMS?** | The corpus calls this *"the highest-value single unknown"*. Non-blocking today because no phase before P9 depends on it — but it is the most likely source of a surprise that invalidates a model. |
 
+## QUESTIONS THE CONTINUOUS LOAD LOOP RAISED AND DID NOT ANSWER *(recorded 2026-10-06)*
+
+> **Running complete loads through time put three freight questions in front of the build. None was
+> answered: no rule was written for any of them.** They are recorded here because this is where an
+> unresolved rule lives. Each is a **WORKFLOW_BLOCKER** in one sense only: it blocks writing the rule.
+> *(V-22 to V-28 are not used here: they name other items on the parked `p9/adr-020-closure` branch.)*
+
+| ID | The question | Recorded as | Loop | What the code does today |
+|---|---|---|---|---|
+| **V-29** | After a carrier explains that it is running late, does that answer the follow-up — and who tells the receiver and the customer? | `P9-D51` | W4, W5, W10 | The overdue arrival stays work, and Neyma would still ask the carrier for status. Nothing is suppressed. Nobody is prompted to tell the receiver or the customer |
+| **V-30** | Is a usable POD on file itself a report that the load delivered? | `P9-D52` | W5, W6 | No. Delivery is a status a source reports; a POD is a document. A load with a signed POD and no delivery report is still "in transit" |
+| **V-31** | When the carrier states a new arrival time that is past the appointment window, what should that trigger, and for whom? | `P9-D53` | W4, W5 | Nothing until the window closes. An ETA is a forecast and is kept only as a sentence on the timeline |
+
 ---
 
 ## Summary
@@ -222,7 +235,7 @@ These block nothing. **They forbid a hardcoded constant.**
 |---|---|---|
 | **ARCHITECTURE_BLOCKER** | 4 | P5, P8, P9 |
 | **IMPLEMENTATION_BLOCKER** | 4 | P4, P8 |
-| **WORKFLOW_BLOCKER** | 4 | P8, P10, P13 |
+| **WORKFLOW_BLOCKER** | 7 | P8, P10, P13; and for V-29…V-31, writing the rule *(until 2026-10-06: 4)* |
 | **CUSTOMER_CONFIG** | 10 | nothing — forbids constants |
 | **NON_BLOCKING** | 1 | nothing |
 

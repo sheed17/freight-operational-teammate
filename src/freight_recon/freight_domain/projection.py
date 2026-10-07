@@ -38,6 +38,7 @@ from .foundation import (
 )
 from .history import CARRIER_SIDE_ROLES, TenantSetup
 from .model import (
+    OWNER_CONFIRMATION,
     TRACKING_PROGRESSION,
     AccessorialAuthorization,
     AccessorialCharge,
@@ -200,7 +201,8 @@ class LoadView:
 
     def delivered_claims(self) -> list[TrackingEvent]:
         """Every source that has SAID this load delivered. A claim, from each of them (CD-15)."""
-        return [t for t in self.tracking if t.value("status") == "DELIVERED"]
+        return [t for t in self.tracking
+                if t.value("status") == "DELIVERED" and t.overruled_by is None]
 
     def open_conflicts(self) -> list[dict[str, Any]]:
         return [c for c in self.conflicts if c["state"] in OPEN_CONFLICT_STATES]
@@ -947,6 +949,12 @@ class Projector:
                 "stop_key": payload["stop_key"], "start_local": payload["start_local"],
                 "end_local": payload["end_local"], "timezone": payload["timezone"],
                 "status": "CONFIRMED"}, decision_ref=decision_ref)
+        elif act == "confirm_movement_status":
+            # OWNER_ASSERTED, from how the record was acquired. It is one more statement about
+            # where the load is — hers — and `_apply_status_decisions` gives it its weight.
+            self._add_tracking(view, observation, parsed, {
+                "signal": OWNER_CONFIRMATION, "status": payload["status"],
+                "stop_key": payload.get("stop_key")}, index=0)
         elif act == "attribute_carrier_invoice":
             target = self._f.observation_by_external(payload["target"]["source_system"],
                                                      payload["target"]["external_id"])
@@ -1022,8 +1030,29 @@ class Projector:
             payable.attributed_by = attribution["human_id"]
             payable.attribution_decision_ref = attribution["decision_ref"]
 
+    def _apply_status_decisions(self, view: LoadView) -> None:
+        """A recorded human's word on where the load IS settles what was said BEFORE it. Another
+        source's earlier claim of a LATER stage than the one she confirmed is overruled: it stays
+        on the record as what that source said, and it no longer counts as a claim that the stage
+        was reached. Nothing said AFTER her decision is touched — if it contradicts her, that is a
+        new dispute, raised by the detectors and hers to decide again."""
+        decisions = [t for t in view.tracking if t.value("signal") == OWNER_CONFIRMATION
+                     and t.value("status") in TRACKING_PROGRESSION]
+        if not decisions:
+            return
+        latest = max(decisions, key=lambda t: (t.field_of("status").facts[0].as_of, t.entity_id))
+        decided_at = latest.field_of("status").facts[0].as_of
+        rank = TRACKING_PROGRESSION.index(latest.value("status"))
+        for event in view.tracking:
+            if event is latest or event.value("status") not in TRACKING_PROGRESSION:
+                continue
+            if event.field_of("status").facts[0].as_of <= decided_at \
+                    and TRACKING_PROGRESSION.index(event.value("status")) > rank:
+                event.overruled_by = latest.origin_observation_id
+
     def _derive(self, view: LoadView) -> None:
         tenant = self._tenant
+        self._apply_status_decisions(view)
         self._apply_invoice_attributions(view)
 
         # L-Access: a charge is AUTHORIZED only by a recorded human authorization that covers it.

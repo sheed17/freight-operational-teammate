@@ -22,6 +22,14 @@ turn RED under it. Four families:
     offered accepted; a human's need suppressed; a failed call read as advice to wait; the same
     question paid for twice.
 
+  * THE CONTINUOUS LOAD LOOP (deep-end 4). A deadline that passes unlooked-at; an unbooked load
+    called quiet; a human's confirmation that resolves nothing; a settled dispute raised again; a
+    restart that forgets when the loop last looked; a
+    contradiction after her decision silently lost; an overruled claim that still counts; a
+    tracking record speaking as the owner; a human's decision not counted as a touch; a draft
+    reported as sent; money in the picture; work on no load left off the board; a refused record
+    counted twice.
+
 It mutates TEXT and shells out to pytest; it NEVER imports the code under test, and it NEVER uses git
 to undo a mutation. Originals are held in memory and restored unconditionally; `__pycache__` is purged
 around every run so a same-length restore cannot leave poisoned bytecode and a false green.
@@ -50,8 +58,10 @@ MODEL = f"{FD}/model.py"
 MAPPING = f"{FD}/entity_mapping.py"
 INTAKE = f"{FD}/intake.py"
 HISTORY = f"{FD}/history.py"
+LOOP = f"{FD}/load_loop.py"
 
 T = "eval/tests/test_p9_load_work.py"
+L = "eval/tests/test_p9_load_loop.py"
 
 TIME = f"{T}::test_work_changes_when_time_passes_and_nothing_arrives"
 CONFLICT = f"{T}::test_an_unresolved_conflict_is_human_attention_and_resolving_it_keeps_history"
@@ -480,6 +490,85 @@ CASES = [
        '                why=f"Carrier invoice {payable.value(\'invoice_number\')} does not '
        'match what was "\n                    f"agreed ({payable.value(\'linehaul\').display()}): "')],
      MONEY),
+
+    # ------------------------------------------------------------------ the continuous load loop
+    ("a deadline passes in silence and the loop does not look - a late pickup is first seen when "
+     "the truck finally arrives and the lateness is already over",
+     [(LOOP, "            if look < before:\n", "            if look < before and False:  # MUTANT\n")],
+     f"{L}::test_a_deadline_that_passes_in_silence_is_a_moment_of_its_own"),
+
+    ("a RESTART forgets when the loop last looked - a deadline that falls just after it is not a "
+     "moment, and the late pickup is first seen when something else arrives",
+     [(LOOP, "            intakes[history.tenant] = FreightIntake(conn, setups[history.tenant],\n"
+             "                                                    interpreter=interpreter)\n",
+       "            intakes[history.tenant] = FreightIntake(conn, setups[history.tenant],\n"
+       "                                                    interpreter=interpreter)\n"
+       "            latest.pop(history.tenant, None)  # MUTANT\n")],
+     f"{L}::test_a_restart_just_before_a_deadline_still_sees_the_deadline"),
+
+    ("a load NOBODY HAS BOOKED is called quiet - it has no needs only because covering it is "
+     "outside the loop",
+     [(LOOP, "        return self.state.routine_work_is_zero and self.booked\n",
+       "        return self.state.routine_work_is_zero  # MUTANT\n")],
+     f"{L}::test_a_load_nobody_has_booked_is_never_called_quiet"),
+
+    ("a human's confirmation records her word and RESOLVES NOTHING - the Conflict M7 holds stays "
+     "open, so the load she settled is disputed forever",
+     [(INTAKE, '                    entity_ref=load_ref, field="tracking_status", human_id=human_id,\n',
+       '                    entity_ref=load_ref, field="tracking_status_", human_id=human_id,\n')],
+     f"{L}::test_a_disputed_load_stays_a_humans_until_a_human_settles_it"),
+
+    ("a dispute a human SETTLED is raised again from the same two statements - her decision "
+     "settles nothing that was said before it",
+     [(DETECTORS, "        if later_fact.as_of <= decided_at:\n            continue\n",
+       "        if False:  # MUTANT\n            continue\n")],
+     f"{L}::test_a_disputed_load_stays_a_humans_until_a_human_settles_it"),
+
+    ("a contradiction made AFTER a human's decision is silently lost - it is given the id of the "
+     "dispute she already closed, so no new Conflict is ever raised",
+     [(DETECTORS, '"tracking_status", *((settled,) if settled else ())),',
+       '"tracking_status"),  # MUTANT')],
+     f"{L}::test_a_later_contradiction_after_a_humans_decision_is_a_new_dispute"),
+
+    ("a claim a human OVERRULED still counts - she says it has not delivered, and the driver's "
+     "'delivered' goes on making the load delivered",
+     [(PROJECTION, '                if t.value("status") == "DELIVERED" and t.overruled_by is None]',
+       '                if t.value("status") == "DELIVERED"]  # MUTANT')],
+     f"{L}::test_a_human_who_says_it_has_not_delivered_overrules_the_claim"),
+
+    ("a tracking record may SPEAK AS THE OWNER - the owner's confirmation is admitted as a signal "
+     "any source can send",
+     [(MODEL, '    "tracking_provider_position", "driver_assertion", "carrier_assertion", '
+              '"tms_status",\n)',
+       '    "tracking_provider_position", "driver_assertion", "carrier_assertion", '
+       '"tms_status",\n    "owner_confirmation",  # MUTANT\n)')],
+     f"{L}::test_no_source_but_a_recorded_human_can_speak_as_the_owner"),
+
+    ("a human's decision is NOT COUNTED as a touch - every load looks as if nobody had to act",
+     [(LOOP, '                if (o.get("parsed") or {}).get("kind") == "human_assertion"])',
+       '                if (o.get("parsed") or {}).get("kind") == "no_such_kind"])  # MUTANT')],
+     f"{L}::test_a_humans_decision_is_a_touch_and_so_is_one_still_owed"),
+
+    ("a proposal says it was SENT - a draft is reported as an outbound message",
+     [(LOOP, '                "sent": False}', '                "sent": True}  # MUTANT')],
+     f"{L}::test_a_proposal_is_words_and_nothing_is_sent"),
+
+    ("MONEY reaches the picture - a timeline sentence is quoted with its amounts intact",
+     [(LOOP, '    return _BARE_AMOUNT.sub("[amount withheld]", _AMOUNT.sub("[amount withheld]", '
+             'text))',
+       '    return text  # MUTANT')],
+     f"{L}::test_no_picture_carries_money"),
+
+    ("work that is on NO LOAD is left off the board - every load is quiet and a refused assertion "
+     "sits where nobody will see it",
+     [(LOOP, "    unplaced = {tenant: evaluate_unplaced_work(",
+       "    unplaced = {tenant: () and evaluate_unplaced_work(")],
+     f"{L}::test_only_a_recorded_human_and_only_a_real_status_can_settle_it"),
+
+    ("a refused record is TWO needs - the held record and the Exception raised about it are each "
+     "put in front of a human",
+     [(WORK, "        if item.observation_id in explained:\n", "        if False:  # MUTANT\n")],
+     f"{L}::test_only_a_recorded_human_and_only_a_real_status_can_settle_it"),
 ]
 
 
