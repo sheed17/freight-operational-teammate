@@ -5,6 +5,24 @@ A review of what a stranger would be able to read if this repository were public
 was deleted, untracked, rewritten or pushed as part of the review, and repository visibility was
 not changed; every item below is a recommendation for the owner.
 
+## Correction, 2026-10-08 (closeout pass)
+
+The review below was written without access to GitHub and assumed the repository was private.
+It is not: `sheed17/freight-operational-teammate` is **already public**, with `main` as the
+default branch. That changes how three items read.
+
+- **Items 6, 8 and 9 are already published.** `.playwright-mcp/`, `configs/tms/` and
+  `eval/tests/test_truckingoffice_write.py` are on `origin/main` today. Pushing this branch
+  exposes nothing new. Item 8 is still the owner's call, but it is a clean-up of something
+  public, not a gate on publishing.
+- **Item 3 is live.** `claude.yml` and `claude-code-review.yml` run on the public repository and
+  the `CLAUDE_CODE_OAUTH_TOKEN` secret is set. Disable them if they are not wanted.
+- **Item 1 is the only thing between a visitor and this showcase.** `origin/main` is 215 commits
+  behind this branch and is an ancestor of it, so it can be fast-forwarded without a rewrite.
+  CI was green on this branch at `c4376b9`; the five newer commits are unpushed.
+
+No secret was found in either check. The findings below stand otherwise.
+
 ## Summary
 
 **No live credential was found** in the tracked files or in the history reachable from any branch.
