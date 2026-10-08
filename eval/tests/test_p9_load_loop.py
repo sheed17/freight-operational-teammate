@@ -37,7 +37,8 @@ for _entry in (str(ROOT / "src"), str(ROOT / "eval")):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-from freight_corpus.builders import TRACKING, says  # noqa: E402
+from freight_corpus.builders import TRACKING, charges, movement, says  # noqa: E402
+from freight_corpus.histories import _stops  # noqa: E402
 from freight_corpus.loop_histories import (  # noqa: E402
     LOOP_SETUPS,
     Load,
@@ -126,13 +127,32 @@ def _unwatched_stops(view, setup) -> list[str]:
     return out
 
 
+def _doubly_watched_stops(view) -> list[str]:
+    """THE OTHER HALF OF THAT ORACLE: a stop is waited for ONCE. Two live arrival watches at one
+    stop are one obligation counted twice - which is what an appointment that was moved, and then
+    missed, used to leave behind. Rows that are no longer owed are history and are not counted.
+
+    One known way to trip it is recorded, not repaired (`P9-D66`): over a tracking channel with no
+    health reading, a watch judged INDETERMINATE cannot be amended or cancelled by M8, so an
+    appointment then moved to a window never used is watched beside it. No history here does that."""
+    out: list[str] = []
+    for stop_key in sorted(view.stops):
+        live = [e for e in view.expectations
+                if e["expected_type"] == f"arrival:{stop_key}" and e["state"] in _OWED]
+        if len(live) > 1:
+            out.append(f"{view.load.value('load_ref')}: DUPLICATE WATCH - {len(live)} live "
+                       f"arrival watches at {stop_key}")
+    return out
+
+
 def _run(path: Path, histories=None, *, setups=LOOP_SETUPS,
          **kw) -> tuple[LoopRunResult, WorkflowStore]:
     histories = build_loop_histories() if histories is None else histories
     path.mkdir(parents=True, exist_ok=True)
     store = WorkflowStore(path / "loop.db", tenant=histories[0].tenant)
     kw.setdefault("audit", lambda state, view, tenant: [
-        *audit_state(state, view, tenant=tenant), *_unwatched_stops(view, setups[tenant])])
+        *audit_state(state, view, tenant=tenant), *_unwatched_stops(view, setups[tenant]),
+        *_doubly_watched_stops(view)])
     return run_load_loop(store.conn, setups, histories, **kw), store
 
 
@@ -1122,6 +1142,419 @@ def test_one_brokerages_decision_reopens_nothing_at_another(tmp_path):
         assert {tenant: sum(counts.values())
                 for tenant, counts in result.report["effect_surface_rows"].items()} \
             == {CEDAR: 0, NORTHLINE: 0}
+    finally:
+        store.close()
+
+
+# ============================================================ a moved appointment is still watched
+
+ET = "America/New_York"
+#: The delivery appointment below is 13:00-15:00 Eastern on the second day ...
+RESTORED_CLOSES = "2026-09-02T19:00:00.000Z"
+RESTORED_LOOKS_AGAIN = "2026-09-02T19:01:00.000Z"
+#: ... and the window it is moved to, and back from, is 09:00-11:00 Eastern that same day.
+EARLIER_CLOSES = "2026-09-02T15:00:00.000Z"
+
+
+def _afternoon(history_id: str, **kw):
+    """The load of `_picked_up`, its delivery appointment CONFIRMED for 13:00-15:00 Eastern."""
+    return _picked_up(history_id, delivery_window=("13:00", "15:00"), **kw)
+
+
+def _says_window(h, cargo, label: str, clock: str, start: str, end: str, *,
+                 who: str = "dana.ortiz") -> None:
+    """A recorded human states the delivery appointment, at `clock` Eastern on the second day."""
+    h.human(label, h.t(clock, 1, ET), who, "confirm_appointment", refs=cargo.refs, stop_key="S2",
+            window_start_local=h.local(start, 1), window_end_local=h.local(end, 1), timezone=ET)
+
+
+def _tms_window(h, cargo, label: str, at: str, version: int, start: str, end: str) -> None:
+    """The system of record's own row for the load, carrying this delivery appointment."""
+    stops = _stops(h, pickup="Great Lakes Beverage Bloomington", delivery="Maumee Distributing",
+                   pickup_status="CONFIRMED", delivery_status="CONFIRMED", delivery_zone=ET,
+                   delivery_window=(start, end))
+    h.tms(label, at, load=cargo.number, status="COVERED", version=version,
+          customer=cargo.customer, po=cargo.po, bol=cargo.bol, sell=charges(cargo.sell),
+          stops=stops, movements=(movement("M1", cargo.carrier, pro=cargo.pro),))
+
+
+def _wrong_then_right(history_id: str, **kw):
+    """THE SECOND REVIEW'S REPRODUCTION. At 11:20 Eastern Dana enters the delivery appointment as
+    09:00-11:00 - a window that has already closed. At 11:25 she puts it back to 13:00-15:00."""
+    h, cargo = _afternoon(history_id, **kw)
+    _says_window(h, cargo, "dana-wrong-window", "11:20", "09:00", "11:00")
+    _says_window(h, cargo, "dana-corrects-it", "11:25", "13:00", "15:00")
+    return h, cargo
+
+
+def _arrival_rows(view) -> list[tuple[str, str]]:
+    return [(e["state"], e["deadline_utc"]) for e in _watches(view, "arrival:S2")]
+
+
+def test_an_appointment_put_back_after_a_wrong_window_lapsed_is_still_watched(tmp_path):
+    """The appointment is entered wrongly, as a window already gone, and corrected five minutes
+    later. The watch that followed it to the wrong window was late there and is CANCELLED when the
+    appointment leaves - and the appointment she restored is WATCHED: a new generation of the same
+    watch, owed until the truck arrives, late when 15:00 passes with nobody at the dock. A watch
+    that is history does not stand in for the one that is owed, and with no tracking cadence
+    configured nothing else would have: the load read QUIET, next step NOTHING."""
+    h, _ = _wrong_then_right("RA")
+    h.clock("end", h.t("22:00", 1))
+    g, _ = _afternoon("RA")                               # the same load; nobody touches the window
+    g.clock("end", g.t("22:00", 1))
+    result, store = _run(tmp_path / "moved", [h.build({})], setups=NO_CADENCE)
+    untouched, plain_store = _run(tmp_path / "plain", [g.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        wrong = story.at("dana-wrong-window")
+        assert wrong.state.stage is Stage.IN_TRANSIT
+        # Late against the window she entered, at once - on ONE watch, not two.
+        assert [(n.reason_codes, n.due_by) for n in wrong.overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), EARLIER_CLOSES)]
+
+        corrected = story.at("dana-corrects-it")
+        assert corrected.state.stage is Stage.IN_TRANSIT and not corrected.quiet
+        watch = corrected.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == RESTORED_CLOSES
+        assert corrected.next_step == "WAIT" and not corrected.overdue
+
+        closed = [m for m in story.moments if m.trigger_kind == "tick"]
+        assert [m.as_of for m in closed] == [RESTORED_LOOKS_AGAIN]
+        assert [(n.kind, n.reason_codes, n.due_by) for n in closed[0].overdue] \
+            == [(NeedKind.CARRIER_STATUS_OVERDUE, ("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+        assert closed[0].next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+
+        last = story.last
+        assert not last.quiet and last.next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+        assert [m.trigger for m in story.moments if m.quiet] == []
+        # The work is what a truck late for an appointment nobody moved owes: no less, no copy.
+        plain_last = untouched.story(NORTHLINE, "LD-59001").last
+        assert _work(last) == _work(plain_last) and len(_work(last)) == 1
+
+        # NOTHING WAS REWRITTEN OR REUSED. The watch that went to the wrong window is retained,
+        # CANCELLED, with the deadline it was late against; the one owed is a row of its own.
+        watches = _watches(view, "arrival:S2")
+        assert _arrival_rows(view) == [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]
+        assert len({e["expectation_id"] for e in watches}) == 2
+        # No evaluation of this load ever saw a stop unwatched, or watched twice.
+        assert result.findings == [] and untouched.findings == []
+        assert result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+        plain_store.close()
+
+
+def test_the_system_of_record_moving_an_appointment_earlier_and_back_is_still_watched(tmp_path):
+    """The same failure with no human in it. The TMS row is edited to 09:00-11:00 the day before;
+    the truck misses that; the row is edited back to 13:00-15:00. The restored appointment is
+    watched and its miss is called late."""
+    h, cargo = _afternoon("RT")
+    _tms_window(h, cargo, "tms-pulls-it-earlier", h.t("15:00"), 3, "09:00", "11:00")
+    _tms_window(h, cargo, "tms-puts-it-back", h.t("11:30", 1, ET), 4, "13:00", "15:00")
+    h.clock("end", h.t("22:00", 1))
+    _in_arrival_order(h)
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        earlier = story.at("tms-pulls-it-earlier").state.need(NeedKind.ARRIVAL_PENDING)
+        assert earlier is not None and earlier.due_by == EARLIER_CLOSES
+        ticks = [m for m in story.moments if m.trigger_kind == "tick"]
+        assert [m.as_of for m in ticks] == ["2026-09-02T15:01:00.000Z", RESTORED_LOOKS_AGAIN]
+        assert [(n.reason_codes, n.due_by) for n in ticks[0].overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), EARLIER_CLOSES)]
+        restored = story.at("tms-puts-it-back")
+        watch = restored.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == RESTORED_CLOSES and not restored.quiet
+        assert [(n.reason_codes, n.due_by) for n in ticks[1].overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+        assert not story.last.quiet and story.last.next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+        assert [m.trigger for m in story.moments if m.quiet] == []
+        assert _arrival_rows(view) == [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]
+        assert story.last.touches.acts == 0 and result.findings == []
+        assert result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+
+
+def test_a_missed_restored_appointment_is_work_of_its_own_beside_the_tracking_cadence(tmp_path):
+    """The same load at a brokerage WITH a tracking cadence, pinged inside it all day. The cadence
+    is satisfied the whole time - and the restored appointment's miss is overdue anyway, under its
+    own reason. The cadence is not what keeps a moved appointment from disappearing."""
+    h, cargo = _wrong_then_right("RC")
+    for clock in ("08:00", "11:30", "15:00", "18:30"):
+        cargo.track(f"still-moving-{clock.replace(':', '')}", h.t(clock, 1), "IN_TRANSIT",
+                    position="I-75 N")
+    h.clock("end", h.t("22:00", 1))
+    _in_arrival_order(h)
+    result, store = _run(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        corrected = story.at("dana-corrects-it")
+        assert {n.kind for n in corrected.state.needs} \
+            == {NeedKind.ARRIVAL_PENDING, NeedKind.TRACKING_UPDATE_PENDING}
+        after = [m for m in story.moments if m.as_of >= RESTORED_LOOKS_AGAIN]
+        assert len(after) >= 3 and after[0].trigger_kind == "tick"
+        for moment in after:
+            late = moment.state.need(NeedKind.CARRIER_STATUS_OVERDUE)
+            assert late is not None and late.reason_codes == ("ARRIVAL:S2_OVERDUE",)
+            assert late.due_by == RESTORED_CLOSES and not moment.quiet
+            cadence = moment.state.need(NeedKind.TRACKING_UPDATE_PENDING)
+            assert cadence is not None and cadence.status is NeedStatus.PENDING
+        assert _arrival_rows(view) == [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]
+        assert result.findings == [] and result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+
+
+def test_however_an_appointment_is_moved_exactly_one_watch_follows_it(tmp_path):
+    """Moved to a window never used before; moved and put back before anything lapsed; moved
+    three times and back to where it started; put back, moved wrongly again, and put back again.
+    Every time the appointment that now stands is watched by exactly ONE live watch - never two,
+    never none, at any evaluation - and the watches left behind are history, never reused."""
+    late = "2026-09-02T22:00:00.000Z"                      # 18:00 Eastern
+    cases = {
+        "a window never used": (
+            [("11:20", "09:00", "11:00"), ("11:25", "16:00", "18:00")],
+            [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", late)]),
+        "put back before anything lapsed": (
+            [("07:00", "09:00", "11:00"), ("08:00", "13:00", "15:00")],
+            [("OVERDUE", RESTORED_CLOSES)]),
+        "three moves and home again": (
+            [("11:20", "09:00", "11:00"), ("11:25", "16:00", "18:00"),
+             ("11:30", "13:00", "15:00")],
+            [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]),
+        "put back twice": (
+            [("11:20", "09:00", "11:00"), ("11:25", "13:00", "15:00"),
+             ("11:30", "09:00", "11:00"), ("11:35", "13:00", "15:00")],
+            [("CANCELLED", EARLIER_CLOSES), ("CANCELLED", EARLIER_CLOSES),
+             ("OVERDUE", RESTORED_CLOSES)]),
+    }
+    assert len(cases) == 4
+    for index, (name, (moves, rows)) in enumerate(cases.items()):
+        h, cargo = _afternoon(f"RM{index}")
+        for step, (clock, start, end) in enumerate(moves):
+            _says_window(h, cargo, f"window-{step}", clock, start, end)
+        h.clock("end", h.t("22:00", 1))
+        result, store = _run(tmp_path / str(index), [h.build({})], setups=NO_CADENCE)
+        try:
+            story, view = _view(result)
+            watches = _watches(view, "arrival:S2")
+            assert _arrival_rows(view) == rows, name
+            assert len({e["expectation_id"] for e in watches}) == len(rows), name
+            assert [m.trigger for m in story.moments if m.quiet] == [], name
+            last = story.last
+            assert [(n.reason_codes, n.due_by) for n in last.overdue] \
+                == [(("ARRIVAL:S2_OVERDUE",), rows[-1][1])], name
+            # Late for the appointment that STANDS, and for no window it has left behind.
+            final = story.at(f"window-{len(moves) - 1}")
+            for moment in [m for m in story.moments if final.as_of <= m.as_of < rows[-1][1]]:
+                assert not moment.overdue, f"{name}: late for a window nobody holds"
+                pending = moment.state.need(NeedKind.ARRIVAL_PENDING)
+                assert pending is not None and pending.due_by == rows[-1][1], name
+            assert result.findings == [], f"{name}: {result.findings[:2]}"
+        finally:
+            store.close()
+
+
+def test_a_moved_appointment_missed_and_then_met_is_one_watch_and_one_exception(tmp_path):
+    """`P9-D59`, as it was first found. The appointment is moved to 09:00-11:00 while that is
+    still ahead; the truck misses it and arrives an hour late. The watch that followed the
+    appointment there is the ONLY one - late, then answered late by the arrival - and the miss
+    leaves ONE cured Exception for a human to close: exactly what a load whose appointment was
+    09:00-11:00 all along leaves. It used to leave two watches and two Exceptions."""
+    h, cargo = _afternoon("RD")
+    _says_window(h, cargo, "dana-moves-it-earlier", "07:00", "09:00", "11:00")
+    g, plain = _picked_up("RD")                             # 09:00-11:00 from the start
+    for load, history in ((cargo, h), (plain, g)):
+        load.track("at-delivery", history.t("12:00", 1, ET), "AT_DELIVERY", "S2")
+        load.delivered("delivered", history.t("12:30", 1, ET))
+        load.pod("pod", history.t("13:00", 1, ET))
+        history.clock("end", history.t("22:00", 1))
+    result, store = _run(tmp_path / "moved", [h.build({})], setups=NO_CADENCE)
+    never_moved, plain_store = _run(tmp_path / "plain", [g.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        plain_story, plain_view = _view(never_moved)
+        assert [m.as_of for m in story.moments if m.overdue] == ["2026-09-02T15:01:00.000Z"]
+
+        def answered(a_view) -> list[tuple]:
+            return [(e["state"], e["deadline_utc"], bool(e["late"]))
+                    for e in _watches(a_view, "arrival:S2")]
+
+        assert answered(view) == [("DISCHARGED", EARLIER_CLOSES, True)] == answered(plain_view)
+        # The window it left is kept where M8 keeps it: on the one row, as its history.
+        assert json.loads(_watches(view, "arrival:S2")[0]["deadline_history"]) == [RESTORED_CLOSES]
+        assert len(story.last.state.housekeeping) == 1 == len(plain_story.last.state.housekeeping)
+        assert story.last.quiet and story.last.billing_ready
+        assert _work(story.last) == _work(plain_story.last) == []
+        assert result.findings == [] and never_moved.findings == []
+    finally:
+        store.close()
+        plain_store.close()
+
+
+def test_a_restored_appointment_is_answered_by_the_truck_and_the_load_goes_on(tmp_path):
+    """After the appointment is put back the truck arrives inside it. THAT record answers the
+    restored watch, on time; delivery is reported, the POD comes, and the load is quiet and
+    billing-ready - with the wrong window's watch still on the record as what it was."""
+    h, cargo = _wrong_then_right("RG")
+    cargo.track("at-delivery", h.t("13:30", 1, ET), "AT_DELIVERY", "S2")
+    cargo.delivered("delivered", h.t("14:10", 1, ET))
+    cargo.pod("pod", h.t("14:40", 1, ET))
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        corrected = story.at("dana-corrects-it")
+        assert corrected.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        arrived = story.at("at-delivery")
+        assert arrived.state.need(NeedKind.ARRIVAL_PENDING) is None and not arrived.overdue
+        watches = _watches(view, "arrival:S2")
+        assert [(e["state"], e["deadline_utc"], bool(e["late"])) for e in watches] \
+            == [("CANCELLED", EARLIER_CLOSES, False), ("DISCHARGED", RESTORED_CLOSES, False)]
+        real = next(o["observation_id"] for o in view.observations
+                    if o["parsed"]["kind"] == "tracking_event"
+                    and o["parsed"]["payload"]["status"] == "AT_DELIVERY")
+        assert watches[1]["discharge_observation_id"] == real
+        assert not [m for m in story.moments if m.index > corrected.index and m.overdue], \
+            "an on-time arrival at the restored appointment was called late"
+        done = story.at("pod")
+        assert done.state.stage is Stage.DELIVERED and done.quiet and done.billing_ready
+        assert story.last.quiet and result.findings == []
+    finally:
+        store.close()
+
+
+def test_looking_again_at_a_restored_appointment_raises_nothing_new(tmp_path):
+    """The clock is read five more times after the restored window has closed, with nothing
+    arriving. Each look re-derives everything the load owes - and writes nothing: the same two
+    rows, the same generation, the same pictures as a run that never looked again."""
+    def history(looks: int):
+        h, _ = _wrong_then_right("RI")
+        for index in range(looks):
+            h.clock(f"look-{index}", h.t(f"{16 + index}:10", 1, ET))
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expectation_id"], e["expected_type"], e["state"], e["deadline_utc"])
+                for e in view.expectations]
+
+    once, store = _run(tmp_path / "once", [history(0)], setups=NO_CADENCE)
+    again, again_store = _run(tmp_path / "again", [history(5)], setups=NO_CADENCE)
+    try:
+        assert again.report["metrics"]["records_arrived"] \
+            == once.report["metrics"]["records_arrived"] + 5
+        assert rows(again) == rows(once) and len(rows(once)) == 3
+        counted = ("expectations_raised", "expectations_cancelled", "expectations_amended",
+                   "expectations_discharged", "exceptions_raised", "writes_after_settle")
+        told = {name: getattr(again.intakes[NORTHLINE].stats, name) for name in counted}
+        assert told == {name: getattr(once.intakes[NORTHLINE].stats, name) for name in counted}
+        assert told["expectations_raised"] == 3 and told["writes_after_settle"] == 0
+        assert _digests(again) == _digests(once) and _final(again) == _final(once)
+        assert again.story(NORTHLINE, "LD-59001").last.as_of == RESTORED_LOOKS_AGAIN
+        assert again.findings == [] and once.findings == []
+    finally:
+        store.close()
+        again_store.close()
+
+
+def test_a_restored_appointments_watch_survives_replay_restart_and_a_doubled_inbox(tmp_path):
+    """The moved-and-restored load again: replayed, restarted before the appointment is touched,
+    after the wrong window, after the correction and after the restored window has closed, and
+    with every record delivered twice. Every picture is the uninterrupted run's, and so is every
+    row - the SAME generation ids, never one more."""
+    def history():
+        h, cargo = _wrong_then_right("RR")
+        cargo.track("still-moving", h.t("16:30", 1, ET), "IN_TRANSIT", position="I-75 N")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expectation_id"], e["expected_type"], e["state"], e["deadline_utc"])
+                for e in view.expectations]
+
+    whole, store = _run(tmp_path / "whole", [history()], setups=NO_CADENCE)
+    stores = [store]
+    try:
+        assert sum(len(v) for v in _digests(whole).values()) >= 10
+        assert [r[2:] for r in rows(whole) if r[1] == "arrival:S2"] \
+            == [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]
+        assert not whole.story(NORTHLINE, "LD-59001").last.quiet
+        again, store = _run(tmp_path / "again", [history()], setups=NO_CADENCE)
+        stores.append(store)
+        assert _digests(again) == _digests(whole) and rows(again) == rows(whole)
+        cuts = ("loaded", "dana-wrong-window", "dana-corrects-it", "still-moving")
+        for cut in cuts:
+            restarted, store = _run(tmp_path / cut, [history()], setups=NO_CADENCE,
+                                    restart_after={"RR": cut})
+            stores.append(store)
+            assert _digests(restarted) == _digests(whole), f"a restart after {cut} differs"
+            assert rows(restarted) == rows(whole) and restarted.findings == []
+        doubled, store = _run(tmp_path / "doubled", [duplicate_every_record(history())],
+                              setups=NO_CADENCE)
+        stores.append(store)
+        assert _final(doubled) == _final(whole) and rows(doubled) == rows(whole)
+        assert doubled.findings == [] and whole.findings == []
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_one_brokerages_rescheduling_moves_nothing_at_another(tmp_path):
+    """The same load number at two brokerages, the same 13:00-15:00 appointment. Northline's Dana
+    moves hers and puts it back. Cedar Ridge's appointment never moves, its one watch is never
+    cancelled or re-raised - and Dana's name on a reschedule in Cedar Ridge's inbox moves nothing."""
+    watching = {**NO_CADENCE, CEDAR: replace(NO_CADENCE[CEDAR], arrival_tracking_channel=TRACKING)}
+    n, _ = _wrong_then_right("RN")
+    n.clock("end", n.t("22:00", 1))
+    c, cedar_load = _afternoon("RS", tenant=CEDAR, ops=CEDAR_OPS, pods=CEDAR_OPS)
+    _says_window(c, cedar_load, "dana-in-cedar", "11:20", "09:00", "11:00")
+    c.clock("end", c.t("22:00", 1))
+    result, store = _run(tmp_path, [n.build({}), c.build({})], setups=watching)
+    try:
+        north, north_view = _view(result, NORTHLINE)
+        cedar, cedar_view = _view(result, CEDAR)
+        assert north.load_id != cedar.load_id
+        assert _arrival_rows(north_view) \
+            == [("CANCELLED", EARLIER_CLOSES), ("OVERDUE", RESTORED_CLOSES)]
+        assert [n.reason_codes for n in north.last.overdue] == [("ARRIVAL:S2_OVERDUE",)]
+        # Cedar Ridge has no reading of its tracking channel, so its miss is UNVERIFIED, not late.
+        assert _arrival_rows(cedar_view) == [("INDETERMINATE", RESTORED_CLOSES)]
+        assert cedar_view.appointments["S2"].value("window")["end_local"] == "2026-09-02T15:00"
+        assert cedar.last.touches.acts == 0 and not cedar.last.quiet
+        assert [n.reason_codes for n in result.unplaced[CEDAR]] \
+            == [("UNAUTHENTICATED_HUMAN_ASSERTION",)]
+        assert {e["tenant"] for e in north_view.expectations} == {NORTHLINE}
+        assert {e["tenant"] for e in cedar_view.expectations} == {CEDAR}
+        assert {e["expectation_id"] for e in north_view.expectations}.isdisjoint(
+            e["expectation_id"] for e in cedar_view.expectations)
+        assert cross_tenant_violations(store.conn) == [] and result.findings == []
+        assert {tenant: sum(counts.values())
+                for tenant, counts in result.report["effect_surface_rows"].items()} \
+            == {CEDAR: 0, NORTHLINE: 0}
+    finally:
+        store.close()
+
+
+def test_the_duplicate_watch_oracle_fires_on_two_live_watches_at_one_stop(tmp_path):
+    """Anti-vacuity for `_doubly_watched_stops`, which every run in this file applies to every
+    evaluation of every load. It is quiet about a stop with one live watch, it objects to a second
+    live one, and it does not count a watch that is history."""
+    h, _ = _afternoon("RO")
+    h.clock("end", h.t("09:00", 1))                         # the window has not opened yet
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        _, view = _view(result)
+        live = [e for e in _watches(view, "arrival:S2") if e["state"] in _OWED]
+        assert len(live) == 1 and _doubly_watched_stops(view) == []
+        view.expectations.append({**live[0], "expectation_id": "exp-a-second-live-watch"})
+        assert [f.split(": ", 1)[1][:15] for f in _doubly_watched_stops(view)] \
+            == ["DUPLICATE WATCH"]
+        view.expectations[-1]["state"] = "CANCELLED"
+        assert _doubly_watched_stops(view) == []
     finally:
         store.close()
 

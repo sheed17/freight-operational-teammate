@@ -8,10 +8,13 @@
 > opened nothing and enabled nothing.
 > **The corpus is synthetic development input.** Nothing here is a design-partner observation, no
 > freight rule is validated by it, and no labor time was measured.
-> **One focused independent review was performed on 2026-10-06 and BLOCKED this checkpoint** (§10).
-> The repair in §10 was written by the session that performed that review, so it is a builder's
-> work and **has not been independently reviewed.** Tier-1 and tier-2 surfaces were touched (§5,
-> §10); one focused independent review of the repair is still owed before merge
+> **Two focused independent reviews have been performed, and each BLOCKED this checkpoint.** The
+> first (2026-10-06) found the false quiet repaired in §10. The second (2026-10-07) found the §10
+> repair sound on every criterion it was given, and blocked the tree on a rescheduled-appointment
+> false quiet that repair had neither introduced nor closed (§11).
+> **The repair in §11 was written by the session that performed that second review, so it is a
+> builder's work and has not been independently reviewed.** Tier-1 and tier-2 surfaces were touched
+> (§5, §10, §11); one focused independent review of the §11 repair is still owed before merge
 > ([`CLAUDE.md`](../../CLAUDE.md) §7).
 
 ## 1. What a broker can now do that they could not before
@@ -242,9 +245,96 @@ whose clock runs ahead is not judged by it, and no general time framework was ad
 
 | ID | Debt | Why it does not block |
 |---|---|---|
-| `P9-D59` | An appointment whose watch was AMENDED to a new window and then went overdue gets a second owed watch for the same stop and deadline (W07 / LD-49006, two `OVERDUE` rows). Present, identically, on the unrepaired tree. | The work engine collapses every missed watch into one follow-up, so one need is shown. It is duplicate canonical state, not duplicate work and not silence. |
+| ~~`P9-D59`~~ | ~~An appointment whose watch was AMENDED to a new window and then went overdue gets a second owed watch for the same stop and deadline (W07 / LD-49006, two `OVERDUE` rows). Present, identically, on the unrepaired tree.~~ **CLOSED by the second review's repair (§11).** | The reason recorded here was wrong: "not silence" held only until the appointment was put back, one record later (`P9-D65`). |
 | `P9-D60` | Only a human's LATEST status decision overrules anything. If she says "in transit" and later "delivered", the claim her first decision overruled counts again. | Her later decision is itself a delivery report, so no conclusion rests on the revived claim alone. Whether an earlier decision should outlive a later one is a product question. |
 | `P9-D61` | A record moved to another load does not answer the watch on the load it was moved TO: M5 has no re-bind and M8 refuses a discharging observation bound elsewhere. | The watch stays owed and goes overdue: over-asking, never silence. |
 | `P9-D62` | A human's "at pickup" / "at delivery" with no stop named is not arrival evidence at the only such stop, so a watch can be owed again after she said the truck is there. | Over-asking, and avoidable by naming the stop. The same gap exists for a bare `AT_PICKUP` from any source. |
 | `P9-D63` | `run_load_loop(restart_after=...)` raises if the restart follows a brokerage's last record. | Harness only; no canonical state is involved. |
 | `P9-D64` | A human's decision settles a statement ABOUT an earlier moment even when it ARRIVES after she decided - a late batch of provider pings, say - so she never saw it. | It is more of the evidence she already weighed, and the rule is stated ("what was said before it"). Whether "before" should mean said or received is a product question. |
+
+## 11. Second independent review — 2026-10-07 — and its repair
+
+### What the review found
+
+The §10 repair held on every criterion it was reviewed against: the original false quiet closed with
+and without a tracking cadence, a valid later delivery, ten orderings of several claims, repeated
+and stale human decisions, future-dated acts, forged authority, later contradiction, replay and
+restart, two brokerages, and no effect row. The review reproduced §10's defect on `ee9f6b8` and its
+absence on `9359798` with histories and an oracle of its own.
+
+**BLOCKED** all the same, on one reachable failure in class "false quiet" that §10 neither
+introduced nor closed. It is older than this checkpoint (the code path dates from `50f3334`,
+`P9-CP-3`) and is recorded as **`P9-D65`**:
+
+> A CONFIRMED appointment is moved to an earlier window - by a recorded human, or by an edit to the
+> TMS row - that window lapses, and the appointment is put back where it was. The watch had followed
+> the appointment by amendment, so it still carried the id of the window it was FIRST raised for;
+> it went overdue against the earlier window and was cancelled when the appointment left. The
+> window the appointment returned to mapped to that cancelled row's id, an id M8 holds in any state
+> is never raised again, and **the restored appointment had no watch at all: `QUIET`, next step
+> `NOTHING`, through a window the truck then missed.** With a tracking cadence the load was not
+> quiet, and the missed appointment was still never late. Its smallest form is one wrong entry - a
+> window already past - corrected five minutes later.
+
+`audit_state` passed it. §10's own second oracle, `_unwatched_stops`, fires on it; no history in the
+corpus reached it.
+
+The review classified `P9-D59` as blocking with it. They share one root cause - a row's identity
+named a window, and the appointment had moved - and §10's reason for carrying `P9-D59` ("not
+duplicate work and not silence") stopped being true one record later.
+
+### What was repaired
+
+**The rule.** A truck's arrival at a stop is ONE obligation however often its appointment moves; an
+M8 row is one GENERATION of the watch for it. `detectors._arrival_expectations` now asks what is
+owed of the obligation, and never of an id:
+
+| Question | Before | Now |
+|---|---|---|
+| Is the appointment that stands already watched? | By id: is there a row under the id of the window it now has | By obligation: a live watch at this stop on the deadline that now stands IS the watch, whichever row it is. A watch that followed the appointment there by amendment counts, so a moved appointment that is then missed no longer gets a second watch beside it (`P9-D59`) |
+| Has the truck already answered it? | By id | A watch at this stop that a STANDING record discharged answers the obligation, whatever window that row was raised for. Nothing is raised to be discharged again - which, when the arrival was late, used to leave a second Exception for a human to close |
+| Under which id is a watch raised when neither holds? | The first generation M8 does not hold `DISCHARGED`. A `CANCELLED` generation was returned as itself, could not be raised, and nothing watched (`P9-D65`) | The first generation that is not HISTORY (`detectors._owed_again_id`): `DISCHARGED`, `CANCELLED` and `EXPIRED` are all terminal and all skipped. A generation still owed is returned as itself, so a watch already owed is not raised twice |
+
+Nothing is rewritten, reused or reopened. The cancelled watch is still `CANCELLED`, with the
+deadline it was late against; the watch that is owed is a row of its own, with a generation id that
+is a pure function of the load, the stop, the window and how many generations are already history -
+so a replay or a restart arrives at the same ids. M8 and `foundation.raise_expectation` are
+untouched: an id present in any state is still never raised again, and should not be. A moved
+appointment still AMENDS its watch in place ("a moved appointment is the same watch"), and a watch
+left overdue on a window the appointment has left is still cancelled.
+
+This extends §10's generation mechanism; it adds no second one. The tracking-cadence watch uses the
+same helper and is unchanged: none of its rows is ever cancelled.
+
+### What proves it
+
+| Check | Result | What it could have caught |
+|---|---|---|
+| The review's reproduction, no cadence: 13:00-15:00 confirmed; at 11:20 entered as 09:00-11:00; at 11:25 put back | **Before:** `IN_TRANSIT`, quiet, next `NOTHING`, both rows `CANCELLED`, never late. **After:** not quiet from the correction on; `ARRIVAL_PENDING` due 19:00Z; `CARRIER_STATUS_OVERDUE` (`ARRIVAL:S2_OVERDUE`) at 19:01Z; rows `CANCELLED`, `OVERDUE`; the same work a truck late for an untouched appointment owes | The defect |
+| The same through the system of record: the TMS row edited earlier, missed, edited back | Watched and called late; no human act involved | A repair that only covers the human's act |
+| The same with a tracking cadence, pinged inside it all day | The restored appointment's miss is overdue under its own reason while the cadence need stays `PENDING` | The cadence being what keeps a moved appointment visible |
+| Moved to a window never used; put back before anything lapsed; three moves and home; put back twice | One live watch after every move, the expected rows, and no moment late for a window nobody holds | Two watches, none, or a stale one left live |
+| `P9-D59` as it was found: moved earlier, missed, arrives an hour late | One watch, answered late; one cured Exception - exactly what a load whose appointment never moved leaves. Before: two of each | Duplicate canonical state and duplicate housekeeping |
+| A real arrival inside the restored window, then delivery and the POD | The restored watch is discharged by that record, on time; quiet and billing-ready | A watch that cannot be answered |
+| The clock read five more times with nothing arriving | The same three rows, the same raise/cancel/amend counts, the same pictures as a run that never looked again | A generation raised on every look |
+| Replay; restart before the first change, after it, after the correction, after the restored window closed; every record twice | Identical pictures and identical rows, ids included | A generation that depends on when the process started |
+| Two brokerages, one load number | Northline's moves and restores; Cedar Ridge's one watch is never touched, and Dana's reschedule in its inbox is refused | A reschedule reaching next door |
+| Nine new regression tests and one oracle test in `test_p9_load_loop.py` | all pass; all nine regression tests FAIL on `9359798`. The oracle test passes there, as it should: it proves the new oracle can fire | - |
+| A third oracle, `_doubly_watched_stops`, beside `_unwatched_stops` on every evaluation of every loop test | 0 findings; seen to fire | Two live arrival watches at one stop |
+| Eighteen hostile histories outside the suite, each judged at every evaluation: never unwatched, never two live watches, no cancellable watch left live on a window the appointment has left | 18 of 18 clean - one of them only by that letter: over a blind channel the stop stays under an unverified follow-up on the old deadline (`P9-D66`). They include: the same window restored three times; a human's wrong entry answered by the TMS row and then by her; the TMS's wrong edit corrected by a human; every update redelivered and replayed late; the truck arriving between the wrong entry and its correction, and after the restored window closed; a false "delivered" overruled and THEN the appointment moved and restored; the pickup stop; both brokerages rescheduling differently | - |
+| `run_freight_corpus.py --loop` and the work corpus | Every figure in §6 unchanged: 425 records, 4,802 evaluations, 331 moments, 513 labeled checks, 0 failed, 0 audit findings; work corpus 183 records, 1,284 evaluations, 278 checks. Every load's final picture is identical to `9359798`, and LD-49006 no longer carries two owed watches | The repair changing a load whose appointment never came back |
+| The hostile layers | `--loop --attack` 393 mutants, 8,153 evaluations, 0 findings; `--attack` 164 mutants, 1,719 evaluations, 0 findings | - |
+| Mutation | four mutants added to `scripts/mutate_p9_load_work.py`, and three whose anchors the repair moved re-pointed at the same defects; all 82 mutants of the battery turn their named guard RED. Run on a copy of the working tree, never in it | A guard that cannot fail |
+| The seven P9 and ships-dark test files | 250 passed (240 before this repair, and the ten new tests) | - |
+| Effect and authority ledgers | 0 rows in every run | - |
+
+**Rollback:** revert the repair commit. Nothing on a live path reaches any of it.
+
+### Debt recorded by the review and the repair
+
+| ID | Debt | Why it does not block |
+|---|---|---|
+| ~~`P9-D65`~~ | ~~An appointment put back to a window whose watch had been cancelled is not watched.~~ **CLOSED by this repair.** | It was the blocking finding. |
+| `P9-D66` | Over a tracking channel with no health reading, the watch that followed an appointment to a lapsed window is `INDETERMINATE`, which M8 can neither amend nor cancel. Put BACK, the appointment keeps that watch as the stop's one live watch, on the deadline it was judged against: the restored window is not timed separately. Moved on to a window never used, it is watched there by a second live watch beside the first - the one case left where a stop has two. | Never quiet either way: the unverified follow-up stays on the stop until the truck arrives, and both collapse into the one carrier follow-up. Neither is new: the unrepaired tree timed the restored window no better and left one more such watch in each case. Whether a watch M8 has judged blind should be closable when its appointment moves is M8's question, not this spine's. |
+| `P9-D67` | A truck checked in at the delivery stop with no delivery report is `QUIET` at a brokerage with no tracking cadence - including when a human overrules "delivered" by saying "at delivery". Nothing waits for the delivery to be reported. Older than this checkpoint. | The arrival obligation is met by standing evidence. How long a truck may sit at a dock before someone is asked is a tenant rule nobody has stated: **NEEDS VALIDATION**. With a cadence the tracking watch covers it. |
+| `P9-D68` | A source that restates, AFTER a human's decision, the status she overruled is fresh evidence: a TMS row re-sent still saying `DELIVERED` makes the load delivered again and replaces the late-truck follow-up with a POD request, with no new dispute unless a current-state source contradicts it. Older than this checkpoint. | Not quiet and not billing-ready without a signed POD. It is the stated rule ("what was said before it, and only that"); whether a restatement by the same source is new evidence is a product question. |

@@ -38,6 +38,11 @@ turn RED under it. Four families:
     claim satisfied something; a human act dated in the future read as authority; and the same
     rule refusing an act dated at the instant it arrived.
 
+  * A MOVED APPOINTMENT IS STILL WATCHED (the second CP-4 review repair). A cancelled watch that
+    stands in for the one owed when the appointment comes back to its window; a moved appointment
+    that is then missed watched twice; an owed watch that cannot be found again under its own id;
+    and a watch the truck's arrival already answered raised again beside it.
+
 It mutates TEXT and shells out to pytest; it NEVER imports the code under test, and it NEVER uses git
 to undo a mutation. Originals are held in memory and restored unconditionally; `__pycache__` is purged
 around every run so a same-length restore cannot leave poisoned bytecode and a false green.
@@ -83,6 +88,7 @@ MC_TWINS = f"{T}::test_one_mc_recorded_under_two_carriers_places_nothing"
 POD = f"{T}::test_delivered_without_a_pod_is_work_and_a_usable_pod_closes_it"
 OVERRULED = f"{L}::test_an_overruled_delivery_claim_stops_answering_the_delivery_watch"
 FUTURE = f"{L}::test_a_future_dated_human_act_is_not_authority_and_silences_nothing"
+RESTORED = f"{L}::test_an_appointment_put_back_after_a_wrong_window_lapsed_is_still_watched"
 TWICE = f"{T}::test_evaluating_the_same_state_twice_creates_nothing"
 TENANT = f"{T}::test_the_same_invoice_at_another_brokerage_cannot_be_reached"
 ROUTED = f"{T}::test_the_model_is_asked_only_when_the_record_leaves_act_or_wait_open"
@@ -589,20 +595,26 @@ CASES = [
 
     ("the watch an overruled claim answered is NEVER OWED AGAIN - it is raised under the id M8 "
      "already holds DISCHARGED, so the load goes quiet and the missed delivery is never late",
-     [(DETECTORS, "                            if arrival_evidence(view, stop_key)\n",
+     [(DETECTORS, "                            if evidence\n",
        "                            if True  # MUTANT\n")],
      OVERRULED),
 
     ("a watch something ELSE still answers is reopened anyway - overruling one claim re-asks for "
      "an arrival the provider and the human both still evidence",
-     [(DETECTORS, "                            if arrival_evidence(view, stop_key)\n",
+     [(DETECTORS, "                            if evidence\n",
        "                            if False  # MUTANT\n")],
      f"{L}::test_a_watch_other_standing_evidence_answers_is_not_reopened"),
 
+    # Two things each keep an owed-again watch from being raised a third time: the stop already has
+    # a live watch for this deadline, and an owed generation is returned as itself. Either alone
+    # holds, so the defect needs both gone.
     ("a watch that is owed again is raised a THIRD time once it goes overdue - one missed "
      "delivery becomes two pieces of work",
-     [(DETECTORS, '        if states.get(expectation_id) != "DISCHARGED":\n',
-       '        if states.get(expectation_id) not in ("DISCHARGED", "OVERDUE"):  # MUTANT\n')],
+     [(DETECTORS, '        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
+       '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
+       '                         and e["state"] in OWED_STATES\n'),
+      (DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
+       '        if states.get(expectation_id) in (None, "RAISED", "INDETERMINATE"):  # MUTANT\n')],
      OVERRULED),
 
     ("the picture says an overruled claim SATISFIED the watch - the load is late for delivery and "
@@ -652,6 +664,33 @@ CASES = [
        '                                             >= to_utc(record.received_at, '
        'what="received_at")):\n')],
      FUTURE),
+
+    # ------------------------------------------------------------------ a moved appointment
+    ("a CANCELLED watch stands in for the one that is owed - the appointment comes back to the "
+     "window that watch was raised for, nothing is raised, and the load goes quiet (P9-D65)",
+     [(DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
+       '        if states.get(expectation_id) in (None, *OWED_STATES, "CANCELLED"):  # MUTANT\n')],
+     RESTORED),
+
+    ("a moved appointment that is then missed is watched TWICE - the watch that followed it "
+     "there, and a second one raised beside it under the new window's id (P9-D59)",
+     [(DETECTORS, '        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
+       '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
+       '                         and e["state"] in OWED_STATES\n')],
+     f"{L}::test_the_system_of_record_moving_an_appointment_earlier_and_back_is_still_watched"),
+
+    ("an OWED watch is not found again under its own id - a tracking watch a later ping answers "
+     "is looked for under its next generation, stays owed, and a pinging truck is called silent",
+     [(DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
+       "        if states.get(expectation_id) is None:  # MUTANT\n")],
+     f"{L}::test_a_missed_restored_appointment_is_work_of_its_own_beside_the_tracking_cadence"),
+
+    ("a watch the truck's arrival already answered is raised AGAIN beside it - on a moved "
+     "appointment a late arrival leaves two answered watches and two Exceptions to close (P9-D59)",
+     [(DETECTORS, '        if any(e["expected_type"] == expected_type and e["state"] == "DISCHARGED"\n',
+       '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
+       '                         and e["state"] == "DISCHARGED"\n')],
+     f"{L}::test_a_moved_appointment_missed_and_then_met_is_one_watch_and_one_exception"),
 ]
 
 

@@ -321,13 +321,32 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
                            else CancelExpectation(expectation["expectation_id"],
                                                   f"the appointment at {stop_key} was moved"))
             continue
+        # ### THE OBLIGATION IS LOGICAL; A ROW IS ONE GENERATION OF IT. A truck's arrival at a stop
+        # is ONE obligation however often the appointment moves, and M8 may hold several rows
+        # about it: a watch that followed the appointment by amendment (and so still carries the
+        # id of the window it was first raised for), watches cancelled when the appointment moved
+        # away, a watch a since-overruled claim answered. What is owed is therefore asked of the
+        # obligation, never of an id.
+        #
+        # A live watch on the deadline that now stands IS the watch, whichever row it is. Asked by
+        # id, a moved appointment that was then missed got a second watch beside it.
+        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES
+               and e["deadline_utc"] == deadline for e in view.expectations):
+            continue
+        # A watch here that a STANDING record answered: the truck has been to this stop and the
+        # record of that is kept. Nothing is owed, whatever window that row was raised for.
+        evidence = arrival_evidence(view, stop_key)
+        if any(e["expected_type"] == expected_type and e["state"] == "DISCHARGED"
+               and e["discharge_observation_id"] in evidence for e in view.expectations):
+            continue
         watch = (expected_type, window["end_local"], window["timezone"])
         out.append(RaiseExpectation(
             # Raised under its own id - unless nothing STANDING says the truck reached this stop
-            # (the record that answered the watch was overruled, or moved to another load), in
-            # which case the watch is owed again (`_owed_again_id`).
+            # (the record that answered the watch was overruled or moved to another load, or the
+            # appointment has come back to a window whose watch is history), in which case the
+            # watch is owed again (`_owed_again_id`).
             expectation_id=(stable_id("exp", view.load.tenant_id, view.ref, *watch)
-                            if arrival_evidence(view, stop_key)
+                            if evidence
                             else _owed_again_id(view, *watch)),
             subject_ref=view.ref, expected_type=expected_type,
             expected_source=setup.arrival_tracking_channel, owner_id=setup.load_owner,
@@ -369,16 +388,25 @@ def _owed_again_id(view: LoadView, *watch: object) -> str:
     watch is OWED AGAIN: raised as the next generation of the same id, the way a required document
     is (`_document_expectations`).
 
+    ### A WATCH THAT IS HISTORY NEVER STANDS IN FOR ONE THAT IS OWED. The obligation is the
+    logical thing — this truck, this stop, this window; a generation is one row M8 kept about it.
+    DISCHARGED, CANCELLED and EXPIRED are all terminal: the row says the watch was answered, or
+    withdrawn because the appointment moved away, or aged out. None of them says anybody is
+    waiting NOW. So when the obligation is current again — the appointment came back to the window
+    that row was raised for — it is watched by the next generation, and the dead row is left
+    exactly as it was. Stopping at a CANCELLED generation, as this once did, left a confirmed
+    appointment with no watch at all.
+
     The first generation is the id the watch always had, so nothing ever raised is renamed. A
-    generation that is owed, cancelled or expired is returned as itself: a watch already owed is
-    not raised twice, and one that was cancelled or aged out is not resurrected. Only a caller
-    that has established that nothing standing answers the watch may ask."""
+    generation that is still OWED is returned as itself: a watch already owed is not raised twice.
+    No row is ever reused or reopened. Only a caller that has established that nothing standing
+    answers the watch may ask."""
     states = {e["expectation_id"]: e["state"] for e in view.expectations}
     generation = 0
     while True:
         expectation_id = stable_id("exp", view.load.tenant_id, view.ref, *watch,
                                    *((generation,) if generation else ()))
-        if states.get(expectation_id) != "DISCHARGED":
+        if states.get(expectation_id) in (None, *OWED_STATES):
             return expectation_id
         generation += 1
 
