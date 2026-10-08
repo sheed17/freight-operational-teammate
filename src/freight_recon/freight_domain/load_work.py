@@ -539,11 +539,16 @@ def _expectation_needs(build: _Build) -> list[dict[str, Any]]:
     """Waits and watches, and the ONE carrier follow-up every missed one collapses into. Returns the
     promises still pending — a pending promise can make acting on something else premature."""
     view, as_of = build.view, build.as_of
-    owed_ids = {e["expectation_id"] for e in view.owed_expectations()}
+    # ### CURRENT WORK IS READ FROM WHAT IS OWED NOW. An arrival watch M8 still holds for a window
+    # the appointment has left (`LoadView.superseded_expectations`) is history about that window:
+    # it is not a wait, it is not late, and its deadline is nobody's. Its Exception is retained,
+    # owned, and listed below with the others whose cause is gone.
+    operative = view.operative_expectations()
+    owed_ids = {e["expectation_id"] for e in operative}
     late: list[tuple[dict[str, Any], NeedStatus, str]] = []
     pending_promises: list[dict[str, Any]] = []
 
-    for expectation in view.owed_expectations():
+    for expectation in operative:
         etype = expectation["expected_type"]
         if etype.startswith("document:"):
             continue                                  # read with the requirement it serves
@@ -672,7 +677,8 @@ def _expectation_needs(build: _Build) -> list[dict[str, Any]]:
         if ours:
             build.own_deadline[follow_up.need_id] = (min(ours), True)
 
-    # An Exception raised for a deadline that has since been met: retained, owned, and not a task.
+    # An Exception raised for a deadline that has since been met, or that no longer stands:
+    # retained, owned, and not a task.
     for exception in view.open_exceptions():
         if exception["source_kind"] == "expectation" and exception["source_ref"] not in owed_ids:
             build.housekeeping.append(f"cured_exception:{exception_key(exception)}")
@@ -995,6 +1001,16 @@ def _financial_needs(build: _Build) -> None:
 
 # --------------------------------------------------------------------------------- appointments
 
+#: What an appointment that is on record and not CONFIRMED is called, by its own status. Anything
+#: else that is not a confirmed time reads as the first: not confirmed.
+_UNCONFIRMED: dict[str, tuple[str, str]] = {
+    "REQUESTED": ("APPOINTMENT_NOT_CONFIRMED", "no confirmed window on record"),
+    "RESCHEDULED": ("APPOINTMENT_RESCHEDULED",
+                    "rescheduled; nobody has confirmed the new window"),
+    "CANCELLED": ("APPOINTMENT_CANCELLED", "the appointment was cancelled; no window stands"),
+}
+
+
 def _stop_reached(view: LoadView, stop_key: str) -> bool:
     """Whether a STANDING claim puts the truck at this stop or past it. A stop's reported arrival
     and departure are the claims made AT it, and they are read here from the claims themselves:
@@ -1012,6 +1028,11 @@ def _appointment_needs(build: _Build) -> None:
     is not a time anyone agreed to (CD-13), so Neyma is watching no deadline there: it could not
     tell a late truck from an on-time one. One need per load, naming the stops.
 
+    A CANCELLED appointment is the same work, named for what it is: the stop has no appointment
+    anyone holds. So is a RESCHEDULED one that nobody has confirmed - with one difference, which
+    the need says: at a brokerage that watches arrivals, the window it was rescheduled to IS being
+    watched (`LoadView.arrival_deadline`), because that is the time the truck is now held to.
+
     ### PROVISIONAL — NEEDS VALIDATION (P9-D32). That an unconfirmed appointment is work from the
     moment a carrier is on the load until the stop is reached is this build's SYNTHETIC choice, made
     so the corpus can be run. It is not a validated freight rule and not a universal one: whether,
@@ -1022,6 +1043,7 @@ def _appointment_needs(build: _Build) -> None:
         return
     reasons: list[str] = []
     related: list[str] = []
+    notes: list[str] = []
     for stop_key in sorted(view.stops, key=lambda k: (view.stops[k].value("sequence") or 0, k)):
         if _stop_reached(view, stop_key):
             continue
@@ -1029,22 +1051,33 @@ def _appointment_needs(build: _Build) -> None:
         if appointment is None:
             reasons.append(f"APPOINTMENT_ABSENT:{stop_key}")
             related.append(view.stops[stop_key].ref)
+            notes.append("no confirmed window on record")
             continue
         if appointment.condition("window") == EvidenceCondition.CONFLICTING.value:
             continue                                  # the Conflict is the need
-        if appointment.value("status") != "CONFIRMED":
-            reasons.append(f"APPOINTMENT_NOT_CONFIRMED:{stop_key}")
-            related.append(appointment.ref)
+        status = appointment.value("status")
+        if status == "CONFIRMED":
+            continue
+        code, note = _UNCONFIRMED.get(status, _UNCONFIRMED["REQUESTED"])
+        reasons.append(f"{code}:{stop_key}")
+        related.append(appointment.ref)
+        notes.append(note)
     if reasons:
+        watched = [r for r in reasons if r.startswith("APPOINTMENT_RESCHEDULED:")
+                   and build.setup.arrival_tracking_channel is not None]
+        why = ("A stop this truck has not reached has no confirmed appointment, so no arrival "
+               "deadline is being watched there.")
+        if watched:
+            why = ("A stop this truck has not reached was rescheduled and nobody has confirmed "
+                   "the new window. The window it was rescheduled to is being watched."
+                   + (" Another has no confirmed appointment and no deadline is being watched "
+                      "there." if len(watched) < len(reasons) else ""))
         build.add(
             NeedKind.APPOINTMENT_UNCONFIRMED, (), status=NeedStatus.OPEN,
-            handling=Handling.NEYMA_ACTION_CANDIDATE, reason_codes=reasons,
-            why="A stop this truck has not reached has no confirmed appointment, so no arrival "
-                "deadline is being watched there.",
+            handling=Handling.NEYMA_ACTION_CANDIDATE, reason_codes=reasons, why=why,
             actions=(ShadowAction.VERIFY_APPOINTMENT,), counterparty="facility", related=related,
             origins=related,
-            evidence=[build.ev(split_ref(r)[0], r, "no confirmed window on record")
-                      for r in related])
+            evidence=[build.ev(split_ref(r)[0], r, note) for r, note in zip(related, notes)])
 
 
 # --------------------------------------------------------------------------------- billing
@@ -1218,8 +1251,8 @@ def _settlements(build: _Build) -> None:
     # A movement watch is SATISFIED by the record that answered it only while that record stands.
     # One a recorded human has since overruled satisfied nothing: the watch it answered ended by
     # HER decision, and - when nothing else answers it - is owed again as a need of its own.
-    overruled = {t.origin_observation_id: t.overruled_by for t in view.tracking
-                 if t.overruled_by is not None}
+    overruled = {t.origin_observation_id: t.overruled_by or t.contests for t in view.tracking
+                 if t.overruled_by is not None or t.contests is not None}
     standing = {t.origin_observation_id for t in view.standing_tracking()}
     late_types: set[str] = set()
     for expectation in view.expectations:

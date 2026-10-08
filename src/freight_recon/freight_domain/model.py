@@ -568,6 +568,10 @@ TRACKING_SIGNALS: tuple[str, ...] = (
 #: a signal a tracking record may carry — only that human act produces it — and it is the one thing
 #: that settles a dispute between the signals above.
 OWNER_CONFIRMATION = "owner_confirmation"
+#: The one signal above that is a READING of where the truck is rather than somebody's word for it:
+#: the tracking provider's own position. After a recorded human has said where a load is, only this
+#: — never a bare assertion — shows that the truck has since moved on (`_apply_status_decisions`).
+POSITION_SIGNAL = "tracking_provider_position"
 
 #: The movement-status progression. Used ONLY to notice that one source reports an EARLIER stage at a
 #: LATER instant than another source's later stage — a contradiction a human must look at. It ranks
@@ -575,6 +579,13 @@ OWNER_CONFIRMATION = "owner_confirmation"
 TRACKING_PROGRESSION: tuple[str, ...] = (
     "AT_PICKUP", "LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED",
 )
+#: The statuses that, reported AT a stop, say the truck has been to it.
+ARRIVAL_STATUSES: tuple[str, ...] = ("AT_PICKUP", "AT_DELIVERY", "LOADED", "DELIVERED")
+#: The movement stages that can only be reported once the truck has been to a stop of that kind.
+STAGES_PAST_STOP: dict[str, tuple[str, ...]] = {
+    "PICKUP": ("LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED"),
+    "DELIVERY": ("AT_DELIVERY", "DELIVERED"),
+}
 
 
 @dataclass
@@ -588,7 +599,15 @@ class TrackingEvent(Entity):
     stop_key: str | None = None
     #: The human decision that overruled this claim, if one did. An overruled claim stays on the
     #: record as what that source SAID; it no longer counts as a claim that the stage was reached.
+    #: A source that merely REPEATS, after her decision, the claim she overruled is overruled by
+    #: the same decision while the stop it is about is still being asked about: saying it again
+    #: is not new evidence. Where nothing is asking, the repeat `contests` instead.
     overruled_by: str | None = None
+    #: The human decision this claim CONTRADICTS, when it is a bare assertion made after she
+    #: decided, of a later stage than she confirmed, with nothing stronger to show the truck got
+    #: there. It may be news. It is on the record as what its source said and it does NOT stand:
+    #: a bare word does not silently replace a human's answer. A recorded human is asked.
+    contests: str | None = None
 
     def links(self) -> dict[str, Any]:
         return {"load_id": self.load_id, "movement_id": self.movement_id,

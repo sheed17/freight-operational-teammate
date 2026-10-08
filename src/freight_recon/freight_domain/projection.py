@@ -24,6 +24,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from .entity_mapping import ExternalEntityMappings, ExternalReference
@@ -34,11 +35,16 @@ from .foundation import (
     EvidenceCondition,
     FreightFoundation,
     assign_at_runtime,
+    facility_local_deadline,
+    format_instant,
     stable_id,
 )
 from .history import CARRIER_SIDE_ROLES, TenantSetup
 from .model import (
+    ARRIVAL_STATUSES,
     OWNER_CONFIRMATION,
+    POSITION_SIGNAL,
+    STAGES_PAST_STOP,
     TRACKING_PROGRESSION,
     AccessorialAuthorization,
     AccessorialCharge,
@@ -84,6 +90,10 @@ _MC_BENIGN_FORM = re.compile(r"\s*(?:MC)?[\s-]*([0-9]+)\s*", re.IGNORECASE)
 OPEN_CONFLICT_STATES = ("RAISED", "OPEN", "ESCALATED")
 OWED_STATES = ("RAISED", "OVERDUE", "INDETERMINATE")
 LATE_STATES = ("OVERDUE", "INDETERMINATE")
+#: The appointment statuses that are a TIME a truck is held to: a CONFIRMED window, and the window
+#: an appointment was RESCHEDULED to. A REQUESTED window is not a time anyone agreed to (CD-13) and
+#: a CANCELLED appointment is no time at all.
+TIMED_APPOINTMENT_STATUSES = ("CONFIRMED", "RESCHEDULED")
 
 
 def split_ref(ref: str) -> tuple[str, str]:
@@ -203,8 +213,26 @@ class LoadView:
         """Every movement claim that still STANDS. One a recorded human overruled stays in
         `tracking` as what its source SAID, and it is no longer evidence of where the truck has
         been: it reaches no stop, reports no delivery, starts no watch and puts the load at no
-        stage. Whatever CONCLUDES where the truck has been reads this, never `tracking`."""
-        return [t for t in self.tracking if t.overruled_by is None]
+        stage. Neither does a bare claim that CONTRADICTS her decision and that she has not yet
+        answered. Whatever CONCLUDES where the truck has been reads this, never `tracking`."""
+        return [t for t in self.tracking if t.overruled_by is None and t.contests is None]
+
+    def stops_a_claim_answers(self, claim: TrackingEvent) -> list[str]:
+        """The stops this claim says the truck has been to, IF it stands: the stop it names, when
+        what it reports happens at a stop; or, when it names none, the ONLY stop of a kind the
+        reported stage is past. The rule `detectors.arrival_evidence` applies stop by stop, asked
+        here of one claim."""
+        status = claim.value("status")
+        if claim.stop_key is not None:
+            return [claim.stop_key] if claim.stop_key in self.stops \
+                and status in ARRIVAL_STATUSES else []
+        out: list[str] = []
+        for stop_key, stop in self.stops.items():
+            kind = stop.value("stop_type")
+            if status in STAGES_PAST_STOP.get(kind, ()) and len(
+                    [s for s in self.stops.values() if s.value("stop_type") == kind]) == 1:
+                out.append(stop_key)
+        return out
 
     def delivered_claims(self) -> list[TrackingEvent]:
         """Every source that has SAID this load delivered. A claim, from each of them (CD-15)."""
@@ -218,6 +246,60 @@ class LoadView:
 
     def late_expectations(self) -> list[dict[str, Any]]:
         return [e for e in self.expectations if e["state"] in LATE_STATES]
+
+    # ------------------------------------------------------------------ the appointment that stands
+
+    def arrival_deadline(self, stop_key: str) -> str | None:
+        """The instant the truck is held to arrive at this stop by NOW: the end of the window of
+        the appointment that stands there as a time, in the FACILITY's local time. None when no
+        time stands — no appointment, a REQUESTED or CANCELLED one, or a window in dispute.
+
+        ### THE CURRENT APPOINTMENT IS THE ONLY SOURCE OF THE CURRENT DEADLINE. Not a row M8 holds
+        about a window the appointment has left, and not how healthy the tracking channel was when
+        that window closed. Whatever asks what this stop is held to asks here."""
+        appointment = self.appointments.get(stop_key)
+        if appointment is None \
+                or appointment.value("status") not in TIMED_APPOINTMENT_STATUSES:
+            return None
+        window = appointment.value("window")
+        if window is None:
+            return None
+        return format_instant(facility_local_deadline(
+            datetime.fromisoformat(window["end_local"]), window["timezone"]))
+
+    def appointment_cancelled(self, stop_key: str) -> bool:
+        """Whether the appointment at this stop was CANCELLED: the window it had no longer stands,
+        and nothing has replaced it."""
+        appointment = self.appointments.get(stop_key)
+        return appointment is not None and appointment.value("status") == "CANCELLED"
+
+    def superseded_expectations(self) -> list[dict[str, Any]]:
+        """Arrival watches M8 still holds for a window the appointment has LEFT.
+
+        A watch follows its appointment: M8 amends a RAISED one and cancels an OVERDUE one. One it
+        has judged INDETERMINATE — the window closed while the tracking channel could not be shown
+        to be up — it will do neither with, and nothing here makes it: that row stays exactly as M8
+        ruled it, owned, with its Exception, until the truck arrives or it ages out.
+
+        ### IT IS HISTORY ABOUT A WINDOW, NOT THE DEADLINE OF THE STOP. Once the appointment has
+        moved on or been cancelled, such a row says what could not be verified about a time nobody
+        holds any more. It does not time the appointment that stands, and it is not work."""
+        out: list[dict[str, Any]] = []
+        for expectation in self.expectations:
+            kind, _, stop_key = expectation["expected_type"].partition(":")
+            if kind != "arrival" or expectation["state"] != "INDETERMINATE":
+                continue
+            deadline = self.arrival_deadline(stop_key)
+            if self.appointment_cancelled(stop_key) \
+                    or (deadline is not None and expectation["deadline_utc"] != deadline):
+                out.append(expectation)
+        return out
+
+    def operative_expectations(self) -> list[dict[str, Any]]:
+        """What is owed NOW: every owed Expectation except a superseded arrival watch. This, never
+        `owed_expectations`, is what current work, quiet and attention are read from."""
+        superseded = {e["expectation_id"] for e in self.superseded_expectations()}
+        return [e for e in self.owed_expectations() if e["expectation_id"] not in superseded]
 
     def open_exceptions(self) -> list[dict[str, Any]]:
         return [x for x in self.exceptions if x["state"] != "RESOLVED"]
@@ -1040,21 +1122,92 @@ class Projector:
         """A recorded human's word on where the load IS settles what was said BEFORE it. Another
         source's earlier claim of a LATER stage than the one she confirmed is overruled: it stays
         on the record as what that source said, and it no longer counts as a claim that the stage
-        was reached. Nothing said AFTER her decision is touched — if it contradicts her, that is a
-        new dispute, raised by the detectors and hers to decide again."""
+        was reached.
+
+        ### HER DECISION DEFEATS THE CLAIM. SAYING IT AGAIN DOES NOT RESURRECT IT. What is said
+        AFTER she decided, of a later stage than she confirmed, is one of three things:
+
+          * a READING that the truck moved on - the tracking provider's own position puts it past
+            where she said it was. That stands, and so does every claim made from then on: her
+            decision was about a moment, and the truck has left it. Nobody is asked to approve a
+            real delivery because the truck was in transit earlier.
+          * a RESTATEMENT - the very source she overruled says the same thing again, having said
+            nothing else in between: a re-sent row, a new version of it with no new freight fact,
+            the same text typed twice. It is overruled by the same decision, and silently: it was
+            answered when she answered the first one.
+          * a bare claim that is NEW - another source, or the same one after it had said something
+            different. It may well be true, and it is still only a word against hers. It is marked
+            as contesting her decision, it does not stand, and the detectors put it in front of a
+            recorded human as a new dispute.
+
+        ### A RESTATEMENT IS DROPPED SILENTLY ONLY WHERE THE TRUCK IS STILL BEING ASKED ABOUT. It is
+        safe to say nothing about a repeated "delivered" while the brokerage is still waiting for
+        that truck at the stop the claim is about: the watch there is owed, it goes late, and the
+        follow-up finds out. Where nothing is waiting - the truck is already at that stop by
+        standing evidence, or this brokerage watches no arrivals at all - the repeat is the only
+        thing that could move the load on, and dropping it unasked would leave a delivery report
+        on a QUIET load. There it contests her decision like any other bare claim: a question,
+        never silence.
+
+        A claim is judged by the moment it is ABOUT (`as_of`), never by when it arrived: a copy of
+        the overruled statement under a new record id is about the same moment, and is overruled
+        with it. Only her LATEST decision governs (`P9-D60`)."""
         decisions = [t for t in view.tracking if t.value("signal") == OWNER_CONFIRMATION
                      and t.value("status") in TRACKING_PROGRESSION]
         if not decisions:
             return
-        latest = max(decisions, key=lambda t: (t.field_of("status").facts[0].as_of, t.entity_id))
-        decided_at = latest.field_of("status").facts[0].as_of
+
+        def said(event: TrackingEvent) -> Fact:
+            return event.field_of("status").facts[0]
+
+        latest = max(decisions, key=lambda t: (said(t).as_of, t.entity_id))
+        decided_at = said(latest).as_of
+        decision = latest.origin_observation_id
         rank = TRACKING_PROGRESSION.index(latest.value("status"))
+
+        def beyond(event: TrackingEvent) -> bool:
+            return TRACKING_PROGRESSION.index(event.value("status")) > rank
+
         for event in view.tracking:
             if event is latest or event.value("status") not in TRACKING_PROGRESSION:
                 continue
-            if event.field_of("status").facts[0].as_of <= decided_at \
-                    and TRACKING_PROGRESSION.index(event.value("status")) > rank:
-                event.overruled_by = latest.origin_observation_id
+            if said(event).as_of <= decided_at and beyond(event):
+                event.overruled_by = decision
+
+        claims = sorted((t for t in view.tracking if t.value("status") in TRACKING_PROGRESSION
+                         and t.value("signal") != OWNER_CONFIRMATION),
+                        key=lambda t: (said(t).as_of, t.entity_id))
+        # The first reading, after her decision, that the truck is past where she said it was.
+        moved_on_at = min((said(t).as_of for t in claims if t.value("signal") == POSITION_SIGNAL
+                           and said(t).as_of > decided_at and beyond(t)), default=None)
+        watching = self._setup.arrival_tracking_channel is not None
+
+        def still_asked_about(event: TrackingEvent) -> bool:
+            """Whether, at the moment this claim is about, the brokerage is still waiting for the
+            truck at a stop the claim would answer: nothing standing has put it there yet."""
+            moment = said(event).as_of
+            been = {stop_key for t in view.tracking
+                    if t is not event and t.overruled_by is None and t.contests is None
+                    and said(t).as_of <= moment for stop_key in view.stops_a_claim_answers(t)}
+            return watching and bool(set(view.stops_a_claim_answers(event)) - been)
+
+        last_said: dict[tuple[str, str], TrackingEvent] = {}
+        for event in claims:
+            fact = said(event)
+            source = (fact.source_system, event.value("signal"))
+            previous, last_said[source] = last_said.get(source), event
+            if fact.as_of <= decided_at or not beyond(event):
+                continue
+            if event.value("signal") == POSITION_SIGNAL:
+                continue
+            if moved_on_at is not None and moved_on_at <= fact.as_of:
+                continue
+            restated = (previous is not None and previous.overruled_by == decision
+                        and previous.value("status") == event.value("status"))
+            if restated and still_asked_about(event):
+                event.overruled_by = decision
+            else:
+                event.contests = decision
 
     def _derive(self, view: LoadView) -> None:
         tenant = self._tenant
@@ -1190,11 +1343,15 @@ class Projector:
         is nothing left to decide about it, so it is listed as housekeeping, not as attention."""
         reasons: list[str] = []
         housekeeping: list[str] = []
-        owed_ids = {e["expectation_id"] for e in view.owed_expectations()}
+        # A watch on a window the appointment has left is history, and so is its Exception.
+        operative = view.operative_expectations()
+        owed_ids = {e["expectation_id"] for e in operative}
         for conflict in view.open_conflicts():
             reasons.append(f"conflict:{conflict['entity_ref'].split(':')[0]}.{conflict['field']}")
-        for expectation in view.late_expectations():
-            reasons.append(f"expectation:{expectation['expected_type']}:{expectation['state']}")
+        for expectation in operative:
+            if expectation["state"] in LATE_STATES:
+                reasons.append(
+                    f"expectation:{expectation['expected_type']}:{expectation['state']}")
         for exception in view.open_exceptions():
             if exception["source_kind"] == "expectation":
                 if exception["source_ref"] not in owed_ids:

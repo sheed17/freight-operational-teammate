@@ -43,6 +43,16 @@ turn RED under it. Four families:
     that is then missed watched twice; an owed watch that cannot be found again under its own id;
     and a watch the truck's arrival already answered raised again beside it.
 
+  * CURRENT WORK FOLLOWS CURRENT FREIGHT REALITY (the third CP-4 review repair). A claim a human
+    overruled standing again because it was said again; a restatement reopening a dispute she
+    answered; a new bare claim dropped unasked, or believed unasked, or put to nobody; a real later
+    delivery disputed; a ping that the truck is where she said it was read as progress, and a
+    reading of progress reaching back to an earlier restatement. A RESCHEDULED appointment that
+    keeps the window it left, a CANCELLED one that keeps its watch, and an appointment watched
+    twice when it comes back to a window a blind row stands on. And a watch M8 judged blind
+    against a window that is gone driving the work, standing in for the watch that is owed, or
+    taking the watch on the window that STANDS down with it.
+
 It mutates TEXT and shells out to pytest; it NEVER imports the code under test, and it NEVER uses git
 to undo a mutation. Originals are held in memory and restored unconditionally; `__pycache__` is purged
 around every run so a same-length restore cannot leave poisoned bytecode and a false green.
@@ -87,6 +97,14 @@ MC_NEXT_DOOR = f"{T}::test_an_mc_is_never_looked_up_next_door"
 MC_TWINS = f"{T}::test_one_mc_recorded_under_two_carriers_places_nothing"
 POD = f"{T}::test_delivered_without_a_pod_is_work_and_a_usable_pod_closes_it"
 OVERRULED = f"{L}::test_an_overruled_delivery_claim_stops_answering_the_delivery_watch"
+RESTATED = f"{L}::test_a_restated_delivery_does_not_undo_a_humans_decision"
+REPEATED = f"{L}::test_the_source_she_overruled_saying_it_again_does_not_win"
+NEW_CLAIM = f"{L}::test_a_new_bare_claim_against_her_decision_is_a_dispute_and_not_an_answer"
+REAL = f"{L}::test_a_real_later_delivery_advances_the_load_and_nobody_is_asked"
+RESCHEDULED = (f"{L}::test_a_rescheduled_appointment_is_watched_on_the_window_it_was_"
+               f"rescheduled_to")
+CANCELLED = f"{L}::test_a_cancelled_appointment_is_nobodys_deadline"
+BLIND_MOVE = f"{L}::test_a_blind_channel_does_not_set_the_appointments_deadline[no-reading]"
 FUTURE = f"{L}::test_a_future_dated_human_act_is_not_authority_and_silences_nothing"
 RESTORED = f"{L}::test_an_appointment_put_back_after_a_wrong_window_lapsed_is_still_watched"
 TWICE = f"{T}::test_evaluating_the_same_state_twice_creates_nothing"
@@ -154,7 +172,7 @@ CASES = [
      TIME),
 
     ("work that never closes - a DISCHARGED Expectation still counts as owed",
-     [(WORK, '    for expectation in view.owed_expectations():\n        etype = expectation['
+     [(WORK, '    for expectation in operative:\n        etype = expectation['
              '"expected_type"]\n        if etype.startswith("document:"):\n',
        '    for expectation in view.expectations:  # MUTANT\n        etype = expectation['
        '"expected_type"]\n        if etype.startswith("document:"):\n')],
@@ -548,8 +566,9 @@ CASES = [
 
     ("a claim a human OVERRULED still counts - she says it has not delivered, and the driver's "
      "'delivered' goes on making the load delivered",
-     [(PROJECTION, '        return [t for t in self.tracking if t.overruled_by is None]',
-       '        return list(self.tracking)  # MUTANT')],
+     [(PROJECTION,
+       '        return [t for t in self.tracking if t.overruled_by is None and t.contests is None]',
+       '        return [t for t in self.tracking if t.contests is None]  # MUTANT')],
      f"{L}::test_a_human_who_says_it_has_not_delivered_overrules_the_claim"),
 
     ("a tracking record may SPEAK AS THE OWNER - the owner's confirmation is admitted as a signal "
@@ -610,11 +629,14 @@ CASES = [
     # holds, so the defect needs both gone.
     ("a watch that is owed again is raised a THIRD time once it goes overdue - one missed "
      "delivery becomes two pieces of work",
-     [(DETECTORS, '        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
-       '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
-       '                         and e["state"] in OWED_STATES\n'),
-      (DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
-       '        if states.get(expectation_id) in (None, "RAISED", "INDETERMINATE"):  # MUTANT\n')],
+     [(DETECTORS,
+       '        watched = any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
+       '        watched = False and any(e["expected_type"] == expected_type  # MUTANT\n'
+       '                                and e["state"] in OWED_STATES\n'),
+      (DETECTORS,
+       '        if row is None or (row["state"] in OWED_STATES and not left_behind):\n',
+       '        if row is None or (row["state"] in ("RAISED", "INDETERMINATE")  # MUTANT\n'
+       '                           and not left_behind):\n')],
      OVERRULED),
 
     ("the picture says an overruled claim SATISFIED the watch - the load is late for delivery and "
@@ -668,21 +690,25 @@ CASES = [
     # ------------------------------------------------------------------ a moved appointment
     ("a CANCELLED watch stands in for the one that is owed - the appointment comes back to the "
      "window that watch was raised for, nothing is raised, and the load goes quiet (P9-D65)",
-     [(DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
-       '        if states.get(expectation_id) in (None, *OWED_STATES, "CANCELLED"):  # MUTANT\n')],
+     [(DETECTORS,
+       '        if row is None or (row["state"] in OWED_STATES and not left_behind):\n',
+       '        if row is None or (row["state"] in (*OWED_STATES, "CANCELLED")  # MUTANT\n'
+       '                           and not left_behind):\n')],
      RESTORED),
 
     ("a moved appointment that is then missed is watched TWICE - the watch that followed it "
      "there, and a second one raised beside it under the new window's id (P9-D59)",
-     [(DETECTORS, '        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
-       '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
-       '                         and e["state"] in OWED_STATES\n')],
+     [(DETECTORS,
+       '        watched = any(e["expected_type"] == expected_type and e["state"] in OWED_STATES\n',
+       '        watched = False and any(e["expected_type"] == expected_type  # MUTANT\n'
+       '                                and e["state"] in OWED_STATES\n')],
      f"{L}::test_the_system_of_record_moving_an_appointment_earlier_and_back_is_still_watched"),
 
     ("an OWED watch is not found again under its own id - a tracking watch a later ping answers "
      "is looked for under its next generation, stays owed, and a pinging truck is called silent",
-     [(DETECTORS, "        if states.get(expectation_id) in (None, *OWED_STATES):\n",
-       "        if states.get(expectation_id) is None:  # MUTANT\n")],
+     [(DETECTORS,
+       '        if row is None or (row["state"] in OWED_STATES and not left_behind):\n',
+       "        if row is None:  # MUTANT\n")],
      f"{L}::test_a_missed_restored_appointment_is_work_of_its_own_beside_the_tracking_cadence"),
 
     ("a watch the truck's arrival already answered is raised AGAIN beside it - on a moved "
@@ -691,6 +717,140 @@ CASES = [
        '        if False and any(e["expected_type"] == expected_type  # MUTANT\n'
        '                         and e["state"] == "DISCHARGED"\n')],
      f"{L}::test_a_moved_appointment_missed_and_then_met_is_one_watch_and_one_exception"),
+
+    # ------------------------------------------------------------------ a human's answer stands
+    ("a claim she overruled STANDS AGAIN because it was said again - the row is re-sent, the load "
+     "is delivered again, and the late-truck follow-up is gone (P9-D68)",
+     [(PROJECTION, "            if fact.as_of <= decided_at or not beyond(event):\n"
+                   "                continue\n",
+       "            if True:  # MUTANT\n                continue\n")],
+     RESTATED),
+
+    ("a ping that the truck is WHERE SHE SAID IT WAS is read as the truck having moved on - and "
+     "every claim made after it is believed again",
+     [(PROJECTION,
+       "                           and said(t).as_of > decided_at and beyond(t)), default=None)\n",
+       "                           and said(t).as_of > decided_at), default=None)  # MUTANT\n")],
+     RESTATED),
+
+    ("a RESTATEMENT is treated as news - the driver she overruled texts it again and she is asked "
+     "to settle the dispute she already settled",
+     [(PROJECTION, "            if restated and still_asked_about(event):\n",
+       "            if False:  # MUTANT\n")],
+     REPEATED),
+
+    ("a NEW claim is silently dropped as a restatement - another source reports the delivery and "
+     "it is overruled with nobody asked",
+     [(PROJECTION, "            restated = (previous is not None "
+                   "and previous.overruled_by == decision\n",
+       "            restated = (True or previous is not None "
+       "and previous.overruled_by == decision  # MUTANT\n")],
+     NEW_CLAIM),
+
+    ("a repeat is dropped unasked where NOTHING ELSE IS ASKING - the truck is at the receiver, "
+     "the driver says delivered again, and the load stays quiet on a report nobody was shown",
+     [(PROJECTION, "            if restated and still_asked_about(event):\n",
+       "            if restated:  # MUTANT\n")],
+     f"{L}::test_a_repeat_is_put_to_her_where_nothing_else_is_asking"),
+
+    ("a repeat is dropped unasked at a brokerage that WATCHES NO ARRIVALS - nothing there will "
+     "ever find out, and the load is quiet on a delivery report",
+     [(PROJECTION,
+       "            return watching and bool(set(view.stops_a_claim_answers(event)) - been)\n",
+       "            return bool(set(view.stops_a_claim_answers(event)) - been)  # MUTANT\n")],
+     f"{L}::test_a_repeat_at_a_brokerage_that_watches_no_arrivals_is_put_to_a_human"),
+
+    ("a bare claim that contests her decision STANDS - one word against her answer and the load "
+     "is delivered, with nobody asked",
+     [(PROJECTION,
+       '        return [t for t in self.tracking if t.overruled_by is None and t.contests is None]',
+       '        return [t for t in self.tracking if t.overruled_by is None]  # MUTANT')],
+     NEW_CLAIM),
+
+    ("a claim that contests her decision is put to NOBODY - it neither stands nor is asked about",
+     [(DETECTORS, "    contesting = [t for t in staged if t.contests is not None]\n",
+       "    contesting = []  # MUTANT\n")],
+     NEW_CLAIM),
+
+    ("real progress is IGNORED - the provider puts the truck at the receiver and the delivery "
+     "report that follows is still held as a dispute",
+     [(PROJECTION, "            if moved_on_at is not None and moved_on_at <= fact.as_of:\n",
+       "            if False:  # MUTANT\n")],
+     REAL),
+
+    ("progress reaches BACK - a restatement made hours before the truck arrived is believed once "
+     "it has, and a dispute that never was is put to a human",
+     [(PROJECTION, "            if moved_on_at is not None and moved_on_at <= fact.as_of:\n",
+       "            if moved_on_at is not None:  # MUTANT\n")],
+     f"{L}::test_a_restatement_made_before_the_truck_moved_on_stays_overruled"),
+
+    ("a claim she overruled ANSWERS the tracking watch - the row sent again closes the follow-up "
+     "for a truck that has gone silent",
+     [(DETECTORS, "                   if t is not anchor and _stands(t)\n",
+       "                   if t is not anchor  # MUTANT\n")],
+     f"{L}::test_a_restated_delivery_is_not_the_truck_being_heard_from"),
+
+    ("a claim she overruled STARTS the tracking clock - the watch that is owed again runs from "
+     "the repetition of a rejected claim, not from the last signal that stands",
+     [(DETECTORS, "    anchor = [t for t in signals if _stands(t)][-1]\n",
+       "    anchor = signals[-1]  # MUTANT\n")],
+     f"{L}::test_a_restated_delivery_starts_no_clock_of_its_own"),
+
+    # ------------------------------------------------------------------ the appointment that stands
+    ("a RESCHEDULED appointment is not a time - the watch stays on the window it left, the truck "
+     "is called late against it, and the new window is never timed",
+     [(PROJECTION, 'TIMED_APPOINTMENT_STATUSES = ("CONFIRMED", "RESCHEDULED")\n',
+       'TIMED_APPOINTMENT_STATUSES = ("CONFIRMED",)  # MUTANT\n')],
+     RESCHEDULED),
+
+    ("a CANCELLED appointment keeps its watch - the truck is called late against an appointment "
+     "nobody holds",
+     [(DETECTORS, "        if view.appointment_cancelled(stop_key):\n",
+       "        if False and view.appointment_cancelled(stop_key):  # MUTANT\n")],
+     CANCELLED),
+
+    ("an appointment that comes back to a window a blind row still stands on is watched TWICE - "
+     "the row that followed it away is amended onto it instead of withdrawn",
+     [(DETECTORS, '                if expectation["state"] == "RAISED" and not watched:\n',
+       '                if expectation["state"] == "RAISED":  # MUTANT\n')],
+     BLIND_MOVE),
+
+    # ------------------------------------------------------------------ a blind channel
+    ("a watch judged blind against a window that is GONE still drives the work - an unverified "
+     "chase due at a time nobody holds (P9-D66)",
+     [(PROJECTION,
+       '        return [e for e in self.owed_expectations() '
+       'if e["expectation_id"] not in superseded]\n',
+       "        return list(self.owed_expectations())  # MUTANT\n")],
+     BLIND_MOVE),
+
+    ("the work engine reads every row M8 holds, not what is owed NOW",
+     [(WORK, "    operative = view.operative_expectations()\n",
+       "    operative = view.owed_expectations()  # MUTANT\n")],
+     BLIND_MOVE),
+
+    ("a blind row on the window it was first raised for STANDS IN for the appointment put back - "
+     "nothing times the window that stands",
+     [(DETECTORS, "        left_behind = (row is not None and deadline is not None\n",
+       "        left_behind = (False and row is not None and deadline is not None  # MUTANT\n")],
+     BLIND_MOVE),
+
+    ("a blind watch outlives a CANCELLED appointment as work - an unverified chase for an "
+     "appointment that was cancelled",
+     [(PROJECTION, "            if self.appointment_cancelled(stop_key) \\\n"
+                   '                    or (deadline is not None and expectation["deadline_utc"] '
+                   "!= deadline):\n",
+       '            if (deadline is not None and expectation["deadline_utc"] '
+       "!= deadline):  # MUTANT\n")],
+     f"{L}::test_a_cancelled_appointment_over_a_blind_channel_is_nobodys_deadline_either"),
+
+    ("EVERY blind arrival watch is called history - a truck unverifiably late for the window that "
+     "STANDS is nobody's work",
+     [(PROJECTION, "            if self.appointment_cancelled(stop_key) \\\n"
+                   '                    or (deadline is not None and expectation["deadline_utc"] '
+                   "!= deadline):\n",
+       "            if self.appointment_cancelled(stop_key) or deadline is not None:  # MUTANT\n")],
+     f"{L}::test_the_blind_states_are_discovered_and_are_blind"),
 ]
 
 

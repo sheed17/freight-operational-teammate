@@ -28,7 +28,9 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -38,7 +40,7 @@ for _entry in (str(ROOT / "src"), str(ROOT / "eval")):
         sys.path.insert(0, _entry)
 
 from freight_corpus.builders import TRACKING, charges, movement, says  # noqa: E402
-from freight_corpus.histories import _stops  # noqa: E402
+from freight_corpus.histories import _cover, _stops  # noqa: E402
 from freight_corpus.loop_histories import (  # noqa: E402
     LOOP_SETUPS,
     Load,
@@ -51,16 +53,22 @@ from freight_corpus.work_attack import (  # noqa: E402
     _MONEY,
     Mutant,
     audit_state,
+    bare_claims_over_a_human_decision,
     build_mutants,
+    claims_dropped_onto_a_quiet_load,
     duplicate_every_record,
     row_counts,
     run_mutant,
+    watches_a_window_that_is_gone,
 )
 from freight_recon.freight_domain.corpus_run import cross_tenant_violations  # noqa: E402
+from freight_recon.freight_domain.detectors import arrival_evidence  # noqa: E402
 from freight_recon.freight_domain.history import (  # noqa: E402
+    COVERAGE_HEALTH,
     OBSERVATION_KINDS,
     UnparseableRecord,
     parse_record,
+    utc_datetime,
 )
 from freight_recon.freight_domain.load_loop import (  # noqa: E402
     LoopRunResult,
@@ -102,25 +110,42 @@ _PAST_A_STOP = {"PICKUP": frozenset({"LOADED", "IN_TRANSIT", "AT_DELIVERY", "DEL
                 "DELIVERY": frozenset({"AT_DELIVERY", "DELIVERED"})}
 
 
+#: An appointment that stands as a TIME: a confirmed window, or the window it was rescheduled to.
+_TIMED = ("CONFIRMED", "RESCHEDULED")
+
+
+def _closes(appointment) -> datetime | None:
+    """When the window of the appointment that STANDS at a stop closes, read from the appointment
+    and from nothing else. None when no time stands there."""
+    window = appointment.value("window")
+    if appointment.value("status") not in _TIMED or window is None:
+        return None
+    return datetime.fromisoformat(window["end_local"]).replace(
+        tzinfo=ZoneInfo(window["timezone"]))
+
+
 def _unwatched_stops(view, setup) -> list[str]:
     """A SECOND ORACLE, written without the detectors: at a brokerage that watches arrivals, a stop
-    with a confirmed appointment has either a STANDING claim that the truck has been there, or a
-    live watch. Neither means nobody is waiting for that truck - which is how a load whose only
-    delivery report a human overruled went quiet. `audit_state` cannot see it: it reads what the
-    record still OWES, and a watch that was wrongly answered owes nothing."""
+    whose appointment stands as a time has either a STANDING claim that the truck has been there,
+    or a live watch ON THE WINDOW THAT STANDS. Neither means nobody is waiting for that truck -
+    which is how a load whose only delivery report a human overruled went quiet. `audit_state`
+    cannot see it: it reads what the record still OWES, and a watch that was wrongly answered owes
+    nothing. A watch on a window the appointment has left is not waiting for THIS appointment."""
     if setup.arrival_tracking_channel is None:
         return []
     out: list[str] = []
     for stop_key, appointment in sorted(view.appointments.items()):
-        if appointment.value("status") != "CONFIRMED" or appointment.value("window") is None:
+        closes = _closes(appointment)
+        if closes is None:
             continue
         kind = view.stops[stop_key].value("stop_type")
         only = len([s for s in view.stops.values() if s.value("stop_type") == kind]) == 1
-        been = [t for t in view.tracking if t.overruled_by is None and (
+        been = [t for t in view.tracking if t.overruled_by is None and t.contests is None and (
             (t.stop_key == stop_key and t.value("status") in _AT_A_STOP)
             or (only and t.stop_key is None and t.value("status") in _PAST_A_STOP[kind]))]
         live = [e for e in view.expectations
-                if e["expected_type"] == f"arrival:{stop_key}" and e["state"] in _OWED]
+                if e["expected_type"] == f"arrival:{stop_key}" and e["state"] in _OWED
+                and utc_datetime(e["deadline_utc"]) == closes]
         if not been and not live:
             out.append(f"{view.load.value('load_ref')}: UNWATCHED STOP - nothing standing says "
                        f"the truck reached {stop_key}, and nothing is waiting for it")
@@ -128,20 +153,33 @@ def _unwatched_stops(view, setup) -> list[str]:
 
 
 def _doubly_watched_stops(view) -> list[str]:
-    """THE OTHER HALF OF THAT ORACLE: a stop is waited for ONCE. Two live arrival watches at one
-    stop are one obligation counted twice - which is what an appointment that was moved, and then
-    missed, used to leave behind. Rows that are no longer owed are history and are not counted.
+    """THE OTHER HALF OF THAT ORACLE: a stop is waited for ONCE, and for the appointment that
+    stands. Two live arrival watches on the standing window are one obligation counted twice -
+    which is what an appointment that was moved, and then missed, used to leave behind. A watch
+    M8 would have let follow the appointment (RAISED, OVERDUE) and that is still live on a window
+    the appointment has left - or after it was cancelled - is a deadline nobody holds.
 
-    One known way to trip it is recorded, not repaired (`P9-D66`): over a tracking channel with no
-    health reading, a watch judged INDETERMINATE cannot be amended or cancelled by M8, so an
-    appointment then moved to a window never used is watched beside it. No history here does that."""
+    Rows that are no longer owed are history and are not counted. Neither is a row M8 judged
+    INDETERMINATE against a window that is gone: M8 will not move it, the work engine does not
+    read it (`audit_state` checks that), and it is history in place."""
     out: list[str] = []
     for stop_key in sorted(view.stops):
         live = [e for e in view.expectations
                 if e["expected_type"] == f"arrival:{stop_key}" and e["state"] in _OWED]
-        if len(live) > 1:
-            out.append(f"{view.load.value('load_ref')}: DUPLICATE WATCH - {len(live)} live "
+        appointment = view.appointments.get(stop_key)
+        closes = _closes(appointment) if appointment is not None else None
+        cancelled = appointment is not None and appointment.value("status") == "CANCELLED"
+        if closes is None and not cancelled:
+            here, left = live, []                # requested, or in dispute: no time stands
+        else:
+            here = [e for e in live if closes and utc_datetime(e["deadline_utc"]) == closes]
+            left = [e for e in live if e not in here and e["state"] != "INDETERMINATE"]
+        if len(here) > 1:
+            out.append(f"{view.load.value('load_ref')}: DUPLICATE WATCH - {len(here)} live "
                        f"arrival watches at {stop_key}")
+        if left:
+            out.append(f"{view.load.value('load_ref')}: STALE WATCH - {len(left)} live arrival "
+                       f"watch(es) at {stop_key} on a window the appointment has left")
     return out
 
 
@@ -1168,14 +1206,18 @@ def _says_window(h, cargo, label: str, clock: str, start: str, end: str, *,
             window_start_local=h.local(start, 1), window_end_local=h.local(end, 1), timezone=ET)
 
 
-def _tms_window(h, cargo, label: str, at: str, version: int, start: str, end: str) -> None:
-    """The system of record's own row for the load, carrying this delivery appointment."""
+def _tms_window(h, cargo, label: str, at: str, version: int, start: str, end: str, *,
+                appointment: str = "CONFIRMED", status: str = "COVERED") -> None:
+    """The system of record's own row for the load, carrying this delivery appointment - and
+    saying the appointment is `appointment` and the load is `status`."""
     stops = _stops(h, pickup="Great Lakes Beverage Bloomington", delivery="Maumee Distributing",
-                   pickup_status="CONFIRMED", delivery_status="CONFIRMED", delivery_zone=ET,
+                   pickup_status="CONFIRMED", delivery_status=appointment, delivery_zone=ET,
                    delivery_window=(start, end))
-    h.tms(label, at, load=cargo.number, status="COVERED", version=version,
+    h.tms(label, at, load=cargo.number, status=status, version=version,
           customer=cargo.customer, po=cargo.po, bol=cargo.bol, sell=charges(cargo.sell),
-          stops=stops, movements=(movement("M1", cargo.carrier, pro=cargo.pro),))
+          stops=stops, movements=(movement("M1", cargo.carrier, pro=cargo.pro,
+                                           status="DELIVERED" if status == "DELIVERED"
+                                           else "BOOKED"),))
 
 
 def _wrong_then_right(history_id: str, **kw):
@@ -1555,6 +1597,1337 @@ def test_the_duplicate_watch_oracle_fires_on_two_live_watches_at_one_stop(tmp_pa
             == ["DUPLICATE WATCH"]
         view.expectations[-1]["state"] = "CANCELLED"
         assert _doubly_watched_stops(view) == []
+        # A watch M8 would let follow the appointment, live on a window it has LEFT, is a deadline
+        # nobody holds. One M8 judged blind there is history in place, and is not counted.
+        view.expectations[-1].update(state="OVERDUE", deadline_utc=EARLIER_CLOSES)
+        assert [f.split(": ", 1)[1][:11] for f in _doubly_watched_stops(view)] == ["STALE WATCH"]
+        view.expectations[-1]["state"] = "INDETERMINATE"
+        assert _doubly_watched_stops(view) == []
+        assert watches_a_window_that_is_gone(view, view.expectations[-1])
+    finally:
+        store.close()
+
+
+# ============================================================ a human's answer stands
+
+def _ruled_in_transit(history_id: str, *, first: str = "tms", **kw):
+    """THE THIRD REVIEW'S REPRODUCTION, up to her decision. At 08:30 Eastern the system of record's
+    row (or, with `first="driver"`, the driver) says DELIVERED; at 08:35 the provider has the truck
+    rolling; at 09:00 Dana says: in transit. The delivery appointment is 13:00-15:00."""
+    h, cargo = _afternoon(history_id, **kw)
+    if first == "tms":
+        _tms_window(h, cargo, "tms-says-delivered", h.t("08:30", 1, ET), 3, "13:00", "15:00",
+                    status="DELIVERED")
+    else:
+        cargo.sms("driver-says-delivered", h.t("08:30", 1, ET), "delivered, empty",
+                  says("DELIVERED", "S2"))
+    cargo.track("provider-says-moving", h.t("08:35", 1, ET), "IN_TRANSIT", position="I-75 N")
+    h.human("dana-says-moving", h.t("09:00", 1, ET), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="IN_TRANSIT", note="receiver has not seen him")
+    return h, cargo
+
+
+def _tms_says_delivered(h, cargo, label: str, clock: str, version: int) -> None:
+    """The system of record's row sent again as a NEW version, still saying DELIVERED."""
+    _tms_window(h, cargo, label, h.t(clock, 1, ET), version, "13:00", "15:00", status="DELIVERED")
+
+
+def _about(event) -> str:
+    return event.field_of("status").facts[0].as_of
+
+
+def _her_decision(view) -> str:
+    decisions = [t for t in view.tracking if t.value("signal") == "owner_confirmation"]
+    return max(decisions, key=_about).origin_observation_id
+
+
+def _said(view, status: str = "DELIVERED") -> list[tuple[str, str]]:
+    """Every claim of `status` that is not a human's, oldest first by the moment it is ABOUT, with
+    how it stands now."""
+    claims = sorted((t for t in view.tracking if t.value("status") == status
+                     and t.value("signal") != "owner_confirmation"),
+                    key=lambda t: (_about(t), t.entity_id))
+    return [(t.value("signal"),
+             "overruled" if t.overruled_by else "contests" if t.contests else "stands")
+            for t in claims]
+
+
+def _disputes(view) -> list[str]:
+    return [c["state"] for c in view.conflicts if c["field"] == "tracking_status"]
+
+
+def test_a_restated_delivery_does_not_undo_a_humans_decision(tmp_path):
+    """THE THIRD REVIEW'S FIRST BLOCKER. Dana has said the truck is in transit; the delivery window
+    is missed and Neyma is chasing the carrier. Then the system of record's row is sent again as a
+    new version, still saying DELIVERED, with nothing new in it. It used to make the load DELIVERED
+    again, close the late-truck follow-up and ask for a POD instead - undoing her decision with the
+    claim she had rejected, and asking nobody. It is the claim she already answered: it is
+    overruled by the same decision, it is still on the record, and nothing that was owed changes.
+    The same before the window closes."""
+    def history(restated: str | None):
+        h, cargo = _ruled_in_transit("HA")
+        # The provider goes on showing him on the road after she decided. A reading that the
+        # truck is where she said it was is not a reading that it has moved on.
+        cargo.track("still-moving", h.t("09:30", 1, ET), "IN_TRANSIT", position="I-75 N")
+        if restated:
+            _tms_says_delivered(h, cargo, "tms-says-it-again", restated, 4)
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    plain, plain_store = _run(tmp_path / "plain", [history(None)], setups=NO_CADENCE)
+    stores = [plain_store]
+    try:
+        plain_story, plain_view = _view(plain)
+        assert _said(plain_view) == [("tms_status", "overruled")]
+        for restated in ("16:00", "10:00"):               # after the window was missed; before it
+            result, store = _run(tmp_path / restated.replace(":", ""), [history(restated)],
+                                 setups=NO_CADENCE)
+            stores.append(store)
+            story, view = _view(result)
+            again = story.at("tms-says-it-again")
+            assert again.state.stage is Stage.IN_TRANSIT and not again.quiet, restated
+            assert again.state.need(NeedKind.DOCUMENT_REQUIRED) is None, restated
+            assert not again.escalations and not again.billing_ready, restated
+            # What was owed the moment before it arrived is exactly what is owed after.
+            before = [m for m in story.moments if m.index < again.index][-1]
+            assert _work(again) == _work(before) and len(_work(again)) == 1, restated
+
+            # IT IS STILL ON THE RECORD, as what the system of record said - twice - and both are
+            # answered by her one decision. No second dispute: nobody is asked the same thing.
+            assert _said(view) == [("tms_status", "overruled"), ("tms_status", "overruled")]
+            assert {t.overruled_by for t in view.tracking if t.overruled_by} \
+                == {_her_decision(view)}
+            assert len(view.tracking) == len(plain_view.tracking) + 1
+            assert _disputes(view) == ["RESOLVED_BY_HUMAN"], restated
+            assert (story.last.touches.acts, story.last.touches.open) == (1, 0)
+
+            # The missed delivery is work, exactly as it is on the load nobody restated anything
+            # on: no less, and nothing else in its place.
+            assert _work(story.last) == _work(plain_story.last), restated
+            assert [(n.kind, n.reason_codes, n.due_by) for n in story.last.overdue] \
+                == [(NeedKind.CARRIER_STATUS_OVERDUE, ("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+            assert story.last.next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+            assert [e["state"] for e in _watches(view, "arrival:S2")] == ["DISCHARGED", "OVERDUE"]
+            assert [m.trigger for m in story.moments if m.quiet or m.billing_ready] == []
+            assert result.findings == []
+            assert result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_a_restated_delivery_is_not_the_truck_being_heard_from(tmp_path):
+    """The same reproduction at a brokerage WITH a tracking cadence. Her decision at 09:00 is the
+    last anything standing heard of the truck, so a tracking update is owed by 13:00. The row she
+    overruled is sent again at 12:00, and again at 13:30 after that watch has gone overdue. It is
+    not the truck being heard from: it answers no watch, it restarts no clock, and the follow-up
+    for a truck that has gone silent neither moves nor closes. A real ping does both."""
+    silent_by = "2026-09-02T17:00:00.000Z"                  # 09:00 Eastern + the 4-hour cadence
+
+    def history(*restated: str, ping: str | None = None):
+        h, cargo = _ruled_in_transit("HT")
+        for index, clock in enumerate(restated):
+            _tms_says_delivered(h, cargo, f"tms-says-it-again-{index}", clock, 4 + index)
+        if ping:
+            cargo.track("a-real-ping", h.t(ping, 1, ET), "IN_TRANSIT", position="I-75 N")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def tracking_rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expectation_id"], e["state"], e["deadline_utc"])
+                for e in _watches(view, "tracking_update")]
+
+    plain, plain_store = _run(tmp_path / "plain", [history()])
+    result, store = _run(tmp_path / "restated", [history("12:00", "13:30")])
+    pinged, pinged_store = _run(tmp_path / "pinged", [history(ping="12:00")])
+    try:
+        story, view = _view(result)
+        decided = story.at("dana-says-moving")
+        assert decided.state.need(NeedKind.TRACKING_UPDATE_PENDING).due_by == silent_by
+        first = story.at("tms-says-it-again-0")              # 12:00: an hour before it is due
+        assert first.state.need(NeedKind.TRACKING_UPDATE_PENDING).due_by == silent_by
+        assert _work(first) == _work(decided)
+        second = story.at("tms-says-it-again-1")             # 13:30: half an hour after
+        assert [(n.reason_codes, n.due_by) for n in second.overdue] \
+            == [(("TRACKING_OVERDUE",), silent_by)]
+        assert second.next_step == "NEYMA:REQUEST_CARRIER_STATUS"
+        # Not one row more than the load nobody restated anything on, and the same work.
+        assert tracking_rows(result) == tracking_rows(plain) and len(tracking_rows(plain)) >= 5
+        assert tracking_rows(plain)[-1][1:] == ("OVERDUE", silent_by)
+        assert _final(result) == _final(plain)
+        assert len(story.last.state.housekeeping) \
+            == len(plain.story(NORTHLINE, "LD-59001").last.state.housekeeping)
+        assert [sorted(n.reason_codes) for n in story.last.overdue] \
+            == [["ARRIVAL:S2_OVERDUE", "TRACKING_OVERDUE"]]
+        assert result.findings == [] and plain.findings == []
+
+        # The control: a signal that STANDS is the truck being heard from.
+        heard = pinged.story(NORTHLINE, "LD-59001").at("a-real-ping")
+        assert heard.state.need(NeedKind.TRACKING_UPDATE_PENDING).due_by \
+            == "2026-09-02T20:00:00.000Z"
+        assert pinged.findings == []
+    finally:
+        store.close()
+        plain_store.close()
+        pinged_store.close()
+
+
+def test_a_restated_delivery_starts_no_clock_of_its_own(tmp_path):
+    """The other way the same claim could move a deadline. The driver's "delivered at 7:30"
+    arrives late and answers the watch an 08:00 ping started; he says it again at 08:30; then Dana
+    records that as of 07:45 he had not delivered. Both of his claims are overruled, the watch his
+    word answered is owed again - and it runs from the 08:00 PING, the last signal that stands,
+    not from the 08:30 repetition of a claim she rejected."""
+    h, cargo = _picked_up("HU")
+    cargo.track("ping-0800", h.t("08:00", 1), "IN_TRANSIT", position="I-75 N")
+    cargo.sms("driver-says-delivered", h.t("09:00", 1), "delivered at 7:30, empty",
+              says("DELIVERED", "S2"))
+    h.records[-1] = replace(h.records[-1], as_of=h.t("07:30", 1))
+    cargo.sms("driver-says-it-again", h.t("09:10", 1), "delivered", says("DELIVERED", "S2"))
+    h.records[-1] = replace(h.records[-1], as_of=h.t("08:30", 1))
+    h.human("dana-says-moving", h.t("09:30", 1), "dana.ortiz", "confirm_movement_status",
+            refs=cargo.refs, status="IN_TRANSIT", note="as of 07:45 the receiver had not seen him")
+    h.records[-1] = replace(h.records[-1], as_of=h.t("07:45", 1))
+    h.clock("end", h.t("13:00", 1))
+    result, store = _run(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        assert _said(view) == [("driver_assertion", "overruled")] * 2
+        decided = story.at("dana-says-moving")
+        assert decided.state.stage is Stage.IN_TRANSIT and not decided.escalations
+        assert {n.kind: n.due_by for n in decided.state.needs} == {
+            NeedKind.ARRIVAL_PENDING: WINDOW_CLOSES,
+            NeedKind.TRACKING_UPDATE_PENDING: "2026-09-02T17:00:00.000Z"}       # 08:00 + 4h
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_the_overruled_record_delivered_again_is_inert(tmp_path):
+    """The very same record - same source, same id - arrives a second time, after her decision. It
+    is a duplicate: no new claim, no new row, and the same pictures as the load it never reached."""
+    def history(again: bool):
+        h, _ = _ruled_in_transit("HB")
+        if again:
+            h.redeliver("the-same-row-again", h.t("10:00", 1, ET), of="tms-says-delivered")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    result, store = _run(tmp_path / "again", [history(True)], setups=NO_CADENCE)
+    plain, plain_store = _run(tmp_path / "plain", [history(False)], setups=NO_CADENCE)
+    try:
+        (story, view), (plain_story, plain_view) = _view(result), _view(plain)
+        assert result.report["metrics"]["duplicate_records_suppressed"] == 1
+        assert plain.report["metrics"]["duplicate_records_suppressed"] == 0
+        assert len(view.tracking) == len(plain_view.tracking) and _said(view) == _said(plain_view)
+        assert _final(result) == _final(plain) and story.last.state.stage is Stage.IN_TRANSIT
+        assert [(e["expectation_id"], e["state"]) for e in view.expectations] \
+            == [(e["expectation_id"], e["state"]) for e in plain_view.expectations]
+        assert not story.last.quiet and result.findings == []
+    finally:
+        store.close()
+        plain_store.close()
+
+
+def test_the_overruled_statement_under_a_new_record_id_is_still_overruled(tmp_path):
+    """The statement she overruled arrives again under a DIFFERENT record id, an hour after she
+    decided, and it is about the same moment it always was. A new id is not a new fact: it is
+    judged by the moment it is about, never by when or under what number it arrived."""
+    for first, signal in (("tms", "tms_status"), ("driver", "driver_assertion")):
+        h, cargo = _ruled_in_transit(f"HC{first[0]}", first=first)
+        if first == "tms":
+            _tms_says_delivered(h, cargo, "a-copy", "10:00", 4)
+        else:
+            cargo.sms("a-copy", h.t("10:00", 1, ET), "delivered, empty", says("DELIVERED", "S2"))
+        h.records[-1] = replace(h.records[-1], as_of=h.t("08:30", 1, ET),
+                                external_id=f"a-new-record-id-{first}")
+        h.clock("end", h.t("22:00", 1))
+        result, store = _run(tmp_path / first, [h.build({})], setups=NO_CADENCE)
+        try:
+            story, view = _view(result)
+            copy = story.at("a-copy")
+            assert copy.disposition != "DUPLICATE", "the copy was not a new record at all"
+            assert copy.state.stage is Stage.IN_TRANSIT and not copy.escalations, first
+            assert _said(view) == [(signal, "overruled"), (signal, "overruled")], first
+            assert _disputes(view) == ["RESOLVED_BY_HUMAN"], first
+            assert copy.state.need(NeedKind.ARRIVAL_PENDING) is not None and not copy.quiet
+            assert not story.last.quiet and result.findings == []
+        finally:
+            store.close()
+
+
+def test_the_source_she_overruled_saying_it_again_does_not_win(tmp_path):
+    """The driver whose "delivered" she overruled texts it again an hour later, and again an hour
+    after that - new messages, about new moments, with nothing behind them but the same word. He
+    has said nothing else in between. It is the same claim, repeated; it does not become true by
+    repetition, it reopens no dispute, and the delivery is still watched and still called late."""
+    h, cargo = _ruled_in_transit("HD", first="driver")
+    cargo.sms("driver-says-it-again", h.t("10:00", 1, ET), "delivered", says("DELIVERED", "S2"))
+    cargo.sms("driver-says-it-a-third-time", h.t("11:00", 1, ET), "DELIVERED!!",
+              says("DELIVERED"))
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        for label in ("driver-says-it-again", "driver-says-it-a-third-time"):
+            moment = story.at(label)
+            assert moment.state.stage is Stage.IN_TRANSIT and not moment.escalations, label
+            watch = moment.state.need(NeedKind.ARRIVAL_PENDING)
+            assert watch is not None and watch.due_by == RESTORED_CLOSES, label
+        assert _said(view) == [("driver_assertion", "overruled")] * 3
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN"]
+        assert [(n.reason_codes, n.due_by) for n in story.last.overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+        assert (story.last.touches.acts, story.last.touches.open) == (1, 0)
+        assert [m.trigger for m in story.moments if m.quiet or m.billing_ready] == []
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_new_bare_claim_against_her_decision_is_a_dispute_and_not_an_answer(tmp_path):
+    """After she overruled the system of record, a DIFFERENT source says it: the driver texts
+    "delivered". That may be news. It is also only a word against hers, with no reading that the
+    truck moved on - so it does not become the answer and it does not vanish: it contests her
+    decision, the load is DISPUTED and hers to decide again, and until she does the delivery is
+    still watched and its window closing is still late. Her answer, either way, settles it."""
+    def history(answer: str | None = None):
+        h, cargo = _ruled_in_transit("HE")
+        cargo.sms("driver-says-delivered", h.t("10:00", 1, ET), "delivered, empty",
+                  says("DELIVERED", "S2"))
+        if answer:
+            h.human("dana-answers", h.t("10:30", 1, ET), "dana.ortiz", "confirm_movement_status",
+                    refs=cargo.refs, status=answer,
+                    **({"stop_key": "S2"} if answer == "DELIVERED" else {}))
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    result, store = _run(tmp_path / "unanswered", [history()], setups=NO_CADENCE)
+    stores = [store]
+    try:
+        story, view = _view(result)
+        claimed = story.at("driver-says-delivered")
+        assert claimed.state.stage is Stage.DISPUTED and not claimed.quiet
+        assert not claimed.billing_ready and claimed.next_step == "HUMAN:EVIDENCE_CONFLICT"
+        assert [e.kind for e in claimed.escalations] == ["EVIDENCE_CONFLICT"]
+        # Nothing he said is acted on: no POD is asked for, and the delivery is still watched.
+        assert claimed.state.need(NeedKind.DOCUMENT_REQUIRED) is None
+        watch = claimed.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == RESTORED_CLOSES
+        assert _said(view) == [("tms_status", "overruled"), ("driver_assertion", "contests")]
+        assert [t.contests for t in view.tracking if t.contests] == [_her_decision(view)]
+        # A NEW dispute, with her own decision as a party to it; the settled one keeps its row.
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RAISED"]
+        raised = [c for c in view.conflicts if c["state"] == "RAISED"]
+        assert [c["kind"] for c in raised] == ["INFERRER_VS_OWNER"]
+        assert [len(c["parties"]) for c in raised] == [2]
+        said = " ".join(e.note for e in claimed.escalations[0].evidence)
+        assert "OWNER_ASSERTED says IN_TRANSIT" in said and "says DELIVERED" in said
+        last = story.last
+        assert last.state.stage is Stage.DISPUTED and not last.quiet and not last.billing_ready
+        assert [(n.reason_codes, n.due_by) for n in last.overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+        assert (last.touches.acts, last.touches.open) == (1, 1)
+        assert [m.trigger for m in story.moments if m.quiet or m.billing_ready] == []
+        assert result.findings == [] and result.report["metrics"]["external_effect_rows"] == 0
+
+        still, store = _run(tmp_path / "still-moving", [history("IN_TRANSIT")],
+                            setups=NO_CADENCE)
+        stores.append(store)
+        story, view = _view(still)
+        answered = story.at("dana-answers")
+        assert answered.state.stage is Stage.IN_TRANSIT and not answered.escalations
+        assert _said(view) == [("tms_status", "overruled"), ("driver_assertion", "overruled")]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RESOLVED_BY_HUMAN"]
+        assert answered.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        assert [(n.reason_codes, n.due_by) for n in story.last.overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), RESTORED_CLOSES)]
+        assert (story.last.touches.acts, story.last.touches.open) == (2, 0)
+        assert still.findings == []
+
+        delivered, store = _run(tmp_path / "delivered", [history("DELIVERED")],
+                                setups=NO_CADENCE)
+        stores.append(store)
+        story, view = _view(delivered)
+        answered = story.at("dana-answers")
+        assert answered.state.stage is Stage.DELIVERED and not answered.escalations
+        assert answered.state.need(NeedKind.DOCUMENT_REQUIRED) is not None
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RESOLVED_BY_HUMAN"]
+        assert not [t for t in view.tracking if t.contests] and delivered.findings == []
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_a_repeat_is_put_to_her_where_nothing_else_is_asking(tmp_path):
+    """A repeat is dropped silently only where the truck is still being asked about. Here it is
+    not: the provider has the truck at the receiver and Dana says so too - checked in, not
+    unloaded - so the delivery watch is answered and, with no cadence, nothing at all is owed
+    (`P9-D67`, untouched). Forty minutes later the same driver says "delivered" again. Dropped
+    unasked, that would be a delivery report on a QUIET load, shown to nobody. It contests her
+    decision instead: a dispute, hers to settle - and when she does, the load goes on."""
+    def history(confirmed: bool):
+        h, cargo = _afternoon("HQ")
+        cargo.sms("driver-says-delivered", h.t("12:30", 1, ET), "delivered, empty",
+                  says("DELIVERED", "S2"))
+        cargo.track("provider-at-the-dock", h.t("12:35", 1, ET), "AT_DELIVERY", "S2")
+        h.human("dana-says-at-the-dock", h.t("13:00", 1, ET), "dana.ortiz",
+                "confirm_movement_status", refs=cargo.refs, status="AT_DELIVERY", stop_key="S2",
+                note="checked in, not unloaded")
+        cargo.sms("driver-says-it-again", h.t("13:40", 1, ET), "delivered",
+                  says("DELIVERED", "S2"))
+        if confirmed:
+            h.human("dana-confirms-delivery", h.t("13:50", 1, ET), "dana.ortiz",
+                    "confirm_movement_status", refs=cargo.refs, status="DELIVERED",
+                    stop_key="S2", note="receiver: unloaded")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    result, store = _run(tmp_path / "unanswered", [history(False)], setups=NO_CADENCE)
+    answered, answered_store = _run(tmp_path / "answered", [history(True)], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        decided = story.at("dana-says-at-the-dock")
+        assert decided.state.stage is Stage.IN_TRANSIT and decided.quiet, "P9-D67 was changed"
+        again = story.at("driver-says-it-again")
+        assert again.state.stage is Stage.DISPUTED and not again.quiet
+        assert [e.kind for e in again.escalations] == ["EVIDENCE_CONFLICT"]
+        assert _said(view) == [("driver_assertion", "overruled"),
+                               ("driver_assertion", "contests")]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RAISED"]
+        assert not story.last.quiet and not story.last.billing_ready
+        assert (story.last.touches.acts, story.last.touches.open) == (1, 1)
+        assert result.findings == []
+
+        story, _ = _view(answered)
+        done = story.at("dana-confirms-delivery")
+        assert done.state.stage is Stage.DELIVERED and not done.escalations
+        assert done.state.need(NeedKind.DOCUMENT_REQUIRED) is not None and not done.quiet
+        assert answered.findings == []
+    finally:
+        store.close()
+        answered_store.close()
+
+
+def test_a_repeat_at_a_brokerage_that_watches_no_arrivals_is_put_to_a_human(tmp_path):
+    """Cedar Ridge expects arrivals on no channel, so nothing there waits for a truck. Sam says a
+    load its system of record calls DELIVERED is still in transit; the row is sent again. At
+    Northline that repeat changes nothing, because the delivery watch is owed and will find out.
+    Here nothing would: dropped unasked it would leave the load quiet on a delivery report. It is
+    put to Sam."""
+    h, cargo = _afternoon("HV", tenant=CEDAR, ops=CEDAR_OPS, pods=CEDAR_OPS)
+    _tms_window(h, cargo, "tms-says-delivered", h.t("08:30", 1, ET), 3, "13:00", "15:00",
+                status="DELIVERED")
+    h.human("sam-says-moving", h.t("09:00", 1, ET), "sam.okafor", "confirm_movement_status",
+            refs=cargo.refs, status="IN_TRANSIT", note="driver is two hours out")
+    _tms_says_delivered(h, cargo, "tms-says-it-again", "16:00", 4)
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result, CEDAR)
+        assert NO_CADENCE[CEDAR].arrival_tracking_channel is None
+        assert story.at("sam-says-moving").state.stage is Stage.IN_TRANSIT
+        again = story.at("tms-says-it-again")
+        assert again.state.stage is Stage.DISPUTED and not again.quiet
+        assert [(e.kind, e.owner_id) for e in again.escalations] \
+            == [("EVIDENCE_CONFLICT", "sam.okafor")]
+        assert _said(view) == [("tms_status", "overruled"), ("tms_status", "contests")]
+        assert not story.last.quiet and not story.last.billing_ready
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_the_projection_and_the_detectors_agree_on_which_stop_a_claim_answers(loop):
+    """`LoadView.stops_a_claim_answers` asks of ONE claim what `detectors.arrival_evidence` asks
+    stop by stop. Over every standing claim at every stop of the twenty-two loads they give the
+    same answer - and both answers occur, so the agreement is not an empty one."""
+    result, _ = loop
+    compared = answered = 0
+    for intake in result.intakes.values():
+        for view in intake.projection().loads.values():
+            for stop_key in view.stops:
+                evidence = arrival_evidence(view, stop_key)
+                for claim in view.standing_tracking():
+                    compared += 1
+                    here = stop_key in view.stops_a_claim_answers(claim)
+                    answered += here
+                    assert here == (claim.origin_observation_id in evidence), \
+                        (view.load.value("load_ref"), stop_key, claim.value("status"))
+    assert compared >= 300 and 100 <= answered < compared, (compared, answered)
+
+
+def test_a_source_that_said_otherwise_and_then_says_it_again_is_asking_anew(tmp_path):
+    """Not every later word from the source she overruled is a restatement. The system of record
+    is corrected to IN_TRANSIT after her decision, and hours later says DELIVERED: it changed its
+    statement and then made a new one. That is new information - a dispute for her, never a
+    silent answer, and never silently dropped either."""
+    h, cargo = _ruled_in_transit("HF")
+    _tms_window(h, cargo, "tms-corrected", h.t("10:00", 1, ET), 4, "13:00", "15:00",
+                status="IN_TRANSIT")
+    _tms_says_delivered(h, cargo, "tms-says-delivered-anew", "14:00", 5)
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("tms-corrected").state.stage is Stage.IN_TRANSIT
+        anew = story.at("tms-says-delivered-anew")
+        assert anew.state.stage is Stage.DISPUTED and anew.next_step == "HUMAN:EVIDENCE_CONFLICT"
+        assert _said(view) == [("tms_status", "overruled"), ("tms_status", "contests")]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RAISED"]
+        assert anew.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        assert not story.last.quiet and not story.last.billing_ready
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_real_later_delivery_advances_the_load_and_nobody_is_asked(tmp_path):
+    """A human's decision is about a moment; it is not permanent truth. After Dana says "in
+    transit" the tracking provider puts the truck AT the receiver, inside the window. From then on
+    a delivery report is believed as it always was - from the very source she overruled, from the
+    driver she overruled, from anyone - and with the signed POD the load is quiet and
+    billing-ready. Nobody is asked to approve a real delivery because the truck was moving
+    earlier: one decision, no second dispute, nothing late."""
+    for first, tells in (("tms", "tms"), ("driver", "driver"), ("tms", "driver")):
+        h, cargo = _ruled_in_transit(f"HG{first[0]}{tells[0]}", first=first)
+        cargo.track("at-delivery", h.t("13:30", 1, ET), "AT_DELIVERY", "S2")
+        if tells == "tms":
+            _tms_says_delivered(h, cargo, "delivered", "14:10", 4)
+        else:
+            cargo.sms("delivered", h.t("14:10", 1, ET), "delivered, empty",
+                      says("DELIVERED", "S2"))
+        cargo.pod("pod", h.t("14:40", 1, ET))
+        h.clock("end", h.t("22:00", 1))
+        result, store = _run(tmp_path / f"{first}-{tells}", [h.build({})], setups=NO_CADENCE)
+        try:
+            story, view = _view(result)
+            name = f"{first} overruled, {tells} reports"
+            arrived = story.at("at-delivery")
+            assert arrived.state.stage is Stage.IN_TRANSIT and not arrived.overdue, name
+            assert arrived.state.need(NeedKind.ARRIVAL_PENDING) is None, name
+            delivered = story.at("delivered")
+            assert delivered.state.stage is Stage.DELIVERED and not delivered.escalations, name
+            assert delivered.state.need(NeedKind.DOCUMENT_REQUIRED) is not None, name
+            done = story.at("pod")
+            assert done.state.stage is Stage.DELIVERED and done.quiet and done.billing_ready, name
+            assert _said(view)[0][1] == "overruled" and _said(view)[-1][1] == "stands", name
+            assert not [t for t in view.tracking if t.contests], name
+            assert _disputes(view) == ["RESOLVED_BY_HUMAN"], name
+            decided = story.at("dana-says-moving")
+            later = [m for m in story.moments if m.index > decided.index]
+            assert len(later) >= 3 and not [m for m in later if m.escalations or m.overdue], name
+            assert (story.last.touches.acts, story.last.touches.open) == (1, 0), name
+            assert [e["state"] for e in _watches(view, "arrival:S2")] \
+                == ["DISCHARGED", "DISCHARGED"], name
+            assert result.findings == [], name
+        finally:
+            store.close()
+
+
+def test_a_restatement_made_before_the_truck_moved_on_stays_overruled(tmp_path):
+    """The row she overruled is sent again at 10:00. At 13:30 the provider puts the truck at the
+    receiver. That reading says the truck moved on at 13:30; it does not reach back and make a
+    10:00 restatement true. The load is at the receiver and not delivered, and nobody is asked to
+    settle a dispute that does not exist. Sent again AFTER the truck arrived, the same row is
+    believed - and the POD closes the load."""
+    h, cargo = _ruled_in_transit("HM")
+    _tms_says_delivered(h, cargo, "tms-says-it-again", "10:00", 4)
+    cargo.track("at-delivery", h.t("13:30", 1, ET), "AT_DELIVERY", "S2")
+    _tms_says_delivered(h, cargo, "delivered", "14:10", 5)
+    cargo.pod("pod", h.t("14:40", 1, ET))
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        arrived = story.at("at-delivery")
+        assert arrived.state.stage is Stage.IN_TRANSIT and not arrived.escalations
+        assert arrived.state.need(NeedKind.ARRIVAL_PENDING) is None
+        assert arrived.state.need(NeedKind.DOCUMENT_REQUIRED) is None
+        assert story.at("delivered").state.stage is Stage.DELIVERED
+        assert _said(view) == [("tms_status", "overruled"), ("tms_status", "overruled"),
+                               ("tms_status", "stands")]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN"]
+        done = story.at("pod")
+        assert done.quiet and done.billing_ready and story.last.touches.acts == 1
+        assert [m.trigger for m in story.moments if m.billing_ready] == ["pod"]
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_pod_does_not_make_a_restated_delivery_true(tmp_path):
+    """A signed POD satisfies the document requirement; it reports no delivery (CD-8), and that
+    is unchanged. So a POD arriving beside a restatement she already answered makes nothing
+    billing-ready: the load is still where she said it was, still watched, still not quiet. When
+    she confirms the delivery herself, the POD that is on file counts exactly as it always has."""
+    def history(confirmed: bool):
+        h, cargo = _ruled_in_transit("HP")
+        _tms_says_delivered(h, cargo, "tms-says-it-again", "14:10", 4)
+        cargo.pod("pod", h.t("14:40", 1, ET))
+        if confirmed:
+            h.human("dana-confirms-delivery", h.t("14:50", 1, ET), "dana.ortiz",
+                    "confirm_movement_status", refs=cargo.refs, status="DELIVERED",
+                    stop_key="S2", note="receiver: unloaded and signed for")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    result, store = _run(tmp_path / "alone", [history(False)], setups=NO_CADENCE)
+    confirmed, confirmed_store = _run(tmp_path / "confirmed", [history(True)], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        pod = story.at("pod")
+        assert pod.state.stage is Stage.IN_TRANSIT and not pod.billing_ready and not pod.quiet
+        assert pod.state.need(NeedKind.ARRIVAL_PENDING) is not None
+        assert [r.state for r in view.requirements] == ["SATISFIED"], "the POD was not usable"
+        assert [m.trigger for m in story.moments if m.billing_ready or m.quiet] == []
+        assert story.last.next_step == "NEYMA:REQUEST_CARRIER_STATUS" and result.findings == []
+
+        story, _ = _view(confirmed)
+        done = story.at("dana-confirms-delivery")
+        assert done.state.stage is Stage.DELIVERED and done.billing_ready and done.quiet
+        assert [m.trigger for m in story.moments if m.billing_ready] \
+            == ["dana-confirms-delivery"]
+        assert story.last.touches.acts == 2 and confirmed.findings == []
+    finally:
+        store.close()
+        confirmed_store.close()
+
+
+def test_a_contradiction_after_real_progress_is_still_a_dispute(tmp_path):
+    """Her decision stops governing once the truck has really moved on - and the rules that were
+    there before her decision are still there after it. The truck is put at the receiver, the
+    delivery is reported and believed, and THEN the provider shows the truck on the road again:
+    a later reading of an earlier stage. That is a new dispute, hers to decide."""
+    h, cargo = _ruled_in_transit("HK")
+    cargo.track("at-delivery", h.t("13:30", 1, ET), "AT_DELIVERY", "S2")
+    _tms_says_delivered(h, cargo, "delivered", "14:10", 4)
+    cargo.track("provider-moving-again", h.t("15:00", 1, ET), "IN_TRANSIT", position="I-75 S")
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        assert story.at("delivered").state.stage is Stage.DELIVERED
+        again = story.at("provider-moving-again")
+        assert again.state.stage is Stage.DISPUTED and not again.quiet and not again.billing_ready
+        assert [e.kind for e in again.escalations] == ["EVIDENCE_CONFLICT"]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RAISED"]
+        assert not [t for t in view.tracking if t.contests], "progress was called a bare claim"
+        assert (story.last.touches.acts, story.last.touches.open) == (1, 1)
+        assert result.findings == []
+    finally:
+        store.close()
+
+
+def test_her_decision_holds_through_replay_restart_and_a_doubled_inbox(tmp_path):
+    """One load carrying all of it: a restatement, a new bare claim she answers, a late real
+    arrival, the delivery, the POD. Replayed, restarted after each of its records, and with every
+    record delivered twice, every picture is the uninterrupted run's - and so is every Conflict
+    and every watch, ids included."""
+    def history():
+        h, cargo = _ruled_in_transit("HR")
+        _tms_says_delivered(h, cargo, "tms-says-it-again", "10:00", 4)
+        cargo.sms("driver-says-delivered", h.t("11:00", 1, ET), "delivered, empty",
+                  says("DELIVERED", "S2"))
+        h.human("dana-answers", h.t("11:30", 1, ET), "dana.ortiz", "confirm_movement_status",
+                refs=cargo.refs, status="IN_TRANSIT", note="still not there")
+        cargo.track("at-delivery", h.t("16:00", 1, ET), "AT_DELIVERY", "S2")
+        _tms_says_delivered(h, cargo, "delivered", "16:30", 5)
+        cargo.pod("pod", h.t("17:00", 1, ET))
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> tuple:
+        _, view = _view(result)
+        return ([(e["expectation_id"], e["expected_type"], e["state"], e["deadline_utc"])
+                 for e in view.expectations],
+                [(c["conflict_id"], c["state"], len(c["parties"])) for c in view.conflicts],
+                _said(view))
+
+    whole, store = _run(tmp_path / "whole", [history()], setups=NO_CADENCE)
+    stores = [store]
+    try:
+        story, view = _view(whole)
+        assert sum(len(v) for v in _digests(whole).values()) >= 14
+        assert _said(view) == [("tms_status", "overruled"), ("tms_status", "overruled"),
+                               ("driver_assertion", "overruled"), ("tms_status", "stands")]
+        assert _disputes(view) == ["RESOLVED_BY_HUMAN", "RESOLVED_BY_HUMAN"]
+        assert story.last.quiet and story.last.billing_ready and whole.findings == []
+        again, store = _run(tmp_path / "again", [history()], setups=NO_CADENCE)
+        stores.append(store)
+        assert _digests(again) == _digests(whole) and rows(again) == rows(whole)
+        cuts = ("tms-says-delivered", "dana-says-moving", "tms-says-it-again",
+                "driver-says-delivered", "dana-answers", "at-delivery", "delivered", "pod")
+        for cut in cuts:
+            restarted, store = _run(tmp_path / cut, [history()], setups=NO_CADENCE,
+                                    restart_after={"HR": cut})
+            stores.append(store)
+            assert _digests(restarted) == _digests(whole), f"a restart after {cut} differs"
+            assert rows(restarted) == rows(whole) and restarted.findings == []
+        doubled, store = _run(tmp_path / "doubled", [duplicate_every_record(history())],
+                              setups=NO_CADENCE)
+        stores.append(store)
+        assert _final(doubled) == _final(whole) and rows(doubled) == rows(whole)
+        assert doubled.findings == []
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_one_brokerages_answer_and_appointment_reach_no_other_brokerage(tmp_path):
+    """The same load number at two brokerages, the same records from the same systems: the row
+    that says DELIVERED, the row sent again, the appointment RESCHEDULED. Northline's Dana says
+    her truck is in transit; nobody at Cedar Ridge says anything. Northline's claims are overruled
+    and its load is in transit and watched on the new window. Cedar Ridge's are untouched: its
+    load is delivered on its own records, exactly as if Northline did not exist - and its tracking
+    channel, which has no health reading, is its own too."""
+    watching = {**NO_CADENCE, CEDAR: replace(NO_CADENCE[CEDAR], arrival_tracking_channel=TRACKING)}
+
+    def northline():
+        h, cargo = _ruled_in_transit("TN")
+        _tms_window(h, cargo, "rescheduled", h.t("09:30", 1, ET), 4, "16:00", "18:00",
+                    appointment="RESCHEDULED", status="DELIVERED")
+        h.clock("end", h.t("23:30", 1))
+        return h.build({})
+
+    def cedar():
+        h, cargo = _afternoon("TC", tenant=CEDAR, ops=CEDAR_OPS, pods=CEDAR_OPS)
+        _tms_window(h, cargo, "tms-says-delivered", h.t("08:30", 1, ET), 3, "13:00", "15:00",
+                    status="DELIVERED")
+        _tms_window(h, cargo, "rescheduled", h.t("09:30", 1, ET), 4, "16:00", "18:00",
+                    appointment="RESCHEDULED", status="DELIVERED")
+        h.clock("end", h.t("23:30", 1))
+        return h.build({})
+
+    def shape(result: LoopRunResult, tenant: str) -> tuple:
+        story, view = _view(result, tenant)
+        return ([m.digest() for m in story.moments], _said(view), _disputes(view),
+                [(e["expectation_id"], e["state"], e["deadline_utc"]) for e in view.expectations])
+
+    both, store = _run(tmp_path / "both", [northline(), cedar()], setups=watching)
+    north_alone, north_store = _run(tmp_path / "north", [northline()], setups=watching)
+    cedar_alone, cedar_store = _run(tmp_path / "cedar", [cedar()], setups=watching)
+    try:
+        (north, north_view), (ced, cedar_view) = _view(both, NORTHLINE), _view(both, CEDAR)
+        assert north.load_id != ced.load_id
+        # Northline: her answer holds against the row sent again, and the watch is on 16:00-18:00.
+        assert _said(north_view) == [("tms_status", "overruled"), ("tms_status", "overruled")]
+        assert north.last.state.stage is Stage.IN_TRANSIT
+        assert [(n.reason_codes, n.due_by) for n in north.last.overdue] \
+            == [(("ARRIVAL:S2_OVERDUE",), NEW_CLOSES)]
+        # Cedar Ridge: nobody overruled anything, so its own records stand.
+        assert _said(cedar_view) == [("tms_status", "stands"), ("tms_status", "stands")]
+        assert ced.last.state.stage is Stage.DELIVERED and _disputes(cedar_view) == []
+        assert not [t for t in cedar_view.tracking if t.overruled_by or t.contests]
+        assert shape(both, NORTHLINE) == shape(north_alone, NORTHLINE)
+        assert shape(both, CEDAR) == shape(cedar_alone, CEDAR)
+        north_ids = {e["expectation_id"] for e in north_view.expectations}
+        cedar_ids = {e["expectation_id"] for e in cedar_view.expectations}
+        assert len(north_ids) >= 3 and len(cedar_ids) >= 2 and not north_ids & cedar_ids
+        assert cross_tenant_violations(store.conn) == [] and both.findings == []
+        assert both.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+        north_store.close()
+        cedar_store.close()
+
+
+def test_the_human_decision_oracle_fires_when_a_rejected_claim_regains_authority(tmp_path):
+    """Anti-vacuity for `bare_claims_over_a_human_decision`, which `audit_state` applies to every
+    evaluation of every load. It is quiet about a load whose restated claim is overruled; it
+    objects the moment that claim is let stand again; and it does NOT object to a claim made after
+    the provider has put the truck past where she said it was."""
+    h, cargo = _ruled_in_transit("HO")
+    _tms_says_delivered(h, cargo, "tms-says-it-again", "10:00", 4)
+    h.clock("end", h.t("12:00", 1, ET))
+    result, store = _run(tmp_path / "restated", [h.build({})], setups=NO_CADENCE)
+    g, moved = _ruled_in_transit("HO")
+    moved.track("at-delivery", g.t("13:30", 1, ET), "AT_DELIVERY", "S2")
+    _tms_says_delivered(g, moved, "delivered", "14:10", 4)
+    g.clock("end", g.t("15:00", 1, ET))
+    real, real_store = _run(tmp_path / "real", [g.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        restated = [t for t in view.tracking if t.overruled_by and t.value("status") == "DELIVERED"]
+        assert len(restated) == 2 and bare_claims_over_a_human_decision(view) == []
+        later = max(restated, key=_about)
+        later.overruled_by = None                      # as if saying it again had made it stand
+        assert len(bare_claims_over_a_human_decision(view)) == 1
+        state = evaluate_load_work(view, setup=NO_CADENCE[NORTHLINE], as_of=story.last.as_of)
+        assert [f for f in audit_state(state, view, tenant=NORTHLINE)
+                if "REJECTED CLAIM REGAINED AUTHORITY" in f]
+        _, real_view = _view(real)
+        standing = [t for t in real_view.standing_tracking() if t.value("status") == "DELIVERED"]
+        assert len(standing) == 1 and bare_claims_over_a_human_decision(real_view) == []
+
+        # The other half: a claim made after her answer may be overruled unasked ONLY while
+        # something is still owed. The restated row above is - the delivery is watched - and the
+        # check is quiet. Strip the work, as a quiet load would have none, and it objects.
+        later.overruled_by = _her_decision(view)
+        owed = evaluate_load_work(view, setup=NO_CADENCE[NORTHLINE], as_of=story.last.as_of)
+        assert owed.needs and claims_dropped_onto_a_quiet_load(owed, view) == []
+        assert len(claims_dropped_onto_a_quiet_load(replace(owed, needs=()), view)) == 1
+        assert [f for f in audit_state(replace(owed, needs=()), view, tenant=NORTHLINE)
+                if "DROPPED UNASKED ON A QUIET LOAD" in f]
+    finally:
+        store.close()
+        real_store.close()
+
+
+# ============================================================ the appointment that stands
+
+#: 16:00-18:00 Eastern on the second day, and the instant the loop looks again after it closes.
+NEW_CLOSES = "2026-09-02T22:00:00.000Z"
+NEW_LOOKS_AGAIN = "2026-09-02T22:01:00.000Z"
+EARLIER_LOOKS_AGAIN = "2026-09-02T15:01:00.000Z"
+#: 19:00-21:00 Eastern.
+EVENING_CLOSES = "2026-09-03T01:00:00.000Z"
+
+
+def _run_seeing(path: Path, histories, *, setups=SETUPS, **kw):
+    """`_run`, keeping every evaluation of every load - not only the moments that were recorded.
+    A deadline that must NOT fire leaves no moment behind; what the operator would have been
+    shown at that instant is here."""
+    seen: list = []
+
+    def audit(state, view, tenant):
+        seen.append(state)
+        return [*audit_state(state, view, tenant=tenant),
+                *_unwatched_stops(view, setups[tenant]), *_doubly_watched_stops(view)]
+
+    result, store = _run(path, histories, setups=setups, audit=audit, **kw)
+    return result, store, [s for s in seen if s.load_number == "LD-59001"]
+
+
+def _arrival_work(state, stop_key: str = "S2") -> list[tuple]:
+    """Every need on this evaluation that is about the truck's arrival at a stop."""
+    return [(n.kind, n.status, n.due_by) for n in state.needs
+            if f"ARRIVAL_EXPECTED:{stop_key}" in n.reason_codes
+            or any(c.startswith(f"ARRIVAL:{stop_key}_") for c in n.reason_codes)]
+
+
+def _instant(h, clock: str) -> str:
+    """`clock` Eastern on the second day, as the instant the loop stamps an evaluation with."""
+    return utc_datetime(h.t(clock, 1, ET)).astimezone(ZoneInfo("UTC")).strftime(
+        "%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def test_a_rescheduled_appointment_is_watched_on_the_window_it_was_rescheduled_to(tmp_path):
+    """THE THIRD REVIEW'S SECOND BLOCKER. The system of record says the 13:00-15:00 delivery
+    appointment was RESCHEDULED to 16:00-18:00. The watch used to stay on 13:00-15:00: at 15:01 the
+    truck was called provably late against a window nobody held, and 16:00-18:00 was never timed.
+    The appointment that stands is the one the record now carries: the watch moves to it, 15:00
+    passes with nothing late, and 18:00 passing with no truck is the miss. That the new window is
+    not yet CONFIRMED is still work - verifying it - and says so."""
+    h, cargo = _afternoon("SA")
+    _tms_window(h, cargo, "rescheduled", h.t("08:00", 1, ET), 3, "16:00", "18:00",
+                appointment="RESCHEDULED")
+    h.clock("after-the-old-window", h.t("15:01", 1, ET))
+    h.clock("end", h.t("22:00", 1))
+    result, store, seen = _run_seeing(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        moved = story.at("rescheduled")
+        watch = moved.state.need(NeedKind.ARRIVAL_PENDING)
+        assert watch is not None and watch.due_by == NEW_CLOSES
+        verify = moved.state.need(NeedKind.APPOINTMENT_UNCONFIRMED)
+        assert verify is not None and verify.reason_codes == ("APPOINTMENT_RESCHEDULED:S2",)
+        assert "is being watched" in verify.why and moved.next_step == "NEYMA:VERIFY_APPOINTMENT"
+        assert "16:00" in moved.proposals[0].draft and "13:00" not in moved.proposals[0].draft
+
+        # 15:01 Eastern: the old window has closed, and nothing is late.
+        at_1501 = [s for s in seen if s.as_of == _instant(h, "15:01")]
+        assert len(at_1501) == 1
+        assert _arrival_work(at_1501[0]) \
+            == [(NeedKind.ARRIVAL_PENDING, NeedStatus.PENDING, NEW_CLOSES)]
+        assert at_1501[0].need(NeedKind.CARRIER_STATUS_OVERDUE) is None
+        # Every evaluation from the reschedule to 18:00: pending on 18:00, and on nothing else.
+        waiting = [s for s in seen if moved.as_of <= s.as_of < NEW_CLOSES]
+        assert len(waiting) >= 2
+        for state in waiting:
+            assert _arrival_work(state) \
+                == [(NeedKind.ARRIVAL_PENDING, NeedStatus.PENDING, NEW_CLOSES)], state.as_of
+
+        # 18:00 passes with no truck: THAT is the missed appointment.
+        ticks = [m for m in story.moments if m.trigger_kind == "tick"]
+        assert [m.as_of for m in ticks] == [NEW_LOOKS_AGAIN]
+        assert [(n.kind, n.reason_codes, n.due_by) for n in story.last.overdue] \
+            == [(NeedKind.CARRIER_STATUS_OVERDUE, ("ARRIVAL:S2_OVERDUE",), NEW_CLOSES)]
+        assert story.last.state.need(NeedKind.APPOINTMENT_UNCONFIRMED) is not None
+        # ONE watch: the row that was there followed the appointment, by amendment.
+        watches = _watches(view, "arrival:S2")
+        assert [(e["state"], e["deadline_utc"]) for e in watches] == [("OVERDUE", NEW_CLOSES)]
+        assert json.loads(watches[0]["deadline_history"]) == [RESTORED_CLOSES]
+        assert [m.trigger for m in story.moments if m.quiet] == []
+        assert result.findings == [] and result.report["metrics"]["external_effect_rows"] == 0
+    finally:
+        store.close()
+
+
+def test_a_cancelled_appointment_is_nobodys_deadline(tmp_path):
+    """The system of record says the delivery appointment was CANCELLED - while it was still
+    ahead, and again after it had already been missed. Either way nobody is held to that window
+    any more: its watch is withdrawn, the truck is never called late against it, and a chase that
+    was open only because of it ends. The stop is back to having no appointment anyone holds,
+    which is work of the kind that was always there: verify the appointment. Never quiet."""
+    cases = {"cancelled while it was still ahead": ("08:00", 0),
+             "cancelled after it was missed": ("15:30", 1)}
+    assert len(cases) == 2
+    for index, (name, (clock, cured)) in enumerate(cases.items()):
+        h, cargo = _afternoon(f"SB{index}")
+        _tms_window(h, cargo, "cancelled", h.t(clock, 1, ET), 3, "13:00", "15:00",
+                    appointment="CANCELLED")
+        h.clock("later", h.t("16:00", 1, ET))
+        h.clock("end", h.t("22:00", 1))
+        result, store, seen = _run_seeing(tmp_path / str(index), [h.build({})])
+        try:
+            story, view = _view(result)
+            gone = story.at("cancelled")
+            after = [s for s in seen if s.as_of >= gone.as_of]
+            assert len(after) >= 3, name
+            for state in after:
+                assert _arrival_work(state) == [], f"{name}: {state.as_of}"
+                assert state.need(NeedKind.CARRIER_STATUS_OVERDUE) is None, name
+                verify = state.need(NeedKind.APPOINTMENT_UNCONFIRMED)
+                assert verify is not None \
+                    and verify.reason_codes == ("APPOINTMENT_CANCELLED:S2",), name
+                assert not state.routine_work_is_zero, name
+            assert gone.next_step == "NEYMA:VERIFY_APPOINTMENT", name
+            draft = gone.proposals[0].draft
+            assert "cancelled" in draft and "13:00" not in draft, name
+            before = [m for m in story.moments if m.index < gone.index and m.overdue]
+            assert len(before) == cured, f"{name}: the window was (not) missed first"
+            assert [(e["state"], e["deadline_utc"]) for e in _watches(view, "arrival:S2")] \
+                == [("CANCELLED", RESTORED_CLOSES)], name
+            # A miss that was called before the cancellation leaves its Exception: closed by a
+            # human, never by a rule, and housekeeping until then - not work.
+            assert len(story.last.state.housekeeping) == cured, name
+            assert [m.trigger for m in story.moments if m.quiet] == [], name
+            assert result.findings == [], name
+        finally:
+            store.close()
+
+
+def test_only_the_appointment_that_stands_times_the_truck(tmp_path):
+    """Rescheduled EARLIER; rescheduled three times while every window was still ahead;
+    rescheduled after each window had already been missed; rescheduled to a window that had
+    already closed when the record arrived; rescheduled and then CONFIRMED. Every time: one live
+    watch, on the window the appointment now has; nothing late for a window it has left; and the
+    miss of the window that stands is called when THAT window closes."""
+    cases = {
+        "rescheduled earlier": (
+            [("07:00", "09:00", "11:00", "RESCHEDULED")],
+            [("OVERDUE", EARLIER_CLOSES)], [EARLIER_LOOKS_AGAIN], True),
+        "three times, all ahead": (
+            [("08:00", "16:00", "18:00", "RESCHEDULED"), ("08:10", "19:00", "21:00", "RESCHEDULED"),
+             ("08:20", "16:00", "18:00", "RESCHEDULED")],
+            [("OVERDUE", NEW_CLOSES)], [NEW_LOOKS_AGAIN], True),
+        "after each was missed": (
+            [("15:30", "16:00", "18:00", "RESCHEDULED"),
+             ("18:30", "19:00", "21:00", "RESCHEDULED")],
+            [("CANCELLED", RESTORED_CLOSES), ("CANCELLED", NEW_CLOSES),
+             ("OVERDUE", EVENING_CLOSES)],
+            [RESTORED_LOOKS_AGAIN, NEW_LOOKS_AGAIN, "2026-09-03T01:01:00.000Z"], True),
+        "to a window already closed": (
+            [("12:00", "09:00", "11:00", "RESCHEDULED")],
+            [("OVERDUE", EARLIER_CLOSES)], [], True),
+        "rescheduled, then confirmed": (
+            [("08:00", "16:00", "18:00", "RESCHEDULED"), ("12:00", "16:00", "18:00", "CONFIRMED")],
+            [("OVERDUE", NEW_CLOSES)], [NEW_LOOKS_AGAIN], False),
+    }
+    assert len(cases) == 5
+    for index, (name, (moves, rows, ticks, unconfirmed)) in enumerate(cases.items()):
+        h, cargo = _afternoon(f"SC{index}")
+        for step, (clock, start, end, status) in enumerate(moves):
+            _tms_window(h, cargo, f"move-{step}", h.t(clock, 1, ET), 3 + step, start, end,
+                        appointment=status)
+        h.clock("end", h.t("23:30", 1))
+        result, store, seen = _run_seeing(tmp_path / str(index), [h.build({})])
+        try:
+            story, view = _view(result)
+            assert _arrival_rows(view) == rows, name
+            assert [m.as_of for m in story.moments if m.trigger_kind == "tick"] == ticks, name
+            standing = rows[-1][1]
+            final = story.at(f"move-{len(moves) - 1}")
+            judged = [s for s in seen if s.as_of >= final.as_of]
+            assert len(judged) >= 2, name
+            for state in judged:
+                want = ((NeedKind.ARRIVAL_PENDING, NeedStatus.PENDING, standing)
+                        if state.as_of < standing
+                        else (NeedKind.CARRIER_STATUS_OVERDUE, NeedStatus.OVERDUE, standing))
+                assert _arrival_work(state) == [want], f"{name}: {state.as_of}"
+            assert (story.last.state.need(NeedKind.APPOINTMENT_UNCONFIRMED) is not None) \
+                is unconfirmed, name
+            assert [(n.reason_codes, n.due_by) for n in story.last.overdue] \
+                == [(("ARRIVAL:S2_OVERDUE",), standing)], name
+            assert [m.trigger for m in story.moments if m.quiet] == [], name
+            assert result.findings == [], f"{name}: {result.findings[:2]}"
+        finally:
+            store.close()
+
+
+def test_a_brokerage_that_watches_no_arrivals_is_not_told_a_rescheduled_window_is_watched(
+        tmp_path):
+    """Cedar Ridge has no tracking channel it expects arrivals on, so nothing there is timed. A
+    rescheduled appointment is still work - verify it - named for what it is, and the need does
+    not claim a watch that does not exist."""
+    h, cargo = _afternoon("SF", tenant=CEDAR, ops=CEDAR_OPS, pods=CEDAR_OPS)
+    _tms_window(h, cargo, "rescheduled", h.t("08:00", 1, ET), 3, "16:00", "18:00",
+                appointment="RESCHEDULED")
+    h.clock("end", h.t("22:00", 1))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result, CEDAR)
+        assert NO_CADENCE[CEDAR].arrival_tracking_channel is None
+        verify = story.at("rescheduled").state.need(NeedKind.APPOINTMENT_UNCONFIRMED)
+        assert verify is not None and verify.reason_codes == ("APPOINTMENT_RESCHEDULED:S2",)
+        assert "no arrival deadline is being watched" in verify.why
+        assert "is being watched." not in verify.why.replace("deadline is being watched", "")
+        assert [e for e in view.expectations if e["expected_type"].startswith("arrival:")] == []
+        assert not story.last.quiet and result.findings == []
+    finally:
+        store.close()
+
+
+def test_a_truck_that_arrived_owes_nothing_when_its_appointment_is_then_changed(tmp_path):
+    """The truck checks in at the receiver at noon. Afterwards the appointment record is
+    rescheduled, then cancelled, then confirmed for another time. None of it is the truck's to
+    answer: it has been there. No arrival work is manufactured, nothing is late, one watch,
+    answered once."""
+    h, cargo = _afternoon("SD")
+    cargo.track("at-delivery", h.t("12:00", 1, ET), "AT_DELIVERY", "S2")
+    _tms_window(h, cargo, "rescheduled", h.t("12:30", 1, ET), 3, "16:00", "18:00",
+                appointment="RESCHEDULED")
+    _tms_window(h, cargo, "cancelled", h.t("12:40", 1, ET), 4, "16:00", "18:00",
+                appointment="CANCELLED")
+    _tms_window(h, cargo, "confirmed", h.t("12:50", 1, ET), 5, "09:00", "11:00")
+    h.clock("end", h.t("22:00", 1))
+    result, store, seen = _run_seeing(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        after = [s for s in seen if s.as_of >= story.at("at-delivery").as_of]
+        assert len(after) >= 5
+        for state in after:
+            assert _arrival_work(state) == [], state.as_of
+            assert state.need(NeedKind.APPOINTMENT_UNCONFIRMED) is None, state.as_of
+        assert [(e["state"], bool(e["late"])) for e in _watches(view, "arrival:S2")] \
+            == [("DISCHARGED", False)]
+        assert not [m for m in story.moments if m.overdue]
+        assert story.last.state.housekeeping == () and result.findings == []
+    finally:
+        store.close()
+
+
+def test_appointment_changes_delivered_twice_change_nothing(tmp_path):
+    """A reschedule and a cancellation, each delivered twice at once and then the whole inbox
+    again: the same watches, the same ids, the same pictures - one watch amended once, one
+    cancelled once."""
+    def history(final: str):
+        h, cargo = _afternoon("SE")
+        _tms_window(h, cargo, "rescheduled", h.t("08:00", 1, ET), 3, "16:00", "18:00",
+                    appointment="RESCHEDULED")
+        if final == "CANCELLED":
+            _tms_window(h, cargo, "cancelled", h.t("17:00", 1, ET), 4, "16:00", "18:00",
+                        appointment="CANCELLED")
+        h.clock("end", h.t("22:00", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expectation_id"], e["expected_type"], e["state"], e["deadline_utc"])
+                for e in view.expectations]
+
+    stores = []
+    try:
+        for final in ("RESCHEDULED", "CANCELLED"):
+            once, store = _run(tmp_path / f"{final}-once", [history(final)], setups=NO_CADENCE)
+            stores.append(store)
+            twice, store = _run(tmp_path / f"{final}-twice",
+                                [duplicate_every_record(history(final))], setups=NO_CADENCE)
+            stores.append(store)
+            assert twice.report["metrics"]["duplicate_records_suppressed"] >= 10
+            assert _final(twice) == _final(once) and rows(twice) == rows(once), final
+            counted = ("expectations_raised", "expectations_cancelled", "expectations_amended")
+            assert {n: getattr(twice.intakes[NORTHLINE].stats, n) for n in counted} \
+                == {n: getattr(once.intakes[NORTHLINE].stats, n) for n in counted}, final
+            assert once.intakes[NORTHLINE].stats.writes_after_settle == 0
+            assert once.findings == [] and twice.findings == [], final
+            # Replayed, and restarted just before and just after the appointment record changed.
+            for cut in (None, "loaded", "rescheduled"):
+                again, store = _run(tmp_path / f"{final}-{cut}", [history(final)],
+                                    setups=NO_CADENCE,
+                                    restart_after={"SE": cut} if cut else None)
+                stores.append(store)
+                assert _digests(again) == _digests(once), f"{final}: differs after {cut}"
+                assert rows(again) == rows(once) and again.findings == [], final
+    finally:
+        for item in stores:
+            item.close()
+
+
+# ============================================================ a blind channel
+
+#: Every way the tracking channel can fail to be provably up: no reading at all, and each reading
+#: that is not HEALTHY. Discovered from the vocabulary, so a health state added later is covered.
+BLIND = (None, *(health for health in COVERAGE_HEALTH if health != "HEALTHY"))
+
+
+def _blind(h, health: str | None) -> None:
+    """Take away the HEALTHY reading this history has for the tracking channel. With `health`,
+    put in its place a reading that says the channel was that; with None, no reading at all."""
+    h.records[:] = [r for r in h.records
+                    if not (r.kind == "channel_coverage" and r.payload["channel"] == TRACKING)]
+    if health is not None:
+        _cover(h, TRACKING, health=health, minute=40)
+        _in_arrival_order(h)
+
+
+def _blind_afternoon(history_id: str, health: str | None, moves, **kw):
+    h, cargo = _afternoon(history_id, **kw)
+    _blind(h, health)
+    for step, (clock, start, end) in enumerate(moves):
+        _says_window(h, cargo, f"window-{step}", clock, start, end)
+    return h, cargo
+
+
+def test_the_blind_states_are_discovered_and_are_blind(tmp_path):
+    """Population first: three unhealthy readings and the absence of any, and each really does
+    leave M8 unable to call a missed appointment late - INDETERMINATE, shown as UNVERIFIED."""
+    assert BLIND == (None, "DOWN", "UNKNOWN", "PARTIAL")
+    for index, health in enumerate(BLIND):
+        h, _ = _blind_afternoon(f"BP{index}", health, [])
+        h.clock("end", h.t("22:00", 1))
+        result, store = _run(tmp_path / str(index), [h.build({})], setups=NO_CADENCE)
+        try:
+            story, view = _view(result)
+            assert _arrival_rows(view) == [("INDETERMINATE", RESTORED_CLOSES)], health
+            assert [(n.status, n.reason_codes, n.due_by) for n in story.last.overdue] \
+                == [(NeedStatus.UNVERIFIED, ("ARRIVAL:S2_UNVERIFIED",), RESTORED_CLOSES)], health
+            assert result.findings == [], health
+        finally:
+            store.close()
+
+
+@pytest.mark.parametrize("health", BLIND, ids=lambda health: health or "no-reading")
+def test_a_blind_channel_does_not_set_the_appointments_deadline(tmp_path, health):
+    """THE THIRD REVIEW'S THIRD BLOCKER (`P9-D66`). A window closes while the tracking channel
+    cannot be shown to be up, so M8 rules the watch INDETERMINATE - and will neither amend nor
+    cancel it. The appointment then moves: put back where it was, moved on, moved three times,
+    moved on and back. That row used to go on driving the work: an "unverified" chase due at the
+    window nobody held, and - put back - no watch on the appointment that stood at all.
+
+    The row is left exactly as M8 ruled it. It is history about a window: the appointment that
+    stands is watched by a row whose deadline is its own, the operator's work carries THAT
+    deadline, and its miss surfaces when it closes - as unverified, because the channel is blind,
+    which is the one thing channel health is allowed to decide."""
+    cases = {
+        "put back": (
+            [("11:20", "09:00", "11:00"), ("11:25", "13:00", "15:00")],
+            [("INDETERMINATE", EARLIER_CLOSES), ("INDETERMINATE", RESTORED_CLOSES)]),
+        "moved on after the window closed": (
+            [("15:30", "16:00", "18:00")],
+            [("INDETERMINATE", RESTORED_CLOSES), ("INDETERMINATE", NEW_CLOSES)]),
+        "three times": (
+            [("11:20", "09:00", "11:00"), ("11:25", "13:00", "15:00"),
+             ("15:30", "16:00", "18:00")],
+            [("INDETERMINATE", EARLIER_CLOSES), ("INDETERMINATE", RESTORED_CLOSES),
+             ("INDETERMINATE", NEW_CLOSES)]),
+        "moved on, and back onto the window the blind row is on": (
+            [("15:30", "16:00", "18:00"), ("15:40", "13:00", "15:00")],
+            [("INDETERMINATE", RESTORED_CLOSES), ("CANCELLED", NEW_CLOSES)]),
+    }
+    assert len(cases) == 4
+    for index, (name, (moves, rows)) in enumerate(cases.items()):
+        h, _ = _blind_afternoon(f"BA{index}", health, moves)
+        h.clock("end", h.t("23:30", 1))
+        result, store, seen = _run_seeing(tmp_path / str(index), [h.build({})])
+        try:
+            story, view = _view(result)
+            assert _arrival_rows(view) == rows, name
+            assert len({e["expectation_id"] for e in _watches(view, "arrival:S2")}) == len(rows)
+            standing = utc_datetime(h.t(moves[-1][2], 1, ET)).astimezone(
+                ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            final = story.at(f"window-{len(moves) - 1}")
+            judged = [s for s in seen if s.as_of >= final.as_of]
+            assert len(judged) >= 2 and judged[-1].as_of > standing, name
+            for state in judged:
+                # ONE piece of arrival work, on the deadline of the appointment that stands.
+                want = ((NeedKind.ARRIVAL_PENDING, NeedStatus.PENDING, standing)
+                        if state.as_of < standing
+                        else (NeedKind.CARRIER_STATUS_OVERDUE, NeedStatus.UNVERIFIED, standing))
+                assert _arrival_work(state) == [want], f"{name}: {state.as_of}"
+                assert not state.routine_work_is_zero and not state.billing_ready, name
+                assert len(state.human_attention) == 0 and len(state.candidates) <= 1, name
+            last = story.last
+            assert [n.reason_codes for n in last.overdue] == [("ARRIVAL:S2_UNVERIFIED",)], name
+            assert last.next_step == "NEYMA:REQUEST_CARRIER_STATUS", name
+            # Every watch M8 judged blind against a window that is gone is still there, as it
+            # was ruled - and each is exactly one Exception awaiting a human's closure.
+            left = [e for e in _watches(view, "arrival:S2")
+                    if watches_a_window_that_is_gone(view, e)]
+            assert len(left) == len([r for r in rows[:-1] if r[0] == "INDETERMINATE"]) \
+                - (1 if rows[-1][0] == "CANCELLED" else 0), name
+            assert len(last.state.housekeeping) == len(left), name
+            assert [m.trigger for m in story.moments if m.quiet or m.billing_ready] == [], name
+            assert result.intakes[NORTHLINE].stats.writes_after_settle == 0, name
+            assert result.findings == [], f"{name}: {result.findings[:2]}"
+        finally:
+            store.close()
+
+
+@pytest.mark.parametrize("health", BLIND, ids=lambda health: health or "no-reading")
+def test_a_truck_that_arrives_after_a_blind_reschedule_closes_everything_once(tmp_path, health):
+    """13:00-15:00 closes blind; the receiver pushes the appointment to 16:00-18:00; the truck
+    arrives - inside the new window, and in a second run after it. Its arrival answers every watch
+    M8 still holds, the delivery and the POD follow, and the load ends quiet and billing-ready
+    with exactly the housekeeping the same load leaves over a healthy channel: no second chase,
+    no second question, nothing owed for the window that is gone."""
+    for arrives, delivered, pod in (("17:00", "17:20", "17:40"), ("19:00", "19:20", "19:40")):
+        def history(blind: bool):
+            h, cargo = _afternoon("BT")
+            if blind:
+                _blind(h, health)
+            _says_window(h, cargo, "pushed", "15:30", "16:00", "18:00")
+            cargo.track("at-delivery", h.t(arrives, 1, ET), "AT_DELIVERY", "S2")
+            cargo.delivered("delivered", h.t(delivered, 1, ET))
+            cargo.pod("pod", h.t(pod, 1, ET))
+            h.clock("end", h.t("23:30", 1))
+            return h.build({})
+
+        name = f"arrives {arrives}"
+        result, store, seen = _run_seeing(tmp_path / f"blind-{arrives[:2]}", [history(True)])
+        healthy, healthy_store = _run(tmp_path / f"healthy-{arrives[:2]}", [history(False)],
+                                      setups=NO_CADENCE)
+        try:
+            (story, view), (healthy_story, _) = _view(result), _view(healthy)
+            pushed = story.at("pushed")
+            assert _arrival_work(pushed.state) \
+                == [(NeedKind.ARRIVAL_PENDING, NeedStatus.PENDING, NEW_CLOSES)], name
+            arrived = story.at("at-delivery")
+            assert _arrival_work(arrived.state) == [], name
+            assert not [e for e in _watches(view, "arrival:S2") if e["state"] in _OWED], name
+            assert [e["state"] for e in _watches(view, "arrival:S2")] \
+                == ["DISCHARGED", "DISCHARGED"], name
+            done = story.at("pod")
+            assert done.quiet and done.billing_ready and _work(done) == [], name
+            assert [m.trigger for m in story.moments if m.billing_ready] == ["pod"], name
+            assert len(story.last.state.housekeeping) \
+                == len(healthy_story.last.state.housekeeping), name
+            assert _work(story.last) == _work(healthy_story.last) == [], name
+            proposed = {(p.need_id, p.action) for m in story.moments for p in m.proposals}
+            assert len([p for p in proposed if p[1] == "REQUEST_CARRIER_STATUS"]) <= 1, name
+            assert not [m for m in story.moments if m.escalations], name
+            assert result.findings == [] and healthy.findings == [], name
+        finally:
+            store.close()
+            healthy_store.close()
+
+
+@pytest.mark.parametrize("health", BLIND, ids=lambda health: health or "no-reading")
+def test_a_blind_reschedule_is_the_same_looked_at_again_and_delivered_twice(tmp_path, health):
+    """The put-back load over a blind channel: the clock read five more times with nothing
+    arriving, every record delivered twice, replayed, and restarted after each appointment
+    change. The same rows under the same ids, the same counts of what was raised, and the same
+    pictures - a row that is history is not raised again on every look."""
+    def history(looks: int = 0):
+        h, _ = _blind_afternoon("BR", health,
+                                [("11:20", "09:00", "11:00"), ("11:25", "13:00", "15:00")])
+        for index in range(looks):
+            h.clock(f"look-{index}", h.t(f"{16 + index}:10", 1, ET))
+        h.clock("end", h.t("23:30", 1))
+        return h.build({})
+
+    def rows(result: LoopRunResult) -> list[tuple]:
+        _, view = _view(result)
+        return [(e["expectation_id"], e["expected_type"], e["state"], e["deadline_utc"])
+                for e in view.expectations]
+
+    once, store = _run(tmp_path / "once", [history()], setups=NO_CADENCE)
+    stores = [store]
+    try:
+        counted = ("expectations_raised", "expectations_cancelled", "expectations_amended",
+                   "expectations_discharged", "exceptions_raised", "writes_after_settle")
+        told = {name: getattr(once.intakes[NORTHLINE].stats, name) for name in counted}
+        assert told["expectations_raised"] == 3 and told["writes_after_settle"] == 0
+        again, store = _run(tmp_path / "looked", [history(5)], setups=NO_CADENCE)
+        stores.append(store)
+        assert rows(again) == rows(once) and _final(again) == _final(once)
+        assert {name: getattr(again.intakes[NORTHLINE].stats, name) for name in counted} == told
+        replayed, store = _run(tmp_path / "replayed", [history()], setups=NO_CADENCE)
+        stores.append(store)
+        assert _digests(replayed) == _digests(once) and rows(replayed) == rows(once)
+        for cut in ("loaded", "window-0", "window-1"):
+            restarted, store = _run(tmp_path / cut, [history()], setups=NO_CADENCE,
+                                    restart_after={"BR": cut})
+            stores.append(store)
+            assert _digests(restarted) == _digests(once), f"a restart after {cut} differs"
+            assert rows(restarted) == rows(once) and restarted.findings == []
+        doubled, store = _run(tmp_path / "doubled", [duplicate_every_record(history())],
+                              setups=NO_CADENCE)
+        stores.append(store)
+        assert _final(doubled) == _final(once) and rows(doubled) == rows(once)
+        assert once.findings == [] and again.findings == [] and doubled.findings == []
+    finally:
+        for item in stores:
+            item.close()
+
+
+def test_a_cancelled_appointment_over_a_blind_channel_is_nobodys_deadline_either(tmp_path):
+    """The window closes blind and the appointment is then CANCELLED. M8 will not cancel the watch
+    it judged; the appointment it was for is gone all the same. Nothing about that window is
+    work: no unverified chase, no deadline - only the stop that has no appointment anyone holds."""
+    h, cargo = _afternoon("BC")
+    _blind(h, None)
+    _tms_window(h, cargo, "cancelled", h.t("15:30", 1, ET), 3, "13:00", "15:00",
+                appointment="CANCELLED")
+    h.clock("end", h.t("23:30", 1))
+    result, store, seen = _run_seeing(tmp_path, [h.build({})])
+    try:
+        story, view = _view(result)
+        gone = story.at("cancelled")
+        before = [m for m in story.moments if m.index < gone.index and m.overdue]
+        assert [n.reason_codes for m in before for n in m.overdue] == [("ARRIVAL:S2_UNVERIFIED",)]
+        after = [s for s in seen if s.as_of >= gone.as_of]
+        assert len(after) >= 2
+        for state in after:
+            assert _arrival_work(state) == [] and not state.routine_work_is_zero
+            assert state.need(NeedKind.CARRIER_STATUS_OVERDUE) is None
+            assert state.need(NeedKind.APPOINTMENT_UNCONFIRMED).reason_codes \
+                == ("APPOINTMENT_CANCELLED:S2",)
+        assert _arrival_rows(view) == [("INDETERMINATE", RESTORED_CLOSES)]
+        assert len(story.last.state.housekeeping) == 1 and result.findings == []
+    finally:
+        store.close()
+
+
+def test_the_current_deadline_oracle_fires_when_work_rests_on_a_window_that_is_gone(tmp_path):
+    """Anti-vacuity for the current-deadline check in `audit_state`. Over a blind channel a put-
+    back appointment leaves one watch M8 judged against the window that is gone. The oracle knows
+    it for what it is, is quiet while no need rests on it - and objects the moment one does, which
+    is exactly what the unrepaired work engine did."""
+    h, _ = _blind_afternoon("BO", None,
+                            [("11:20", "09:00", "11:00"), ("11:25", "13:00", "15:00")])
+    h.clock("end", h.t("12:00", 1, ET))
+    result, store = _run(tmp_path, [h.build({})], setups=NO_CADENCE)
+    try:
+        story, view = _view(result)
+        left = [e for e in view.owed_expectations() if watches_a_window_that_is_gone(view, e)]
+        current = [e for e in view.owed_expectations()
+                   if e["expected_type"] == "arrival:S2" and e not in left]
+        assert [(e["state"], e["deadline_utc"]) for e in left] \
+            == [("INDETERMINATE", EARLIER_CLOSES)]
+        assert [(e["state"], e["deadline_utc"]) for e in current] == [("RAISED", RESTORED_CLOSES)]
+        state = evaluate_load_work(view, setup=NO_CADENCE[NORTHLINE], as_of=story.last.as_of)
+        assert audit_state(state, view, tenant=NORTHLINE) == []
+        need = state.need(NeedKind.ARRIVAL_PENDING)
+        stale = replace(need, origins=(*need.origins, f"expectation:{left[0]['expectation_id']}"))
+        forged = replace(state, needs=tuple(stale if n is need else n for n in state.needs))
+        assert [f.split(": ", 1)[1][:14] for f in audit_state(forged, view, tenant=NORTHLINE)] \
+            == ["STALE DEADLINE"]
+        # A watch that is merely late for the window that STANDS is not one of them.
+        assert not watches_a_window_that_is_gone(view, {**left[0],
+                                                        "deadline_utc": RESTORED_CLOSES})
     finally:
         store.close()
 

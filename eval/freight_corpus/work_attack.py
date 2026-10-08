@@ -16,6 +16,10 @@ and checks the engine's answer against it:
     duplicate work      one need id appears once; one cause is one need
     billing readiness   reported ready if and only if the canonical guard says so, and never while a
                         document is owed, the sell rate is unsettled or a billing conflict is open
+    current deadline    no need rests on an arrival watch for a window the appointment has left
+    human decision      a bare claim never stands beyond a recorded human's answer unless the
+                        tracking provider has since put the truck past where she said it was;
+                        and no claim made after her answer is dropped unasked onto a quiet load
     tenant              every need, origin and evidence id is the brokerage's own
     authority           no human's need offers WAIT; nothing carries money
 
@@ -31,7 +35,9 @@ import re
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from freight_recon.freight_domain.corpus_run import cross_tenant_violations
 from freight_recon.freight_domain.financial import blocking_discrepancies
@@ -40,6 +46,7 @@ from freight_recon.freight_domain.history import (
     FreightHistory,
     InboundRecord,
     TenantSetup,
+    utc_datetime,
 )
 from freight_recon.freight_domain.intake import FreightIntake
 from freight_recon.freight_domain.load_work import (
@@ -103,11 +110,97 @@ def row_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 # ============================================================ the oracle
 
+#: The movement-status order, written out here rather than imported: the oracle does not ask the
+#: code under test which stage is later.
+_STAGES: tuple[str, ...] = ("AT_PICKUP", "LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED")
+
+
+def watches_a_window_that_is_gone(view: LoadView, expectation: dict[str, Any]) -> bool:
+    """### THE CURRENT APPOINTMENT IS THE ONLY SOURCE OF THE CURRENT DEADLINE. Whether this is an
+    arrival watch for a window the appointment has LEFT, read from the appointment itself.
+
+    A watch follows its appointment - except one M8 has judged INDETERMINATE, which M8 will neither
+    amend nor cancel. Once the appointment stands on another window, or was cancelled, that row is
+    history about a time nobody holds: it is not a live signal, and no need may rest on it. A
+    REQUESTED appointment, and one whose window is in dispute, are not a time that stands, and
+    nothing here says what their old watch should do."""
+    kind, _, stop_key = expectation["expected_type"].partition(":")
+    appointment = view.appointments.get(stop_key)
+    if kind != "arrival" or expectation["state"] != "INDETERMINATE" or appointment is None:
+        return False
+    status, window = appointment.value("status"), appointment.value("window")
+    if status == "CANCELLED":
+        return True
+    if status not in ("CONFIRMED", "RESCHEDULED") or window is None:
+        return False
+    closes = datetime.fromisoformat(window["end_local"]).replace(
+        tzinfo=ZoneInfo(window["timezone"]))
+    return utc_datetime(expectation["deadline_utc"]) != closes
+
+
+def bare_claims_over_a_human_decision(view: LoadView) -> list[str]:
+    """### A HUMAN'S ANSWER IS NOT REPLACED BY A WORD. After a recorded human has said where the
+    load is, a claim that is only somebody's word may STAND at a later stage than she confirmed
+    only once the tracking provider's own reading - made after her decision, and no later than the
+    claim - has put the truck past where she said it was. Read from the claims themselves; which
+    of them the projection lets stand is the thing being judged."""
+    def about(event: Any) -> str:
+        return event.field_of("status").facts[0].as_of
+
+    decisions = [t for t in view.tracking if t.value("signal") == "owner_confirmation"
+                 and t.value("status") in _STAGES]
+    if not decisions:
+        return []
+    latest = max(decisions, key=lambda t: (about(t), t.entity_id))
+    rank = _STAGES.index(latest.value("status"))
+    readings = [about(t) for t in view.tracking
+                if t.value("signal") == "tracking_provider_position"
+                and t.value("status") in _STAGES and _STAGES.index(t.value("status")) > rank
+                and about(t) > about(latest)]
+    out: list[str] = []
+    for event in view.standing_tracking():
+        if event.value("signal") in ("owner_confirmation", "tracking_provider_position") \
+                or event.value("status") not in _STAGES:
+            continue
+        if _STAGES.index(event.value("status")) > rank \
+                and not any(reading <= about(event) for reading in readings):
+            out.append(f"{event.value('signal')} {event.value('status')} about {about(event)} "
+                       f"stands beyond her {latest.value('status')} about {about(latest)}")
+    return out
+
+
+def claims_dropped_onto_a_quiet_load(state: LoadWorkState, view: LoadView) -> list[str]:
+    """### NOTHING SAID AFTER A HUMAN'S ANSWER IS DROPPED ONTO A QUIET LOAD. A source repeating
+    what she rejected may be overruled without a new question - but only while something is still
+    owed that will find the truth out. A load with no work at all, on which a claim made AFTER her
+    decision was overruled unasked, has a report sitting on it that nobody was shown - unless
+    something standing has been said SINCE (a reading that the truck only arrived later refutes
+    it), or the stage it reported has been reached anyway."""
+    def about(event: Any) -> str:
+        return event.field_of("status").facts[0].as_of
+
+    decisions = [t for t in view.tracking if t.value("signal") == "owner_confirmation"
+                 and t.value("status") in _STAGES]
+    if not decisions or not state.routine_work_is_zero:
+        return []
+    decided_at = max(about(t) for t in decisions)
+    standing = [t for t in view.standing_tracking() if t.value("status") in _STAGES]
+    reached = max((_STAGES.index(t.value("status")) for t in standing), default=-1)
+    last_said = max((about(t) for t in standing), default="")
+    return [f"{t.value('signal')} {t.value('status')} about {about(t)} was overruled unasked"
+            for t in view.tracking
+            if t.overruled_by is not None and t.value("status") in _STAGES
+            and about(t) > decided_at and about(t) > last_said
+            and _STAGES.index(t.value("status")) > reached]
+
+
 def live_signals(view: LoadView) -> dict[str, str]:
     """Every canonical signal on this load that somebody should know about, read from the view
     itself and keyed the way a need names its origins. The value says what kind of thing it is."""
     signals: dict[str, str] = {}
     for expectation in view.owed_expectations():
+        if watches_a_window_that_is_gone(view, expectation):
+            continue                      # history about a window; `audit_state` checks it is
         signals[f"expectation:{expectation['expectation_id']}"] = "expectation"
     for conflict in view.open_conflicts():
         signals[f"conflict:{conflict['conflict_id']}"] = "conflict"
@@ -206,6 +299,20 @@ def audit_state(state: LoadWorkState, view: LoadView, *, tenant: str) -> list[st
               if len([n for n in state.needs if n.kind is k]) > 1]
     if counts:
         findings.append(f"{where}: DUPLICATE WORK - more than one {counts[0].value}")
+
+    # The current deadline, and a human's answer.
+    gone = {f"expectation:{e['expectation_id']}": e for e in view.owed_expectations()
+            if watches_a_window_that_is_gone(view, e)}
+    for need in state.needs:
+        for origin in need.origins:
+            if origin in gone:
+                findings.append(
+                    f"{where}: STALE DEADLINE - {need.kind.value} rests on the watch of a window "
+                    f"the appointment has left (due {gone[origin]['deadline_utc']})")
+    findings.extend(f"{where}: REJECTED CLAIM REGAINED AUTHORITY - {claim}"
+                    for claim in bare_claims_over_a_human_decision(view))
+    findings.extend(f"{where}: DROPPED UNASKED ON A QUIET LOAD - {claim}"
+                    for claim in claims_dropped_onto_a_quiet_load(state, view))
 
     # Billing readiness, recomputed from the view rather than read back from the state.
     eligible = view.invoice is not None and view.invoice.lifecycle_state == "ELIGIBLE"

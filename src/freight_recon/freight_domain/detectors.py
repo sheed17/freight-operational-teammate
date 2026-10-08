@@ -22,9 +22,16 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .financial import blocking_discrepancies
-from .foundation import facility_local_deadline, format_instant, stable_id
+from .foundation import format_instant, stable_id
 from .history import CARRIER_SIDE_ROLES, TenantSetup, utc_datetime
-from .model import OWNER_CONFIRMATION, TRACKING_PROGRESSION, DirectedMoney, Fact
+from .model import (
+    ARRIVAL_STATUSES,
+    OWNER_CONFIRMATION,
+    STAGES_PAST_STOP,
+    TRACKING_PROGRESSION,
+    DirectedMoney,
+    Fact,
+)
 from .projection import (
     OPEN_CONFLICT_STATES,
     OWED_STATES,
@@ -39,12 +46,6 @@ from .projection import (
 CURRENT_STATE_SIGNALS: tuple[str, ...] = (
     "tracking_provider_position", "driver_assertion", "carrier_assertion",
 )
-ARRIVAL_STATUSES: tuple[str, ...] = ("AT_PICKUP", "AT_DELIVERY", "LOADED", "DELIVERED")
-#: The movement stages that can only be reported once the truck has been to a stop of that kind.
-STAGES_PAST_STOP: dict[str, tuple[str, ...]] = {
-    "PICKUP": ("LOADED", "IN_TRANSIT", "AT_DELIVERY", "DELIVERED"),
-    "DELIVERY": ("AT_DELIVERY", "DELIVERED"),
-}
 #: The M8 expected-type of "this moving truck should be heard from again".
 TRACKING_UPDATE = "tracking_update"
 #: Statuses that say the freight is on the truck and has not been delivered.
@@ -200,6 +201,20 @@ def _tracking_conflicts(view: LoadView, setup: TenantSetup) -> list[Intent]:
     settled = len([c for c in view.conflicts
                    if c["entity_ref"] == view.ref and c["field"] == "tracking_status"
                    and c["state"] not in OPEN_CONFLICT_STATES])
+    # ### A BARE WORD AGAINST A HUMAN'S ANSWER IS A DISPUTE, NOT A NEW ANSWER. A claim made after
+    # she decided, of a later stage than she confirmed, with no reading that the truck moved on
+    # (`_apply_status_decisions`), does not stand and does not vanish: it is hers to answer, with
+    # her own decision as the other party. Saying it again adds a party, never a second Conflict.
+    contesting = [t for t in staged if t.contests is not None]
+    if contesting:
+        decided = [t for t in staged if t.origin_observation_id == contesting[0].contests]
+        parties = _parties([t.field_of("status").facts[0] for t in (*decided, *contesting)])
+        if len(parties) >= 2:
+            return [RaiseConflict(
+                conflict_id=stable_id("conf", view.load.tenant_id, view.ref, "tracking_status",
+                                      *((settled,) if settled else ())),
+                kind=_conflict_kind([p[1] for p in parties]), entity_ref=view.ref,
+                field="tracking_status", parties=parties, owner_id=setup.load_owner)]
     for later in staged:
         later_fact = later.field_of("status").facts[0]
         if later.value("signal") not in CURRENT_STATE_SIGNALS:
@@ -293,34 +308,39 @@ def _document_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
 
 
 def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
-    """A CONFIRMED appointment expects an arrival by the end of its window, in the FACILITY's local
-    time. The deadline is evaluated against the tracking channel's recorded coverage, so a blind
-    channel yields INDETERMINATE and never "late" (CD-14). A REQUESTED appointment, or one whose
-    window is in conflict, raises nothing: neither is a time anyone agreed to."""
+    """An appointment that stands as a TIME expects an arrival by the end of its window, in the
+    FACILITY's local time (`LoadView.arrival_deadline`). The deadline is evaluated against the
+    tracking channel's recorded coverage, so a blind channel yields INDETERMINATE and never "late"
+    (CD-14). A REQUESTED appointment, or one whose window is in conflict, raises nothing and moves
+    nothing: neither is a time anyone agreed to.
+
+    ### THE WATCH FOLLOWS THE APPOINTMENT THAT STANDS, WHATEVER ITS RECORD CALLS IT. A window the
+    appointment was RESCHEDULED to is the time the truck is now held to: the watch moves to it
+    exactly as it does for a window that was re-confirmed, and the window it left is nobody's
+    deadline. A CANCELLED appointment is no time at all: its watch is withdrawn, and nothing is
+    raised in its place - the stop is back to having no appointment anyone holds, which is the
+    work `load_work._appointment_needs` already shows. Whether a RESCHEDULED window still has to
+    be confirmed is that same work, and is unchanged."""
     if setup.arrival_tracking_channel is None:
         return []
     out: list[Intent] = []
     for stop_key, appointment in view.appointments.items():
-        if appointment.value("status") != "CONFIRMED":
+        expected_type = f"arrival:{stop_key}"
+        # The watches M8 will let follow the appointment: it amends a RAISED one and cancels an
+        # OVERDUE one. One it has judged INDETERMINATE it does neither with; that row is left as
+        # M8 ruled it and is read as history once its window no longer stands
+        # (`LoadView.superseded_expectations`).
+        movable = [e for e in view.expectations if e["expected_type"] == expected_type
+                   and e["state"] in ("RAISED", "OVERDUE")]
+        if view.appointment_cancelled(stop_key):
+            out.extend(CancelExpectation(e["expectation_id"],
+                                         f"the appointment at {stop_key} was cancelled")
+                       for e in movable)
+            continue
+        deadline = view.arrival_deadline(stop_key)
+        if deadline is None:
             continue
         window = appointment.value("window")
-        if window is None:
-            continue
-        expected_type = f"arrival:{stop_key}"
-        # An appointment that MOVED moves its deadline with it. Without this the watch keeps the
-        # window nobody holds any more: a truck is called late against a time that was rescheduled,
-        # or is never called late against the time that replaced it.
-        deadline = format_instant(facility_local_deadline(
-            datetime.fromisoformat(window["end_local"]), window["timezone"]))
-        stale = [e for e in view.expectations if e["expected_type"] == expected_type
-                 and e["state"] in ("RAISED", "OVERDUE") and e["deadline_utc"] != deadline]
-        if stale:
-            for expectation in stale:
-                out.append(AmendExpectation(expectation["expectation_id"], deadline)
-                           if expectation["state"] == "RAISED"
-                           else CancelExpectation(expectation["expectation_id"],
-                                                  f"the appointment at {stop_key} was moved"))
-            continue
         # ### THE OBLIGATION IS LOGICAL; A ROW IS ONE GENERATION OF IT. A truck's arrival at a stop
         # is ONE obligation however often the appointment moves, and M8 may hold several rows
         # about it: a watch that followed the appointment by amendment (and so still carries the
@@ -330,8 +350,24 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
         #
         # A live watch on the deadline that now stands IS the watch, whichever row it is. Asked by
         # id, a moved appointment that was then missed got a second watch beside it.
-        if any(e["expected_type"] == expected_type and e["state"] in OWED_STATES
-               and e["deadline_utc"] == deadline for e in view.expectations):
+        watched = any(e["expected_type"] == expected_type and e["state"] in OWED_STATES
+                      and e["deadline_utc"] == deadline for e in view.expectations)
+        # An appointment that MOVED moves its deadline with it. Without this the watch keeps the
+        # window nobody holds any more: a truck is called late against a time that was rescheduled,
+        # or is never called late against the time that replaced it.
+        stale = [e for e in movable if e["deadline_utc"] != deadline]
+        if stale:
+            for expectation in stale:
+                if expectation["state"] == "RAISED" and not watched:
+                    out.append(AmendExpectation(expectation["expectation_id"], deadline))
+                    watched = True
+                else:
+                    # Late against a window the appointment has left - or a second watch, when
+                    # the appointment came back to a window a row M8 judged blind still stands on.
+                    out.append(CancelExpectation(expectation["expectation_id"],
+                                                 f"the appointment at {stop_key} was moved"))
+            continue
+        if watched:
             continue
         # A watch here that a STANDING record answered: the truck has been to this stop and the
         # record of that is kept. Nothing is owed, whatever window that row was raised for.
@@ -347,7 +383,7 @@ def _arrival_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
             # watch is owed again (`_owed_again_id`).
             expectation_id=(stable_id("exp", view.load.tenant_id, view.ref, *watch)
                             if evidence
-                            else _owed_again_id(view, *watch)),
+                            else _owed_again_id(view, *watch, deadline=deadline)),
             subject_ref=view.ref, expected_type=expected_type,
             expected_source=setup.arrival_tracking_channel, owner_id=setup.load_owner,
             originating_timezone=window["timezone"],
@@ -378,7 +414,7 @@ def arrival_evidence(view: LoadView, stop_key: str) -> list[str]:
     return list(dict.fromkeys(arrivals))
 
 
-def _owed_again_id(view: LoadView, *watch: object) -> str:
+def _owed_again_id(view: LoadView, *watch: object, deadline: str | None = None) -> str:
     """The id a watch is raised under when NOTHING STANDING answers it.
 
     ### AN OVERRULED CLAIM CANNOT GO ON DISCHARGING AN EXPECTATION. M8's DISCHARGED is terminal, and
@@ -397,16 +433,25 @@ def _owed_again_id(view: LoadView, *watch: object) -> str:
     exactly as it was. Stopping at a CANCELLED generation, as this once did, left a confirmed
     appointment with no watch at all.
 
+    ### NOR DOES A WATCH JUDGED BLIND AGAINST ANOTHER WINDOW. An appointment's watch is raised for
+    a `deadline`. A generation M8 holds INDETERMINATE on a DIFFERENT deadline was judged against a
+    window the appointment has left; M8 will not move it, and it does not time the window that
+    stands (`LoadView.superseded_expectations`). It is skipped like the other history, so the
+    appointment that came back is watched by a row whose deadline is its own.
+
     The first generation is the id the watch always had, so nothing ever raised is renamed. A
     generation that is still OWED is returned as itself: a watch already owed is not raised twice.
     No row is ever reused or reopened. Only a caller that has established that nothing standing
     answers the watch may ask."""
-    states = {e["expectation_id"]: e["state"] for e in view.expectations}
+    rows = {e["expectation_id"]: e for e in view.expectations}
     generation = 0
     while True:
         expectation_id = stable_id("exp", view.load.tenant_id, view.ref, *watch,
                                    *((generation,) if generation else ()))
-        if states.get(expectation_id) in (None, *OWED_STATES):
+        row = rows.get(expectation_id)
+        left_behind = (row is not None and deadline is not None
+                       and row["state"] == "INDETERMINATE" and row["deadline_utc"] != deadline)
+        if row is None or (row["state"] in OWED_STATES and not left_behind):
             return expectation_id
         generation += 1
 
@@ -416,6 +461,13 @@ def movement_signals(view: LoadView) -> list[Any]:
     report of an earlier moment sorts where it happened, so stale news never looks like fresh news."""
     return sorted(view.tracking,
                   key=lambda t: (t.field_of("status").facts[0].as_of, t.entity_id))
+
+
+def _stands(signal: Any) -> bool:
+    """Whether a movement claim still STANDS (`LoadView.standing_tracking`). One a recorded human
+    overruled, or one that contests her decision unanswered, is on the record and answers nothing.
+    """
+    return signal.overruled_by is None and signal.contests is None
 
 
 def tracking_expectation_id(view: LoadView, anchor: Any) -> str:
@@ -447,11 +499,15 @@ def _tracking_expectations(view: LoadView, setup: TenantSetup) -> list[Intent]:
         return []
     if _has_owed(view, TRACKING_UPDATE):
         return []
-    anchor = signals[-1]
+    # The clock runs from the last signal that STANDS. A claim a recorded human overruled - made
+    # before she decided, or the same claim said again after - starts no watch, and neither does
+    # a bare word that contests her decision: the truck was last heard from, as far as anything
+    # on the record can bear, when the last standing signal says.
+    anchor = [t for t in signals if _stands(t)][-1]
     fact = anchor.field_of("status").facts[0]
-    # Nothing is owed, no delivery report stands and no signal is later than this one - so if M8
-    # holds the watch this signal started as DISCHARGED, what discharged it no longer stands (a
-    # delivery report a human has since overruled). The truck is still to be heard from.
+    # Nothing is owed, no delivery report stands and no standing signal is later than this one -
+    # so if M8 holds the watch this signal started as DISCHARGED, what discharged it no longer
+    # stands (a delivery report a human has since overruled). The truck is still to be heard from.
     return [RaiseExpectation(
         expectation_id=tracking_expectation_id(view, anchor), subject_ref=view.ref,
         expected_type=TRACKING_UPDATE, expected_source=setup.arrival_tracking_channel,
@@ -466,9 +522,10 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
         return out
     by_id = {e["expectation_id"]: e for e in owed}
 
-    # A tracking update is owed since ONE movement signal; any signal about a later moment answers
-    # it, and so does a report of delivery whenever it is about — nothing is moving after that, so
-    # no later signal would ever come to close it.
+    # A tracking update is owed since ONE movement signal; any STANDING signal about a later moment
+    # answers it, and so does a report of delivery whenever it is about — nothing is moving after
+    # that, so no later signal would ever come to close it. A claim that does not stand answers no
+    # watch: the row a human overruled, sent again, is not the truck being heard from.
     signals = movement_signals(view)
     delivered = {t.entity_id for t in view.delivered_claims()}
     for anchor in signals:
@@ -477,8 +534,9 @@ def _discharges(view: LoadView, setup: TenantSetup) -> list[Intent]:
             continue
         since = anchor.field_of("status").facts[0].as_of
         answers = [t.origin_observation_id for t in signals
-                   if t is not anchor and (t.field_of("status").facts[0].as_of > since
-                                           or t.entity_id in delivered)]
+                   if t is not anchor and _stands(t)
+                   and (t.field_of("status").facts[0].as_of > since
+                        or t.entity_id in delivered)]
         if answers:
             out.append(DischargeExpectation(expectation["expectation_id"],
                                             tuple(dict.fromkeys(answers))))

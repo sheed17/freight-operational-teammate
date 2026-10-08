@@ -8,13 +8,14 @@
 > opened nothing and enabled nothing.
 > **The corpus is synthetic development input.** Nothing here is a design-partner observation, no
 > freight rule is validated by it, and no labor time was measured.
-> **Two focused independent reviews have been performed, and each BLOCKED this checkpoint.** The
+> **Three focused independent reviews have been performed, and each BLOCKED this checkpoint.** The
 > first (2026-10-06) found the false quiet repaired in §10. The second (2026-10-07) found the §10
 > repair sound on every criterion it was given, and blocked the tree on a rescheduled-appointment
-> false quiet that repair had neither introduced nor closed (§11).
-> **The repair in §11 was written by the session that performed that second review, so it is a
+> false quiet that repair had neither introduced nor closed (§11). The third (2026-10-07) found the
+> §11 repair sound, and blocked the tree on three older defects on the same seam (§12).
+> **The repair in §12 was written by the session that performed that third review, so it is a
 > builder's work and has not been independently reviewed.** Tier-1 and tier-2 surfaces were touched
-> (§5, §10, §11); one focused independent review of the §11 repair is still owed before merge
+> (§5, §10, §11, §12); one focused independent review of the §12 repair is still owed before merge
 > ([`CLAUDE.md`](../../CLAUDE.md) §7).
 
 ## 1. What a broker can now do that they could not before
@@ -335,6 +336,148 @@ same helper and is unchanged: none of its rows is ever cancelled.
 | ID | Debt | Why it does not block |
 |---|---|---|
 | ~~`P9-D65`~~ | ~~An appointment put back to a window whose watch had been cancelled is not watched.~~ **CLOSED by this repair.** | It was the blocking finding. |
-| `P9-D66` | Over a tracking channel with no health reading, the watch that followed an appointment to a lapsed window is `INDETERMINATE`, which M8 can neither amend nor cancel. Put BACK, the appointment keeps that watch as the stop's one live watch, on the deadline it was judged against: the restored window is not timed separately. Moved on to a window never used, it is watched there by a second live watch beside the first - the one case left where a stop has two. | Never quiet either way: the unverified follow-up stays on the stop until the truck arrives, and both collapse into the one carrier follow-up. Neither is new: the unrepaired tree timed the restored window no better and left one more such watch in each case. Whether a watch M8 has judged blind should be closable when its appointment moves is M8's question, not this spine's. |
-| `P9-D67` | A truck checked in at the delivery stop with no delivery report is `QUIET` at a brokerage with no tracking cadence - including when a human overrules "delivered" by saying "at delivery". Nothing waits for the delivery to be reported. Older than this checkpoint. | The arrival obligation is met by standing evidence. How long a truck may sit at a dock before someone is asked is a tenant rule nobody has stated: **NEEDS VALIDATION**. With a cadence the tracking watch covers it. |
-| `P9-D68` | A source that restates, AFTER a human's decision, the status she overruled is fresh evidence: a TMS row re-sent still saying `DELIVERED` makes the load delivered again and replaces the late-truck follow-up with a POD request, with no new dispute unless a current-state source contradicts it. Older than this checkpoint. | Not quiet and not billing-ready without a signed POD. It is the stated rule ("what was said before it, and only that"); whether a restatement by the same source is new evidence is a product question. |
+| ~~`P9-D66`~~ | **CLOSED by the third review's repair (§12).** ~~Over a tracking channel with no health reading, the watch that followed an appointment to a lapsed window is `INDETERMINATE`, which M8 can neither amend nor cancel.~~ Put BACK, the appointment keeps that watch as the stop's one live watch, on the deadline it was judged against: the restored window is not timed separately. Moved on to a window never used, it is watched there by a second live watch beside the first - the one case left where a stop has two. | Never quiet either way: the unverified follow-up stays on the stop until the truck arrives, and both collapse into the one carrier follow-up. Neither is new: the unrepaired tree timed the restored window no better and left one more such watch in each case. Whether a watch M8 has judged blind should be closable when its appointment moves is M8's question, not this spine's. |
+| `P9-D67` | **STILL OPEN - explicitly not repaired in §12.** A truck checked in at the delivery stop with no delivery report is `QUIET` at a brokerage with no tracking cadence - including when a human overrules "delivered" by saying "at delivery". Nothing waits for the delivery to be reported. Older than this checkpoint. | The arrival obligation is met by standing evidence. How long a truck may sit at a dock before someone is asked is a tenant rule nobody has stated: **NEEDS VALIDATION**. With a cadence the tracking watch covers it. |
+| ~~`P9-D68`~~ | **CLOSED by the third review's repair (§12).** ~~A source that restates, AFTER a human's decision, the status she overruled is fresh evidence:~~ a TMS row re-sent still saying `DELIVERED` makes the load delivered again and replaces the late-truck follow-up with a POD request, with no new dispute unless a current-state source contradicts it. Older than this checkpoint. | Not quiet and not billing-ready without a signed POD. It is the stated rule ("what was said before it, and only that"); whether a restatement by the same source is new evidence is a product question. |
+
+## 12. Third independent review — 2026-10-07 — and its repair
+
+### What the review found
+
+The §11 repair held on everything it was reviewed against: the reproduction, ten generation
+attacks and 1,914 randomized reschedule histories written by the reviewer, the original over-rule
+path, `P9-D59`, replay and restart, two brokerages, authority, and no effect row. No defect was
+found in it.
+
+**BLOCKED** all the same, on three defects on the same seam. All three are older than `e1a84f5`
+and behave identically on `9359798`:
+
+> 1. **`P9-D68` - a restated claim undoes a human's decision.** 08:30 the system of record says
+>    DELIVERED; 08:35 the provider says IN_TRANSIT; 09:00 Dana confirms IN_TRANSIT; 15:00 the
+>    delivery window is missed and the late-truck follow-up opens; 16:00 the same row arrives as a
+>    new version, still DELIVERED, with nothing new in it. The load read DELIVERED again, the
+>    re-owed arrival watch was discharged, the follow-up was replaced by a POD request, and no
+>    Conflict was raised. A driver texting "delivered" a second time did the same.
+> 2. **New, unrecorded (`P9-D69`) - an appointment reported RESCHEDULED or CANCELLED keeps the
+>    window it left.** The record says `RESCHEDULED 16:00-18:00`; the watch stayed on 13:00-15:00,
+>    the truck was called provably late at 15:01 against a window nobody held, and 16:00-18:00 was
+>    never timed. A CANCELLED appointment was still called late.
+> 3. **`P9-D66` - a blind channel's judgment sets the deadline.** Over a tracking channel with no
+>    health reading, the watch M8 had judged `INDETERMINATE` against a window the appointment then
+>    left went on driving the work: an unverified chase due at the old time, and - when the
+>    appointment was put back - no watch on the window that stood at all.
+
+`P9-D67` (a truck at the receiver is quiet with no cadence) was classified safe debt. It is **not
+repaired here** and is still open: how long a truck may sit at a dock before somebody is asked is a
+rule nobody has stated, and it belongs to the delay/delivery iteration.
+
+### The rule
+
+**Current operational behaviour follows current freight reality.** Historical evidence and
+historical Expectation generations stay on the record, exactly as they were. They do not go on
+controlling the stage, the deadline, the work, quiet or billing readiness once the freight fact they
+stood for has been rejected, superseded, moved or cancelled. The semantics below were stated by the
+founder in the repair brief; the choices the brief left to the builder are listed under "Decisions".
+
+### What was repaired
+
+**1. A human's answer is not undone by a word** (`projection._apply_status_decisions`,
+`detectors._tracking_conflicts`). A recorded human's decision still overrules every claim, about a
+moment up to hers, of a later stage than she confirmed. What is said of a later stage AFTER she
+decided is now treated by what it is:
+
+| What arrives after her decision | Before | Now |
+|---|---|---|
+| The source she overruled says the same thing again, having said nothing else in between - a re-sent row, a new version with no new freight fact, the same text typed twice - **while the brokerage is still waiting for the truck at the stop the claim is about** | Stood. The load was DELIVERED again and the late work was discharged | **Overruled by the same decision**, silently: it was answered when she answered the first one. It is still on the record (`overruled_by`). Nothing owed changes, and the watch that is still owed will find the truth out |
+| The same repeat **where nothing is waiting** - the truck is already at that stop by standing evidence, or this brokerage watches no arrivals at all | Stood | **Contests her decision**, like any other bare claim: a question, never silence. Dropped unasked it would have been a delivery report on a QUIET load |
+| A bare claim that is NEW - another source, or the same one after it had said something different | Stood, silently | **Contests her decision** (`TrackingEvent.contests`): it does not stand, and a new Conflict is raised with her own decision as a party. The load is DISPUTED and hers to decide; until she does, the delivery is still watched and still called late |
+| The tracking provider's own reading puts the truck past where she said it was | Stood | Stands - and every claim made from that reading on is believed as it always was. Nobody is asked to approve a real delivery because the truck was moving earlier |
+| The same record again (same id), or the same statement under a new id about the same moment | Inert / overruled | Unchanged |
+
+A claim that does not stand also answers no tracking watch and starts no tracking clock
+(`detectors._tracking_expectations`, `_discharges`): the row she overruled, sent again, is not the
+truck being heard from.
+
+**2. The appointment that stands sets the deadline** (`LoadView.arrival_deadline`,
+`detectors._arrival_expectations`, `load_work._appointment_needs`).
+
+| The appointment record says | Before | Now |
+|---|---|---|
+| `RESCHEDULED`, with a new window | Treated as "not confirmed": the watch stayed on the window it left | The new window is the time the truck is held to. The watch moves to it by amendment (or, if the old one was already missed, the missed watch is cancelled and a new one raised). Verifying the unconfirmed window is still work, and says what it is: `APPOINTMENT_RESCHEDULED` |
+| `CANCELLED` | The watch stayed live and went overdue | The watch is withdrawn (`CANCELLED` in M8, retained). Nothing is raised in its place. The stop has no appointment anyone holds: `APPOINTMENT_CANCELLED`, the existing verify-appointment work. Never quiet |
+| `REQUESTED` | Raises nothing, moves nothing | **Unchanged**, as the brief required (`P9-D70`) |
+
+**3. A blind channel does not set the deadline** (`LoadView.superseded_expectations`,
+`operative_expectations`, `detectors._owed_again_id`, `load_work._expectation_needs`). M8 is
+untouched: it still will not amend or cancel an `INDETERMINATE` Expectation, and nothing here makes
+it. That row stays exactly as M8 ruled it - owned, with its Exception - until the truck arrives.
+What changed is what reads it:
+
+| Question | Before | Now |
+|---|---|---|
+| Is a watch M8 judged blind, on a window the appointment has left, the stop's watch? | Yes: put back, it stood in for the watch that was owed | No. It is history about a window. The appointment that stands is watched by a row whose deadline is its own (the next generation of the same id) |
+| Does it drive the work? | Yes: an unverified chase, due at the old time | No. Current work is read from `operative_expectations`. Its Exception is listed with the others whose cause is gone - housekeeping, exactly as the Exception of a cancelled overdue watch is over a healthy channel |
+| What does channel health still decide? | - | Whether a missed appointment is `OVERDUE` or `UNVERIFIED`. Only that |
+
+### A safety surface was touched
+
+The audit oracle (`eval/freight_corpus/work_attack.py::audit_state`) used to require every owed
+Expectation to be behind some need - that is its silent-stall check. It now leaves out one kind of
+row: an arrival watch M8 judged `INDETERMINATE` against a window the appointment has left
+(`watches_a_window_that_is_gone`, read from the appointment itself, not from the code under test).
+**That narrows a guard.** In its place the oracle fails any need that DOES rest on such a row, and
+`_doubly_watched_stops` fails any movable watch left live on a window that is gone. Both are seen to
+fire in anti-vacuity tests, and the mutants that put the stale row back behind the work are caught.
+Taken as tier 1 for that reason: one focused independent review, before merge.
+
+### Decisions made in this repair
+
+Each of these is a choice. None is a design-partner observation.
+
+| Decision | Why |
+|---|---|
+| **Only the tracking provider's own position reading shows that the truck moved on.** A driver's text, a carrier's email and a system-of-record status are bare claims | The brief names "valid AT_DELIVERY tracking" as real later evidence, and it is the one signal that is a reading rather than somebody's word. One such reading is taken at face value (`P9-D74`) |
+| **A signed POD is not evidence that the truck moved on** | A POD satisfies the document requirement and reports no delivery (CD-8); nothing in the spine treats it otherwise, and the brief limited this to "existing POD semantics". A POD beside a restated or contested claim advances nothing until a human confirms or the provider reads the truck there (`P9-D72`) |
+| **A restatement is the same source, the same status, and nothing else said in between** | The narrowest reading. A restatement is defeated SILENTLY, so anything wider would drop real information unasked; a source that changed its statement and then says it again is asking anew |
+| **A restatement is dropped silently only where the truck is still being asked about** | Found by attacking the first version of this repair, which dropped every repeat. With the truck at the receiver by her own word and no cadence, nothing is owed (`P9-D67`); the same driver's second "delivered" was then discarded onto a quiet load, and the unrepaired tree would at least have asked for a POD. So does a brokerage that watches no arrivals. Silence is safe only while an owed watch will expose the truth; elsewhere the repeat is a dispute. It costs a human touch there, and it is never a false quiet |
+| **A reading lifts her decision for claims made at or after it, never before** | Otherwise a truck that reached the receiver at 13:30 would make a 10:00 restatement true, and a dispute that never was would be put to a human |
+| **A RESCHEDULED window that nobody confirmed is watched AND still to be verified** | The brief: the new window "must be watched", and an existing "not yet confirmed" distinction is preserved. Two reason codes were added on the existing need kind; no new kind, action or state |
+| **A superseded blind watch is not a need, and its Exception is housekeeping** | Parity with the healthy channel, where the missed watch is cancelled and its Exception awaits a human's closure. No M8 row is changed |
+
+### What proves it
+
+| Check | Result | What it could have caught |
+|---|---|---|
+| The review's three reproductions, as tests | **Before:** DELIVERED and `REQUEST_POD`; late at 15:01 against 13:00-15:00; an unverified chase due 11:00 with no watch on 13:00-15:00. **After:** `IN_TRANSIT`, the late-truck follow-up unchanged, one resolved Conflict; nothing late at 15:01, the miss called at 18:01; `ARRIVAL_PENDING` due 15:00 and the miss shown `UNVERIFIED` at 15:01 | The three defects |
+| `P9-D68`, the eight required cases and more | Restated after the window was missed and before it; the same record again; the same statement under a new id; the same source three times; another source's bare claim (a dispute, answered either way); a source that changed its mind and says it again; a repeat with the truck already at the receiver, and at a brokerage that watches no arrivals (a dispute, not silence); a real delivery after a provider reading, from three source combinations; a restatement made BEFORE the truck moved on; a POD alone; a contradiction after real progress; with a tracking cadence | A fix that ignores everything after her decision, or that trusts arrival order |
+| The appointment record | RESCHEDULED later, earlier, three times, after each window was missed, to a window already closed, then CONFIRMED; CANCELLED while ahead and after it was missed; a truck that had already arrived; every record twice; a brokerage that watches no arrivals | A stale window timing the truck, a second watch, or a watch on nothing |
+| A blind channel, in every state the vocabulary has | No reading, `DOWN`, `UNKNOWN`, `PARTIAL` - discovered from `COVERAGE_HEALTH`, not listed. Put back; moved on; three times; moved on and back onto the window the blind row is on; arrival inside the new window and after it; cancelled; looked at five more times; replayed, restarted, every record twice | A stale deadline behind any need; a missed current appointment that cannot surface |
+| Two brokerages, one load number | The same records at both; Northline's Dana decides and its appointment is rescheduled, nobody at Cedar Ridge decides anything. Northline's claims are overruled and its watch moves; Cedar Ridge's stand, its pictures and rows are those of running alone, and no id is shared | A decision or a reschedule reaching next door |
+| Parity with a healthy channel | A blind reschedule followed by an arrival ends quiet and billing-ready with exactly the housekeeping the same load leaves over a healthy channel, one carrier follow-up at most, and no human question | Duplicate operator or human work |
+| Thirty-nine new tests in `test_p9_load_loop.py` | all pass. Run against the unrepaired logic (`projection`, `detectors`, `load_work`, `load_loop` as of `e1a84f5`), 33 FAIL: 32 because the behaviour is wrong, 1 because it asks a method the repair added. The other 6 pin what already held and must keep holding: the same record again, the same statement under a new id, a real later delivery, a contradiction after it, a truck that had already arrived, and the blind population. None of the 53 tests that were already there fails on the unrepaired logic under the tightened oracles | - |
+| Three checks added to `audit_state`, run on EVERY evaluation of every loop test, corpus load and hostile mutant | **current deadline** - no need rests on an arrival watch for a window the appointment has left; **human decision** - no bare claim stands beyond a recorded human's answer without a provider reading, and no claim made after her answer is dropped unasked onto a quiet load. 0 findings; each seen to fire in an anti-vacuity test | A stale deadline or a resurrected claim in any history, not only the ones written for it |
+| The oracles `_unwatched_stops` and `_doubly_watched_stops` | Kept, and tightened: a stop is watched only by a live watch on the window that STANDS; a movable watch left live on a window the appointment has left is a finding | The repair hiding behind an oracle that counts any live row |
+| Attacks outside the suite, each judged at every evaluation by the reviewer's own oracle and by `audit_state` | 2,184 seeded randomized histories on the final code (36,236 evaluations): a recorded human and the system of record moving the appointment among four windows as CONFIRMED, RESCHEDULED, CANCELLED or REQUESTED; redelivered records; arrivals; delivery reports made and made again by the system of record and the driver; human status decisions; PODs. A third of the mixed run over a blind channel in each of its four states and a quarter with a tracking cadence, plus 729 blind-only. 0 findings. The reviewer's scripted histories for all three defects re-run on the repaired tree: 0 findings. Replay, restart after every record, every record twice and the whole inbox again: 116 comparisons, all identical | - |
+| `run_freight_corpus.py --loop`, the work corpus, the base corpus | Every figure unchanged: 425 records, 4,802 evaluations, 331 moments, 513 labeled checks, 0 failed, 0 audit findings; work corpus 278 checks, 1,227 evaluations (the 1,284 in §11 was a misstatement of the same figure); base corpus 262 labeled expectations, 0 failed | The repair changing a load it had no business changing |
+| The hostile layers | `--loop --attack` 393 mutants, 8,153 evaluations, 0 findings; `--attack` 164 mutants, 1,719 evaluations, 0 findings - now including the three new checks | - |
+| Mutation | twenty mutants added to `scripts/mutate_p9_load_work.py`, and six whose anchors the repair moved re-pointed at the same defects; all 102 mutants of the battery turn their named guard RED. Run on a complete copy of the working tree, never in it; the copy differs from what was committed only by a two-line comment in `model.py` and by this record | A guard that cannot fail |
+| The seven P9 and ships-dark test files | 289 passed (250 before this repair, and the thirty-nine new tests) | - |
+| Effect and authority ledgers | 0 rows in every run | - |
+
+**Rollback:** revert the repair commit. Nothing on a live path reaches any of it.
+
+### Debt recorded by the review and the repair
+
+| ID | Debt | Why it does not block |
+|---|---|---|
+| ~~`P9-D66`~~ | **CLOSED by this repair.** | - |
+| `P9-D67` | **STILL OPEN.** A truck with a standing arrival at the receiver and no delivery report is `QUIET` at a brokerage with no tracking cadence. One way in is worth naming, because §12 leaves it exactly where it was: the system of record said DELIVERED early, a human overruled it, the truck then really arrives - and the row, which already says DELIVERED, is never sent again. | Not part of this repair, by the founder's direction. The arrival obligation is met; the missing decision is how long ARRIVED-but-not-DELIVERED is tolerated before a dwell follow-up starts. **NEEDS VALIDATION.** |
+| ~~`P9-D68`~~ | **CLOSED by this repair.** | - |
+| ~~`P9-D69`~~ | **CLOSED by this repair.** An appointment reported RESCHEDULED or CANCELLED kept the watch of the window it left. | It was a blocking finding. |
+| `P9-D70` | An appointment that goes from CONFIRMED to `REQUESTED` (with or without a new window) keeps the watch of the last confirmed window, which can then go overdue. | Unchanged on purpose: the brief excluded REQUESTED semantics. Whether a requested change withdraws the confirmed time is a freight rule nobody has stated. **NEEDS VALIDATION.** Never quiet: the unconfirmed appointment is work. |
+| `P9-D71` | After a recorded human has confirmed an appointment, a later system record that says `CANCELLED` (or `RESCHEDULED`) with the SAME window is not applied and nobody is asked: her confirmation stands (`OWNER_ASSERTED` is not overwritten) and an appointment's status is not a field two sources can dispute. A different window IS a Conflict. | Over-asking, never silence: the watch she confirmed runs on. Making an appointment's status disputable changes how every status disagreement is read; it is a product decision, not this repair. |
+| `P9-D72` | A signed POD is not evidence that the truck moved on. Beside a restated claim it advances nothing; beside a new bare claim the dispute stays hers. | Not quiet and not billing-ready in either case, and a human's confirmation or a provider reading closes it. Whether a POD should itself advance a load a human held in transit is a product question. |
+| `P9-D73` | While two systems dispute an appointment's window (no human has decided), the watch stays on the window it had and can go overdue against it. | The dispute is a human's open question, first in the picture. What a disputed window should do to its watch is undecided. |
+| `P9-D74` | One provider reading past where she said the truck was lifts her decision for everything said after it. A false reading would let a restatement stand. | The brief names a valid provider reading as real evidence. A later reading of an earlier stage against another source's claim is already a new dispute. |
+| `P9-D75` | After a human's status decision, at a brokerage with no provider readings, every later bare claim of progress is a dispute and costs a human touch - and so is a repeat by the source she overruled, once nothing else is asking about that stop. | It is the stated rule: a bare word does not replace her answer. Over-asking, never silence. Whether some bare claims should be believed after a time is tenant policy. |
+| `P9-D76` | When the claim that answered an arrival watch is overruled, other evidence still stands, and the appointment is then moved to a window never used that has already closed, one extra cured Exception is left. Found by the third review; older than this checkpoint. | Housekeeping only: no need, no proposal, no question. |

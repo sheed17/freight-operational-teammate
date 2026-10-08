@@ -338,6 +338,8 @@ def _draft(view: LoadView, need: OperationalNeed, action: ShadowAction) -> str |
         window = _window(view, key)
         what = f" at {facility}" if facility else ""
         when = f" We have it as {window}." if window else ""
+        if view.appointment_cancelled(key or ""):
+            when = " We have it as cancelled."         # the window it had stands for nothing now
         return (f"Load {load}: please confirm the appointment{what}.{when} Reply with the "
                 f"confirmed window or the new one.")
     return None
