@@ -1,0 +1,137 @@
+THE LOAD THROUGH TIME  (one line per moment; a `tick` is a deadline passing in silence)
+LOAD LD-59001  [northline-freight]
+  09-01T12:30 tender                     PLANNING   WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC, ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T13:00 covered                    DISPATCHED WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC, ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T13:20 rate-con                   DISPATCHED WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC, ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T15:10 at-pickup                  AT_PICKUP  WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T16:00 loaded                     IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T19:30 ping-0-1430                IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-01T23:00 ping-0-1800                IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-02T02:30 ping-0-2130                IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-02T06:00 ping-1-0100                IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-02T09:30 ping-1-0430                IN_TRANSIT WAIT            bill=no  touch=0 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+  09-02T12:30 driver-says-delivered      DELIVERED  NEYMA_CAN_ACT   bill=no  touch=0 NEYMA:REQUEST_POD            DOCUMENT_REQUIRED/OPEN/NEYMA_ACTION_CANDIDATE
+  09-02T12:35 provider-says-moving       DISPUTED   HUMAN_ATTENTION bill=no  touch=1 HUMAN:EVIDENCE_CONFLICT      EVIDENCE_CONFLICT/OPEN/HUMAN_REQUIRED, DOCUMENT_REQUIRED/OPEN/NEYMA_ACTION_CANDIDATE
+  09-02T13:00 dana-says-moving           IN_TRANSIT WAIT            bill=no  touch=1 WAIT                         ARRIVAL_PENDING/PENDING/DETERMINISTIC
+ ~09-02T15:01 deadline@2026-09-02T15:01: IN_TRANSIT NEYMA_CAN_ACT   bill=no  touch=1 NEYMA:REQUEST_CARRIER_STATUS CARRIER_STATUS_OVERDUE/OVERDUE/NEYMA_ACTION_CANDIDATE
+  09-02T18:30 at-delivery                IN_TRANSIT QUIET           bill=no  touch=1 NOTHING                      -
+  09-02T19:00 delivered                  DELIVERED  NEYMA_CAN_ACT   bill=no  touch=1 NEYMA:REQUEST_POD            DOCUMENT_REQUIRED/OPEN/NEYMA_ACTION_CANDIDATE
+  09-02T19:30 pod                        DELIVERED  QUIET           bill=yes touch=1 NOTHING                      -
+
+--- 2026-09-02T12:30:00.000Z  after driver-says-delivered
+ 1 happening     Delivery has been reported. Carrier: Summit Line Freight. System of record says COVERED. POD: OUTSTANDING.
+ 2 evidence      
+                 2026-09-01T23:00:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T02:30:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T06:00:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T09:30:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:30:00.000Z driver reports DELIVERED at delivery (Maumee Distributing) [MODEL_EXTRACTED; 1 record(s)]
+ 3 changed       STAGE DELIVERED (IN_TRANSIT -> DELIVERED); OPENED DOCUMENT_REQUIRED (OPEN/NEYMA_ACTION_CANDIDATE due 2026-09-03T12:30:00.000Z); CLOSED ARRIVAL_PENDING (SATISFIED)
+ 4 work          DOCUMENT_REQUIRED[OPEN/NEYMA_ACTION_CANDIDATE]
+ 5 overdue       none
+ 6 waiting for   nothing
+ 7 Neyma would   REQUEST_POD -> carrier (Summit Line Freight)
+                 DRAFT, NOT SENT: Load LD-59001 is reported delivered at Maumee Distributing. Please send the signed proof of delivery, all pages, so the load can be closed out.
+ 8 needs a human no
+ 9 why           -
+10 billing ready no - document requirement POD is OUTSTANDING: delivery has been reported and no usable POD is on file
+11 carrier side  nothing open
+12 quiet         no
+13 human touches 0  (decisions recorded 0, still owed 0)
+
+--- 2026-09-02T12:35:00.000Z  after provider-says-moving
+ 1 happening     The sources contradict each other about where this load is. Carrier: Summit Line Freight. System of record says COVERED.
+ 2 evidence      
+                 2026-09-02T06:00:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T09:30:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:30:00.000Z driver reports DELIVERED at delivery (Maumee Distributing) [MODEL_EXTRACTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z conflict on tracking status: DELIVERED vs IN_TRANSIT - owned by dana.ortiz, not resolved by Neyma [derived; 1 record(s)] [needs_human]
+ 3 changed       STAGE DISPUTED (DELIVERED -> DISPUTED); OPENED EVIDENCE_CONFLICT (OPEN/HUMAN_REQUIRED)
+ 4 work          EVIDENCE_CONFLICT[OPEN/HUMAN_REQUIRED], DOCUMENT_REQUIRED[OPEN/NEYMA_ACTION_CANDIDATE]
+ 5 overdue       none
+ 6 waiting for   nothing
+ 7 Neyma would   REQUEST_POD -> carrier (Summit Line Freight)
+                 DRAFT, NOT SENT: Load LD-59001 is reported delivered at Maumee Distributing. Please send the signed proof of delivery, all pages, so the load can be closed out.
+ 8 needs a human EVIDENCE_CONFLICT -> dana.ortiz
+ 9 why           EVIDENCE_CONFLICT: Movement sources contradict each other about where the freight is.
+                 asks dana.ortiz: Which statement is right?
+                 evidence ev-2c05da36ae5a conflict: CLAIM_VS_OBSERVATION on brokerage_load.tracking_status
+                 evidence ev-131e7f65de22 observation: MODEL_EXTRACTED says DELIVERED
+                 evidence ev-769a2722a56a observation: SYSTEM_IMPORTED says IN_TRANSIT
+10 billing ready no - document requirement POD is OUTSTANDING: delivery has been reported and no usable POD is on file; open conflict on tracking_status
+11 carrier side  nothing open
+12 quiet         no
+13 human touches 1  (decisions recorded 0, still owed 1)
+
+--- 2026-09-02T13:00:00.000Z  after dana-says-moving
+ 1 happening     Picked up and reported in transit. Carrier: Summit Line Freight. System of record says COVERED.
+ 2 evidence      
+                 2026-09-02T09:30:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:30:00.000Z driver reports DELIVERED at delivery (Maumee Distributing) [MODEL_EXTRACTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z conflict on tracking status: DELIVERED vs IN_TRANSIT - owned by dana.ortiz, not resolved by Neyma [derived; 1 record(s)] [needs_human]
+                 2026-09-02T13:00:00.000Z dana.ortiz confirmed the load is IN_TRANSIT [OWNER_ASSERTED; 1 record(s)]
+ 3 changed       STAGE IN_TRANSIT (DISPUTED -> IN_TRANSIT); OPENED ARRIVAL_PENDING (PENDING/DETERMINISTIC due 2026-09-02T15:00:00.000Z); CLOSED EVIDENCE_CONFLICT (RESOLVED); CLOSED DOCUMENT_REQUIRED (SUPERSEDED); HUMAN_ACT human (0 -> 1)
+ 4 work          ARRIVAL_PENDING[PENDING/DETERMINISTIC]
+ 5 overdue       none
+ 6 waiting for   ARRIVAL_PENDING until 2026-09-02T15:00:00.000Z
+ 7 Neyma would   wait
+ 8 needs a human no
+ 9 why           -
+10 billing ready no - delivery has not been reported by any source; document requirement POD is PENDING: delivery has not been reported
+11 carrier side  nothing open
+12 quiet         no
+13 human touches 1  (decisions recorded 1, still owed 0)
+
+--- 2026-09-02T15:01:00.000Z  after deadline@2026-09-02T15:01:00.000Z  (a deadline passed; nothing arrived)
+ 1 happening     Picked up and reported in transit. Carrier: Summit Line Freight. System of record says COVERED.
+ 2 evidence      
+                 2026-09-02T12:30:00.000Z driver reports DELIVERED at delivery (Maumee Distributing) [MODEL_EXTRACTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z tracking provider reports IN_TRANSIT [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T12:35:00.000Z conflict on tracking status: DELIVERED vs IN_TRANSIT - owned by dana.ortiz, not resolved by Neyma [derived; 1 record(s)] [needs_human]
+                 2026-09-02T13:00:00.000Z dana.ortiz confirmed the load is IN_TRANSIT [OWNER_ASSERTED; 1 record(s)]
+                 2026-09-02T15:00:00.000Z expected arrival at stop S2 overdue - the channel was demonstrably healthy and nothing arrived [derived; 1 record(s)] [needs_human]
+ 3 changed       OPENED CARRIER_STATUS_OVERDUE (OVERDUE/NEYMA_ACTION_CANDIDATE due 2026-09-02T15:00:00.000Z); CLOSED ARRIVAL_PENDING (SUPERSEDED)
+ 4 work          CARRIER_STATUS_OVERDUE[OVERDUE/NEYMA_ACTION_CANDIDATE]
+ 5 overdue       CARRIER_STATUS_OVERDUE (due 2026-09-02T15:00:00.000Z, OVERDUE)
+ 6 waiting for   nothing
+ 7 Neyma would   REQUEST_CARRIER_STATUS -> carrier (Summit Line Freight)
+                 DRAFT, NOT SENT: Load LD-59001: we have not had the update we expected. Where is the truck now, and what is the current ETA to the next stop?
+ 8 needs a human no
+ 9 why           -
+10 billing ready no - delivery has not been reported by any source; document requirement POD is PENDING: delivery has not been reported
+11 carrier side  nothing open
+12 quiet         no
+13 human touches 1  (decisions recorded 1, still owed 0)
+
+--- 2026-09-02T19:30:00.000Z  after pod
+ 1 happening     Delivery has been reported. Carrier: Summit Line Freight. System of record says DELIVERED. POD: SATISFIED.
+ 2 evidence      
+                 2026-09-02T15:00:00.000Z expected arrival at stop S2 overdue - the channel was demonstrably healthy and nothing arrived [derived; 1 record(s)]
+                 2026-09-02T18:30:00.000Z tracking provider reports AT_DELIVERY at delivery (Maumee Distributing) [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T18:30:00.000Z expected arrival at stop S2 arrived late and was accepted [derived; 1 record(s)]
+                 2026-09-02T19:00:00.000Z TMS status COVERED -> DELIVERED [SYSTEM_IMPORTED; 1 record(s)]
+                 2026-09-02T19:30:00.000Z POD received [MODEL_EXTRACTED; 1 record(s)]
+ 3 changed       CLOSED DOCUMENT_REQUIRED (SATISFIED); BILLING customer_billing_ready (False -> True); QUIET quiet (False -> True)
+ 4 work          none
+ 5 overdue       none
+ 6 waiting for   nothing
+ 7 Neyma would   nothing
+ 8 needs a human no
+ 9 why           -
+10 billing ready yes
+11 carrier side  nothing open
+12 quiet         yes  (1 cured exception(s) await a human's closure: housekeeping, not work)
+13 human touches 1  (decisions recorded 1, still owed 0)
+
+WHAT THE CANONICAL RECORD HOLDS AT THE END
+  delivery-arrival watches on this stop   ['DISCHARGED', 'DISCHARGED']   (the first was answered by the driver's claim; the second was owed again)
+  claims a human overruled, still on file [('driver_assertion', 'DELIVERED')]
+  tracking disputes                       [('RESOLVED_BY_HUMAN', 2)]   (state, parties kept)
+  quiet while the delivery was still owed []   (must be empty: this is the false QUIET)
+  external-effect rows written            0
+  cross-tenant mapping violations         0
+  audit findings (independent oracle)     0
+
+RESULT: OK - the delivery stayed watched and nothing left the building
